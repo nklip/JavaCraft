@@ -122,7 +122,7 @@ public class ImbdMoviesExporter {
 
         String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(movieList);
 
-        try (PrintWriter out = new PrintWriter("data/movies.json")) {
+        try (PrintWriter out = new PrintWriter("data/json/movies.json")) {
             out.write(json);
         }
 

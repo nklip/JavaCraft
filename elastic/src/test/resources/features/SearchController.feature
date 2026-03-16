@@ -2,7 +2,7 @@ Feature: test SearchController
 
   Scenario: index creation
     Given index 'movies' exists
-    Then ingest 'data/movies.json' json file with 250 entities in 'movies' index
+    Then ingest 'data/json/movies.json' json file with 250 entities in 'movies' index
 
   Scenario: wildcard search
     Then wildcard search for 'Scottish' in 'movies'
