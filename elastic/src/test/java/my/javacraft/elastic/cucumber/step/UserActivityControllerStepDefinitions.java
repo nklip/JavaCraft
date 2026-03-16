@@ -110,6 +110,41 @@ public class UserActivityControllerStepDefinitions {
         log.info("All {} vote events ingested successfully", tasks.size());
     }
 
+    @Then("top posts are returned in this order")
+    public void verifyTopPostsOrder(DataTable dataTable) throws InterruptedException {
+        List<String> expectedPostIds = dataTable.asList();
+
+        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+        headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+        HttpEntity<String> entity = new HttpEntity<>(null, headers);
+
+        RestTemplate restTemplate = new RestTemplate();
+        String topUrl = "http://localhost:%s/api/services/user-activity/top?size=20".formatted(port);
+
+        Assertions.assertTrue(CucumberSpringConfiguration.assertWithWait(expectedPostIds.size(), () -> {
+            HttpEntity<List<UserActivity>> response = restTemplate.exchange(
+                    topUrl, HttpMethod.GET, entity, new ParameterizedTypeReference<>() {}
+            );
+            List<UserActivity> body = response.getBody();
+            return body == null ? 0 : body.size();
+        }), "Timed out waiting for %d top posts".formatted(expectedPostIds.size()));
+
+        HttpEntity<List<UserActivity>> finalResponse = restTemplate.exchange(
+                topUrl, HttpMethod.GET, entity, new ParameterizedTypeReference<>() {}
+        );
+        List<UserActivity> topPosts = finalResponse.getBody();
+        Assertions.assertNotNull(topPosts);
+        Assertions.assertEquals(expectedPostIds.size(), topPosts.size());
+
+        for (int i = 0; i < expectedPostIds.size(); i++) {
+            String expected = expectedPostIds.get(i);
+            String actual = topPosts.get(i).getPostId();
+            Assertions.assertEquals(expected, actual,
+                    "Rank %d: expected '%s' but got '%s'".formatted(i + 1, expected, actual));
+        }
+        log.info("Top posts order verified: {}", expectedPostIds);
+    }
+
     @Then("hot posts are returned in this order")
     public void verifyHotPostsOrder(DataTable dataTable) throws InterruptedException {
         List<String> expectedPostIds = dataTable.asList();
