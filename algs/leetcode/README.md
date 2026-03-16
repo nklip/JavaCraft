@@ -6,6 +6,7 @@ This module should contain leetcode problems, solutions, and tests.
 1. [Two pointers](#1-two-pointers)
 2. [Fast and slow pointers](#2-fast-and-slow-pointers)
 3. [Sliding Window](#3-sliding-window)
+4. [Intervals](#4-intervals)
 
 ---
 ### 1. Two pointers
@@ -139,5 +140,44 @@ There are two variants:
 * <b>The condition is monotone as the window grows</b> : Sliding window works when making the window larger always pushes the aggregate in one direction (adding elements only increases the sum, only increases distinct count, etc.), so you know exactly when to stop growing and start shrinking.
 * <b>Elements must be contiguous</b> : This is the key differentiator from two pointers — sliding window only applies when the answer involves adjacent elements. If the problem lets you pick any two elements regardless of position, two pointers is the right pattern instead.
 * <b>Keywords to watch for</b> : "subarray", "substring", "contiguous", "consecutive", "window of size k", "longest", "shortest", "minimum length", "maximum sum", "at most k distinct", "no repeating".
+
+---
+
+### 4. Intervals
+<sub>[Back to solutions](#Solutions)</sub>
+
+The Interval pattern is a powerful way to reason about problems involving ranges of values, whether time spans, numeric ranges, or geometric spans. Each interval is defined by a start and an end; for example, [10,20] represents everything from 10 through 20.
+
+> [!NOTE]
+> Two intervals overlap if the start of one is less than or equal to the end of the other.
+
+#### 4.1. Idea
+Interval questions are a subset of array questions where you are given an array of two-element arrays (an interval) and the two values represent a start and an end value. Interval questions are considered part of the array family but they involve some common techniques hence they are extracted out to this special section of their own.
+
+An example interval array: [[1, 2], [4, 7]].
+
+Interval questions can be tricky to those who have not tried them before because of the sheer number of cases to consider when they overlap.
+
+Corner cases:
+* No intervals
+* Single interval
+* Two intervals
+* Non-overlapping intervals
+* An interval totally consumed within another interval
+* Duplicate intervals (exactly the same start and end)
+* Intervals which start right where another interval ends - [[1, 2], [2, 3]]
+
+#### 4.2. Illustration
+
+![Intervals](./images/4_intervals.webp)
+
+#### 4.3. Complexity
+
+Time: O(N * log N) where N is the total number of intervals. In the beginning, since we sort the intervals, our algorithm will take O(N * log N) to run.<br/>
+Space: O(N), as we need to return a list containing all the merged intervals.
+
+#### 4.4. How to detect it should be used
+
+This approach is quite useful when dealing with intervals, overlapping items or merging intervals.
 
 ---
