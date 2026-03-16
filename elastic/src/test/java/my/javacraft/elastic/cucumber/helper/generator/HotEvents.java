@@ -20,6 +20,14 @@ package my.javacraft.elastic.cucumber.helper.generator;
  * votes in hour 10)
  * 4) No hard cutoff — old posts with massive scores can still appear, just very slowly pushed down
  */
-public class HotEvents {
+public class HotEvents implements EventGenerator {
+    private static final String EVENTS_HOT_FILE = "events-hot.csv";
 
+    /*
+     * Should update postIds from 11 to 20
+     */
+    @Override
+    public void generateEventsInCsv() {
+
+    }
 }

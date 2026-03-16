@@ -13,8 +13,15 @@ package my.javacraft.elastic.cucumber.helper.generator;
  * 4) Acts as an early-warning signal before a post reaches Hot
  * 5) Drops off once velocity slows or the post ages out of the candidate window
  *
-
  */
-public class RisingEvents {
+public class RisingEvents implements EventGenerator {
+    private static final String EVENTS_RISING_FILE = "events-rising.csv";
 
+    /*
+     * Should update postIds from 31 to 40
+     */
+    @Override
+    public void generateEventsInCsv() {
+
+    }
 }

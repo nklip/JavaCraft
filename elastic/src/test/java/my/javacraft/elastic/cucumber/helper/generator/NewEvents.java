@@ -10,6 +10,14 @@ package my.javacraft.elastic.cucumber.helper.generator;
  * 3) No decay, no score influence
  * 4) Use case: see the firehose; catch posts before they get buried
  */
-public class NewEvents {
+public class NewEvents implements EventGenerator {
+    private static final String EVENTS_NEW_FILE = "events-new.csv";
 
+    /*
+     * Should update postIds from 21 to 30
+     */
+    @Override
+    public void generateEventsInCsv() {
+
+    }
 }

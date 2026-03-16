@@ -22,6 +22,14 @@ package my.javacraft.elastic.cucumber.helper.generator;
  * 3) Designed for comment sorting — surfaces reliably good comments, not just lucky early ones
  * 4) Used as the default comment sort ("Best" in the UI)
  */
-public class BestEvents {
+public class BestEvents implements EventGenerator {
+    private static final String EVENTS_BEST_FILE = "events-best.csv";
 
+    /*
+     * Should update postIds from 01 to 10
+     */
+    @Override
+    public void generateEventsInCsv() {
+
+    }
 }

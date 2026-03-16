@@ -25,6 +25,14 @@ package my.javacraft.elastic.cucumber.helper.generator;
  * 2) Best/Top are the same algorithm (Best is just an alias Reddit uses for "Top — All Time" on some views)
  * 3) Rewards sustained quality; a niche post with a dedicated community can still win "month" or "year"
  */
-public class TopEvents {
+public class TopEvents implements EventGenerator {
+    private static final String EVENTS_TOP_FILE = "events-top.csv";
 
+    /*
+     * Should update postIds from 41 to 50
+     */
+    @Override
+    public void generateEventsInCsv() {
+
+    }
 }
