@@ -247,12 +247,12 @@ public class UserActivityControllerStepDefinitions {
         HttpEntity<String> entity = new HttpEntity<>(null, headers);
 
         RestTemplate restTemplate = new RestTemplate();
-        String userActivityUrl = "http://localhost:%s/api/services/user-activity/users/%s".formatted(port, userId);
+        String topUrl = "http://localhost:%s/api/services/user-activity/top".formatted(port);
 
-        // Wait until ES indexes at least 1 result for this user
+        // Wait until ES indexes at least 1 result
         Assertions.assertTrue(CucumberSpringConfiguration.assertWithWait(1, () -> {
             HttpEntity<List<UserActivity>> currentResponse = restTemplate.exchange(
-                    userActivityUrl,
+                    topUrl,
                     HttpMethod.GET,
                     entity,
                     new ParameterizedTypeReference<>() {}
@@ -262,7 +262,7 @@ public class UserActivityControllerStepDefinitions {
         }));
 
         HttpEntity<List<UserActivity>> finalResponse = restTemplate.exchange(
-                userActivityUrl,
+                topUrl,
                 HttpMethod.GET,
                 entity,
                 new ParameterizedTypeReference<>() {}
@@ -270,17 +270,14 @@ public class UserActivityControllerStepDefinitions {
         Assertions.assertNotNull(finalResponse.getBody());
         List<UserActivity> body = finalResponse.getBody();
 
-        // With event stream, each click produces a new document.
-        // The popular service groups by postId → one result per distinct post.
-        Assertions.assertFalse(body.isEmpty(), "Expected at least one activity for userId=" + userId);
+        Assertions.assertFalse(body.isEmpty(), "Expected at least one top activity for postId=" + postId);
 
         UserActivity topActivity = body.getFirst();
         Assertions.assertEquals(postId, topActivity.getPostId());
         Assertions.assertEquals(pattern, topActivity.getSearchValue());
         Assertions.assertEquals(type, topActivity.getSearchType());
-        Assertions.assertEquals(userId, topActivity.getUserId());
 
-        log.info("verified {} events produced 1 popular result for userId={}, postId={}", hitCounts, userId, postId);
+        log.info("verified {} upvote events produced top result for postId={}", hitCounts, postId);
     }
 
     @Then("user {string} has next sorting results")
@@ -291,11 +288,11 @@ public class UserActivityControllerStepDefinitions {
         HttpEntity<String> entity = new HttpEntity<>(null, headers);
 
         RestTemplate restTemplate = new RestTemplate();
-        String userActivityUrl = "http://localhost:%s/api/services/user-activity/users/%s".formatted(port, userId);
+        String topUrl = "http://localhost:%s/api/services/user-activity/top".formatted(port);
 
         Assertions.assertTrue(CucumberSpringConfiguration.assertWithWait(dataTable.height(), () -> {
             HttpEntity<List<UserActivity>> currentResponse = restTemplate.exchange(
-                    userActivityUrl,
+                    topUrl,
                     HttpMethod.GET,
                     entity,
                     new ParameterizedTypeReference<>() {}
@@ -305,7 +302,7 @@ public class UserActivityControllerStepDefinitions {
         }));
 
         HttpEntity<List<UserActivity>> finalResponse = restTemplate.exchange(
-                userActivityUrl,
+                topUrl,
                 HttpMethod.GET,
                 entity,
                 new ParameterizedTypeReference<>() {}
@@ -314,7 +311,7 @@ public class UserActivityControllerStepDefinitions {
         List<UserActivity> body = finalResponse.getBody();
         Assertions.assertEquals(dataTable.height(), body.size());
 
-        // Verify ordering by searchValue (most-clicked record first)
+        // Verify ordering by searchValue (most-upvoted post first)
         List<List<String>> expectedResults = dataTable.cells();
         for (int i = 0; i < body.size(); i++) {
             UserActivity userActivity = body.get(i);

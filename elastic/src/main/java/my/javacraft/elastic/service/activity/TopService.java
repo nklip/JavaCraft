@@ -20,13 +20,13 @@ import my.javacraft.elastic.model.UserActivity;
 import org.springframework.stereotype.Service;
 
 /*
- * TopService simulates Reddit's 'Top' category for a given user.
+ * TopService simulates Reddit's 'Top' category.
  *
- * Returns the posts a user has upvoted most frequently, ordered by upvote count descending.
+ * Returns globally top posts ranked by total upvote count descending.
  * Only UPVOTE events contribute — downvotes are negative feedback and are excluded.
  *
  * Two-query approach:
- *   Query 1 — terms aggregation: filter by userId + action=UPVOTE, group by postId, order by _count DESC
+ *   Query 1 — terms aggregation: filter action=UPVOTE globally, group by postId, order by _count DESC
  *   Query 2 — collapse hydration: fetch one representative UserActivity doc per postId
  *
  * Time-window variants (Top day / week / month / year / all) can be added by passing
@@ -39,30 +39,24 @@ public class TopService {
 
     private final ElasticsearchClient esClient;
 
-    public List<UserActivity> retrievePopularUserSearches(String userId, int size) throws IOException {
-        List<String> orderedPostIds = queryTopPostIds(userId, size);
+    public List<UserActivity> retrieveTopPosts(int size) throws IOException {
+        List<String> orderedPostIds = queryTopPostIds(size);
         if (orderedPostIds.isEmpty()) {
             return List.of();
         }
-        return hydrateActivities(userId, orderedPostIds);
+        return hydrateActivities(orderedPostIds);
     }
 
     /**
-     * Query 1: terms aggregation filtered to UPVOTE actions only.
+     * Query 1: terms aggregation filtered to UPVOTE actions only (all users).
      * Returns postIds ordered by upvote frequency descending.
      */
-    private List<String> queryTopPostIds(String userId, int size) throws IOException {
+    private List<String> queryTopPostIds(int size) throws IOException {
         SearchRequest request = new SearchRequest.Builder()
                 .index(UserActivityService.INDEX_USER_ACTIVITY)
-                .query(q -> q.bool(b -> b
-                        .must(m -> m.term(t -> t
-                                .field(UserActivityService.USER_ID)
-                                .value(v -> v.stringValue(userId))
-                        ))
-                        .must(m -> m.term(t -> t
-                                .field(UserActivityService.ACTION)
-                                .value(v -> v.stringValue(UserAction.UPVOTE.name()))
-                        ))
+                .query(q -> q.term(t -> t
+                        .field(UserActivityService.ACTION)
+                        .value(v -> v.stringValue(UserAction.UPVOTE.name()))
                 ))
                 .size(0)
                 .aggregations(UserActivityService.POST_ID, a -> a
@@ -92,19 +86,13 @@ public class TopService {
      * Query 2: fetch one representative (most recent) UserActivity per postId,
      * preserving the top order from Query 1.
      */
-    private List<UserActivity> hydrateActivities(String userId, List<String> orderedPostIds) throws IOException {
+    private List<UserActivity> hydrateActivities(List<String> orderedPostIds) throws IOException {
         SearchRequest request = new SearchRequest.Builder()
                 .index(UserActivityService.INDEX_USER_ACTIVITY)
-                .query(q -> q.bool(b -> b
-                        .must(m -> m.term(t -> t
-                                .field(UserActivityService.USER_ID)
-                                .value(v -> v.stringValue(userId))
-                        ))
-                        .must(m -> m.terms(t -> t
-                                .field(UserActivityService.POST_ID)
-                                .terms(tv -> tv.value(
-                                        orderedPostIds.stream().map(FieldValue::of).toList()
-                                ))
+                .query(q -> q.terms(t -> t
+                        .field(UserActivityService.POST_ID)
+                        .terms(tv -> tv.value(
+                                orderedPostIds.stream().map(FieldValue::of).toList()
                         ))
                 ))
                 .size(orderedPostIds.size())

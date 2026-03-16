@@ -88,16 +88,16 @@ public class UserActivityControllerTest {
     }
 
     @Test
-    public void testPopularSearchActivity() throws IOException {
+    public void testTopPosts() throws IOException {
         UserActivityController userActivityController = new UserActivityController(
                 dateService, userActivityService, topService, hotService, userActivityIngestionService
         );
 
         List<UserActivity> activityList = new ArrayList<>();
-        when(topService.retrievePopularUserSearches(anyString(), anyInt())).thenReturn(activityList);
+        when(topService.retrieveTopPosts(anyInt())).thenReturn(activityList);
 
         ResponseEntity<List<UserActivity>> response = userActivityController
-                .retrievePopularUserSearches("nl88888", 10);
+                .retrieveTopPosts(10);
 
         Assertions.assertNotNull(response);
         Assertions.assertNotNull(response.getBody());
@@ -152,16 +152,16 @@ public class UserActivityControllerTest {
 //    }
 
     @Test
-    public void testPopularSearchActivityValidationShouldFailWhenSizeLessThanOne() throws NoSuchMethodException {
+    public void testTopPostsValidationShouldFailWhenSizeLessThanOne() throws NoSuchMethodException {
         UserActivityController userActivityController = new UserActivityController(
                 dateService, userActivityService, topService, hotService, userActivityIngestionService
         );
-        Method method = UserActivityController.class.getMethod("retrievePopularUserSearches", String.class, int.class);
+        Method method = UserActivityController.class.getMethod("retrieveTopPosts", int.class);
 
         Set<ConstraintViolation<UserActivityController>> violations;
         try (ValidatorFactory validatorFactory = Validation.buildDefaultValidatorFactory()) {
             violations = validatorFactory.getValidator().forExecutables()
-                    .validateParameters(userActivityController, method, new Object[]{"nl88888", 0});
+                    .validateParameters(userActivityController, method, new Object[]{0});
         }
 
         Assertions.assertTrue(violations.stream().anyMatch(v -> v.getMessage().contains("greater than or equal to 1")));

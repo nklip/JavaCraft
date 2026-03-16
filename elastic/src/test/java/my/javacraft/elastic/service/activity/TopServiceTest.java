@@ -35,7 +35,7 @@ public class TopServiceTest {
     ElasticsearchClient esClient;
 
     @Test
-    public void testRetrievePopularUserSearchesFiltersUpvotesOnly() throws IOException {
+    public void testRetrieveTopPostsFiltersUpvotesOnly() throws IOException {
         UserActivity userActivity = new UserActivity(UserClickTest.createHitCount(), "2024-01-15T10:00:00.000Z");
 
         // --- Mock Query 1: aggregation response ---
@@ -74,7 +74,7 @@ public class TopServiceTest {
 
         // --- Act ---
         TopService service = new TopService(esClient);
-        List<UserActivity> result = service.retrievePopularUserSearches("nl8888", 10);
+        List<UserActivity> result = service.retrieveTopPosts(10);
 
         // --- Assert ---
         Assertions.assertNotNull(result);
@@ -90,7 +90,7 @@ public class TopServiceTest {
     }
 
     @Test
-    public void testRetrievePopularUserSearchesReturnsEmptyWhenNoUpvotes() throws IOException {
+    public void testRetrieveTopPostsReturnsEmptyWhenNoUpvotes() throws IOException {
         Buckets<StringTermsBucket> buckets = mock(Buckets.class);
         when(buckets.array()).thenReturn(List.of());
 
@@ -107,7 +107,7 @@ public class TopServiceTest {
         when(esClient.search(any(SearchRequest.class), eq(UserActivity.class))).thenReturn(aggResponse);
 
         TopService service = new TopService(esClient);
-        List<UserActivity> result = service.retrievePopularUserSearches("unknown-user", 10);
+        List<UserActivity> result = service.retrieveTopPosts(10);
 
         Assertions.assertNotNull(result);
         Assertions.assertTrue(result.isEmpty());

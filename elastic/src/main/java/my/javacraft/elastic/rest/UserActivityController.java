@@ -93,23 +93,22 @@ public class UserActivityController {
     }
 
     @Operation(
-            summary = "Top posts for a user",
-            description = "Returns the posts a user has upvoted most, ordered by upvote count descending."
+            summary = "Top posts",
+            description = "Returns globally top posts ranked by total upvote count descending."
     )
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Successful"),
             @ApiResponse(responseCode = "404", description = "Not found"),
             @ApiResponse(responseCode = "406", description = "Resource unavailable")
     })
-    @GetMapping(value = "/users/{userId}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<UserActivity>> retrievePopularUserSearches(
-            @PathVariable("userId") String userId,
+    @GetMapping(value = "/top", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<UserActivity>> retrieveTopPosts(
             @RequestParam(required = false, name = "size", defaultValue = "10")
             @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
 
-        log.info("retrieving top user searches (userId = '{}' and limit = '{}')...", userId, size);
+        log.info("retrieving top posts (limit = '{}')...", size);
 
-        List<UserActivity> mapList = topService.retrievePopularUserSearches(userId, size);
+        List<UserActivity> mapList = topService.retrieveTopPosts(size);
 
         return ResponseEntity.ok().body(mapList);
     }
