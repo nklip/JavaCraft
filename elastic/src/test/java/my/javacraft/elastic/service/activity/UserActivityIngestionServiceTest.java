@@ -2,6 +2,8 @@ package my.javacraft.elastic.service.activity;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.Result;
+import co.elastic.clients.elasticsearch.core.DeleteRequest;
+import co.elastic.clients.elasticsearch.core.DeleteResponse;
 import co.elastic.clients.elasticsearch.core.UpdateRequest;
 import co.elastic.clients.elasticsearch.core.UpdateResponse;
 import co.elastic.clients.json.jackson.JacksonJsonpMapper;
@@ -28,7 +30,7 @@ import static org.mockito.Mockito.when;
  *   Diff action → Updated (script updates action + timestamp)
  * </pre>
  *
- * In production the script runs inside ES; here we mock the UpdateResponse result
+ * In production the script runs inside ES; here we mock the UpdateResponse / DeleteResponse
  * to represent each of those outcomes and verify the service returns them correctly.
  */
 @SuppressWarnings("unchecked")
@@ -42,6 +44,13 @@ public class UserActivityIngestionServiceTest {
 
     private UserActivityIngestionService service() {
         return new UserActivityIngestionService(esClient);
+    }
+
+    private void stubDelete(String docId, Result result) throws IOException {
+        DeleteResponse deleteResponse = mock(DeleteResponse.class);
+        when(deleteResponse.id()).thenReturn(docId);
+        when(deleteResponse.result()).thenReturn(result);
+        when(esClient.delete(any(DeleteRequest.class))).thenReturn(deleteResponse);
     }
 
     private void stubUpdate(String docId, Result result) throws IOException {
@@ -100,5 +109,37 @@ public class UserActivityIngestionServiceTest {
         // Assert: the document was updated in-place (still one doc per user+post)
         Assertions.assertEquals(expectedId, response.getDocumentId());
         Assertions.assertEquals(Result.Updated, response.getResult());
+    }
+
+    @Test
+    public void testNovoteDeletesExistingVote() throws IOException {
+        // Arrange: user cancels a vote they previously cast
+        UserClick userClick = UserClickTest.createHitCount();
+        userClick.setAction("novote");           // case-insensitive: normalised to NOVOTE
+        String expectedId = userClick.getUserId() + "_" + userClick.getPostId();
+        stubDelete(expectedId, Result.Deleted);
+
+        // Act
+        UserClickResponse response = service().ingestUserClick(userClick, "2024-01-15T10:20:00Z");
+
+        // Assert: document removed, no vote stored
+        Assertions.assertEquals(expectedId, response.getDocumentId());
+        Assertions.assertEquals(Result.Deleted, response.getResult());
+    }
+
+    @Test
+    public void testNovoteOnNonExistentVoteReturnsNotFound() throws IOException {
+        // Arrange: user sends NOVOTE but has never voted on this post
+        UserClick userClick = UserClickTest.createHitCount();
+        userClick.setAction("NOVOTE");
+        String expectedId = userClick.getUserId() + "_" + userClick.getPostId();
+        stubDelete(expectedId, Result.NotFound);
+
+        // Act
+        UserClickResponse response = service().ingestUserClick(userClick, "2024-01-15T10:20:00Z");
+
+        // Assert: graceful no-op, no exception thrown
+        Assertions.assertEquals(expectedId, response.getDocumentId());
+        Assertions.assertEquals(Result.NotFound, response.getResult());
     }
 }

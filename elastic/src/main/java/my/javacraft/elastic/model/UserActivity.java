@@ -11,11 +11,13 @@ import lombok.ToString;
  *
  * <p>The document represents the user's <em>current</em> vote on a post.
  * {@link my.javacraft.elastic.service.activity.UserActivityIngestionService} enforces
- * the following state machine via a Painless script:
+ * the following state machine:
  * <ul>
  *   <li>First vote → document created ({@code Result.Created})</li>
  *   <li>Same action repeated → no write ({@code Result.NoOp})</li>
  *   <li>Opposite action → action and timestamp updated ({@code Result.Updated})</li>
+ *   <li>{@code NOVOTE} → document deleted, no {@code UserActivity} is created
+ *       ({@code Result.Deleted} or {@code Result.NotFound})</li>
  * </ul>
  *
  * <p>The {@code action} field is always stored in uppercase (e.g. {@code UPVOTE}, {@code DOWNVOTE})
