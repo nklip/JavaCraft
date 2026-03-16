@@ -11,7 +11,15 @@ import io.cucumber.datatable.DataTable;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -19,6 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -85,6 +94,35 @@ public class UserActivityControllerStepDefinitions {
         DeleteByQueryResponse response = esClient.deleteByQuery(deleteByQueryRequest);
         Assertions.assertNotNull(response);
         log.info("Cleared {} user-activity events from index", response.deleted());
+    }
+
+    @Given("data folder {string} ingested")
+    public void ingestDataFolderInParallel(String folderPath) throws IOException {
+        List<String> csvResourcePaths = listCsvResourcePaths(folderPath);
+        Assertions.assertFalse(csvResourcePaths.isEmpty(), "No CSV files found in folder: " + folderPath);
+
+        int totalRows = 0;
+        int threads = Math.min(csvResourcePaths.size(), Math.max(1, Runtime.getRuntime().availableProcessors()));
+        try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
+            List<Future<Integer>> futures = new ArrayList<>();
+            for (String csvResourcePath : csvResourcePaths) {
+                futures.add(pool.submit(() -> ingestCsvResource(csvResourcePath)));
+            }
+
+            for (Future<Integer> future : futures) {
+                try {
+                    totalRows += future.get();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("CSV folder ingestion interrupted: " + folderPath, e);
+                } catch (ExecutionException e) {
+                    throw new IllegalStateException("Failed to ingest CSV from folder: " + folderPath, e.getCause());
+                }
+            }
+        }
+
+        Assertions.assertTrue(totalRows > 0, "CSV folder has no ingestible rows: " + folderPath);
+        log.info("Ingested {} events from {} files in '{}'", totalRows, csvResourcePaths.size(), folderPath);
     }
 
     @When("reddit baseline activity is ingested for top and hot comparison")
@@ -252,6 +290,74 @@ public class UserActivityControllerStepDefinitions {
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize UserClick for user=%s post=%s".formatted(userId, postId), e);
         }
+    }
+
+    private List<String> listCsvResourcePaths(String folderPath) throws IOException {
+        try {
+            var folderUrl = Thread.currentThread().getContextClassLoader().getResource(folderPath);
+            Assertions.assertNotNull(folderUrl, "CSV folder not found in test resources: " + folderPath);
+
+            Path folder = Paths.get(folderUrl.toURI());
+            try (var pathStream = Files.list(folder)) {
+                return pathStream
+                        .filter(Files::isRegularFile)
+                        .map(Path::getFileName)
+                        .map(Path::toString)
+                        .filter(name -> name.endsWith(".csv"))
+                        .sorted()
+                        .map(name -> folderPath + "/" + name)
+                        .toList();
+            }
+        } catch (URISyntaxException e) {
+            throw new IOException("Invalid folder URI for test resource path: " + folderPath, e);
+        }
+    }
+
+    private int ingestCsvResource(String resourcePath) throws IOException {
+        int ingestedRows = 0;
+
+        InputStream inputStream = Thread.currentThread()
+                .getContextClassLoader()
+                .getResourceAsStream(resourcePath);
+        Assertions.assertNotNull(inputStream, "CSV resource not found: " + resourcePath);
+
+        try (inputStream; BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+            String header = reader.readLine();
+            Assertions.assertNotNull(header, "CSV file is empty: " + resourcePath);
+            Assertions.assertEquals(
+                    "userId,postId,action,date",
+                    header.trim(),
+                    "Unexpected CSV header in " + resourcePath
+            );
+
+            String line;
+            int lineNumber = 1;
+            while ((line = reader.readLine()) != null) {
+                lineNumber++;
+                if (line.isBlank()) {
+                    continue;
+                }
+                String[] values = line.split(",", -1);
+                Assertions.assertEquals(
+                        4,
+                        values.length,
+                        "Invalid CSV row at line %d in %s".formatted(lineNumber, resourcePath)
+                );
+
+                UserClick click = new UserClick();
+                click.setUserId(values[0].trim());
+                click.setPostId(values[1].trim());
+                click.setAction(values[2].trim());
+
+                String timestamp = values[3].trim();
+                userActivityIngestionService.ingestUserClick(click, timestamp);
+                ingestedRows++;
+            }
+        }
+
+        Assertions.assertTrue(ingestedRows > 0, "CSV has no ingestible rows: " + resourcePath);
+        log.info("Ingested {} events from '{}'", ingestedRows, resourcePath);
+        return ingestedRows;
     }
 
     private int ingestBaselineVotes() throws IOException {

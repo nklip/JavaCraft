@@ -58,6 +58,7 @@ Feature: test UserActivityController
 
   Scenario: prepare data
     Given index 'user-activity' exists
+    Given data folder 'data/csv' ingested
 
   # Shared baseline ingestion for ranking tests.
   # 50 unique users, 20 unique posts, sparse upvote/downvote activity.
