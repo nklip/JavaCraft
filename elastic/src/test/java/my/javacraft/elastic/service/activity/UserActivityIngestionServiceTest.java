@@ -2,8 +2,8 @@ package my.javacraft.elastic.service.activity;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.Result;
-import co.elastic.clients.elasticsearch.core.IndexRequest;
-import co.elastic.clients.elasticsearch.core.IndexResponse;
+import co.elastic.clients.elasticsearch.core.UpdateRequest;
+import co.elastic.clients.elasticsearch.core.UpdateResponse;
 import co.elastic.clients.json.jackson.JacksonJsonpMapper;
 import java.io.IOException;
 import my.javacraft.elastic.model.UserClick;
@@ -19,48 +19,86 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-@SuppressWarnings({"unchecked"})
+/**
+ * Tests the three branches of the vote-state machine enforced by the Painless script:
+ *
+ * <pre>
+ *   No document → Created
+ *   Same action → NoOp    (script sets ctx.op = 'noop', nothing written)
+ *   Diff action → Updated (script updates action + timestamp)
+ * </pre>
+ *
+ * In production the script runs inside ES; here we mock the UpdateResponse result
+ * to represent each of those outcomes and verify the service returns them correctly.
+ */
+@SuppressWarnings("unchecked")
 @ExtendWith(MockitoExtension.class)
 public class UserActivityIngestionServiceTest {
 
     @Mock
     ElasticsearchClient esClient;
 
-    @Test
-    public void testIngestCreatesNewDocument() throws IOException {
-        IndexResponse indexResponse = mock(IndexResponse.class);
-        when(indexResponse.id()).thenReturn("auto-generated-id");
-        when(indexResponse.result()).thenReturn(Result.Created);
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    private UserActivityIngestionService service() {
+        return new UserActivityIngestionService(esClient);
+    }
+
+    private void stubUpdate(String docId, Result result) throws IOException {
+        UpdateResponse<Object> updateResponse = mock(UpdateResponse.class);
+        when(updateResponse.id()).thenReturn(docId);
+        when(updateResponse.result()).thenReturn(result);
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
-        when(esClient.index(any(IndexRequest.class))).thenReturn(indexResponse);
+        when(esClient.update(any(UpdateRequest.class), any(Class.class))).thenReturn(
+                (UpdateResponse) updateResponse
+        );
+    }
 
+    // ── tests ─────────────────────────────────────────────────────────────────
+
+    @Test
+    public void testFirstVoteCreatesDocument() throws IOException {
+        // Arrange
         UserClick userClick = UserClickTest.createHitCount();
-        UserActivityIngestionService service = new UserActivityIngestionService(esClient);
+        String expectedId = userClick.getUserId() + "_" + userClick.getPostId();
+        stubUpdate(expectedId, Result.Created);
 
-        UserClickResponse response = service.ingestUserClick(userClick, "2024-01-15T10:00:00.000Z");
+        // Act
+        UserClickResponse response = service().ingestUserClick(userClick, "2024-01-15T10:00:00Z");
 
-        Assertions.assertNotNull(response);
-        Assertions.assertEquals("auto-generated-id", response.getDocumentId());
+        // Assert
+        Assertions.assertEquals(expectedId, response.getDocumentId());
         Assertions.assertEquals(Result.Created, response.getResult());
     }
 
     @Test
-    public void testIngestTwiceBothReturnCreated() throws IOException {
-        IndexResponse indexResponse = mock(IndexResponse.class);
-        when(indexResponse.id()).thenReturn("id-1").thenReturn("id-2");
-        when(indexResponse.result()).thenReturn(Result.Created);
-        when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
-        when(esClient.index(any(IndexRequest.class))).thenReturn(indexResponse);
+    public void testSameVoteRepeatedIsIgnored() throws IOException {
+        // Arrange: ES Painless script returns NoOp when action hasn't changed
+        UserClick userClick = UserClickTest.createHitCount();   // action = UPVOTE
+        String expectedId = userClick.getUserId() + "_" + userClick.getPostId();
+        stubUpdate(expectedId, Result.NoOp);
 
-        UserClick userClick = UserClickTest.createHitCount();
-        UserActivityIngestionService service = new UserActivityIngestionService(esClient);
+        // Act: user tries to upvote the same post a second time
+        UserClickResponse response = service().ingestUserClick(userClick, "2024-01-15T10:05:00Z");
 
-        UserClickResponse first = service.ingestUserClick(userClick, "2024-01-15T10:00:00.000Z");
-        UserClickResponse second = service.ingestUserClick(userClick, "2024-01-15T10:01:00.000Z");
+        // Assert: no document was written
+        Assertions.assertEquals(expectedId, response.getDocumentId());
+        Assertions.assertEquals(Result.NoOp, response.getResult());
+    }
 
-        // Every click is a new immutable document — always 'Created', never 'Updated'
-        Assertions.assertEquals(Result.Created, first.getResult());
-        Assertions.assertEquals(Result.Created, second.getResult());
-        Assertions.assertNotEquals(first.getDocumentId(), second.getDocumentId());
+    @Test
+    public void testDifferentVoteChangesAction() throws IOException {
+        // Arrange: ES Painless script returns Updated when user switches from UPVOTE → DOWNVOTE
+        UserClick userClick = UserClickTest.createHitCount();   // first action = UPVOTE
+        userClick.setAction("Downvote");                        // now changing to DOWNVOTE
+        String expectedId = userClick.getUserId() + "_" + userClick.getPostId();
+        stubUpdate(expectedId, Result.Updated);
+
+        // Act
+        UserClickResponse response = service().ingestUserClick(userClick, "2024-01-15T10:10:00Z");
+
+        // Assert: the document was updated in-place (still one doc per user+post)
+        Assertions.assertEquals(expectedId, response.getDocumentId());
+        Assertions.assertEquals(Result.Updated, response.getResult());
     }
 }
