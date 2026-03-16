@@ -1,5 +1,10 @@
 package my.javacraft.elastic.cucumber.helper.generator;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
+
 /*
  * 🔥 Hot
  *
@@ -25,9 +30,25 @@ public class HotEvents implements EventGenerator {
 
     /*
      * Should update postIds from 11 to 20
+     * The amount of users which would UPVOTE or DOWNVOTE - 300
      */
     @Override
     public void generateEventsInCsv() {
+        Instant now = EventCsvSupport.now();
+        List<String> rows = new ArrayList<>(10 * EventCsvSupport.USERS_PER_POST);
 
+        for (int postId = 11; postId <= 20; postId++) {
+            for (int userId = 1; userId <= EventCsvSupport.USERS_PER_POST; userId++) {
+                boolean upvote = EventCsvSupport.isUpvote(userId, postId, 90);
+                long hoursAgo = Math.floorMod(postId * 7 + userId * 5, 7 * 24L);
+                long minutesAgo = Math.floorMod(postId * 13 + userId * 17, 60);
+                Instant eventTime = now.minus(hoursAgo, ChronoUnit.HOURS)
+                        .minus(minutesAgo, ChronoUnit.MINUTES);
+
+                rows.add(EventCsvSupport.csvLine(userId, postId, upvote, eventTime));
+            }
+        }
+
+        EventCsvSupport.writeCsv(EVENTS_HOT_FILE, rows);
     }
 }

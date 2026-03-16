@@ -1,5 +1,10 @@
 package my.javacraft.elastic.cucumber.helper.generator;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
+
 /*
  * ⬆️ Rising
  *
@@ -19,9 +24,43 @@ public class RisingEvents implements EventGenerator {
 
     /*
      * Should update postIds from 31 to 40
+     * The amount of users which would UPVOTE or DOWNVOTE - 300
      */
     @Override
     public void generateEventsInCsv() {
+        Instant now = EventCsvSupport.now();
+        List<String> rows = new ArrayList<>(10 * EventCsvSupport.USERS_PER_POST);
 
+        for (int postId = 31; postId <= 40; postId++) {
+            for (int userId = 1; userId <= EventCsvSupport.USERS_PER_POST; userId++) {
+                int upvotePercent;
+                long daysAgo;
+                long hoursAgo;
+
+                if (userId <= 180) {
+                    upvotePercent = 72;
+                    daysAgo = 120 + Math.floorMod(postId * 7 + userId * 3, 60);
+                    hoursAgo = Math.floorMod(postId * 5 + userId * 11, 24);
+                } else if (userId <= 240) {
+                    upvotePercent = 85;
+                    daysAgo = 15 + Math.floorMod(postId * 11 + userId * 5, 45);
+                    hoursAgo = Math.floorMod(postId * 13 + userId * 7, 24);
+                } else {
+                    upvotePercent = 95;
+                    daysAgo = Math.floorMod(postId * 3 + userId * 2, 7);
+                    hoursAgo = Math.floorMod(postId * 17 + userId * 19, 24);
+                }
+
+                boolean upvote = EventCsvSupport.isUpvote(userId, postId, upvotePercent);
+                long minutesAgo = Math.floorMod(postId * 23 + userId * 29, 60);
+                Instant eventTime = now.minus(daysAgo, ChronoUnit.DAYS)
+                        .minus(hoursAgo, ChronoUnit.HOURS)
+                        .minus(minutesAgo, ChronoUnit.MINUTES);
+
+                rows.add(EventCsvSupport.csvLine(userId, postId, upvote, eventTime));
+            }
+        }
+
+        EventCsvSupport.writeCsv(EVENTS_RISING_FILE, rows);
     }
 }

@@ -1,5 +1,10 @@
 package my.javacraft.elastic.cucumber.helper.generator;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
+
 /*
  * ⭐ Best (Controversial's opposite)
  *
@@ -27,9 +32,27 @@ public class BestEvents implements EventGenerator {
 
     /*
      * Should update postIds from 01 to 10
+     * The amount of users which would UPVOTE or DOWNVOTE - 300
      */
     @Override
     public void generateEventsInCsv() {
+        Instant now = EventCsvSupport.now();
+        List<String> rows = new ArrayList<>(10 * EventCsvSupport.USERS_PER_POST);
 
+        for (int postId = 1; postId <= 10; postId++) {
+            for (int userId = 1; userId <= EventCsvSupport.USERS_PER_POST; userId++) {
+                boolean upvote = EventCsvSupport.isUpvote(userId, postId, 80);
+                long daysAgo = Math.floorMod(postId * 19 + userId * 7, 180);
+                long hoursAgo = Math.floorMod(postId * 11 + userId * 3, 24);
+                long minutesAgo = Math.floorMod(postId * 5 + userId * 13, 60);
+                Instant eventTime = now.minus(daysAgo, ChronoUnit.DAYS)
+                        .minus(hoursAgo, ChronoUnit.HOURS)
+                        .minus(minutesAgo, ChronoUnit.MINUTES);
+
+                rows.add(EventCsvSupport.csvLine(userId, postId, upvote, eventTime));
+            }
+        }
+
+        EventCsvSupport.writeCsv(EVENTS_BEST_FILE, rows);
     }
 }

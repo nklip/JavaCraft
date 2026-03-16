@@ -9,6 +9,8 @@ package my.javacraft.elastic.cucumber.helper.generator;
  * 3) user-002,post-91,DOWNVOTE,2026-01-16T16:38:37Z
  *
  * Each generateEventsInCsv should generate at least 3000 events.
+ *
+ * Events should be generated within the last 6 months.
  */
 public interface EventGenerator {
     void generateEventsInCsv();
