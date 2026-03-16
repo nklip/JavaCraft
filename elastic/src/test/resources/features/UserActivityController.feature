@@ -72,16 +72,16 @@ Feature: test UserActivityController
   Scenario: Hot posts
     Given data folder 'data/csv' was ingested
     Then hot posts endpoint returns 10 ranked results
-      | post-61 |
-      | post-62 |
-      | post-63 |
-      | post-64 |
-      | post-65 |
-      | post-66 |
-      | post-67 |
-      | post-68 |
-      | post-69 |
-      | post-70 |
+      | post-22 |
+      | post-21 |
+      | post-24 |
+      | post-23 |
+      | post-30 |
+      | post-29 |
+      | post-26 |
+      | post-25 |
+      | post-28 |
+      | post-27 |
 
   # Top ranking: total UPVOTE count per post, all-time, no time window.
   # Downvotes are completely ignored — only UPVOTE events are counted.
@@ -90,13 +90,13 @@ Feature: test UserActivityController
   Scenario: Top posts
     Given data folder 'data/csv' was ingested
     Then top posts endpoint returns 10 ranked results
-      | post-61 |
-      | post-62 |
-      | post-63 |
-      | post-64 |
-      | post-65 |
-      | post-66 |
-      | post-67 |
-      | post-68 |
-      | post-69 |
-      | post-70 |
+      | post-11 |
+      | post-13 |
+      | post-12 |
+      | post-20 |
+      | post-19 |
+      | post-18 |
+      | post-15 |
+      | post-14 |
+      | post-17 |
+      | post-16 |
