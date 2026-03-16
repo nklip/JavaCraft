@@ -12,6 +12,8 @@ import io.cucumber.java.en.When;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -58,6 +60,112 @@ public class UserActivityControllerStepDefinitions {
         DeleteByQueryResponse deleteByQueryResponse = esClient.deleteByQuery(deleteByQueryRequest);
         Assertions.assertNotNull(deleteByQueryResponse);
         log.info("All events for user '{}' are deleted!", userId);
+    }
+
+    @Given("all user-activity events are deleted")
+    public void clearAllUserActivity() throws IOException {
+        DeleteByQueryRequest deleteByQueryRequest = new DeleteByQueryRequest.Builder()
+                .index(UserActivityService.INDEX_USER_ACTIVITY)
+                .query(q -> q.matchAll(m -> m))
+                .refresh(true)
+                .build();
+        DeleteByQueryResponse response = esClient.deleteByQuery(deleteByQueryRequest);
+        Assertions.assertNotNull(response);
+        log.info("Cleared {} user-activity events from index", response.deleted());
+    }
+
+    @When("users vote on posts in parallel")
+    public void voteOnPostsInParallel(DataTable dataTable) throws Exception {
+        List<Map<String, String>> rows = dataTable.asMaps();
+
+        List<Callable<HttpEntity<UserClickResponse>>> tasks = new ArrayList<>();
+        int userCounter = 1;
+
+        for (Map<String, String> row : rows) {
+            String postId = row.get("postId").trim();
+            int upvotes = Integer.parseInt(row.get("up").trim());
+            int downvotes = Integer.parseInt(row.get("down").trim());
+
+            for (int i = 0; i < upvotes; i++) {
+                String userId = "hot-u%03d".formatted(userCounter++);
+                tasks.add(() -> submitVote(userId, postId, "UPVOTE"));
+            }
+            for (int i = 0; i < downvotes; i++) {
+                String userId = "hot-u%03d".formatted(userCounter++);
+                tasks.add(() -> submitVote(userId, postId, "DOWNVOTE"));
+            }
+        }
+
+        log.info("Submitting {} vote events in parallel...", tasks.size());
+        List<Future<HttpEntity<UserClickResponse>>> futures;
+        try (ExecutorService pool = Executors.newFixedThreadPool(Math.min(tasks.size(), 50))) {
+            futures = pool.invokeAll(tasks);
+        }
+
+        for (Future<HttpEntity<UserClickResponse>> future : futures) {
+            UserClickResponse body = future.get().getBody();
+            Assertions.assertNotNull(body);
+            Assertions.assertEquals("Created", body.getResult().toString());
+        }
+        log.info("All {} vote events ingested successfully", tasks.size());
+    }
+
+    @Then("hot posts are returned in this order")
+    public void verifyHotPostsOrder(DataTable dataTable) throws InterruptedException {
+        List<String> expectedPostIds = dataTable.asList();
+
+        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+        headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+        HttpEntity<String> entity = new HttpEntity<>(null, headers);
+
+        RestTemplate restTemplate = new RestTemplate();
+        String hotUrl = "http://localhost:%s/api/services/user-activity/hot?size=20".formatted(port);
+
+        Assertions.assertTrue(CucumberSpringConfiguration.assertWithWait(expectedPostIds.size(), () -> {
+            HttpEntity<List<UserActivity>> response = restTemplate.exchange(
+                    hotUrl, HttpMethod.GET, entity, new ParameterizedTypeReference<>() {}
+            );
+            List<UserActivity> body = response.getBody();
+            return body == null ? 0 : body.size();
+        }), "Timed out waiting for %d hot posts".formatted(expectedPostIds.size()));
+
+        HttpEntity<List<UserActivity>> finalResponse = restTemplate.exchange(
+                hotUrl, HttpMethod.GET, entity, new ParameterizedTypeReference<>() {}
+        );
+        List<UserActivity> hotPosts = finalResponse.getBody();
+        Assertions.assertNotNull(hotPosts);
+        Assertions.assertEquals(expectedPostIds.size(), hotPosts.size());
+
+        for (int i = 0; i < expectedPostIds.size(); i++) {
+            String expected = expectedPostIds.get(i);
+            String actual = hotPosts.get(i).getPostId();
+            Assertions.assertEquals(expected, actual,
+                    "Rank %d: expected '%s' but got '%s'".formatted(i + 1, expected, actual));
+        }
+        log.info("Hot posts order verified: {}", expectedPostIds);
+    }
+
+    private HttpEntity<UserClickResponse> submitVote(String userId, String postId, String action) {
+        try {
+            UserClick click = new UserClick();
+            click.setUserId(userId);
+            click.setPostId(postId);
+            click.setSearchType("HotTest");
+            click.setAction(action);
+            click.setSearchPattern(postId);
+
+            MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+            headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+
+            HttpEntity<String> entity = new HttpEntity<>(new ObjectMapper().writeValueAsString(click), headers);
+
+            return new RestTemplate().exchange(
+                    "http://localhost:%s/api/services/user-activity".formatted(port),
+                    HttpMethod.POST, entity, UserClickResponse.class
+            );
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize UserClick for user=%s post=%s".formatted(userId, postId), e);
+        }
     }
 
     @When("add new event with expected result = {string}")
