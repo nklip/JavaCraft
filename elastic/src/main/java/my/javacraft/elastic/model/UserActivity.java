@@ -9,6 +9,9 @@ import lombok.ToString;
  * Immutable event document stored in the 'user-activity' index.
  * Each user click produces a new document — no updates, no counters.
  * Analytics (popular, trending, top, rising) are derived via ES aggregations.
+ *
+ * <p>The {@code action} field is always stored in uppercase (e.g. {@code UPVOTE}, {@code DOWNVOTE})
+ * to match the ES keyword values queried by {TopService} and {HotService}.
  */
 @Data
 @ToString
@@ -36,7 +39,7 @@ public class UserActivity {
         this.postId = userClick.getPostId();
         this.userId = userClick.getUserId();
         this.searchType = userClick.getSearchType();
-        this.action = userClick.getAction();
+        this.action = userClick.getAction().toUpperCase();
         this.searchValue = userClick.getSearchPattern();
         this.timestamp = timestamp;
     }

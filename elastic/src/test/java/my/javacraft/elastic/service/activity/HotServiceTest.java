@@ -4,6 +4,9 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.aggregations.Aggregate;
 import co.elastic.clients.elasticsearch._types.aggregations.Buckets;
+import co.elastic.clients.elasticsearch._types.aggregations.DateHistogramAggregate;
+import co.elastic.clients.elasticsearch._types.aggregations.DateHistogramBucket;
+import co.elastic.clients.elasticsearch._types.aggregations.FilterAggregate;
 import co.elastic.clients.elasticsearch._types.aggregations.StringTermsAggregate;
 import co.elastic.clients.elasticsearch._types.aggregations.StringTermsBucket;
 import co.elastic.clients.elasticsearch.core.SearchRequest;
@@ -37,97 +40,146 @@ public class HotServiceTest {
     @Mock
     DateService dateService;
 
-//    @Test
-//    public void testComputeTrendScore() {
-//        HotService service = new HotService(esClient, dateService);
-//
-//        // High recent spike vs low baseline → high score
-//        double spikeScore = service.computeTrendScore(10, 2);
-//        // Low recent vs high baseline → low score
-//        double noSpikeScore = service.computeTrendScore(1, 50);
-//        // New item with zero baseline → score = recentCount
-//        double newItemScore = service.computeTrendScore(3, 0);
-//
-//        Assertions.assertTrue(spikeScore > noSpikeScore, "spike should score higher than consistent item");
-//        Assertions.assertEquals(3.0, newItemScore, 0.001, "new item score should equal recentCount / 1");
-//    }
-//
-//    @Test
-//    public void testRetrieveTrendingOrdersByScore() throws IOException {
-//        // recordA: recent=5, baseline=2 → higher spike
-//        // recordB: recent=2, baseline=10 → lower spike
-//        when(dateService.getCurrentDate()).thenReturn("2024-01-15T11:00:00.000Z");
-//        when(dateService.getNHoursBeforeDate(HotService.RECENT_WINDOW_HOURS))
-//                .thenReturn("2024-01-15T10:00:00.000Z");
-//        when(dateService.getNHoursBeforeDate(HotService.RECENT_WINDOW_HOURS + HotService.BASELINE_WINDOW_HOURS))
-//                .thenReturn("2024-01-14T11:00:00.000Z");
-//
-//        UserActivity activityA = new UserActivity(UserClickTest.createHitCount(), "2024-01-15T10:30:00.000Z");
-//        activityA.setPostId("recordA");
-//
-//        UserActivity activityB = new UserActivity(UserClickTest.createHitCount(), "2024-01-15T10:20:00.000Z");
-//        activityB.setPostId("recordB");
-//
-//        // Mock Query 1 — recent counts: recordA=5, recordB=2
-//        SearchResponse<UserActivity> recentResponse = buildAggResponse(Map.of("recordA", 5L, "recordB", 2L));
-//        // Mock Query 2 — baseline counts: recordA=2, recordB=10
-//        SearchResponse<UserActivity> baselineResponse = buildAggResponse(Map.of("recordA", 2L, "recordB", 10L));
-//        // Mock Query 3 — hydration: return activityA and activityB
-//        SearchResponse<UserActivity> hydrateResponse = buildHitsResponse(List.of(activityA, activityB));
-//
-//        when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
-//        when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
-//                .thenReturn(recentResponse)
-//                .thenReturn(baselineResponse)
-//                .thenReturn(hydrateResponse);
-//
-//        HotService service = new HotService(esClient, dateService);
-//        List<UserActivity> result = service.retrieveTrendingUserSearches(10);
-//
-//        Assertions.assertNotNull(result);
-//        Assertions.assertEquals(2, result.size());
-//        // recordA has higher trend score → must be first
-//        Assertions.assertEquals("recordA", result.get(0).getPostId());
-//        Assertions.assertEquals("recordB", result.get(1).getPostId());
-//    }
-//
-//    @Test
-//    public void testRetrieveTrendingReturnsEmptyWhenNoRecentActivity() throws IOException {
-//        when(dateService.getCurrentDate()).thenReturn("2024-01-15T11:00:00.000Z");
-//        when(dateService.getNHoursBeforeDate(HotService.RECENT_WINDOW_HOURS))
-//                .thenReturn("2024-01-15T10:00:00.000Z");
-//        when(dateService.getNHoursBeforeDate(HotService.RECENT_WINDOW_HOURS + HotService.BASELINE_WINDOW_HOURS))
-//                .thenReturn("2024-01-14T11:00:00.000Z");
-//
-//        SearchResponse<UserActivity> emptyRecentResponse = buildAggResponse(Map.of());
-//        SearchResponse<UserActivity> emptyBaselineResponse = buildAggResponse(Map.of());
-//
-//        when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
-//        when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
-//                .thenReturn(emptyRecentResponse)
-//                .thenReturn(emptyBaselineResponse);
-//
-//        HotService service = new HotService(esClient, dateService);
-//        List<UserActivity> result = service.retrieveTrendingUserSearches(10);
-//
-//        Assertions.assertNotNull(result);
-//        Assertions.assertTrue(result.isEmpty());
-//    }
+    @Test
+    public void testComputeDecay() {
+        HotService service = new HotService(esClient, dateService);
+
+        // Age 0 → weight 1.0
+        Assertions.assertEquals(1.0, service.computeDecay(0), 0.001);
+        // At half-life (6h) → weight ≈ 0.5
+        long halfLifeMs = (long) HotService.HOT_HALF_LIFE_HOURS * 3_600_000L;
+        Assertions.assertEquals(0.5, service.computeDecay(halfLifeMs), 0.01);
+        // At double half-life (12h) → weight ≈ 0.25
+        Assertions.assertEquals(0.25, service.computeDecay(halfLifeMs * 2), 0.01);
+    }
+
+    @Test
+    public void testRetrieveHotPostsOrdersByDecayedNetScore() throws IOException {
+        when(dateService.getNDaysBeforeDate(HotService.HOT_WINDOW_DAYS))
+                .thenReturn("2024-01-08T11:00:00.000Z");
+
+        // Fixed reference time: 2024-01-15T11:00:00Z = 1705316400000 ms
+        long nowMs = 1_705_316_400_000L;
+        long recentBucketMs = nowMs - 1_800_000L;    // 30 min ago → decay ≈ 0.944
+        long olderBucketMs  = nowMs - 25_200_000L;   // 7h ago    → decay ≈ 0.446
+
+        // postA: recent bucket, 5 upvotes - 1 downvote = net 4 → score ≈ 4 × 0.944 = 3.78
+        // postB: older bucket, 10 upvotes - 2 downvotes = net 8 → score ≈ 8 × 0.446 = 3.57
+        // postA should rank above postB despite lower net count because it is more recent
+        SearchResponse<UserActivity> hotResponse = buildHotAggResponse(Map.of(
+                "postA", new long[]{recentBucketMs, 5L, 1L},
+                "postB", new long[]{olderBucketMs,  10L, 2L}
+        ));
+
+        UserActivity activityA = new UserActivity(UserClickTest.createHitCount(), "2024-01-15T10:30:00.000Z");
+        activityA.setPostId("postA");
+        UserActivity activityB = new UserActivity(UserClickTest.createHitCount(), "2024-01-15T04:00:00.000Z");
+        activityB.setPostId("postB");
+
+        SearchResponse<UserActivity> hydrateResponse = buildHitsResponse(List.of(activityA, activityB));
+
+        when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
+        when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
+                .thenReturn(hotResponse)
+                .thenReturn(hydrateResponse);
+
+        HotService service = new HotService(esClient, dateService);
+        List<UserActivity> result = service.retrieveHotPosts(10, nowMs);
+
+        Assertions.assertNotNull(result);
+        Assertions.assertEquals(2, result.size());
+        Assertions.assertEquals("postA", result.get(0).getPostId(), "postA should rank first (more recent)");
+        Assertions.assertEquals("postB", result.get(1).getPostId());
+    }
+
+    @Test
+    public void testRetrieveHotPostsExcludesNetNegativePosts() throws IOException {
+        when(dateService.getNDaysBeforeDate(HotService.HOT_WINDOW_DAYS))
+                .thenReturn("2024-01-08T11:00:00.000Z");
+
+        long nowMs = 1_705_316_400_000L;
+        long recentBucketMs = nowMs - 1_800_000L;
+
+        // postA: net negative (1 upvote - 5 downvotes = -4) → excluded
+        SearchResponse<UserActivity> hotResponse = buildHotAggResponse(Map.of(
+                "postA", new long[]{recentBucketMs, 1L, 5L}
+        ));
+
+        when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
+        when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
+                .thenReturn(hotResponse);
+
+        HotService service = new HotService(esClient, dateService);
+        List<UserActivity> result = service.retrieveHotPosts(10, nowMs);
+
+        Assertions.assertNotNull(result);
+        Assertions.assertTrue(result.isEmpty(), "net-negative posts must be excluded from Hot");
+    }
+
+    @Test
+    public void testRetrieveHotPostsReturnsEmptyWhenNoActivity() throws IOException {
+        when(dateService.getNDaysBeforeDate(HotService.HOT_WINDOW_DAYS))
+                .thenReturn("2024-01-08T11:00:00.000Z");
+
+        SearchResponse<UserActivity> hotResponse = buildHotAggResponse(Map.of());
+
+        when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
+        when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
+                .thenReturn(hotResponse);
+
+        HotService service = new HotService(esClient, dateService);
+        List<UserActivity> result = service.retrieveHotPosts(10, 1_705_316_400_000L);
+
+        Assertions.assertNotNull(result);
+        Assertions.assertTrue(result.isEmpty());
+    }
 
     // --------------- helpers ---------------
 
-    private SearchResponse<UserActivity> buildAggResponse(Map<String, Long> countsByPostId) {
-        List<StringTermsBucket> bucketList = countsByPostId.entrySet().stream()
+    /**
+     * Builds a mocked SearchResponse with nested terms → date_histogram → filter aggregations.
+     * @param postData map of postId → [bucketTimestampMs, upvoteCount, downvoteCount]
+     */
+    private SearchResponse<UserActivity> buildHotAggResponse(Map<String, long[]> postData) {
+        List<StringTermsBucket> postBuckets = postData.entrySet().stream()
                 .map(e -> {
-                    StringTermsBucket bucket = mock(StringTermsBucket.class);
-                    when(bucket.key()).thenReturn(FieldValue.of(e.getKey()));
-                    when(bucket.docCount()).thenReturn(e.getValue());
-                    return bucket;
+                    long[] d = e.getValue();
+
+                    FilterAggregate upvotesFilter = mock(FilterAggregate.class);
+                    when(upvotesFilter.docCount()).thenReturn(d[1]);
+                    Aggregate upvotesAgg = mock(Aggregate.class);
+                    when(upvotesAgg.filter()).thenReturn(upvotesFilter);
+
+                    FilterAggregate downvotesFilter = mock(FilterAggregate.class);
+                    when(downvotesFilter.docCount()).thenReturn(d[2]);
+                    Aggregate downvotesAgg = mock(Aggregate.class);
+                    when(downvotesAgg.filter()).thenReturn(downvotesFilter);
+
+                    DateHistogramBucket hourBucket = mock(DateHistogramBucket.class);
+                    when(hourBucket.key()).thenReturn(d[0]);
+                    when(hourBucket.aggregations()).thenReturn(Map.of(
+                            "upvotes", upvotesAgg,
+                            "downvotes", downvotesAgg
+                    ));
+
+                    Buckets<DateHistogramBucket> hourBuckets = mock(Buckets.class);
+                    when(hourBuckets.array()).thenReturn(List.of(hourBucket));
+
+                    DateHistogramAggregate dhAgg = mock(DateHistogramAggregate.class);
+                    when(dhAgg.buckets()).thenReturn(hourBuckets);
+
+                    Aggregate byHourAgg = mock(Aggregate.class);
+                    when(byHourAgg.dateHistogram()).thenReturn(dhAgg);
+
+                    StringTermsBucket postBucket = mock(StringTermsBucket.class);
+                    when(postBucket.key()).thenReturn(FieldValue.of(e.getKey()));
+                    when(postBucket.aggregations()).thenReturn(Map.of("by_hour", byHourAgg));
+                    return postBucket;
                 })
                 .toList();
 
         Buckets<StringTermsBucket> buckets = mock(Buckets.class);
-        when(buckets.array()).thenReturn(bucketList);
+        when(buckets.array()).thenReturn(postBuckets);
 
         StringTermsAggregate sterms = mock(StringTermsAggregate.class);
         when(sterms.buckets()).thenReturn(buckets);

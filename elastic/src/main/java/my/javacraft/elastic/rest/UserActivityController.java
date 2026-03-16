@@ -92,48 +92,48 @@ public class UserActivityController {
         return ResponseEntity.ok().body(map);
     }
 
-//    @Operation(
-//            summary = "Search activity by userId",
-//            description = "Fetch the search activity by userId"
-//    )
-//    @ApiResponses(value = {
-//            @ApiResponse(responseCode = "200", description = "Successful"),
-//            @ApiResponse(responseCode = "404", description = "Not found"),
-//            @ApiResponse(responseCode = "406", description = "Resource unavailable")
-//    })
-//    @GetMapping(value = "/users/{userId}", produces = MediaType.APPLICATION_JSON_VALUE)
-//    public ResponseEntity<List<UserActivity>> retrievePopularUserSearches(
-//            @PathVariable("userId") String userId,
-//            @RequestParam(required = false, name = "size", defaultValue = "10")
-//            @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
-//
-//        log.info("retrieving popular user searches (userId = '{}' and limit = '{}')...", userId, size);
-//
-//        List<UserActivity> mapList = topService.retrievePopularUserSearches(userId, size);
-//
-//        return ResponseEntity.ok().body(mapList);
-//    }
+    @Operation(
+            summary = "Top posts for a user",
+            description = "Returns the posts a user has upvoted most, ordered by upvote count descending."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successful"),
+            @ApiResponse(responseCode = "404", description = "Not found"),
+            @ApiResponse(responseCode = "406", description = "Resource unavailable")
+    })
+    @GetMapping(value = "/users/{userId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<UserActivity>> retrievePopularUserSearches(
+            @PathVariable("userId") String userId,
+            @RequestParam(required = false, name = "size", defaultValue = "10")
+            @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
 
-//    @Operation(
-//            summary = "Fetch trending search services.",
-//            description = "Fetch trending search services."
-//    )
-//    @ApiResponses(value = {
-//            @ApiResponse(responseCode = "200", description = "Successful"),
-//            @ApiResponse(responseCode = "404", description = "Not found"),
-//            @ApiResponse(responseCode = "406", description = "Resource unavailable")
-//    })
-//    @GetMapping(value = "/users", produces = MediaType.APPLICATION_JSON_VALUE)
-//    public ResponseEntity<List<UserActivity>> retrieveTrendingUserSearches(
-//            @RequestParam(required = false, name = "size", defaultValue = "10")
-//            @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
-//
-//        log.info("retrieving trending user searches (limit = '{}')...", size);
-//
-//        List<UserActivity> mapList = hotService.retrieveTrendingUserSearches(size);
-//
-//        return ResponseEntity.ok().body(mapList);
-//    }
+        log.info("retrieving top user searches (userId = '{}' and limit = '{}')...", userId, size);
+
+        List<UserActivity> mapList = topService.retrievePopularUserSearches(userId, size);
+
+        return ResponseEntity.ok().body(mapList);
+    }
+
+    @Operation(
+            summary = "Hot posts",
+            description = "Returns globally hot posts ranked by exponential time-decay weighted net score."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successful"),
+            @ApiResponse(responseCode = "404", description = "Not found"),
+            @ApiResponse(responseCode = "406", description = "Resource unavailable")
+    })
+    @GetMapping(value = "/hot", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<UserActivity>> retrieveHotPosts(
+            @RequestParam(required = false, name = "size", defaultValue = "10")
+            @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
+
+        log.info("retrieving hot posts (limit = '{}')...", size);
+
+        List<UserActivity> mapList = hotService.retrieveHotPosts(size);
+
+        return ResponseEntity.ok().body(mapList);
+    }
 
 //    @Operation(
 //            summary = "Delete index",

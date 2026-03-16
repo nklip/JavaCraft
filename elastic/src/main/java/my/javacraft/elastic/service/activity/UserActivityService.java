@@ -23,6 +23,7 @@ public class UserActivityService {
     public static final String TIMESTAMP = "timestamp";
     public static final String POST_ID = "postId";
     public static final String USER_ID = "userId";
+    public static final String ACTION = "action";
 
     private final ElasticsearchClient esClient;
 

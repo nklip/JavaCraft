@@ -1,8 +1,6 @@
 package my.javacraft.elastic.rest;
 
-import co.elastic.clients.elasticsearch.core.DeleteResponse;
 import co.elastic.clients.elasticsearch.core.GetResponse;
-import co.elastic.clients.elasticsearch.indices.DeleteIndexResponse;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.ValidatorFactory;
@@ -89,37 +87,37 @@ public class UserActivityControllerTest {
         Assertions.assertNotNull(response.getBody());
     }
 
-//    @Test
-//    public void testPopularSearchActivity() throws IOException {
-//        UserActivityController userActivityController = new UserActivityController(
-//                dateService, userActivityService, topService, hotService, userActivityIngestionService
-//        );
-//
-//        List<UserActivity> activityList = new ArrayList<>();
-//        when(topService.retrievePopularUserSearches(anyString(), anyInt())).thenReturn(activityList);
-//
-//        ResponseEntity<List<UserActivity>> response = userActivityController
-//                .retrievePopularUserSearches("nl88888", 10);
-//
-//        Assertions.assertNotNull(response);
-//        Assertions.assertNotNull(response.getBody());
-//    }
+    @Test
+    public void testPopularSearchActivity() throws IOException {
+        UserActivityController userActivityController = new UserActivityController(
+                dateService, userActivityService, topService, hotService, userActivityIngestionService
+        );
 
-//    @Test
-//    public void testTrendingSearchActivity() throws IOException {
-//        UserActivityController userActivityController = new UserActivityController(
-//                dateService, userActivityService, topService, hotService, userActivityIngestionService
-//        );
-//
-//        List<UserActivity> activityList = new ArrayList<>();
-//        when(hotService.retrieveTrendingUserSearches(anyInt())).thenReturn(activityList);
-//
-//        ResponseEntity<List<UserActivity>> response = userActivityController
-//                .retrieveTrendingUserSearches(10);
-//
-//        Assertions.assertNotNull(response);
-//        Assertions.assertNotNull(response.getBody());
-//    }
+        List<UserActivity> activityList = new ArrayList<>();
+        when(topService.retrievePopularUserSearches(anyString(), anyInt())).thenReturn(activityList);
+
+        ResponseEntity<List<UserActivity>> response = userActivityController
+                .retrievePopularUserSearches("nl88888", 10);
+
+        Assertions.assertNotNull(response);
+        Assertions.assertNotNull(response.getBody());
+    }
+
+    @Test
+    public void testHotPosts() throws IOException {
+        UserActivityController userActivityController = new UserActivityController(
+                dateService, userActivityService, topService, hotService, userActivityIngestionService
+        );
+
+        List<UserActivity> activityList = new ArrayList<>();
+        when(hotService.retrieveHotPosts(anyInt())).thenReturn(activityList);
+
+        ResponseEntity<List<UserActivity>> response = userActivityController
+                .retrieveHotPosts(10);
+
+        Assertions.assertNotNull(response);
+        Assertions.assertNotNull(response.getBody());
+    }
 
 //    @Test
 //    public void testDeleteIndex() throws IOException {
@@ -153,37 +151,37 @@ public class UserActivityControllerTest {
 //        Assertions.assertNotNull(response.getBody());
 //    }
 
-//    @Test
-//    public void testPopularSearchActivityValidationShouldFailWhenSizeLessThanOne() throws NoSuchMethodException {
-//        UserActivityController userActivityController = new UserActivityController(
-//                dateService, userActivityService, topService, hotService, userActivityIngestionService
-//        );
-//        Method method = UserActivityController.class.getMethod("retrievePopularUserSearches", String.class, int.class);
-//
-//        Set<ConstraintViolation<UserActivityController>> violations;
-//        try (ValidatorFactory validatorFactory = Validation.buildDefaultValidatorFactory()) {
-//            violations = validatorFactory.getValidator().forExecutables()
-//                    .validateParameters(userActivityController, method, new Object[]{"nl88888", 0});
-//        }
-//
-//        Assertions.assertTrue(violations.stream().anyMatch(v -> v.getMessage().contains("greater than or equal to 1")));
-//    }
-//
-//    @Test
-//    public void testTrendingSearchActivityValidationShouldFailWhenSizeExceedsMaxValue() throws NoSuchMethodException {
-//        UserActivityController userActivityController = new UserActivityController(
-//                dateService, userActivityService, topService, hotService, userActivityIngestionService
-//        );
-//        Method method = UserActivityController.class.getMethod("retrieveTrendingUserSearches", int.class);
-//
-//        Set<ConstraintViolation<UserActivityController>> violations;
-//        try (ValidatorFactory validatorFactory = Validation.buildDefaultValidatorFactory()) {
-//            violations = validatorFactory.getValidator().forExecutables()
-//                    .validateParameters(userActivityController, method, new Object[]{UserActivityService.MAX_VALUES + 1});
-//        }
-//
-//        Assertions.assertTrue(violations.stream()
-//                .anyMatch(v -> v.getMessage().contains("less than or equal to " + UserActivityService.MAX_VALUES)));
-//    }
+    @Test
+    public void testPopularSearchActivityValidationShouldFailWhenSizeLessThanOne() throws NoSuchMethodException {
+        UserActivityController userActivityController = new UserActivityController(
+                dateService, userActivityService, topService, hotService, userActivityIngestionService
+        );
+        Method method = UserActivityController.class.getMethod("retrievePopularUserSearches", String.class, int.class);
+
+        Set<ConstraintViolation<UserActivityController>> violations;
+        try (ValidatorFactory validatorFactory = Validation.buildDefaultValidatorFactory()) {
+            violations = validatorFactory.getValidator().forExecutables()
+                    .validateParameters(userActivityController, method, new Object[]{"nl88888", 0});
+        }
+
+        Assertions.assertTrue(violations.stream().anyMatch(v -> v.getMessage().contains("greater than or equal to 1")));
+    }
+
+    @Test
+    public void testHotPostsValidationShouldFailWhenSizeExceedsMaxValue() throws NoSuchMethodException {
+        UserActivityController userActivityController = new UserActivityController(
+                dateService, userActivityService, topService, hotService, userActivityIngestionService
+        );
+        Method method = UserActivityController.class.getMethod("retrieveHotPosts", int.class);
+
+        Set<ConstraintViolation<UserActivityController>> violations;
+        try (ValidatorFactory validatorFactory = Validation.buildDefaultValidatorFactory()) {
+            violations = validatorFactory.getValidator().forExecutables()
+                    .validateParameters(userActivityController, method, new Object[]{UserActivityService.MAX_VALUES + 1});
+        }
+
+        Assertions.assertTrue(violations.stream()
+                .anyMatch(v -> v.getMessage().contains("less than or equal to " + UserActivityService.MAX_VALUES)));
+    }
 
 }
