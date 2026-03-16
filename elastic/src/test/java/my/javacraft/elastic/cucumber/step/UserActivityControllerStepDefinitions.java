@@ -3,6 +3,8 @@ package my.javacraft.elastic.cucumber.step;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.DeleteByQueryRequest;
 import co.elastic.clients.elasticsearch.core.DeleteByQueryResponse;
+import co.elastic.clients.elasticsearch.core.SearchRequest;
+import co.elastic.clients.elasticsearch.core.SearchResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.cucumber.datatable.DataTable;
@@ -10,6 +12,9 @@ import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -19,9 +24,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.cucumber.conf.CucumberSpringConfiguration;
+import my.javacraft.elastic.model.UserAction;
 import my.javacraft.elastic.model.UserClick;
 import my.javacraft.elastic.model.UserClickResponse;
 import my.javacraft.elastic.model.UserActivity;
+import my.javacraft.elastic.service.activity.UserActivityIngestionService;
 import my.javacraft.elastic.service.activity.UserActivityService;
 import org.apache.http.HttpHeaders;
 import org.junit.jupiter.api.Assertions;
@@ -43,11 +50,17 @@ import static io.cucumber.spring.CucumberTestContext.SCOPE_CUCUMBER_GLUE;
 @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 public class UserActivityControllerStepDefinitions {
 
+    private static final int BASELINE_USERS = 50;
+    private static final int BASELINE_POSTS = 20;
+    private static final long MIN_BASELINE_SPAN_MILLIS = Duration.ofDays(170).toMillis();
+
     @LocalServerPort
     int port;
 
     @Autowired
     ElasticsearchClient esClient;
+    @Autowired
+    UserActivityIngestionService userActivityIngestionService;
 
     @Given("user {string} doesn't have any events")
     public void clearUserActivity(String userId) throws IOException {
@@ -72,6 +85,46 @@ public class UserActivityControllerStepDefinitions {
         DeleteByQueryResponse response = esClient.deleteByQuery(deleteByQueryRequest);
         Assertions.assertNotNull(response);
         log.info("Cleared {} user-activity events from index", response.deleted());
+    }
+
+    @When("reddit baseline activity is ingested for top and hot comparison")
+    public void ingestRedditBaselineActivity() throws IOException {
+        int ingestedRows = ingestBaselineVotes();
+        log.info("Ingested {} baseline vote events for top/hot comparison", ingestedRows);
+    }
+
+    @Given("reddit baseline activity was ingested")
+    public void verifyBaselineWasIngested() throws InterruptedException {
+        Assertions.assertTrue(
+                CucumberSpringConfiguration.assertWithWait(true, () -> isBaselineIngestionValid(BASELINE_USERS, BASELINE_POSTS)),
+                "Timed out waiting for baseline ingestion consistency (users=%d, posts=%d)"
+                        .formatted(BASELINE_USERS, BASELINE_POSTS)
+        );
+    }
+
+    @Then("baseline ingestion has {int} unique users and {int} unique posts")
+    public void verifyBaselineCardinality(int expectedUsers, int expectedPosts) throws InterruptedException {
+        Assertions.assertTrue(
+                CucumberSpringConfiguration.assertWithWait(true, () -> isBaselineIngestionValid(expectedUsers, expectedPosts)),
+                "Timed out waiting for baseline cardinality (users=%d, posts=%d)"
+                        .formatted(expectedUsers, expectedPosts)
+        );
+    }
+
+    @Then("hot posts endpoint returns ranked results")
+    public void verifyHotPostsAreReturned() throws InterruptedException {
+        Assertions.assertTrue(
+                CucumberSpringConfiguration.assertWithWait(true, () -> hasAtLeastOneRankedPost("/hot?size=20")),
+                "Timed out waiting for non-empty hot posts result"
+        );
+    }
+
+    @Then("top posts endpoint returns ranked results")
+    public void verifyTopPostsAreReturned() throws InterruptedException {
+        Assertions.assertTrue(
+                CucumberSpringConfiguration.assertWithWait(20, () -> fetchRankedPostsCount("/top?size=20")),
+                "Timed out waiting for 20 top posts"
+        );
     }
 
     @When("users vote on posts in parallel")
@@ -201,6 +254,151 @@ public class UserActivityControllerStepDefinitions {
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize UserClick for user=%s post=%s".formatted(userId, postId), e);
         }
+    }
+
+    private int ingestBaselineVotes() throws IOException {
+        Instant now = Instant.now();
+        int rows = 0;
+
+        for (int user = 1; user <= BASELINE_USERS; user++) {
+            int mandatoryPost = ((user - 1) % BASELINE_POSTS) + 1;
+            rows += ingestVoteEvent(user, mandatoryPost, UserAction.UPVOTE, now, (user * 3) % 170 + 10, user % 24);
+
+            for (int post = 1; post <= BASELINE_POSTS; post++) {
+                if (post == mandatoryPost) {
+                    continue;
+                }
+                int selector = (user * 31 + post * 17) % 10;
+                if (selector < 2) {
+                    UserAction action = ((user + post) % 4 == 0) ? UserAction.DOWNVOTE : UserAction.UPVOTE;
+                    int daysAgo = (user * 11 + post * 13) % 180;
+                    int hoursAgo = (user * 3 + post * 5) % 24;
+                    rows += ingestVoteEvent(user, post, action, now, daysAgo, hoursAgo);
+                }
+            }
+        }
+
+        for (int post = 1; post <= BASELINE_POSTS; post++) {
+            int user = ((post * 2) % BASELINE_USERS) + 1;
+            UserAction action = (post % 3 == 0) ? UserAction.DOWNVOTE : UserAction.UPVOTE;
+            rows += ingestVoteEvent(user, post, action, now, post % 7, post % 24);
+        }
+        return rows;
+    }
+
+    private int ingestVoteEvent(
+            int userNumber,
+            int postNumber,
+            UserAction action,
+            Instant now,
+            int daysAgo,
+            int hoursAgo) throws IOException {
+        UserClick click = new UserClick();
+        click.setUserId("user-%03d".formatted(userNumber));
+        click.setPostId("post-%02d".formatted(postNumber));
+        click.setSearchType("RedditVote");
+        click.setAction(action.name());
+        click.setSearchPattern("Post %02d".formatted(postNumber));
+
+        String timestamp = now
+                .minus(daysAgo, ChronoUnit.DAYS)
+                .minus(hoursAgo, ChronoUnit.HOURS)
+                .toString();
+
+        userActivityIngestionService.ingestUserClick(click, timestamp);
+        return 1;
+    }
+
+    private boolean isBaselineIngestionValid(int expectedUsers, int expectedPosts) {
+        try {
+            SearchRequest request = new SearchRequest.Builder()
+                    .index(UserActivityService.INDEX_USER_ACTIVITY)
+                    .size(0)
+                    .aggregations("users", a -> a.terms(t -> t
+                            .field(UserActivityService.USER_ID)
+                            .size(1000)
+                    ))
+                    .aggregations("posts", a -> a.terms(t -> t
+                            .field(UserActivityService.POST_ID)
+                            .size(1000)
+                    ))
+                    .aggregations("min_timestamp", a -> a.min(m -> m.field(UserActivityService.TIMESTAMP)))
+                    .aggregations("max_timestamp", a -> a.max(m -> m.field(UserActivityService.TIMESTAMP)))
+                    .build();
+
+            SearchResponse<UserActivity> response = esClient.search(request, UserActivity.class);
+            int actualUsers = response.aggregations().get("users").sterms().buckets().array().size();
+            int actualPosts = response.aggregations().get("posts").sterms().buckets().array().size();
+            double minTimestamp = response.aggregations().get("min_timestamp").min().value();
+            double maxTimestamp = response.aggregations().get("max_timestamp").max().value();
+            long spanMillis = (long) (maxTimestamp - minTimestamp);
+
+            return actualUsers == expectedUsers
+                    && actualPosts == expectedPosts
+                    && !Double.isNaN(minTimestamp)
+                    && !Double.isNaN(maxTimestamp)
+                    && spanMillis >= MIN_BASELINE_SPAN_MILLIS;
+        } catch (IOException ioe) {
+            log.warn("Failed to validate baseline ingestion snapshot: {}", ioe.getMessage());
+            return false;
+        }
+    }
+
+    private boolean hasAtLeastOneRankedPost(String path) {
+        return fetchRankedPostsCount(path) > 0;
+    }
+
+    private int fetchRankedPostsCount(String path) {
+        try {
+            MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+            headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+            HttpEntity<String> entity = new HttpEntity<>(null, headers);
+            String url = "http://localhost:%s/api/services/user-activity%s".formatted(port, path);
+
+            HttpEntity<List<UserActivity>> response = new RestTemplate().exchange(
+                    url,
+                    HttpMethod.GET,
+                    entity,
+                    new ParameterizedTypeReference<>() {
+                    }
+            );
+            List<UserActivity> body = response.getBody();
+            return body == null ? 0 : body.size();
+        } catch (RuntimeException ex) {
+            log.warn("Failed to fetch ranked posts for '{}': {}", path, ex.getMessage());
+            return 0;
+        }
+    }
+
+    private List<UserActivity> fetchRankedPostsWithWait(String path) throws InterruptedException {
+        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+        headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+        HttpEntity<String> entity = new HttpEntity<>(null, headers);
+
+        RestTemplate restTemplate = new RestTemplate();
+        String url = "http://localhost:%s/api/services/user-activity%s".formatted(port, path);
+
+        Assertions.assertTrue(CucumberSpringConfiguration.assertWithWait(1, () -> {
+            HttpEntity<List<UserActivity>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    entity,
+                    new ParameterizedTypeReference<>() {
+                    }
+            );
+            List<UserActivity> body = response.getBody();
+            return body == null ? 0 : body.size();
+        }), "Timed out waiting for ranked posts at " + path);
+
+        HttpEntity<List<UserActivity>> finalResponse = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                entity,
+                new ParameterizedTypeReference<>() {
+                }
+        );
+        Assertions.assertNotNull(finalResponse.getBody());
+        return finalResponse.getBody();
     }
 
     @When("add new event with expected result = {string}")
