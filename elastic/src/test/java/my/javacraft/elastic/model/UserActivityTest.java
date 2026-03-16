@@ -13,35 +13,20 @@ import org.junit.jupiter.api.Test;
 public class UserActivityTest {
 
     @Test
-    public void testGetCompositeId() {
-        UserClick userClick = new UserClick();
-        userClick.setUserId("nl8888");
-        userClick.setRecordId("12345");
-        userClick.setSearchType("Companies");
-        userClick.setSearchPattern("Microsoft");
-
-        UserActivity userActivity = new UserActivity();
-
-        Assertions.assertEquals("12345-Companies-nl8888", userActivity.getElasticId(userClick));
-    }
-
-    @Test
     public void testJsonFormat() throws IOException {
         UserActivity userActivity = new UserActivity(
-                "2024-01-08T18:16:41.53",
-                UserClickTest.createHitCount()
+                UserClickTest.createHitCount(),
+                "2024-01-08T18:16:41.530Z"
         );
 
         ObjectMapper objectMapper = new ObjectMapper();
         Assertions.assertEquals("""
                 {
-                  "count" : 1,
-                  "updated" : "2024-01-08T18:16:41.53",
-                  "elasticId" : "12345-People-nl8888",
-                  "userId" : "nl8888",
                   "recordId" : "12345",
+                  "userId" : "nl8888",
                   "searchType" : "People",
-                  "searchValue" : "Nikita"
+                  "searchValue" : "Nikita",
+                  "timestamp" : "2024-01-08T18:16:41.530Z"
                 }""",
                 objectMapper
                         .writerWithDefaultPrettyPrinter()
@@ -51,37 +36,24 @@ public class UserActivityTest {
     }
 
     @Test
-    public void testValidationShouldFailWhenCountIsNull() {
+    public void testValidationShouldFailWhenTimestampIsEmpty() {
         try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
             Validator validator = factory.getValidator();
             UserActivity userActivity = createValidUserActivity();
-            userActivity.setCount(null);
+            userActivity.setTimestamp("");
 
             Set<ConstraintViolation<UserActivity>> violations = validator.validate(userActivity);
 
-            Assertions.assertTrue(violations.stream().anyMatch(v -> "count".equals(v.getPropertyPath().toString())));
+            Assertions.assertTrue(violations.stream()
+                    .anyMatch(v -> "timestamp".equals(v.getPropertyPath().toString())));
         }
     }
 
     @Test
-    public void testValidationShouldFailWhenCountIsLessThanOne() {
+    public void testValidationShouldPassForCompleteActivity() {
         try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
             Validator validator = factory.getValidator();
             UserActivity userActivity = createValidUserActivity();
-            userActivity.setCount(0L);
-
-            Set<ConstraintViolation<UserActivity>> violations = validator.validate(userActivity);
-
-            Assertions.assertTrue(violations.stream().anyMatch(v -> "count".equals(v.getPropertyPath().toString())));
-        }
-    }
-
-    @Test
-    public void testValidationShouldPassWhenCountIsPositive() {
-        try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
-            Validator validator = factory.getValidator();
-            UserActivity userActivity = createValidUserActivity();
-            userActivity.setCount(1L);
 
             Set<ConstraintViolation<UserActivity>> violations = validator.validate(userActivity);
 
@@ -89,15 +61,27 @@ public class UserActivityTest {
         }
     }
 
-    private UserActivity createValidUserActivity() {
+    @Test
+    public void testConstructorMapsUserClickFields() {
+        UserClick userClick = UserClickTest.createHitCount();
+        String timestamp = "2024-01-08T18:16:41.530Z";
+
+        UserActivity userActivity = new UserActivity(userClick, timestamp);
+
+        Assertions.assertEquals("12345", userActivity.getRecordId());
+        Assertions.assertEquals("nl8888", userActivity.getUserId());
+        Assertions.assertEquals("People", userActivity.getSearchType());
+        Assertions.assertEquals("Nikita", userActivity.getSearchValue());
+        Assertions.assertEquals(timestamp, userActivity.getTimestamp());
+    }
+
+    public static UserActivity createValidUserActivity() {
         UserActivity userActivity = new UserActivity();
-        userActivity.setCount(1L);
-        userActivity.setUpdated("2024-01-08T18:16:41.53");
-        userActivity.setElasticId("12345-People-nl8888");
-        userActivity.setUserId("nl8888");
         userActivity.setRecordId("12345");
+        userActivity.setUserId("nl8888");
         userActivity.setSearchType("People");
         userActivity.setSearchValue("Nikita");
+        userActivity.setTimestamp("2024-01-08T18:16:41.530Z");
         return userActivity;
     }
 }

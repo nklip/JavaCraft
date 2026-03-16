@@ -85,7 +85,7 @@ public class SchedulerJobsStepDefinitions {
         try {
             RangeQuery rangeQuery = RangeQuery
                     .of(r -> r.date(d -> d
-                            .field(UserActivityService.UPDATED)
+                            .field(UserActivityService.TIMESTAMP)
                             .lte(dateService.getNDaysBeforeDate(UserActivityService.SIX_MONTHS))
                     )
             );

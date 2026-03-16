@@ -14,7 +14,7 @@ public class DateService {
     public DateService() {
         this.isoInstant = new DateTimeFormatterBuilder()
                 .parseCaseInsensitive()
-                .appendInstant(3) // should limit the amount of number after 'dot'
+                .appendInstant(3)
                 .toFormatter();
     }
 
@@ -27,6 +27,10 @@ public class DateService {
 
     public String getNDaysBeforeDate(int n) {
         return isoInstant.format(Instant.now().minus(n, ChronoUnit.DAYS));
+    }
+
+    public String getNHoursBeforeDate(int n) {
+        return isoInstant.format(Instant.now().minus(n, ChronoUnit.HOURS));
     }
 
 }

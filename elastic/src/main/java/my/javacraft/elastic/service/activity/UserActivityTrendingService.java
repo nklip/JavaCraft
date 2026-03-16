@@ -1,19 +1,19 @@
 package my.javacraft.elastic.service.activity;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import co.elastic.clients.elasticsearch._types.FieldSort;
+import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.SortOrder;
 import co.elastic.clients.elasticsearch._types.aggregations.StringTermsBucket;
-import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch._types.query_dsl.RangeQuery;
 import co.elastic.clients.elasticsearch.core.SearchRequest;
-import co.elastic.clients.elasticsearch.core.SearchResponse;
-import co.elastic.clients.elasticsearch.core.search.FieldCollapse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
-import co.elastic.clients.util.NamedValue;
+import co.elastic.clients.json.JsonpUtils;
 import java.io.IOException;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.model.UserActivity;
@@ -23,122 +23,136 @@ import org.springframework.stereotype.Service;
 /*
  * Trending means something is growing rapidly right now.
  *
- * Platforms detect sudden spikes in activity.
+ * Algorithm: two-window comparison.
+ *   - recent window  : last RECENT_WINDOW_HOURS hours
+ *   - baseline window: the BASELINE_WINDOW_HOURS hours before that
  *
- * Typical signals:
+ * Trend score = recent_count / (baseline_avg_per_hour + 1)
  *
- * 1) rapid increase in views
- * 2) sudden rise in searches
- * 3) engagement growth rate
- * 4) activity in the last minutes/hours
+ * A score >> 1 means a spike vs the baseline.
+ * Adding 1 to the denominator (Laplace smoothing) ensures new items
+ * with zero baseline still rank by their absolute recent count.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserActivityTrendingService {
 
+    static final int RECENT_WINDOW_HOURS = 1;
+    static final int BASELINE_WINDOW_HOURS = 23;
+
     private final ElasticsearchClient esClient;
     private final DateService dateService;
 
     public List<UserActivity> retrieveTrendingUserSearches(int size) throws IOException {
-        SearchRequest searchRequest = prepareTrendingSearchRequest(size);
-
-        SearchResponse<UserActivity> searchResponse = esClient.search(searchRequest, UserActivity.class);
-
-        return prepareTrendingActivityResult(searchResponse);
-    }
-
-    private SearchRequest prepareTrendingSearchRequest(int size) {
-        final FieldSort fieldSort = FieldSort.of(f -> f
-                .field(UserActivityService.UPDATED)
-                .order(SortOrder.Desc)
-        );
-
-        List<Query> mustQueryList = new ArrayList<>();
-        RangeQuery rangeQuery = RangeQuery.of(r -> r
-                .date(d -> d
-                        .field(UserActivityService.UPDATED)
-                        .lte(dateService.getCurrentDate())
-                        .gte(dateService.getNDaysBeforeDate(UserActivityService.SEVEN_DAYS))
-                )
-        );
-        mustQueryList.add(rangeQuery._toQuery());
-
-        List<NamedValue<SortOrder>> namedValueList = new ArrayList<>();
-        namedValueList.add(new NamedValue<>("_count", SortOrder.Desc));
-        namedValueList.add(new NamedValue<>(UserActivityService.COUNT, SortOrder.Desc));
-
-        // provided for aggregation
-        // query size should be more
         int querySize = Math.min(size * 10, UserActivityService.MAX_VALUES);
 
-        // similar to DISTINCT in SQL
-        FieldCollapse.Builder fieldCollapse = new FieldCollapse.Builder();
-        fieldCollapse.field(UserActivityService.USER_ID);
+        String now = dateService.getCurrentDate();
+        String recentCutoff = dateService.getNHoursBeforeDate(RECENT_WINDOW_HOURS);
+        String baselineCutoff = dateService.getNHoursBeforeDate(RECENT_WINDOW_HOURS + BASELINE_WINDOW_HOURS);
 
-        Query boolQuery = new BoolQuery.Builder()
-                .must(mustQueryList)
-                .build()
-                ._toQuery();
+        Map<String, Long> recentCounts = queryCountsByRecordId(recentCutoff, now, querySize);
+        Map<String, Long> baselineCounts = queryCountsByRecordId(baselineCutoff, recentCutoff, querySize);
 
-        return new SearchRequest.Builder()
-                .index(UserActivityService.INDEX_USER_ACTIVITY)
-                .query(boolQuery)
-                .aggregations(UserActivityService.RECORD_ID, a1 -> a1
-                        .terms(t -> t
-                                .field(UserActivityService.RECORD_ID)
-                                .size(size)
-                                .order(namedValueList)
-                        )
-                        .aggregations(UserActivityService.COUNT, a2 -> a2
-                                .sum(s -> s.field(UserActivityService.COUNT))
-                        )
-                )
-                .size(querySize)
-                .sort(so -> so.field(fieldSort))
-                .collapse(fieldCollapse.build())
-                .build();
+        List<String> trendingRecordIds = recentCounts.entrySet().stream()
+                .map(e -> {
+                    double score = computeTrendScore(e.getValue(), baselineCounts.getOrDefault(e.getKey(), 0L));
+                    return Map.entry(score, e.getKey());
+                })
+                .sorted(Map.Entry.<Double, String>comparingByKey().reversed())
+                .limit(size)
+                .map(Map.Entry::getValue)
+                .toList();
+
+        if (trendingRecordIds.isEmpty()) {
+            return List.of();
+        }
+        return hydrateActivities(trendingRecordIds);
     }
 
-    private List<UserActivity> prepareTrendingActivityResult(SearchResponse<UserActivity> searchResponse) {
-        List<StringTermsBucket> buckets = searchResponse
+    /**
+     * score = recentCount / (baselineAvgPerHour + 1)
+     * High score = spike vs baseline. Items with zero baseline still rank by recentCount.
+     */
+    double computeTrendScore(long recentCount, long baselineCount) {
+        double baselineAvgPerHour = (double) baselineCount / BASELINE_WINDOW_HOURS;
+        return recentCount / (baselineAvgPerHour + 1.0);
+    }
+
+    /**
+     * Query: terms aggregation on recordId within a time range.
+     * Returns docCount per recordId.
+     */
+    private Map<String, Long> queryCountsByRecordId(String from, String to, int querySize) throws IOException {
+        Query rangeQuery = RangeQuery.of(r -> r.date(d -> d
+                .field(UserActivityService.TIMESTAMP)
+                .gte(from)
+                .lte(to)
+        ))._toQuery();
+
+        SearchRequest request = new SearchRequest.Builder()
+                .index(UserActivityService.INDEX_USER_ACTIVITY)
+                .query(rangeQuery)
+                .size(0)
+                .aggregations(UserActivityService.RECORD_ID, a -> a
+                        .terms(t -> t
+                                .field(UserActivityService.RECORD_ID)
+                                .size(querySize)
+                        )
+                )
+                .build();
+
+        log.debug("trending window query [{} → {}]: {}", from, to, JsonpUtils.toJsonString(request, esClient._jsonpMapper()));
+
+        return esClient.search(request, UserActivity.class)
                 .aggregations()
                 .get(UserActivityService.RECORD_ID)
                 .sterms()
                 .buckets()
-                .array();
+                .array()
+                .stream()
+                .collect(Collectors.toMap(
+                        b -> b.key().stringValue(),
+                        StringTermsBucket::docCount
+                ));
+    }
 
-        // get recordIds in correct order
-        List<String> recordIds = new ArrayList<>();
-        for (StringTermsBucket bucket : buckets) {
-            recordIds.add(bucket.key().stringValue());
-        }
+    /**
+     * Query: fetch one representative (most recent) UserActivity per trending recordId.
+     * Preserves the trending score order from the caller.
+     */
+    private List<UserActivity> hydrateActivities(List<String> trendingRecordIds) throws IOException {
+        SearchRequest request = new SearchRequest.Builder()
+                .index(UserActivityService.INDEX_USER_ACTIVITY)
+                .query(q -> q.terms(t -> t
+                        .field(UserActivityService.RECORD_ID)
+                        .terms(tv -> tv.value(
+                                trendingRecordIds.stream().map(FieldValue::of).toList()
+                        ))
+                ))
+                .size(trendingRecordIds.size())
+                .collapse(c -> c.field(UserActivityService.RECORD_ID))
+                .sort(so -> so.field(f -> f
+                        .field(UserActivityService.TIMESTAMP)
+                        .order(SortOrder.Desc)
+                ))
+                .build();
 
-        // define order for values
-        Map<String, UserActivity> resultMap = new LinkedHashMap<>();
-        for (String recordId : recordIds) {
-            resultMap.put(recordId, null);
-        }
+        log.debug("trending hydration query: {}", JsonpUtils.toJsonString(request, esClient._jsonpMapper()));
 
-        // get ALL values which were used in aggregation
-        List<UserActivity> allRecords = searchResponse
+        Map<String, UserActivity> byRecordId = esClient.search(request, UserActivity.class)
                 .hits()
                 .hits()
                 .stream()
                 .filter(hit -> hit.source() != null)
-                .map(Hit::source)
-                .toList();
+                .collect(Collectors.toMap(
+                        hit -> hit.source().getRecordId(),
+                        Hit::source
+                ));
 
-        // populate values if key exist, but value is null
-        for (UserActivity curr : allRecords) {
-            String key = curr.getRecordId();
-            if (resultMap.containsKey(key) && resultMap.get(key) == null) {
-                resultMap.putIfAbsent(key, curr);
-            }
-        }
-        // remove not populated values
-        resultMap.values().removeAll(Collections.singleton(null));
-        // return final result
-        return new ArrayList<>(resultMap.values());
+        return trendingRecordIds.stream()
+                .map(byRecordId::get)
+                .filter(Objects::nonNull)
+                .toList();
     }
 }

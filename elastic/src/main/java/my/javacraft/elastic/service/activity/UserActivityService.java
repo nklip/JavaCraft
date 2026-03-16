@@ -18,11 +18,9 @@ public class UserActivityService {
 
     // we keep 180 days or close to 6 months of data in the index
     public static final int SIX_MONTHS = 180;
-    public static final int SEVEN_DAYS = 7;
     public static final int MAX_VALUES = 10000; // Elasticsearch limit
     public static final String INDEX_USER_ACTIVITY = "user-activity";
-    public static final String COUNT = "count";
-    public static final String UPDATED = "updated";
+    public static final String TIMESTAMP = "timestamp";
     public static final String RECORD_ID = "recordId";
     public static final String USER_ID = "userId";
 
@@ -51,6 +49,4 @@ public class UserActivityService {
                 .build();
         return esClient.delete(request);
     }
-
-
 }

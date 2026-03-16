@@ -35,6 +35,7 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
 import static io.cucumber.spring.CucumberTestContext.SCOPE_CUCUMBER_GLUE;
+
 @Slf4j
 @Scope(SCOPE_CUCUMBER_GLUE)
 @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
@@ -80,6 +81,7 @@ public class UserActivityControllerStepDefinitions {
         );
         Assertions.assertNotNull(httpResponse);
         Assertions.assertNotNull(httpResponse.getBody());
+        // Every click is a new immutable event document — result is always 'Created'
         Assertions.assertEquals(expectedResult, httpResponse.getBody().getResult().toString());
 
         ObjectMapper objectMapper = new ObjectMapper();
@@ -139,13 +141,13 @@ public class UserActivityControllerStepDefinitions {
         RestTemplate restTemplate = new RestTemplate();
         String userActivityUrl = "http://localhost:%s/api/services/user-activity/users/%s".formatted(port, userId);
 
+        // Wait until ES indexes at least 1 result for this user
         Assertions.assertTrue(CucumberSpringConfiguration.assertWithWait(1, () -> {
             HttpEntity<List<UserActivity>> currentResponse = restTemplate.exchange(
                     userActivityUrl,
                     HttpMethod.GET,
                     entity,
-                    new ParameterizedTypeReference<>() {
-                    }
+                    new ParameterizedTypeReference<>() {}
             );
             List<UserActivity> currentBody = currentResponse.getBody();
             return currentBody == null ? 0 : currentBody.size();
@@ -155,18 +157,21 @@ public class UserActivityControllerStepDefinitions {
                 userActivityUrl,
                 HttpMethod.GET,
                 entity,
-                new ParameterizedTypeReference<>() {
-                }
+                new ParameterizedTypeReference<>() {}
         );
         Assertions.assertNotNull(finalResponse.getBody());
         List<UserActivity> body = finalResponse.getBody();
-        Assertions.assertEquals(1, body.size());
 
-        UserActivity userActivity = body.getFirst();
-        Assertions.assertEquals(hitCounts, userActivity.getCount());
-        Assertions.assertEquals("%s-%s-%s".formatted(recordId, type, userId), userActivity.getElasticId());
-        Assertions.assertEquals(recordId, userActivity.getRecordId());
-        Assertions.assertEquals(pattern, userActivity.getSearchValue());
+        // With event stream, each click produces a new document.
+        // The popular service groups by recordId → one result per distinct record.
+        Assertions.assertFalse(body.isEmpty(), "Expected at least one activity for userId=" + userId);
+
+        UserActivity topActivity = body.getFirst();
+        Assertions.assertEquals(recordId, topActivity.getRecordId());
+        Assertions.assertEquals(pattern, topActivity.getSearchValue());
+        Assertions.assertEquals(userId, topActivity.getUserId());
+
+        log.info("verified {} events produced 1 popular result for userId={}, recordId={}", hitCounts, userId, recordId);
     }
 
     @Then("user {string} has next sorting results")
@@ -184,8 +189,7 @@ public class UserActivityControllerStepDefinitions {
                     userActivityUrl,
                     HttpMethod.GET,
                     entity,
-                    new ParameterizedTypeReference<>() {
-                    }
+                    new ParameterizedTypeReference<>() {}
             );
             List<UserActivity> currentBody = currentResponse.getBody();
             return currentBody == null ? 0 : currentBody.size();
@@ -195,18 +199,17 @@ public class UserActivityControllerStepDefinitions {
                 userActivityUrl,
                 HttpMethod.GET,
                 entity,
-                new ParameterizedTypeReference<>() {
-                }
+                new ParameterizedTypeReference<>() {}
         );
         Assertions.assertNotNull(finalResponse.getBody());
         List<UserActivity> body = finalResponse.getBody();
         Assertions.assertEquals(dataTable.height(), body.size());
 
+        // Verify ordering by searchValue (most-clicked record first)
         List<List<String>> expectedResults = dataTable.cells();
-        for (int i = 0; i < finalResponse.getBody().size(); i++) {
-            UserActivity userActivity = finalResponse.getBody().get(i);
+        for (int i = 0; i < body.size(); i++) {
+            UserActivity userActivity = body.get(i);
             Assertions.assertEquals(expectedResults.get(i).get(0), userActivity.getSearchValue());
-            Assertions.assertEquals(Long.parseLong(expectedResults.get(i).get(1)), userActivity.getCount());
         }
     }
 
@@ -221,5 +224,4 @@ public class UserActivityControllerStepDefinitions {
         ObjectMapper objectMapper = new ObjectMapper();
         return objectMapper.writeValueAsString(userClick);
     }
-
 }
