@@ -8,27 +8,31 @@ Feature: test UserActivityController
   # algorithms produce visibly different results when tested against the same
   # dataset.  Files can be ingested in parallel — they share no post IDs.
   #
+  # Post IDs start at 51 so they never conflict with base tests.
+  # With the upsert ingestion model (one document per userId+postId), the 15,000
+  # rows produce exactly 15,000 unique documents — re-ingesting is idempotent.
+  #
   # Columns: userId, postId, action (UPVOTE|DOWNVOTE), date (ISO-8601 UTC)
   #
-  # ┌─────────────────────────────┬───────────┬──────┬──────────────────────────────────────────────┐
-  # │ File                        │ Posts     │ Up % │ Date pattern                                 │
-  # ├─────────────────────────────┼───────────┼──────┼──────────────────────────────────────────────┤
-  # │ events-evergreen.csv        │ post-01…10│  80% │ Steady spread across 6 months                │
-  # │                             │           │      │ 50 users per monthly window                  │
-  # ├─────────────────────────────┼───────────┼──────┼──────────────────────────────────────────────┤
-  # │ events-fresh.csv            │ post-11…20│  90% │ All 300 votes within the last 7 days         │
-  # │                             │           │      │ Minimal exponential decay                    │
-  # ├─────────────────────────────┼───────────┼──────┼──────────────────────────────────────────────┤
-  # │ events-viral-faded.csv      │ post-21…30│  83% │ Big spike Nov–Dec 2025, then silence         │
-  # │                             │           │      │ Nothing after Feb 14 2026                    │
-  # ├─────────────────────────────┼───────────┼──────┼──────────────────────────────────────────────┤
-  # │ events-rising.csv           │ post-31…40│  85% │ Slow baseline Sep–Dec, accelerating Jan–Feb, │
-  # │                             │           │      │ recent spike Mar 1–15 (users 201-300)        │
-  # ├─────────────────────────────┼───────────┼──────┼──────────────────────────────────────────────┤
-  # │ events-controversial.csv    │ post-41…50│  50% │ Users 001-150 → always UPVOTE                │
-  # │                             │           │      │ Users 151-300 → always DOWNVOTE              │
-  # │                             │           │      │ Spread across 6 months                       │
-  # └─────────────────────────────┴───────────┴──────┴──────────────────────────────────────────────┘
+  # ┌─────────────────────────────┬────────────┬──────┬──────────────────────────────────────────────┐
+  # │ File                        │ Posts      │ Up % │ Date pattern                                 │
+  # ├─────────────────────────────┼────────────┼──────┼──────────────────────────────────────────────┤
+  # │ events-evergreen.csv        │ post-51…60 │  80% │ Steady spread across 6 months                │
+  # │                             │            │      │ 50 users per monthly window                  │
+  # ├─────────────────────────────┼────────────┼──────┼──────────────────────────────────────────────┤
+  # │ events-fresh.csv            │ post-61…70 │  90% │ All 300 votes within the last 7 days         │
+  # │                             │            │      │ Minimal exponential decay                    │
+  # ├─────────────────────────────┼────────────┼──────┼──────────────────────────────────────────────┤
+  # │ events-viral-faded.csv      │ post-71…80 │  83% │ Big spike Nov–Dec 2025, then silence         │
+  # │                             │            │      │ Nothing after Feb 14 2026                    │
+  # ├─────────────────────────────┼────────────┼──────┼──────────────────────────────────────────────┤
+  # │ events-rising.csv           │ post-81…90 │  85% │ Slow baseline Sep–Dec, accelerating Jan–Feb, │
+  # │                             │            │      │ recent spike Mar 1–15 (users 201-300)        │
+  # ├─────────────────────────────┼────────────┼──────┼──────────────────────────────────────────────┤
+  # │ events-controversial.csv    │ post-91…100│  50% │ Users 001-150 → always UPVOTE                │
+  # │                             │            │      │ Users 151-300 → always DOWNVOTE              │
+  # │                             │            │      │ Spread across 6 months                       │
+  # └─────────────────────────────┴────────────┴──────┴──────────────────────────────────────────────┘
   #
   # ── EXPECTED RANKING DIFFERENCES ────────────────────────────────────────────
   #
@@ -52,21 +56,13 @@ Feature: test UserActivityController
   #   over 50% ratio even with equal sample size
   #
   # New (sort by first-event timestamp DESC):
-  #   fresh posts appear at the top (first event within last 7 days)
+  #   fresh posts (61-70) appear at the top — first event within the last 7 days
   #   evergreen/viral/rising posts first event was 6 months ago
   # ════════════════════════════════════════════════════════════════════════════
 
   Scenario: prepare data
     Given index 'user-activity' exists
     Given data folder 'data/csv' ingested
-
-  # Shared baseline ingestion for ranking tests.
-  # 50 unique users, 20 unique posts, sparse upvote/downvote activity.
-  # Events are spread across ~6 months so Top and Hot can diverge later.
-  Scenario: baseline ingestion for top and hot
-    Given all user-activity events are deleted
-    When reddit baseline activity is ingested for top and hot comparison
-    Then baseline ingestion has 50 unique users and 20 unique posts
 
   # Hot ranking: exponential time-decay weighted net score.
   # Score = Σ (upvotes − downvotes) × e^(−λ × ageHours), λ = ln(2)/6.
