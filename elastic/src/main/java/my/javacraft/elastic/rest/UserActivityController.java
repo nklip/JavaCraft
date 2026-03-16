@@ -1,7 +1,6 @@
 package my.javacraft.elastic.rest;
 
 import co.elastic.clients.elasticsearch.core.*;
-import co.elastic.clients.elasticsearch.indices.DeleteIndexResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -20,9 +19,9 @@ import my.javacraft.elastic.model.UserClickResponse;
 import my.javacraft.elastic.model.UserActivity;
 import my.javacraft.elastic.service.DateService;
 import my.javacraft.elastic.service.activity.UserActivityIngestionService;
-import my.javacraft.elastic.service.activity.UserActivityPopularService;
+import my.javacraft.elastic.service.activity.TopService;
 import my.javacraft.elastic.service.activity.UserActivityService;
-import my.javacraft.elastic.service.activity.UserActivityTrendingService;
+import my.javacraft.elastic.service.activity.HotService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -39,8 +38,8 @@ public class UserActivityController {
 
     private final DateService dateService;
     private final UserActivityService userActivityService;
-    private final UserActivityPopularService userActivityPopularService;
-    private final UserActivityTrendingService userActivityTrendingService;
+    private final TopService topService;
+    private final HotService hotService;
     private final UserActivityIngestionService userActivityIngestionService;
 
     @Operation(
@@ -93,90 +92,90 @@ public class UserActivityController {
         return ResponseEntity.ok().body(map);
     }
 
-    @Operation(
-            summary = "Search activity by userId",
-            description = "Fetch the search activity by userId"
-    )
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Successful"),
-            @ApiResponse(responseCode = "404", description = "Not found"),
-            @ApiResponse(responseCode = "406", description = "Resource unavailable")
-    })
-    @GetMapping(value = "/users/{userId}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<UserActivity>> retrievePopularUserSearches(
-            @PathVariable("userId") String userId,
-            @RequestParam(required = false, name = "size", defaultValue = "10")
-            @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
+//    @Operation(
+//            summary = "Search activity by userId",
+//            description = "Fetch the search activity by userId"
+//    )
+//    @ApiResponses(value = {
+//            @ApiResponse(responseCode = "200", description = "Successful"),
+//            @ApiResponse(responseCode = "404", description = "Not found"),
+//            @ApiResponse(responseCode = "406", description = "Resource unavailable")
+//    })
+//    @GetMapping(value = "/users/{userId}", produces = MediaType.APPLICATION_JSON_VALUE)
+//    public ResponseEntity<List<UserActivity>> retrievePopularUserSearches(
+//            @PathVariable("userId") String userId,
+//            @RequestParam(required = false, name = "size", defaultValue = "10")
+//            @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
+//
+//        log.info("retrieving popular user searches (userId = '{}' and limit = '{}')...", userId, size);
+//
+//        List<UserActivity> mapList = topService.retrievePopularUserSearches(userId, size);
+//
+//        return ResponseEntity.ok().body(mapList);
+//    }
 
-        log.info("retrieving popular user searches (userId = '{}' and limit = '{}')...", userId, size);
+//    @Operation(
+//            summary = "Fetch trending search services.",
+//            description = "Fetch trending search services."
+//    )
+//    @ApiResponses(value = {
+//            @ApiResponse(responseCode = "200", description = "Successful"),
+//            @ApiResponse(responseCode = "404", description = "Not found"),
+//            @ApiResponse(responseCode = "406", description = "Resource unavailable")
+//    })
+//    @GetMapping(value = "/users", produces = MediaType.APPLICATION_JSON_VALUE)
+//    public ResponseEntity<List<UserActivity>> retrieveTrendingUserSearches(
+//            @RequestParam(required = false, name = "size", defaultValue = "10")
+//            @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
+//
+//        log.info("retrieving trending user searches (limit = '{}')...", size);
+//
+//        List<UserActivity> mapList = hotService.retrieveTrendingUserSearches(size);
+//
+//        return ResponseEntity.ok().body(mapList);
+//    }
 
-        List<UserActivity> mapList = userActivityPopularService.retrievePopularUserSearches(userId, size);
-
-        return ResponseEntity.ok().body(mapList);
-    }
-
-    @Operation(
-            summary = "Fetch trending search services.",
-            description = "Fetch trending search services."
-    )
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Successful"),
-            @ApiResponse(responseCode = "404", description = "Not found"),
-            @ApiResponse(responseCode = "406", description = "Resource unavailable")
-    })
-    @GetMapping(value = "/users", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<UserActivity>> retrieveTrendingUserSearches(
-            @RequestParam(required = false, name = "size", defaultValue = "10")
-            @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
-
-        log.info("retrieving trending user searches (limit = '{}')...", size);
-
-        List<UserActivity> mapList = userActivityTrendingService.retrieveTrendingUserSearches(size);
-
-        return ResponseEntity.ok().body(mapList);
-    }
-
-    @Operation(
-            summary = "Delete index",
-            description = "Delete index"
-    )
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Successful"),
-            @ApiResponse(responseCode = "404", description = "Not found"),
-            @ApiResponse(responseCode = "406", description = "Resource unavailable")
-    })
-    @DeleteMapping("/indexes/{index}")
-    public ResponseEntity<DeleteIndexResponse> deleteIndex(
-            @PathVariable("index") String index) throws IOException {
-
-        log.info("executing deleteIndex (index = '{}')...", index);
-
-        DeleteIndexResponse deleteIndexResponse = userActivityService.deleteIndex(index);
-
-        return ResponseEntity.ok()
-                .body(deleteIndexResponse);
-    }
-
-    @Operation(
-            summary = "Delete hit count document",
-            description = "Delete hit count document"
-    )
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Successful"),
-            @ApiResponse(responseCode = "404", description = "Not found"),
-            @ApiResponse(responseCode = "406", description = "Resource unavailable")
-    })
-    @DeleteMapping("/indexes/{index}/documents/{documentId}")
-    public ResponseEntity<DeleteResponse> deleteHitCountDocument(
-            @PathVariable("index") String index,
-            @PathVariable("documentId") String documentId) throws IOException {
-
-        log.info("executing deleteHitCountDocument (index = '{}', documentId = '{}')...", index, documentId);
-
-        DeleteResponse deleteResponse = userActivityService.deleteDocument(index, documentId);
-
-        return ResponseEntity.ok()
-                .body(deleteResponse);
-    }
+//    @Operation(
+//            summary = "Delete index",
+//            description = "Delete index"
+//    )
+//    @ApiResponses(value = {
+//            @ApiResponse(responseCode = "200", description = "Successful"),
+//            @ApiResponse(responseCode = "404", description = "Not found"),
+//            @ApiResponse(responseCode = "406", description = "Resource unavailable")
+//    })
+//    @DeleteMapping("/indexes/{index}")
+//    public ResponseEntity<DeleteIndexResponse> deleteIndex(
+//            @PathVariable("index") String index) throws IOException {
+//
+//        log.info("executing deleteIndex (index = '{}')...", index);
+//
+//        DeleteIndexResponse deleteIndexResponse = userActivityService.deleteIndex(index);
+//
+//        return ResponseEntity.ok()
+//                .body(deleteIndexResponse);
+//    }
+//
+//    @Operation(
+//            summary = "Delete hit count document",
+//            description = "Delete hit count document"
+//    )
+//    @ApiResponses(value = {
+//            @ApiResponse(responseCode = "200", description = "Successful"),
+//            @ApiResponse(responseCode = "404", description = "Not found"),
+//            @ApiResponse(responseCode = "406", description = "Resource unavailable")
+//    })
+//    @DeleteMapping("/indexes/{index}/documents/{documentId}")
+//    public ResponseEntity<DeleteResponse> deleteHitCountDocument(
+//            @PathVariable("index") String index,
+//            @PathVariable("documentId") String documentId) throws IOException {
+//
+//        log.info("executing deleteHitCountDocument (index = '{}', documentId = '{}')...", index, documentId);
+//
+//        DeleteResponse deleteResponse = userActivityService.deleteDocument(index, documentId);
+//
+//        return ResponseEntity.ok()
+//                .body(deleteResponse);
+//    }
 
 }
