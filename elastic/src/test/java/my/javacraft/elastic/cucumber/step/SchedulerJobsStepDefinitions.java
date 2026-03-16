@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.cucumber.conf.CucumberSpringConfiguration;
-import my.javacraft.elastic.model.SeekType;
 import my.javacraft.elastic.model.UserClick;
 import my.javacraft.elastic.model.UserClickResponse;
 import my.javacraft.elastic.service.DateService;
@@ -59,10 +58,8 @@ public class SchedulerJobsStepDefinitions {
         for (int i = 0; i < records; i++) {
             UserClick userClick = new UserClick();
             userClick.setPostId("post-id-" + i);
-            userClick.setSearchType(SeekType.PEOPLE.toString());
             userClick.setAction("Upvote");
             userClick.setUserId("nl8111");
-            userClick.setSearchPattern("FIXED INCOME");
 
             UserClickResponse userClickResponse = userActivityIngestionService.ingestUserClick(
                     userClick, dateService.getNDaysBeforeDate(200 + i));

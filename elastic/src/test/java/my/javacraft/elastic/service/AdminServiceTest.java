@@ -52,9 +52,7 @@ public class AdminServiceTest {
         Assertions.assertTrue(properties.containsKey("timestamp"));
         Assertions.assertTrue(properties.containsKey("userId"));
         Assertions.assertTrue(properties.containsKey("postId"));
-        Assertions.assertTrue(properties.containsKey("searchType"));
         Assertions.assertTrue(properties.containsKey("action"));
-        Assertions.assertTrue(properties.containsKey("searchValue"));
         Assertions.assertFalse(properties.containsKey("recordId"));
     }
 

@@ -83,9 +83,7 @@ public class TopServiceTest {
         UserActivity resultActivity = result.getFirst();
         Assertions.assertEquals("12345", resultActivity.getPostId());
         Assertions.assertEquals("nl8888", resultActivity.getUserId());
-        Assertions.assertEquals("People", resultActivity.getSearchType());
         Assertions.assertEquals("UPVOTE", resultActivity.getAction()); // stored normalized
-        Assertions.assertEquals("Nikita", resultActivity.getSearchValue());
         Assertions.assertEquals("2024-01-15T10:00:00.000Z", resultActivity.getTimestamp());
     }
 

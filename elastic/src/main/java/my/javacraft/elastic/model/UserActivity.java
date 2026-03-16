@@ -23,11 +23,7 @@ public class UserActivity {
     @NotEmpty
     String userId;
     @NotEmpty
-    String searchType;
-    @NotEmpty
     String action;
-    @NotEmpty
-    String searchValue;
     /**
      * ISO-8601 UTC timestamp of the click event.
      * Must be mapped as 'date' type in the ES index mapping.
@@ -38,9 +34,7 @@ public class UserActivity {
     public UserActivity(UserClick userClick, String timestamp) {
         this.postId = userClick.getPostId();
         this.userId = userClick.getUserId();
-        this.searchType = userClick.getSearchType();
         this.action = userClick.getAction().toUpperCase();
-        this.searchValue = userClick.getSearchPattern();
         this.timestamp = timestamp;
     }
 }

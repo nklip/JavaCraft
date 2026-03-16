@@ -16,11 +16,6 @@ public class UserClick {
     @NotBlank
     String postId;
     @NotBlank
-    String searchType;
-    @NotBlank
     @ValueOfEnum(enumClass = UserAction.class)
     String action;
-    @NotBlank
-    String searchPattern;
-
 }

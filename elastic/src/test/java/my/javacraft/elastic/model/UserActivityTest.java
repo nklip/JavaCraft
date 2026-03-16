@@ -24,9 +24,7 @@ public class UserActivityTest {
                 {
                   "postId" : "12345",
                   "userId" : "nl8888",
-                  "searchType" : "People",
                   "action" : "UPVOTE",
-                  "searchValue" : "Nikita",
                   "timestamp" : "2024-01-08T18:16:41.530Z"
                 }""",
                 objectMapper
@@ -71,9 +69,7 @@ public class UserActivityTest {
 
         Assertions.assertEquals("12345", userActivity.getPostId());
         Assertions.assertEquals("nl8888", userActivity.getUserId());
-        Assertions.assertEquals("People", userActivity.getSearchType());
         Assertions.assertEquals("UPVOTE", userActivity.getAction()); // normalized to uppercase
-        Assertions.assertEquals("Nikita", userActivity.getSearchValue());
         Assertions.assertEquals(timestamp, userActivity.getTimestamp());
     }
 
@@ -81,9 +77,7 @@ public class UserActivityTest {
         UserActivity userActivity = new UserActivity();
         userActivity.setPostId("12345");
         userActivity.setUserId("nl8888");
-        userActivity.setSearchType("People");
         userActivity.setAction("UPVOTE");
-        userActivity.setSearchValue("Nikita");
         userActivity.setTimestamp("2024-01-08T18:16:41.530Z");
         return userActivity;
     }

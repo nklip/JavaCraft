@@ -238,9 +238,7 @@ public class UserActivityControllerStepDefinitions {
             UserClick click = new UserClick();
             click.setUserId(userId);
             click.setPostId(postId);
-            click.setSearchType("HotTest");
             click.setAction(action);
-            click.setSearchPattern(postId);
 
             MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
             headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
@@ -296,9 +294,7 @@ public class UserActivityControllerStepDefinitions {
         UserClick click = new UserClick();
         click.setUserId("user-%03d".formatted(userNumber));
         click.setPostId("post-%02d".formatted(postNumber));
-        click.setSearchType("RedditVote");
         click.setAction(action.name());
-        click.setSearchPattern("Post %02d".formatted(postNumber));
 
         String timestamp = now
                 .minus(daysAgo, ChronoUnit.DAYS)
@@ -467,13 +463,11 @@ public class UserActivityControllerStepDefinitions {
         }
     }
 
-    @Then("user {string} has {int} hit counts for postId = {string}, searchType = {string} and pattern = {string}")
+    @Then("user {string} has {int} hit counts for postId = {string}")
     public void checkHitCounts(
             String userId,
             int hitCounts,
-            String postId,
-            String type,
-            String pattern) throws InterruptedException {
+            String postId) throws InterruptedException {
         MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
         headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
 
@@ -507,8 +501,6 @@ public class UserActivityControllerStepDefinitions {
 
         UserActivity topActivity = body.getFirst();
         Assertions.assertEquals(postId, topActivity.getPostId());
-        Assertions.assertEquals(pattern, topActivity.getSearchValue());
-        Assertions.assertEquals(type, topActivity.getSearchType());
 
         log.info("verified {} upvote events produced top result for postId={}", hitCounts, postId);
     }
@@ -544,11 +536,11 @@ public class UserActivityControllerStepDefinitions {
         List<UserActivity> body = finalResponse.getBody();
         Assertions.assertEquals(dataTable.height(), body.size());
 
-        // Verify ordering by searchValue (most-upvoted post first)
+        // Verify ordering by postId (most-upvoted post first)
         List<List<String>> expectedResults = dataTable.cells();
         for (int i = 0; i < body.size(); i++) {
             UserActivity userActivity = body.get(i);
-            Assertions.assertEquals(expectedResults.get(i).get(0), userActivity.getSearchValue());
+            Assertions.assertEquals(expectedResults.get(i).get(0), userActivity.getPostId());
         }
     }
 
@@ -557,9 +549,14 @@ public class UserActivityControllerStepDefinitions {
         List<String> data = dataTable.cells().getFirst();
         userClick.setUserId(data.get(0));
         userClick.setPostId(data.get(1));
-        userClick.setSearchType(data.get(2));
-        userClick.setAction(data.get(3));
-        userClick.setSearchPattern(data.get(4));
+        if (data.size() >= 4) {
+            // Backward compatibility for old table format:
+            // userId, postId, unused-column, action
+            userClick.setAction(data.get(3));
+        } else {
+            // New format: userId, postId, action
+            userClick.setAction(data.get(2));
+        }
 
         ObjectMapper objectMapper = new ObjectMapper();
         return objectMapper.writeValueAsString(userClick);
