@@ -1,5 +1,8 @@
 Feature: test Scheduler jobs
 
+  Scenario: prepare data
+    Given index 'user-activity' exists
+
   Scenario: nothing to remove
     Given there are no outdated records
     Then execute cleanup job with expected result of 0
