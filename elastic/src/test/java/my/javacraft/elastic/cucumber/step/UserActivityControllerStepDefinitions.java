@@ -24,13 +24,17 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.cucumber.conf.CucumberSpringConfiguration;
 import my.javacraft.elastic.model.UserAction;
@@ -62,6 +66,14 @@ public class UserActivityControllerStepDefinitions {
     private static final int BASELINE_USERS = 50;
     private static final int BASELINE_POSTS = 20;
     private static final long MIN_BASELINE_SPAN_MILLIS = Duration.ofDays(170).toMillis();
+
+    /**
+     * Tracks which CSV folders have been fully ingested AND confirmed searchable in ES.
+     * Static so the flag survives across scenario instances within one test run.
+     * Set to {@code true} only after ES returns the expected document count,
+     * so "was ingested" steps can depend on it without re-polling ES themselves.
+     */
+    private static final Map<String, Boolean> INGESTED_FOLDERS = new ConcurrentHashMap<>();
 
     @LocalServerPort
     int port;
@@ -97,7 +109,9 @@ public class UserActivityControllerStepDefinitions {
     }
 
     @Given("data folder {string} ingested")
-    public void ingestDataFolderInParallel(String folderPath) throws IOException {
+    public void ingestDataFolderInParallel(String folderPath) throws IOException, InterruptedException {
+        INGESTED_FOLDERS.put(folderPath, false);
+
         List<String> csvResourcePaths = listCsvResourcePaths(folderPath);
         Assertions.assertFalse(csvResourcePaths.isEmpty(), "No CSV files found in folder: " + folderPath);
 
@@ -122,7 +136,19 @@ public class UserActivityControllerStepDefinitions {
         }
 
         Assertions.assertTrue(totalRows > 0, "CSV folder has no ingestible rows: " + folderPath);
-        log.info("Ingested {} events from {} files in '{}'", totalRows, csvResourcePaths.size(), folderPath);
+        log.info("Ingested {} rows from {} files in '{}' — waiting for ES confirmation...",
+                totalRows, csvResourcePaths.size(), folderPath);
+
+        // Block until ES confirms the documents are indexed and searchable.
+        // Fresh posts (61-70) rank highest in Top; returning 10 results proves all archetypes are ready.
+        Assertions.assertTrue(
+                CucumberSpringConfiguration.assertWithWait(10, () -> fetchRankedPostsCount("/top?size=10")),
+                ("ES did not confirm searchability within the wait window after ingesting %d rows from '%s'. " +
+                        "Expected top-10 fresh posts (61-70) to be indexed.").formatted(totalRows, folderPath)
+        );
+
+        INGESTED_FOLDERS.put(folderPath, true);
+        log.info("ES confirmed: '{}' fully ingested and searchable ({} rows)", folderPath, totalRows);
     }
 
     @When("reddit baseline activity is ingested for top and hot comparison")
@@ -149,20 +175,72 @@ public class UserActivityControllerStepDefinitions {
         );
     }
 
-    @Then("hot posts endpoint returns ranked results")
-    public void verifyHotPostsAreReturned() throws InterruptedException {
+    /**
+     * Precondition: asserts that {@link #ingestDataFolderInParallel} already completed
+     * successfully for this folder path — including ES confirmation — in the current test run.
+     * Fails immediately with a diagnostic message if "prepare data" was not run first,
+     * without re-polling ES (the ingestion step is the single source of truth for readiness).
+     */
+    @Given("data folder {string} was ingested")
+    public void verifyDataFolderWasIngested(String folderPath) {
         Assertions.assertTrue(
-                CucumberSpringConfiguration.assertWithWait(true, () -> hasAtLeastOneRankedPost("/hot?size=20")),
-                "Timed out waiting for non-empty hot posts result"
+                Boolean.TRUE.equals(INGESTED_FOLDERS.get(folderPath)),
+                ("Folder '%s' has not been ingested yet. " +
+                        "Run the full feature file so that 'Scenario: prepare data' executes first " +
+                        "('Given data folder \\'%s\\' ingested' must complete before this step).")
+                        .formatted(folderPath, folderPath)
         );
+        log.info("Dependency satisfied: folder '{}' was ingested and ES-confirmed earlier in this run", folderPath);
     }
 
-    @Then("top posts endpoint returns ranked results")
-    public void verifyTopPostsAreReturned() throws InterruptedException {
+    /**
+     * Verifies the Hot endpoint returns {@code expectedSize} results whose
+     * postIds exactly match the expected set (order-independent).
+     * Hot score = Σ (upvotes − downvotes) × e^(−λ×ageHours); ties within
+     * one archetype are non-deterministic in ES, so only set equality is checked.
+     */
+    @Then("hot posts endpoint returns {int} ranked results")
+    public void verifyHotPostsReturnedWithExpectedPosts(int expectedSize, DataTable expectedPosts) throws InterruptedException {
+        String path = "/hot?size=" + expectedSize;
+        Set<String> expectedSet = new HashSet<>(expectedPosts.asList());
+
         Assertions.assertTrue(
-                CucumberSpringConfiguration.assertWithWait(20, () -> fetchRankedPostsCount("/top?size=20")),
-                "Timed out waiting for 20 top posts"
+                CucumberSpringConfiguration.assertWithWait(expectedSize, () -> fetchRankedPostsCount(path)),
+                "Timed out waiting for %d hot posts at %s".formatted(expectedSize, path)
         );
+
+        Set<String> actualSet = fetchRankedPosts(path).stream()
+                .map(UserActivity::getPostId)
+                .collect(Collectors.toSet());
+
+        Assertions.assertEquals(expectedSet, actualSet,
+                "Hot posts postId set mismatch. Expected: %s  Actual: %s".formatted(expectedSet, actualSet));
+        log.info("Hot posts verified — {} posts match expected set {}", actualSet.size(), expectedSet);
+    }
+
+    /**
+     * Verifies the Top endpoint returns {@code expectedSize} results whose
+     * postIds exactly match the expected set (order-independent).
+     * Top ranking is pure upvote count; ties within one archetype are
+     * non-deterministic in the ES terms aggregation.
+     */
+    @Then("top posts endpoint returns {int} ranked results")
+    public void verifyTopPostsReturnedWithExpectedPosts(int expectedSize, DataTable expectedPosts) throws InterruptedException {
+        String path = "/top?size=" + expectedSize;
+        Set<String> expectedSet = new HashSet<>(expectedPosts.asList());
+
+        Assertions.assertTrue(
+                CucumberSpringConfiguration.assertWithWait(expectedSize, () -> fetchRankedPostsCount(path)),
+                "Timed out waiting for %d top posts at %s".formatted(expectedSize, path)
+        );
+
+        Set<String> actualSet = fetchRankedPosts(path).stream()
+                .map(UserActivity::getPostId)
+                .collect(Collectors.toSet());
+
+        Assertions.assertEquals(expectedSet, actualSet,
+                "Top posts postId set mismatch. Expected: %s  Actual: %s".formatted(expectedSet, actualSet));
+        log.info("Top posts verified — {} posts match expected set {}", actualSet.size(), expectedSet);
     }
 
     @When("users vote on posts in parallel")
@@ -446,61 +524,27 @@ public class UserActivityControllerStepDefinitions {
         }
     }
 
-    private boolean hasAtLeastOneRankedPost(String path) {
-        return fetchRankedPostsCount(path) > 0;
-    }
-
     private int fetchRankedPostsCount(String path) {
         try {
-            MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
-            headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
-            HttpEntity<String> entity = new HttpEntity<>(null, headers);
-            String url = "http://localhost:%s/api/services/user-activity%s".formatted(port, path);
-
-            HttpEntity<List<UserActivity>> response = new RestTemplate().exchange(
-                    url,
-                    HttpMethod.GET,
-                    entity,
-                    new ParameterizedTypeReference<>() {
-                    }
-            );
-            List<UserActivity> body = response.getBody();
-            return body == null ? 0 : body.size();
+            return fetchRankedPosts(path).size();
         } catch (RuntimeException ex) {
             log.warn("Failed to fetch ranked posts for '{}': {}", path, ex.getMessage());
             return 0;
         }
     }
 
-    private List<UserActivity> fetchRankedPostsWithWait(String path) throws InterruptedException {
+    /** Single direct call to a ranking endpoint; returns the response body. */
+    private List<UserActivity> fetchRankedPosts(String path) {
         MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
         headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
         HttpEntity<String> entity = new HttpEntity<>(null, headers);
-
-        RestTemplate restTemplate = new RestTemplate();
         String url = "http://localhost:%s/api/services/user-activity%s".formatted(port, path);
 
-        Assertions.assertTrue(CucumberSpringConfiguration.assertWithWait(1, () -> {
-            HttpEntity<List<UserActivity>> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.GET,
-                    entity,
-                    new ParameterizedTypeReference<>() {
-                    }
-            );
-            List<UserActivity> body = response.getBody();
-            return body == null ? 0 : body.size();
-        }), "Timed out waiting for ranked posts at " + path);
-
-        HttpEntity<List<UserActivity>> finalResponse = restTemplate.exchange(
-                url,
-                HttpMethod.GET,
-                entity,
-                new ParameterizedTypeReference<>() {
-                }
+        HttpEntity<List<UserActivity>> response = new RestTemplate().exchange(
+                url, HttpMethod.GET, entity, new ParameterizedTypeReference<>() {}
         );
-        Assertions.assertNotNull(finalResponse.getBody());
-        return finalResponse.getBody();
+        List<UserActivity> body = response.getBody();
+        return body == null ? List.of() : body;
     }
 
     @When("add new event with expected result = {string}")

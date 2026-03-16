@@ -67,15 +67,36 @@ Feature: test UserActivityController
   # Hot ranking: exponential time-decay weighted net score.
   # Score = Σ (upvotes − downvotes) × e^(−λ × ageHours), λ = ln(2)/6.
   # Posts with net-negative scores are excluded from results.
-  # Expected: most-recent posts with positive net scores rank first.
+  # Expected top-10: fresh posts (61-70) — all 300 votes landed in last 7 days,
+  # decay is minimal; hot score ≈ 13 vs. ≈ 1.8 for rising, ≈ 0 for controversial.
   Scenario: Hot posts
-    Given reddit baseline activity was ingested
-    Then hot posts endpoint returns ranked results
+    Given data folder 'data/csv' was ingested
+    Then hot posts endpoint returns 10 ranked results
+      | post-61 |
+      | post-62 |
+      | post-63 |
+      | post-64 |
+      | post-65 |
+      | post-66 |
+      | post-67 |
+      | post-68 |
+      | post-69 |
+      | post-70 |
 
   # Top ranking: total UPVOTE count per post, all-time, no time window.
   # Downvotes are completely ignored — only UPVOTE events are counted.
-  # Expected: posts with the most absolute upvotes rank first,
-  # regardless of how many downvotes they also received.
+  # Expected top-10: fresh posts (61-70) — 270 upvotes each (90% of 300 users),
+  # beating rising (255), viral-faded (242), evergreen (240), controversial (150).
   Scenario: Top posts
-    Given reddit baseline activity was ingested
-    Then top posts endpoint returns ranked results
+    Given data folder 'data/csv' was ingested
+    Then top posts endpoint returns 10 ranked results
+      | post-61 |
+      | post-62 |
+      | post-63 |
+      | post-64 |
+      | post-65 |
+      | post-66 |
+      | post-67 |
+      | post-68 |
+      | post-69 |
+      | post-70 |
