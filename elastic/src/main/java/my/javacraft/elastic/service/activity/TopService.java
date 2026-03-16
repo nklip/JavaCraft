@@ -22,15 +22,30 @@ import org.springframework.stereotype.Service;
 /*
  * TopService simulates Reddit's 'Top' category.
  *
- * Returns globally top posts ranked by total upvote count descending.
- * Only UPVOTE events contribute — downvotes are negative feedback and are excluded.
+ * 🏆 Top (day / week / month / year / all)
  *
- * Two-query approach:
- *   Query 1 — terms aggregation: filter action=UPVOTE globally, group by postId, order by _count DESC
- *   Query 2 — collapse hydration: fetch one representative UserActivity doc per postId
+ * Raw net score within a time window — no decay.
  *
- * Time-window variants (Top day / week / month / year / all) can be added by passing
- * an optional range filter on the TIMESTAMP field to queryTopPostIds().
+ * top_score = upvotes - downvotes
+ *            WHERE submission_time >= (now - window)
+ * ORDER BY top_score DESC
+ *
+ * Text table:
+ * ┌────────┬───────────────┐
+ * │ Filter │ Window        │
+ * ├────────┼───────────────┤
+ * │ Day    │ last 24 hours │
+ * │ Week   │ last 7 days   │
+ * │ Month  │ last 30 days  │
+ * │ Year   │ last 365 days │
+ * │ All    │ no filter     │
+ * └────────┴───────────────┘
+ *
+ * Key properties:
+ *
+ * 1) No time decay within the window — a post from 6 days ago competes equally with one from today (for "week")
+ * 2) Best/Top are the same algorithm (Best is just an alias Reddit uses for "Top — All Time" on some views)
+ * 3) Rewards sustained quality; a niche post with a dedicated community can still win "month" or "year"
  */
 @Slf4j
 @Service

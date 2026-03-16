@@ -3,7 +3,6 @@ package my.javacraft.elastic.service.activity;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.SortOrder;
-import co.elastic.clients.elasticsearch._types.aggregations.DateHistogramBucket;
 import co.elastic.clients.elasticsearch._types.aggregations.StringTermsBucket;
 import co.elastic.clients.elasticsearch.core.SearchRequest;
 import co.elastic.clients.elasticsearch.core.search.Hit;
@@ -25,29 +24,24 @@ import org.springframework.stereotype.Service;
 /*
  * HotService simulates Reddit's 'Hot' category.
  *
- * Hot gives every interaction an exponentially decaying weight based on its age.
- * Upvotes contribute positively; downvotes contribute negatively.
- * There are no discrete time windows — the score decays continuously.
+ * 🔥 Hot
  *
- * Formula per post:
- *   hot_score = Σ (upvotes − downvotes) per hour bucket × e^(−λ × bucket_age_hours)
- *   where λ = ln(2) / HOT_HALF_LIFE_HOURS
+ * Time-decayed net score — the "front page" algorithm.
  *
- * With HOT_HALF_LIFE_HOURS = 6:
- *   now       → weight 1.000
- *   6h ago    → weight 0.500
- *   12h ago   → weight 0.250
- *   24h ago   → weight 0.063
+ * Reddit's actual formula (open-sourced):
  *
- * Single aggregation query:
- *   range(last HOT_WINDOW_DAYS days)
- *     terms(postId, size = querySize, order = _count DESC)   ← candidate pool
- *       └─ date_histogram(timestamp, fixed_interval = 1h)
- *            ├─ filter(action = UPVOTE)   → upvote count
- *            └─ filter(action = DOWNVOTE) → downvote count
+ * score     = upvotes - downvotes
+ * order     = log₁₀(max(|score|, 1)) × sign(score)
+ * seconds   = submission_time - 1134028003   # epoch anchor (Dec 2005)
+ * hot_score = order + seconds / 45000
  *
- * Java: for each postId → Σ (up − down) × decay(age) → hot_score
- *       sort DESC → top-N → hydrate with collapse query.
+ * Key properties:
+ *
+ * 1) log₁₀ compresses the vote gap — going from 1→10 votes is as valuable as 10→100
+ * 2) Time contribution grows linearly: every ~12.5 hours a post gains +1 to the score
+ * 3) Early votes matter more than late votes (a post that reaches 100 votes in hour 1 beats one that reaches 1000
+ * votes in hour 10)
+ * 4) No hard cutoff — old posts with massive scores can still appear, just very slowly pushed down
  */
 @Slf4j
 @Service

@@ -14,15 +14,16 @@ import java.util.List;
  *            WHERE submission_time >= (now - window)
  * ORDER BY top_score DESC
  *
- * |--------|---------------|
- * | Filter | Window        |
- * |--------|---------------|
- * | Day    | last 24 hours |
- * | Week   | last 7 days   |
- * | Month  | last 30 days  |
- * | Year   | last 365 days |
- * | All    | no filter     |
- * |--------|---------------|
+ * Text table:
+ * ┌────────┬───────────────┐
+ * │ Filter │ Window        │
+ * ├────────┼───────────────┤
+ * │ Day    │ last 24 hours │
+ * │ Week   │ last 7 days   │
+ * │ Month  │ last 30 days  │
+ * │ Year   │ last 365 days │
+ * │ All    │ no filter     │
+ * └────────┴───────────────┘
  *
  * Key properties:
  *
