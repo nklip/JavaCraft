@@ -22,9 +22,10 @@ public class UserActivityTest {
         ObjectMapper objectMapper = new ObjectMapper();
         Assertions.assertEquals("""
                 {
-                  "recordId" : "12345",
+                  "postId" : "12345",
                   "userId" : "nl8888",
                   "searchType" : "People",
+                  "action" : "Upvote",
                   "searchValue" : "Nikita",
                   "timestamp" : "2024-01-08T18:16:41.530Z"
                 }""",
@@ -68,18 +69,20 @@ public class UserActivityTest {
 
         UserActivity userActivity = new UserActivity(userClick, timestamp);
 
-        Assertions.assertEquals("12345", userActivity.getRecordId());
+        Assertions.assertEquals("12345", userActivity.getPostId());
         Assertions.assertEquals("nl8888", userActivity.getUserId());
         Assertions.assertEquals("People", userActivity.getSearchType());
+        Assertions.assertEquals("Upvote", userActivity.getAction());
         Assertions.assertEquals("Nikita", userActivity.getSearchValue());
         Assertions.assertEquals(timestamp, userActivity.getTimestamp());
     }
 
     public static UserActivity createValidUserActivity() {
         UserActivity userActivity = new UserActivity();
-        userActivity.setRecordId("12345");
+        userActivity.setPostId("12345");
         userActivity.setUserId("nl8888");
         userActivity.setSearchType("People");
+        userActivity.setAction("Upvote");
         userActivity.setSearchValue("Nikita");
         userActivity.setTimestamp("2024-01-08T18:16:41.530Z");
         return userActivity;

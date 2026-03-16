@@ -52,7 +52,7 @@ public class TopServiceTest {
 //        when(aggregate.sterms()).thenReturn(sterms);
 //
 //        SearchResponse<UserActivity> aggResponse = mock(SearchResponse.class);
-//        when(aggResponse.aggregations()).thenReturn(Map.of(UserActivityService.RECORD_ID, aggregate));
+//        when(aggResponse.aggregations()).thenReturn(Map.of(UserActivityService.POST_ID, aggregate));
 //
 //        // --- Mock Query 2: hydration response ---
 //        Hit<UserActivity> hit = new Hit.Builder<UserActivity>()
@@ -81,7 +81,7 @@ public class TopServiceTest {
 //        Assertions.assertEquals(1, result.size());
 //
 //        UserActivity resultActivity = result.getFirst();
-//        Assertions.assertEquals("12345", resultActivity.getRecordId());
+//        Assertions.assertEquals("12345", resultActivity.getPostId());
 //        Assertions.assertEquals("nl8888", resultActivity.getUserId());
 //        Assertions.assertEquals("People", resultActivity.getSearchType());
 //        Assertions.assertEquals("Nikita", resultActivity.getSearchValue());
@@ -101,7 +101,7 @@ public class TopServiceTest {
 //        when(aggregate.sterms()).thenReturn(sterms);
 //
 //        SearchResponse<UserActivity> aggResponse = mock(SearchResponse.class);
-//        when(aggResponse.aggregations()).thenReturn(Map.of(UserActivityService.RECORD_ID, aggregate));
+//        when(aggResponse.aggregations()).thenReturn(Map.of(UserActivityService.POST_ID, aggregate));
 //
 //        when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
 //        when(esClient.search(any(SearchRequest.class), eq(UserActivity.class))).thenReturn(aggResponse);

@@ -29,7 +29,7 @@ import org.springframework.stereotype.Service;
  * An item with a spike last week has almost fully decayed.
  *
  * The decay formula:
- * hot_score(recordId) = Σ click_count(bucket) × e^(−λ × bucket_age_hours)
+ * hot_score(postId) = Σ click_count(bucket) × e^(−λ × bucket_age_hours)
  * where λ = ln(2) / half_life_hours
  *
  * With half_life = 6h:
@@ -46,15 +46,15 @@ import org.springframework.stereotype.Service;
  *
  * Clicks from yesterday are essentially invisible. A burst this hour dominates.
  *
- * Hot needs the full time distribution of each recordId to apply per-bucket weights.
+ * Hot needs the full time distribution of each postId to apply per-bucket weights.
  * A date_histogram gives exactly that in one round trip:
  *
  * range(last 7 days)
- *   terms(recordId, size=N×10, order=_count DESC)   ← candidate pool
+ *   terms(postId, size=N×10, order=_count DESC)   ← candidate pool
  *     └─ date_histogram(timestamp, fixed_interval=1h) ← per-record hourly distribution
  *
  * Java:
- *   for each recordId bucket:
+ *   for each postId bucket:
  *     hot_score = Σ (hourly_count × e^(−λ × bucket_age_hours))
  *   sort by hot_score DESC → top-N
  *   hydrate with collapse query
@@ -63,8 +63,8 @@ import org.springframework.stereotype.Service;
  * You could also do date_histogram outer → terms inner (as we currently have in the Trending approach).
  *
  * The problem:
- * Outer date_histogram + inner terms(size=N) → you might miss a recordId's contribution in a given hour if it falls outside the inner top-N
- * Outer terms + inner date_histogram → you get the complete hourly distribution for each candidate recordId, no gaps
+ * Outer date_histogram + inner terms(size=N) → you might miss a postId's contribution in a given hour if it falls outside the inner top-N
+ * Outer terms + inner date_histogram → you get the complete hourly distribution for each candidate postId, no gaps
  *
  * The outer terms uses order=_count DESC within the last 7 days to pick the candidate pool (size = querySize × 10).
  * Hot score re-ranks them in Java.
@@ -87,10 +87,10 @@ public class HotService {
 //        String recentCutoff = dateService.getNHoursBeforeDate(RECENT_WINDOW_HOURS);
 //        String baselineCutoff = dateService.getNHoursBeforeDate(RECENT_WINDOW_HOURS + BASELINE_WINDOW_HOURS);
 //
-//        Map<String, Long> recentCounts = queryCountsByRecordId(recentCutoff, now, querySize);
-//        Map<String, Long> baselineCounts = queryCountsByRecordId(baselineCutoff, recentCutoff, querySize);
+//        Map<String, Long> recentCounts = queryCountsByPostId(recentCutoff, now, querySize);
+//        Map<String, Long> baselineCounts = queryCountsByPostId(baselineCutoff, recentCutoff, querySize);
 //
-//        List<String> trendingRecordIds = recentCounts.entrySet().stream()
+//        List<String> trendingPostIds = recentCounts.entrySet().stream()
 //                .map(e -> {
 //                    double score = computeTrendScore(e.getValue(), baselineCounts.getOrDefault(e.getKey(), 0L));
 //                    return Map.entry(score, e.getKey());
@@ -100,10 +100,10 @@ public class HotService {
 //                .map(Map.Entry::getValue)
 //                .toList();
 //
-//        if (trendingRecordIds.isEmpty()) {
+//        if (trendingPostIds.isEmpty()) {
 //            return List.of();
 //        }
-//        return hydrateActivities(trendingRecordIds);
+//        return hydrateActivities(trendingPostIds);
 //    }
 //
 //    /**
@@ -116,10 +116,10 @@ public class HotService {
 //    }
 //
 //    /**
-//     * Query: terms aggregation on recordId within a time range.
-//     * Returns docCount per recordId.
+//     * Query: terms aggregation on postId within a time range.
+//     * Returns docCount per postId.
 //     */
-//    private Map<String, Long> queryCountsByRecordId(String from, String to, int querySize) throws IOException {
+//    private Map<String, Long> queryCountsByPostId(String from, String to, int querySize) throws IOException {
 //        Query rangeQuery = RangeQuery.of(r -> r.date(d -> d
 //                .field(UserActivityService.TIMESTAMP)
 //                .gte(from)
@@ -130,9 +130,9 @@ public class HotService {
 //                .index(UserActivityService.INDEX_USER_ACTIVITY)
 //                .query(rangeQuery)
 //                .size(0)
-//                .aggregations(UserActivityService.RECORD_ID, a -> a
+//                .aggregations(UserActivityService.POST_ID, a -> a
 //                        .terms(t -> t
-//                                .field(UserActivityService.RECORD_ID)
+//                                .field(UserActivityService.POST_ID)
 //                                .size(querySize)
 //                        )
 //                )
@@ -142,7 +142,7 @@ public class HotService {
 //
 //        return esClient.search(request, UserActivity.class)
 //                .aggregations()
-//                .get(UserActivityService.RECORD_ID)
+//                .get(UserActivityService.POST_ID)
 //                .sterms()
 //                .buckets()
 //                .array()
@@ -154,20 +154,20 @@ public class HotService {
 //    }
 //
 //    /**
-//     * Query: fetch one representative (most recent) UserActivity per trending recordId.
+//     * Query: fetch one representative (most recent) UserActivity per trending postId.
 //     * Preserves the trending score order from the caller.
 //     */
-//    private List<UserActivity> hydrateActivities(List<String> trendingRecordIds) throws IOException {
+//    private List<UserActivity> hydrateActivities(List<String> trendingPostIds) throws IOException {
 //        SearchRequest request = new SearchRequest.Builder()
 //                .index(UserActivityService.INDEX_USER_ACTIVITY)
 //                .query(q -> q.terms(t -> t
-//                        .field(UserActivityService.RECORD_ID)
+//                        .field(UserActivityService.POST_ID)
 //                        .terms(tv -> tv.value(
-//                                trendingRecordIds.stream().map(FieldValue::of).toList()
+//                                trendingPostIds.stream().map(FieldValue::of).toList()
 //                        ))
 //                ))
-//                .size(trendingRecordIds.size())
-//                .collapse(c -> c.field(UserActivityService.RECORD_ID))
+//                .size(trendingPostIds.size())
+//                .collapse(c -> c.field(UserActivityService.POST_ID))
 //                .sort(so -> so.field(f -> f
 //                        .field(UserActivityService.TIMESTAMP)
 //                        .order(SortOrder.Desc)
@@ -176,18 +176,18 @@ public class HotService {
 //
 //        log.debug("trending hydration query: {}", JsonpUtils.toJsonString(request, esClient._jsonpMapper()));
 //
-//        Map<String, UserActivity> byRecordId = esClient.search(request, UserActivity.class)
+//        Map<String, UserActivity> byPostId = esClient.search(request, UserActivity.class)
 //                .hits()
 //                .hits()
 //                .stream()
 //                .filter(hit -> hit.source() != null)
 //                .collect(Collectors.toMap(
-//                        hit -> hit.source().getRecordId(),
+//                        hit -> hit.source().getPostId(),
 //                        Hit::source
 //                ));
 //
-//        return trendingRecordIds.stream()
-//                .map(byRecordId::get)
+//        return trendingPostIds.stream()
+//                .map(byPostId::get)
 //                .filter(Objects::nonNull)
 //                .toList();
 //    }

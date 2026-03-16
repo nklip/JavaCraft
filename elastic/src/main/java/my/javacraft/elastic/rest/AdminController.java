@@ -37,7 +37,8 @@ public class AdminController {
 
     @Operation(
             summary = "Create user-activity index",
-            description = "Creates the 'user-activity' index with typed field mappings (date, keyword, long, text). "
+            description = "Creates the 'user-activity' index with typed field mappings: "
+                    + "timestamp(date), userId/postId/searchType/action(keyword), searchValue(text). "
                     + "Required by UserActivityController for ingestion, retrieval, and trending queries."
     )
     @ApiResponses(value = {

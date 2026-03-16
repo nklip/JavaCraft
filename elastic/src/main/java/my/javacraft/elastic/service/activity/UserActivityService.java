@@ -21,7 +21,7 @@ public class UserActivityService {
     public static final int MAX_VALUES = 10000; // Elasticsearch limit
     public static final String INDEX_USER_ACTIVITY = "user-activity";
     public static final String TIMESTAMP = "timestamp";
-    public static final String RECORD_ID = "recordId";
+    public static final String POST_ID = "postId";
     public static final String USER_ID = "userId";
 
     private final ElasticsearchClient esClient;

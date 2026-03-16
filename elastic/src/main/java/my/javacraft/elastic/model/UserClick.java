@@ -13,9 +13,11 @@ public class UserClick {
     @NotEmpty
     String userId;
     @NotBlank
-    String recordId;
+    String postId;
     @NotBlank
     String searchType;
+    @NotBlank
+    String action;
     @NotBlank
     String searchPattern;
 

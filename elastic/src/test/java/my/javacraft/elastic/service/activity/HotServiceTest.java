@@ -63,10 +63,10 @@ public class HotServiceTest {
 //                .thenReturn("2024-01-14T11:00:00.000Z");
 //
 //        UserActivity activityA = new UserActivity(UserClickTest.createHitCount(), "2024-01-15T10:30:00.000Z");
-//        activityA.setRecordId("recordA");
+//        activityA.setPostId("recordA");
 //
 //        UserActivity activityB = new UserActivity(UserClickTest.createHitCount(), "2024-01-15T10:20:00.000Z");
-//        activityB.setRecordId("recordB");
+//        activityB.setPostId("recordB");
 //
 //        // Mock Query 1 — recent counts: recordA=5, recordB=2
 //        SearchResponse<UserActivity> recentResponse = buildAggResponse(Map.of("recordA", 5L, "recordB", 2L));
@@ -87,8 +87,8 @@ public class HotServiceTest {
 //        Assertions.assertNotNull(result);
 //        Assertions.assertEquals(2, result.size());
 //        // recordA has higher trend score → must be first
-//        Assertions.assertEquals("recordA", result.get(0).getRecordId());
-//        Assertions.assertEquals("recordB", result.get(1).getRecordId());
+//        Assertions.assertEquals("recordA", result.get(0).getPostId());
+//        Assertions.assertEquals("recordB", result.get(1).getPostId());
 //    }
 //
 //    @Test
@@ -116,8 +116,8 @@ public class HotServiceTest {
 
     // --------------- helpers ---------------
 
-    private SearchResponse<UserActivity> buildAggResponse(Map<String, Long> countsByRecordId) {
-        List<StringTermsBucket> bucketList = countsByRecordId.entrySet().stream()
+    private SearchResponse<UserActivity> buildAggResponse(Map<String, Long> countsByPostId) {
+        List<StringTermsBucket> bucketList = countsByPostId.entrySet().stream()
                 .map(e -> {
                     StringTermsBucket bucket = mock(StringTermsBucket.class);
                     when(bucket.key()).thenReturn(FieldValue.of(e.getKey()));
@@ -136,7 +136,7 @@ public class HotServiceTest {
         when(aggregate.sterms()).thenReturn(sterms);
 
         SearchResponse<UserActivity> response = mock(SearchResponse.class);
-        when(response.aggregations()).thenReturn(Map.of(UserActivityService.RECORD_ID, aggregate));
+        when(response.aggregations()).thenReturn(Map.of(UserActivityService.POST_ID, aggregate));
         return response;
     }
 
@@ -144,7 +144,7 @@ public class HotServiceTest {
         List<Hit<UserActivity>> hits = activities.stream()
                 .map(a -> new Hit.Builder<UserActivity>()
                         .index(UserActivityService.INDEX_USER_ACTIVITY)
-                        .id("id-" + a.getRecordId())
+                        .id("id-" + a.getPostId())
                         .source(a)
                         .build())
                 .toList();

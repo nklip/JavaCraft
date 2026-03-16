@@ -16,11 +16,13 @@ import lombok.ToString;
 public class UserActivity {
 
     @NotEmpty
-    String recordId;
+    String postId;
     @NotEmpty
     String userId;
     @NotEmpty
     String searchType;
+    @NotEmpty
+    String action;
     @NotEmpty
     String searchValue;
     /**
@@ -31,9 +33,10 @@ public class UserActivity {
     String timestamp;
 
     public UserActivity(UserClick userClick, String timestamp) {
-        this.recordId = userClick.getRecordId();
+        this.postId = userClick.getPostId();
         this.userId = userClick.getUserId();
         this.searchType = userClick.getSearchType();
+        this.action = userClick.getAction();
         this.searchValue = userClick.getSearchPattern();
         this.timestamp = timestamp;
     }

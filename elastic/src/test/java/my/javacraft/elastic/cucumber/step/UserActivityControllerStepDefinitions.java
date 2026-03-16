@@ -126,11 +126,11 @@ public class UserActivityControllerStepDefinitions {
         }
     }
 
-    @Then("user {string} has {int} hit counts for documentId = {string}, searchType = {string} and pattern = {string}")
+    @Then("user {string} has {int} hit counts for postId = {string}, searchType = {string} and pattern = {string}")
     public void checkHitCounts(
             String userId,
             int hitCounts,
-            String recordId,
+            String postId,
             String type,
             String pattern) throws InterruptedException {
         MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
@@ -163,15 +163,16 @@ public class UserActivityControllerStepDefinitions {
         List<UserActivity> body = finalResponse.getBody();
 
         // With event stream, each click produces a new document.
-        // The popular service groups by recordId → one result per distinct record.
+        // The popular service groups by postId → one result per distinct post.
         Assertions.assertFalse(body.isEmpty(), "Expected at least one activity for userId=" + userId);
 
         UserActivity topActivity = body.getFirst();
-        Assertions.assertEquals(recordId, topActivity.getRecordId());
+        Assertions.assertEquals(postId, topActivity.getPostId());
         Assertions.assertEquals(pattern, topActivity.getSearchValue());
+        Assertions.assertEquals(type, topActivity.getSearchType());
         Assertions.assertEquals(userId, topActivity.getUserId());
 
-        log.info("verified {} events produced 1 popular result for userId={}, recordId={}", hitCounts, userId, recordId);
+        log.info("verified {} events produced 1 popular result for userId={}, postId={}", hitCounts, userId, postId);
     }
 
     @Then("user {string} has next sorting results")
@@ -217,9 +218,10 @@ public class UserActivityControllerStepDefinitions {
         UserClick userClick = new UserClick();
         List<String> data = dataTable.cells().getFirst();
         userClick.setUserId(data.get(0));
-        userClick.setRecordId(data.get(1));
+        userClick.setPostId(data.get(1));
         userClick.setSearchType(data.get(2));
-        userClick.setSearchPattern(data.get(3));
+        userClick.setAction(data.get(3));
+        userClick.setSearchPattern(data.get(4));
 
         ObjectMapper objectMapper = new ObjectMapper();
         return objectMapper.writeValueAsString(userClick);

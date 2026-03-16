@@ -24,11 +24,11 @@ import org.springframework.stereotype.Service;
  * It should find all top posts by postId (upvotes − downvotes) by user activity over a certain period of time.
  *
  * For example:
- * Top day   → range(timestamp: last 24h)  + terms(recordId, _count DESC)
- * Top week  → range(timestamp: last 7d)   + terms(recordId, _count DESC)
- * Top month → range(timestamp: last 30d)  + terms(recordId, _count DESC)
- * Top year  → range(timestamp: last 365d) + terms(recordId, _count DESC)
- * Top all   → no range filter             + terms(recordId, _count DESC)
+ * Top day   → range(timestamp: last 24h)  + terms(postId, _count DESC)
+ * Top week  → range(timestamp: last 7d)   + terms(postId, _count DESC)
+ * Top month → range(timestamp: last 30d)  + terms(postId, _count DESC)
+ * Top year  → range(timestamp: last 365d) + terms(postId, _count DESC)
+ * Top all   → no range filter             + terms(postId, _count DESC)
  */
 @Slf4j
 @Service
@@ -38,17 +38,17 @@ public class TopService {
     private final ElasticsearchClient esClient;
 
 //    public List<UserActivity> retrievePopularUserSearches(String userId, int size) throws IOException {
-//        List<String> orderedRecordIds = queryPopularRecordIds(userId, size);
-//        if (orderedRecordIds.isEmpty()) {
+//        List<String> orderedPostIds = queryPopularPostIds(userId, size);
+//        if (orderedPostIds.isEmpty()) {
 //            return List.of();
 //        }
-//        return hydrateActivities(userId, orderedRecordIds);
+//        return hydrateActivities(userId, orderedPostIds);
 //    }
 //
 //    /**
-//     * Query 1: terms aggregation to get recordIds ordered by event frequency (most-clicked first).
+//     * Query 1: terms aggregation to get postIds ordered by event frequency (most-clicked first).
 //     */
-//    private List<String> queryPopularRecordIds(String userId, int size) throws IOException {
+//    private List<String> queryPopularPostIds(String userId, int size) throws IOException {
 //        SearchRequest request = new SearchRequest.Builder()
 //                .index(UserActivityService.INDEX_USER_ACTIVITY)
 //                .query(q -> q.term(t -> t
@@ -56,9 +56,9 @@ public class TopService {
 //                        .value(v -> v.stringValue(userId))
 //                ))
 //                .size(0)
-//                .aggregations(UserActivityService.RECORD_ID, a -> a
+//                .aggregations(UserActivityService.POST_ID, a -> a
 //                        .terms(t -> t
-//                                .field(UserActivityService.RECORD_ID)
+//                                .field(UserActivityService.POST_ID)
 //                                .size(size)
 //                                .order(NamedValue.of("_count", SortOrder.Desc))
 //                        )
@@ -69,7 +69,7 @@ public class TopService {
 //
 //        return esClient.search(request, UserActivity.class)
 //                .aggregations()
-//                .get(UserActivityService.RECORD_ID)
+//                .get(UserActivityService.POST_ID)
 //                .sterms()
 //                .buckets()
 //                .array()
@@ -80,10 +80,10 @@ public class TopService {
 //    }
 //
 //    /**
-//     * Query 2: fetch one representative (most recent) UserActivity per recordId,
+//     * Query 2: fetch one representative (most recent) UserActivity per postId,
 //     * preserving the popularity order from Query 1.
 //     */
-//    private List<UserActivity> hydrateActivities(String userId, List<String> orderedRecordIds) throws IOException {
+//    private List<UserActivity> hydrateActivities(String userId, List<String> orderedPostIds) throws IOException {
 //        SearchRequest request = new SearchRequest.Builder()
 //                .index(UserActivityService.INDEX_USER_ACTIVITY)
 //                .query(q -> q.bool(b -> b
@@ -92,14 +92,14 @@ public class TopService {
 //                                .value(v -> v.stringValue(userId))
 //                        ))
 //                        .must(m -> m.terms(t -> t
-//                                .field(UserActivityService.RECORD_ID)
+//                                .field(UserActivityService.POST_ID)
 //                                .terms(tv -> tv.value(
-//                                        orderedRecordIds.stream().map(FieldValue::of).toList()
+//                                        orderedPostIds.stream().map(FieldValue::of).toList()
 //                                ))
 //                        ))
 //                ))
-//                .size(orderedRecordIds.size())
-//                .collapse(c -> c.field(UserActivityService.RECORD_ID))
+//                .size(orderedPostIds.size())
+//                .collapse(c -> c.field(UserActivityService.POST_ID))
 //                .sort(so -> so.field(f -> f
 //                        .field(UserActivityService.TIMESTAMP)
 //                        .order(SortOrder.Desc)
@@ -108,18 +108,18 @@ public class TopService {
 //
 //        log.debug("popular hydration query: {}", JsonpUtils.toJsonString(request, esClient._jsonpMapper()));
 //
-//        Map<String, UserActivity> byRecordId = esClient.search(request, UserActivity.class)
+//        Map<String, UserActivity> byPostId = esClient.search(request, UserActivity.class)
 //                .hits()
 //                .hits()
 //                .stream()
 //                .filter(hit -> hit.source() != null)
 //                .collect(Collectors.toMap(
-//                        hit -> hit.source().getRecordId(),
+//                        hit -> hit.source().getPostId(),
 //                        Hit::source
 //                ));
 //
-//        return orderedRecordIds.stream()
-//                .map(byRecordId::get)
+//        return orderedPostIds.stream()
+//                .map(byPostId::get)
 //                .filter(Objects::nonNull)
 //                .toList();
 //    }

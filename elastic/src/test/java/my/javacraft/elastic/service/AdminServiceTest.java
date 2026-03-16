@@ -7,14 +7,17 @@ import co.elastic.clients.elasticsearch.indices.ExistsRequest;
 import co.elastic.clients.elasticsearch.indices.ElasticsearchIndicesClient;
 import co.elastic.clients.transport.endpoints.BooleanResponse;
 import java.io.IOException;
+import java.util.Map;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,6 +44,18 @@ public class AdminServiceTest {
         Assertions.assertTrue(response.created());
         Assertions.assertNotNull(response.response());
         Assertions.assertTrue(response.response().acknowledged());
+
+        ArgumentCaptor<CreateIndexRequest> requestCaptor = ArgumentCaptor.forClass(CreateIndexRequest.class);
+        verify(indicesClient).create(requestCaptor.capture());
+
+        Map<String, ?> properties = requestCaptor.getValue().mappings().properties();
+        Assertions.assertTrue(properties.containsKey("timestamp"));
+        Assertions.assertTrue(properties.containsKey("userId"));
+        Assertions.assertTrue(properties.containsKey("postId"));
+        Assertions.assertTrue(properties.containsKey("searchType"));
+        Assertions.assertTrue(properties.containsKey("action"));
+        Assertions.assertTrue(properties.containsKey("searchValue"));
+        Assertions.assertFalse(properties.containsKey("recordId"));
     }
 
     @Test

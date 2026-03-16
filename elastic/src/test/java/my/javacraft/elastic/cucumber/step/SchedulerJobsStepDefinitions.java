@@ -58,8 +58,9 @@ public class SchedulerJobsStepDefinitions {
         List<UserClickResponse> responses = new ArrayList<>();
         for (int i = 0; i < records; i++) {
             UserClick userClick = new UserClick();
-            userClick.setRecordId("document-id-" + i);
+            userClick.setPostId("post-id-" + i);
             userClick.setSearchType(SeekType.PEOPLE.toString());
+            userClick.setAction("Upvote");
             userClick.setUserId("nl8111");
             userClick.setSearchPattern("FIXED INCOME");
 

@@ -55,8 +55,10 @@ public class UserActivityControllerTest {
         when(userActivityIngestionService.ingestUserClick(any(), anyString())).thenReturn(userClickResponse);
 
         UserClick userClick = new UserClick();
-        userClick.setRecordId("did-1");
+        userClick.setPostId("did-1");
+        userClick.setUserId("nl8888");
         userClick.setSearchType("Obligor");
+        userClick.setAction("Upvote");
         userClick.setSearchPattern("1111");
 
         ResponseEntity<UserClickResponse> response = userActivityController.captureUserClick(userClick);

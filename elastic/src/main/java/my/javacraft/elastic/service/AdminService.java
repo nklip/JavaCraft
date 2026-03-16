@@ -47,7 +47,7 @@ public class AdminService {
      * used by {@code UserActivity} and the queries in activity services:
      * <ul>
      *   <li>{@code timestamp} – {@code date} with ISO-8601 format (range/sort queries)</li>
-     *   <li>{@code userId}, {@code recordId}, {@code searchType}
+     *   <li>{@code userId}, {@code postId}, {@code searchType}, {@code action}
      *       – {@code keyword} (exact-match term queries and aggregations)</li>
      *   <li>{@code searchValue} – {@code text} (full-text field, not queried directly)</li>
      * </ul>
@@ -58,8 +58,9 @@ public class AdminService {
         Map<String, Property> properties = new LinkedHashMap<>();
         properties.put("timestamp", Property.of(p -> p.date(d -> d.format("strict_date_optional_time"))));
         properties.put("userId", Property.of(p -> p.keyword(k -> k)));
-        properties.put("recordId", Property.of(p -> p.keyword(k -> k)));
+        properties.put("postId", Property.of(p -> p.keyword(k -> k)));
         properties.put("searchType", Property.of(p -> p.keyword(k -> k)));
+        properties.put("action", Property.of(p -> p.keyword(k -> k)));
         properties.put("searchValue", Property.of(p -> p.text(t -> t)));
 
         return createIndex(UserActivityService.INDEX_USER_ACTIVITY, properties);
