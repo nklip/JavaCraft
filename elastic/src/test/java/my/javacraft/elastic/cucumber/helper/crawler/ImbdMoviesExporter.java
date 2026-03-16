@@ -1,4 +1,4 @@
-package my.javacraft.elastic.cucumber.helper;
+package my.javacraft.elastic.cucumber.helper.crawler;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
