@@ -79,14 +79,19 @@ class EventGeneratorTest {
         }
     }
 
-    @Disabled
+    /**
+     * This test enforces that both temporal extremes actually exist in the generated file,
+     * which is the whole point of the Rising archetype
+     * (velocity = recent votes relative to a historical baseline).
+     */
     @Test
-    void risingEventsShouldContainBothOldAndRecentVotes() throws IOException {
+    void testEventsRisingShouldContainBothOldAndRecentVotes() throws IOException {
         Instant now = Instant.now();
 
-        new RisingEvents().generateEventsInCsv();
-
         Path generatedCsv = outputDirectory.resolve("events-rising.csv");
+
+        Assertions.assertTrue(Files.exists(generatedCsv));
+
         List<String> lines = Files.readAllLines(generatedCsv, StandardCharsets.UTF_8);
 
         boolean foundOldEvent = false;
