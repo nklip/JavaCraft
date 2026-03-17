@@ -3,7 +3,7 @@ package my.javacraft.elastic.model;
 import my.javacraft.elastic.service.activity.VoteService;
 
 /**
- * Enum of valid user interaction types for the 'user-activity' index.
+ * Enum of valid user interaction types for the 'user-vote' index.
  * Used as the {@code action} keyword field — must stay uppercase to match ES keyword values.
  * Validated at the API layer via {@code @ValueOfEnum} on {@link VoteRequest#action}.
  *

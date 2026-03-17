@@ -7,7 +7,7 @@ import lombok.ToString;
 import my.javacraft.elastic.service.activity.VoteService;
 
 /**
- * Vote document stored in the 'user-activity' index.
+ * Vote document stored in the 'user-vote' index.
  * Document ID is {@code userId_postId} — one document per (user, post) pair.
  *
  * <p>The document represents the user's <em>current</em> vote on a post.

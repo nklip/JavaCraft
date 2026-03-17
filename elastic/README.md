@@ -1,7 +1,7 @@
 # Elasticsearch
 
-An Elasticsearch-backed search and user-activity service. Exposes multiple query strategies
-via REST, ingests user click events into user-activity index, and returns popular/trending search activity.
+An Elasticsearch-backed search and user-vote service. Exposes multiple query strategies
+via REST, ingests user click events into user-vote index, and returns popular/trending search activity.
 
 > **First time setup:** call the `AdminController` endpoints once to create all required
 > indexes and their field mappings before using `SearchController` or `UserVoteController`.
@@ -13,7 +13,7 @@ via REST, ingests user click events into user-activity index, and returns popula
 2. [Architecture](#2-architecture)
 3. [API Reference](#3-api-reference)
 4. [Data Model](#4-data-model)
-5. [User Activity Lifecycle](#5-user-activity-lifecycle)
+5. [User Activity Lifecycle](#5-user-vote-lifecycle)
 6. [Configuration](#6-configuration)
 7. [Scheduler](#7-scheduler)
 8. [Query Types](#8-query-types)
@@ -50,7 +50,7 @@ flowchart TD
     Client["HTTP Client"]
     AC["AdminController\n/api/admin"]
     SC["SearchController\n/api/services/search"]
-    UHC["UserVoteController\n/api/services/user-activity"]
+    UHC["UserVoteController\n/api/services/user-vote"]
     AS["AdminService"]
     SS["SearchService"]
     UHS["UserVoteService"]
@@ -69,12 +69,12 @@ flowchart TD
     UHC --> UHIS
     UHC --> UHPS
     UHC --> UHTS
-    AS -->|"create indexes:\nbooks, movies, music,\nuser-activity"| ES
+    AS -->|"create indexes:\nbooks, movies, music,\nuser-vote"| ES
     SS -->|"query indexes:\nbooks, movies, music"| ES
     UHS --> ES
-    UHIS -->|"upsert: user-activity"| ES
-    UHPS -->|"query: user-activity"| ES
-    UHTS -->|"query: user-activity"| ES
+    UHIS -->|"upsert: user-vote"| ES
+    UHPS -->|"query: user-vote"| ES
+    UHTS -->|"query: user-vote"| ES
     SCHED -->|delete docs older than 180 days| ES
 ```
 
@@ -91,7 +91,7 @@ schema — no request body or path variables are accepted.
 
 | Method | Path | Creates index | Used by |
 |--------|------|---------------|---------|
-| `PUT` | `/api/admin/indexes/user-activity` | `user-activity` | `UserVoteController` |
+| `PUT` | `/api/admin/indexes/user-vote` | `user-vote` | `UserVoteController` |
 | `PUT` | `/api/admin/indexes/books` | `books` | `SearchController` |
 | `PUT` | `/api/admin/indexes/movies` | `movies` | `SearchController` |
 | `PUT` | `/api/admin/indexes/music` | `music` | `SearchController` |
@@ -100,7 +100,7 @@ schema — no request body or path variables are accepted.
 
 ```json
 {
-  "index": "user-activity",
+  "index": "user-vote",
   "acknowledged": true,
   "shards_acknowledged": true
 }
@@ -111,7 +111,7 @@ Calling an endpoint when the index already exists returns `500` with an ES
 
 #### Index field mappings
 
-**`user-activity`** — field types are chosen to match the exact queries used at runtime:
+**`user-vote`** — field types are chosen to match the exact queries used at runtime:
 
 | Field | ES type | Rationale |
 |-------|---------|-----------|
@@ -165,12 +165,12 @@ Both `type` and `client` are validated with `@ValueOfEnum` — case-insensitive,
 
 ---
 
-### User Activity — `/api/services/user-activity`
+### User Activity — `/api/services/user-vote`
 
 #### Ingest a user click
 
 ```
-POST /api/services/user-activity
+POST /api/services/user-vote
 ```
 
 Request body — `VoteRequest`:
@@ -185,7 +185,7 @@ Request body — `VoteRequest`:
 ```
 
 All fields are required (`@NotEmpty` / `@NotBlank`). On each call the service upserts a document
-into the `user-activity` index — it creates the document on first occurrence and increments
+into the `user-vote` index — it creates the document on first occurrence and increments
 `count` on subsequent calls for the same `(recordId, searchType, userId)` combination.
 
 Response — `VoteRequestResponse`:
@@ -203,23 +203,23 @@ Response — `VoteRequestResponse`:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/services/user-activity/documents/{documentId}` | Get a single document by ES document ID |
-| `GET` | `/api/services/user-activity/users/{userId}?size=10` | Popular searches for a specific user (sorted by count DESC) |
-| `GET` | `/api/services/user-activity/users?size=10` | Global trending searches in the last 7 days |
+| `GET` | `/api/services/user-vote/documents/{documentId}` | Get a single document by ES document ID |
+| `GET` | `/api/services/user-vote/users/{userId}?size=10` | Popular searches for a specific user (sorted by count DESC) |
+| `GET` | `/api/services/user-vote/users?size=10` | Global trending searches in the last 7 days |
 
 #### Delete
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `DELETE` | `/api/services/user-activity/indexes/{index}` | Delete an entire index |
-| `DELETE` | `/api/services/user-activity/indexes/{index}/documents/{documentId}` | Delete a single document |
+| `DELETE` | `/api/services/user-vote/indexes/{index}` | Delete an entire index |
+| `DELETE` | `/api/services/user-vote/indexes/{index}/documents/{documentId}` | Delete a single document |
 
 ---
 
 ## 4. Data Model
 <sub>[Back to top](#elasticsearch)</sub>
 
-### `UserVote` (Elasticsearch document, index: `user-activity`)
+### `UserVote` (Elasticsearch document, index: `user-vote`)
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -252,7 +252,7 @@ sequenceDiagram
     participant UHIS as UserVoteIngestionService
     participant ES as Elasticsearch
 
-    C->>UHC: POST /user-activity (VoteRequest)
+    C->>UHC: POST /user-vote (VoteRequest)
     UHC->>UHIS: ingestVoteRequest(voteRequest, now)
     UHIS->>ES: Upsert doc id={recordId}-{searchType}-{userId}
     note over ES: Script: ctx._source.count++\nupsert: {count:1, updated:...}
@@ -315,7 +315,7 @@ ELASTIC_PASSWORD=FverGoe0
 <sub>[Back to top](#elasticsearch)</sub>
 
 `SchedulerJobs` runs a cleanup task every hour (`0 0 * * * *`) when `scheduler.enabled=true`.
-It deletes all documents from the `user-activity` index where `updated` is older than 180 days.
+It deletes all documents from the `user-vote` index where `updated` is older than 180 days.
 
 Disable for local development:
 
@@ -463,18 +463,18 @@ This is typically caused by an ad-blocking browser extension intercepting the re
 <sub>[Back to top](#elasticsearch)</sub>
 
 Use the Kibana Dev Console (or any Elasticsearch REST client) to interact with the
-`user-activity` index directly.
+`user-vote` index directly.
 
 ### Create the index
 
 ```json
-PUT user-activity
+PUT user-vote
 ```
 
 ### Add a date mapping for the `updated` field
 
 ```json
-PUT /user-activity/_mapping
+PUT /user-vote/_mapping
 {
   "properties": {
     "updated": { "type": "date" }
@@ -485,7 +485,7 @@ PUT /user-activity/_mapping
 ### Upsert a document (increment count on existing)
 
 ```json
-POST /user-activity/_update/did-1-People-nl84439
+POST /user-vote/_update/did-1-People-nl84439
 {
   "script": {
     "source": "ctx._source.count++; ctx._source.updated = params['updated'];",
@@ -505,13 +505,13 @@ POST /user-activity/_update/did-1-People-nl84439
 ### Get a document by ID
 
 ```json
-GET /user-activity/_doc/did-1-People-nl84439
+GET /user-vote/_doc/did-1-People-nl84439
 ```
 
 ### Find top 10 documents for a user, sorted by count descending
 
 ```json
-GET /user-activity/_search
+GET /user-vote/_search
 {
   "query": {
     "match": { "userId": "nl84439" }
@@ -524,13 +524,13 @@ GET /user-activity/_search
 ### Inspect field mappings
 
 ```json
-GET /user-activity/_mapping
+GET /user-vote/_mapping
 ```
 
 ### Delete a document
 
 ```json
-DELETE /user-activity/_doc/did-1-People-nl84439
+DELETE /user-vote/_doc/did-1-People-nl84439
 ```
 
 ---

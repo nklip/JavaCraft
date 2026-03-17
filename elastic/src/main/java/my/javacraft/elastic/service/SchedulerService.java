@@ -35,8 +35,8 @@ public class SchedulerService {
             DeleteByQueryResponse deleteByQueryResponse = esClient.deleteByQuery(deleteByQueryRequest);
             return deleteByQueryResponse.deleted();
         } catch (IOException ioe) {
-            log.error("Failed to remove outdated user-activity records.", ioe);
-            throw new IllegalStateException("Failed to remove outdated user-activity records.", ioe);
+            log.error("Failed to remove outdated user-vote records.", ioe);
+            throw new IllegalStateException("Failed to remove outdated user-vote records.", ioe);
         }
     }
 }

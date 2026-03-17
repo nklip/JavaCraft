@@ -44,7 +44,7 @@ public class SchedulerJobsStepDefinitions {
             voteRequest.setAction("Upvote");
             voteRequest.setUserId("nl8111");
 
-            VoteResponse voteResponse = voteService.ingestUserEvent(voteRequest,
+            VoteResponse voteResponse = voteService.processVoteRequest(voteRequest,
                     dateService.getNDaysBeforeDate(400 + i)
             );
             responses.add(voteResponse);

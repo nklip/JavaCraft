@@ -33,7 +33,7 @@ public class UserVoteControllerTest {
         when(dateService.getCurrentDate()).thenReturn("2024-01-15");
 
         VoteResponse voteResponse = Mockito.mock(VoteResponse.class);
-        when(voteService.ingestUserEvent(any(), anyString())).thenReturn(voteResponse);
+        when(voteService.processVoteRequest(any(), anyString())).thenReturn(voteResponse);
 
         VoteRequest voteRequest = new VoteRequest();
         voteRequest.setPostId("did-1");

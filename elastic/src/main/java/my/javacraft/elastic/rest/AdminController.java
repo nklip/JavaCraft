@@ -36,8 +36,8 @@ public class AdminController {
     private final AdminService adminService;
 
     @Operation(
-            summary = "Create user-activity index",
-            description = "Creates the 'user-activity' index with typed field mappings: "
+            summary = "Create user-vote index",
+            description = "Creates the 'user-vote' index with typed field mappings: "
                     + "timestamp(date), userId/postId/action(keyword). "
                     + "Required by VoteController for ingestion, retrieval, and trending queries."
     )
@@ -46,9 +46,9 @@ public class AdminController {
             @ApiResponse(responseCode = "201", description = "Index already exists; no changes were made"),
             @ApiResponse(responseCode = "500", description = "Elasticsearch error")
     })
-    @PutMapping(value = "/indexes/user-activity", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PutMapping(value = "/indexes/user-vote", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<CreateIndexResponse> createUserVoteIndex() throws IOException {
-        log.info("request to create user-activity index");
+        log.info("request to create user-vote index");
         AdminService.IndexCreationResult result = adminService.createUserVoteIndex();
         return buildResponse(result);
     }

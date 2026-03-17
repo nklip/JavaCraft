@@ -20,7 +20,7 @@ import my.javacraft.elastic.model.VoteResponse;
 import org.springframework.stereotype.Service;
 
 /*
- * Ingests user votes into the 'user-activity' index.
+ * Ingests user votes into the 'user-vote' index.
  *
  * One document per (userId, postId) pair; document ID = {@code userId_postId.
  *
@@ -54,7 +54,7 @@ public class VoteService {
 
     private final ElasticsearchClient esClient;
 
-    public VoteResponse ingestUserEvent(VoteRequest voteRequest, String timestamp) throws IOException {
+    public VoteResponse processVoteRequest(VoteRequest voteRequest, String timestamp) throws IOException {
         // Deterministic ID: one document per (userId, postId) → correct aggregations
         String documentId = voteRequest.getUserId() + "_" + voteRequest.getPostId();
 

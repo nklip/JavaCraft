@@ -54,7 +54,7 @@ class SchedulerServiceTest {
                 schedulerService::removeOldActivityRecords
         );
 
-        Assertions.assertEquals("Failed to remove outdated user-activity records.", exception.getMessage());
+        Assertions.assertEquals("Failed to remove outdated user-vote records.", exception.getMessage());
         Assertions.assertNotNull(exception.getCause());
         Assertions.assertEquals("cluster unavailable", exception.getCause().getMessage());
     }

@@ -1,10 +1,10 @@
 Feature: test Scheduler jobs
 
   Scenario: prepare data
-    Given index 'user-activity' is recreated
+    Given index 'user-vote' is recreated
 
   Scenario: nothing to remove
-    Given index 'user-activity' is recreated
+    Given index 'user-vote' is recreated
     Then execute cleanup job with expected result of 0
 
   Scenario: remove 10 old documents

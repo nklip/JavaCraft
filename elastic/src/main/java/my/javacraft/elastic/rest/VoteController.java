@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 @RestController
 @Validated
 @Tag(name = "2. User activity", description = "API(s) for hit count services")
-@RequestMapping(path = "/api/services/user-activity")
+@RequestMapping(path = "/api/services/user-vote")
 @RequiredArgsConstructor
 public class VoteController {
 
@@ -32,8 +32,20 @@ public class VoteController {
     private final VoteService voteService;
 
     @Operation(
-            summary = "Capture user click",
-            description = "Upsert - create a new hit count document or update(increment) the hit count."
+            summary = "Process VoteRequest",
+            description = """
+            ┌──────────┬──────────┬──────────┐
+            │ Status   │ Action   │ Result   │
+            ├──────────┼──────────┼──────────┤
+            │ NOTHING  │ UPVOTE   │ UPVOTE   │
+            │ UPVOTE   │ UPVOTE   │ UPVOTE   │
+            │ DOWNVOTE │ UPVOTE   │ UPVOTE   │
+            │ UPVOTE   │ DOWNVOTE │ DOWNVOTE │
+            │ NOTHING  │ DOWNVOTE │ DOWNVOTE │
+            │ DOWNVOTE │ DOWNVOTE │ DOWNVOTE │
+            │ DOWNVOTE │ UPVOTE   │ UPVOTE   │
+            └──────────┴──────────┴──────────┘
+            """
     )
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Successful"),
@@ -54,10 +66,9 @@ public class VoteController {
             )
             @RequestBody @Valid VoteRequest voteRequest) throws IOException {
 
-        log.info("ingesting (VoteRequest = {})...", voteRequest);
+        log.info("processing (VoteRequest = {})...", voteRequest);
 
-        VoteResponse voteResponse = voteService.ingestUserEvent(voteRequest, dateService.getCurrentDate()
-        );
+        VoteResponse voteResponse = voteService.processVoteRequest(voteRequest, dateService.getCurrentDate());
 
         return ResponseEntity.ok().body(voteResponse);
     }

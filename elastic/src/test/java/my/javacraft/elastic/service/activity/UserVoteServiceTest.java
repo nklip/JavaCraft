@@ -71,7 +71,7 @@ public class UserVoteServiceTest {
         stubUpdate(expectedId, Result.Created);
 
         // Act
-        VoteResponse response = service().ingestUserEvent(voteRequest, "2024-01-15T10:00:00Z");
+        VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:00:00Z");
 
         // Assert
         Assertions.assertEquals(expectedId, response.getDocumentId());
@@ -86,7 +86,7 @@ public class UserVoteServiceTest {
         stubUpdate(expectedId, Result.NoOp);
 
         // Act: user tries to upvote the same post a second time
-        VoteResponse response = service().ingestUserEvent(voteRequest, "2024-01-15T10:05:00Z");
+        VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:05:00Z");
 
         // Assert: no document was written
         Assertions.assertEquals(expectedId, response.getDocumentId());
@@ -102,7 +102,7 @@ public class UserVoteServiceTest {
         stubUpdate(expectedId, Result.Updated);
 
         // Act
-        VoteResponse response = service().ingestUserEvent(voteRequest, "2024-01-15T10:10:00Z");
+        VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:10:00Z");
 
         // Assert: the document was updated in-place (still one doc per user+post)
         Assertions.assertEquals(expectedId, response.getDocumentId());
@@ -118,7 +118,7 @@ public class UserVoteServiceTest {
         stubDelete(expectedId, Result.Deleted);
 
         // Act
-        VoteResponse response = service().ingestUserEvent(voteRequest, "2024-01-15T10:20:00Z");
+        VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:20:00Z");
 
         // Assert: document removed, no vote stored
         Assertions.assertEquals(expectedId, response.getDocumentId());
@@ -134,7 +134,7 @@ public class UserVoteServiceTest {
         stubDelete(expectedId, Result.NotFound);
 
         // Act
-        VoteResponse response = service().ingestUserEvent(voteRequest, "2024-01-15T10:20:00Z");
+        VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:20:00Z");
 
         // Assert: graceful no-op, no exception thrown
         Assertions.assertEquals(expectedId, response.getDocumentId());

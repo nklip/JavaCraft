@@ -71,7 +71,7 @@ Feature: test PostRankingController
   # ════════════════════════════════════════════════════════════════════════════
 
   Scenario: prepare data
-    Given index 'user-activity' exists
+    Given index 'user-vote' exists
     Given data folder 'data/csv' created in tmp directory
     Given data folder 'data/csv' ingested
 

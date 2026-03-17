@@ -201,7 +201,7 @@ public class PostRankingControllerStepDefinitions {
     }
 
     /**
-     * Precondition: polls ES until the 'user-activity' index contains at least
+     * Precondition: polls ES until the 'user-vote' index contains at least
      * {@value #MIN_CSV_DOCUMENTS} documents, confirming that the CSV data ingested
      * by {@link #ingestDataFolderInParallel} is fully visible to search queries.
      * Fails with a clear diagnostic message if the count is not reached within the wait window.
@@ -218,7 +218,7 @@ public class PostRankingControllerStepDefinitions {
                 Constants.INDEX_USER_VOTE, MIN_CSV_DOCUMENTS, folderPath);
     }
 
-    /** Returns the current document count in the user-activity index, or 0 on any error. */
+    /** Returns the current document count in the user-vote index, or 0 on any error. */
     private long countIndexDocuments() {
         try {
             return esClient.count(r -> r.index(Constants.INDEX_USER_VOTE)).count();
@@ -372,7 +372,7 @@ public class PostRankingControllerStepDefinitions {
                 click.setAction(values[2].trim());
 
                 String timestamp = values[3].trim();
-                voteService.ingestUserEvent(click, timestamp);
+                voteService.processVoteRequest(click, timestamp);
                 ingestedRows++;
             }
         }

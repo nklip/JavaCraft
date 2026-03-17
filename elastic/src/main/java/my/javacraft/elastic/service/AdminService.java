@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
  * <p>
  * Two groups of indexes are managed:
  * <ul>
- *   <li><b>user-activity</b> – used by VoteController for ingestion and retrieval</li>
+ *   <li><b>user-vote</b> – used by VoteController for ingestion and retrieval</li>
  *   <li><b>books / movies / music</b> – used by SearchController for full-text search</li>
  * </ul>
  * Index names for the search group match the lowercased {@code ContentCategory} enum values
@@ -41,7 +41,7 @@ public class AdminService {
     }
 
     /**
-     * Creates the {@code user-activity} index with typed field mappings.
+     * Creates the {@code user-vote} index with typed field mappings.
      * <p>
      * Field types are chosen to match the immutable event document
      * used by {@code UserVote} and the queries in activity services:
