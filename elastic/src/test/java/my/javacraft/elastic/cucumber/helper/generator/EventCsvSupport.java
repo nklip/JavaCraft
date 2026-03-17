@@ -16,7 +16,7 @@ public final class EventCsvSupport {
 
     private static final String CSV_HEADER = "userId,postId,action,date";
     private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ISO_INSTANT;
-    private static final String OUTPUT_DIRECTORY_PROPERTY = "elastic.events.csv.output";
+    public static final String OUTPUT_DIRECTORY_PROPERTY = "elastic.events.csv.output";
 
     private EventCsvSupport() {
     }

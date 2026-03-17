@@ -13,7 +13,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -24,6 +26,13 @@ import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.cucumber.conf.CucumberSpringConfiguration;
+import my.javacraft.elastic.cucumber.helper.generator.EventCsvSupport;
+import my.javacraft.elastic.cucumber.helper.generator.EventGenerator;
+import my.javacraft.elastic.cucumber.helper.generator.impl.BestEvents;
+import my.javacraft.elastic.cucumber.helper.generator.impl.HotEvents;
+import my.javacraft.elastic.cucumber.helper.generator.impl.NewEvents;
+import my.javacraft.elastic.cucumber.helper.generator.impl.RisingEvents;
+import my.javacraft.elastic.cucumber.helper.generator.impl.TopEvents;
 import my.javacraft.elastic.model.UserClick;
 import my.javacraft.elastic.model.UserActivity;
 import my.javacraft.elastic.service.activity.UserActivityIngestionService;
@@ -48,8 +57,29 @@ import static io.cucumber.spring.CucumberTestContext.SCOPE_CUCUMBER_GLUE;
 @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 public class UserActivityControllerStepDefinitions {
 
-    /** Minimum number of documents expected in the index after full CSV ingestion (5 files × 3 000 rows). */
+    /** Minimum number of documents expected in the index after full CSV ingestion (5 files × 1 000 rows). */
     private static final long MIN_CSV_DOCUMENTS = 5_000L;
+
+    /** Number of CSV files expected in the generated data folder (one per EventGenerator). */
+    private static final int EXPECTED_CSV_FILES = 5;
+
+    /**
+     * Maximum age of cached CSV files before they must be regenerated.
+     * <p>
+     * Driven by the tightest time window in the test suite: {@code Top posts for DAY} filters
+     * {@code timestamp >= now − 24 h}. HotEvents timestamps are spread within the last 60 minutes
+     * of generation, so they fall outside the DAY window once the files are ~24 h old.
+     * Using 22 h leaves a 2-hour safety buffer (60 min for HotEvents spread + ~60 min for test
+     * execution time or clock drift).
+     */
+    private static final long MAX_CSV_AGE_HOURS = 22;
+
+    /**
+     * Filesystem path where {@link #createDataFolderInTmpDirectory} wrote the generated CSV files.
+     * {@code null} when CSVs are expected to be read from the test-resources classpath instead.
+     * Static so that the value set in "prepare data" survives across Cucumber scenario instances.
+     */
+    private static volatile Path tmpCsvDir;
 
     @LocalServerPort
     int port;
@@ -59,19 +89,103 @@ public class UserActivityControllerStepDefinitions {
     @Autowired
     UserActivityIngestionService userActivityIngestionService;
 
+    /**
+     * Generates all 5 CSV fixture files into a fixed temporary directory and stores the path in
+     * {@link #tmpCsvDir} for the subsequent ingestion step to consume.
+     * <p>
+     * The directory is always {@code $TMPDIR/javacraft-events/<relPath>} (a deterministic path),
+     * so repeated runs within the same OS session reuse the same location and leave no orphaned dirs.
+     * Files survive until the next OS reboot (macOS clears {@code /tmp} on restart).
+     * <p>
+     * Idempotent with age check: if the directory already contains all {@value #EXPECTED_CSV_FILES}
+     * CSV files AND they are younger than {@value #MAX_CSV_AGE_HOURS} hours, generation is skipped.
+     * Files older than that are regenerated because time-windowed scenarios (e.g. {@code Top posts
+     * for DAY}) depend on HotEvents timestamps being inside the last-24-hours window.
+     * <p>
+     * The generators are pointed at the temp dir via the
+     * {@value EventCsvSupport#OUTPUT_DIRECTORY_PROPERTY} system property, which is cleared
+     * immediately after generation so it does not bleed into other tests.
+     */
+    @Given("data folder {string} created in tmp directory")
+    public void createDataFolderInTmpDirectory(String relPath) throws IOException {
+        // e.g. /var/folders/.../T/javacraft-events/data/csv  (macOS)
+        //   or /tmp/javacraft-events/data/csv                (Linux)
+        tmpCsvDir = Path.of(System.getProperty("java.io.tmpdir"), "javacraft-events", relPath);
+        Files.createDirectories(tmpCsvDir);
+
+        if (csvFilesAlreadyExistsInValidState()) {
+            log.info("CSV files still fresh in '{}', skipping generation", tmpCsvDir);
+            return;
+        }
+        log.info("CSV files missing or stale in '{}', regenerating", tmpCsvDir);
+
+        System.setProperty(EventCsvSupport.OUTPUT_DIRECTORY_PROPERTY, tmpCsvDir.toString());
+        try {
+            List<EventGenerator> generators = List.of(
+                    new BestEvents(), new HotEvents(), new NewEvents(), new RisingEvents(), new TopEvents()
+            );
+            for (EventGenerator generator : generators) {
+                generator.generateEventsInCsv();
+            }
+            log.info("Generated {} CSV files in '{}'", generators.size(), tmpCsvDir);
+        } finally {
+            System.clearProperty(EventCsvSupport.OUTPUT_DIRECTORY_PROPERTY);
+        }
+    }
+
+    /**
+     * Returns {@code true} when {@link #tmpCsvDir} exists, holds all {@value #EXPECTED_CSV_FILES}
+     * CSV files, and the newest file is younger than {@value #MAX_CSV_AGE_HOURS} hours.
+     * <p>
+     * The age check is necessary because time-windowed scenarios (e.g. {@code Top posts for DAY})
+     * depend on HotEvents timestamps being inside the {@code now − 24 h} window. Files older than
+     * {@value #MAX_CSV_AGE_HOURS} hours would cause those scenarios to return 0 results for
+     * HotEvents and fail the assertion.
+     */
+    private static boolean csvFilesAlreadyExistsInValidState() throws IOException {
+        if (tmpCsvDir == null || !Files.isDirectory(tmpCsvDir)) {
+            return false;
+        }
+        List<Path> csvFiles;
+        try (var stream = Files.list(tmpCsvDir)) {
+            csvFiles = stream
+                    .filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().endsWith(".csv"))
+                    .toList();
+        }
+        if (csvFiles.size() < EXPECTED_CSV_FILES) {
+            return false;
+        }
+        Instant cutoff = Instant.now().minus(MAX_CSV_AGE_HOURS, ChronoUnit.HOURS);
+        return csvFiles.stream()
+                .map(p -> {
+                    try {
+                        return Files.getLastModifiedTime(p).toInstant();
+                    } catch (IOException e) {
+                        return Instant.EPOCH;
+                    }
+                })
+                .min(Comparator.naturalOrder())
+                .map(oldest -> oldest.isAfter(cutoff))
+                .orElse(false);
+    }
+
+    /**
+     * Ingests all CSV files from either the temp directory (when
+     * {@link #createDataFolderInTmpDirectory} ran first) or the test-resources classpath.
+     * Files are ingested in parallel — one thread per file, bounded by available CPUs.
+     */
     @Given("data folder {string} ingested")
     public void ingestDataFolderInParallel(String folderPath) throws IOException {
-
-        List<String> csvResourcePaths = listCsvResourcePaths(folderPath);
-        Assertions.assertFalse(csvResourcePaths.isEmpty(), "No CSV files found in folder: " + folderPath);
+        List<Path> csvFiles = listCsvFiles(folderPath);
+        Assertions.assertFalse(csvFiles.isEmpty(), "No CSV files found in folder: " + folderPath);
 
         int totalRows = 0;
-        int threads = Math.min(csvResourcePaths.size(), Math.max(1, Runtime.getRuntime().availableProcessors()));
+        int threads = Math.min(csvFiles.size(), Math.max(1, Runtime.getRuntime().availableProcessors()));
         try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
-            List<Future<Integer>> futures = new ArrayList<>();
-            for (String csvResourcePath : csvResourcePaths) {
-                futures.add(pool.submit(() -> ingestCsvResource(csvResourcePath)));
-            }
+            List<Future<Integer>> futures = csvFiles.stream()
+                    .map(path -> pool.submit(() -> ingestCsvFile(path)))
+                    .toList();
 
             for (Future<Integer> future : futures) {
                 try {
@@ -86,10 +200,7 @@ public class UserActivityControllerStepDefinitions {
         }
 
         Assertions.assertTrue(totalRows > 0, "CSV folder has no ingestible rows: " + folderPath);
-        log.info("Ingested {} rows from {} files in '{}' — waiting for ES confirmation...",
-                totalRows, csvResourcePaths.size(), folderPath);
-
-        log.info("ES confirmed: '{}' fully ingested and searchable ({} rows)", folderPath, totalRows);
+        log.info("Ingested {} rows from {} files in '{}'", totalRows, csvFiles.size(), folderPath);
     }
 
     /**
@@ -195,6 +306,34 @@ public class UserActivityControllerStepDefinitions {
         log.info("Top/{} posts verified — {} posts match expected set {}", window, actualSet.size(), expectedSet);
     }
 
+    /**
+     * Returns the CSV files to ingest. When {@link #tmpCsvDir} is set (i.e.
+     * {@link #createDataFolderInTmpDirectory} ran), files are listed from the filesystem.
+     * Otherwise, falls back to listing from the test-resources classpath.
+     */
+    private List<Path> listCsvFiles(String folderPath) throws IOException {
+        if (tmpCsvDir != null) {
+            try (var stream = Files.list(tmpCsvDir)) {
+                return stream
+                        .filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().endsWith(".csv"))
+                        .sorted()
+                        .toList();
+            }
+        }
+        return listCsvResourcePaths(folderPath).stream()
+                .map(resourcePath -> {
+                    var url = Thread.currentThread().getContextClassLoader().getResource(resourcePath);
+                    Assertions.assertNotNull(url, "CSV resource not found: " + resourcePath);
+                    try {
+                        return Paths.get(url.toURI());
+                    } catch (URISyntaxException e) {
+                        throw new IllegalStateException("Invalid URI for classpath resource: " + resourcePath, e);
+                    }
+                })
+                .toList();
+    }
+
     private List<String> listCsvResourcePaths(String folderPath) throws IOException {
         try {
             var folderUrl = Thread.currentThread().getContextClassLoader().getResource(folderPath);
@@ -216,21 +355,21 @@ public class UserActivityControllerStepDefinitions {
         }
     }
 
-    private int ingestCsvResource(String resourcePath) throws IOException {
+    private int ingestCsvFile(Path csvFile) throws IOException {
+        try (InputStream inputStream = Files.newInputStream(csvFile)) {
+            return ingestCsvInputStream(inputStream, csvFile.toString());
+        }
+    }
+
+    private int ingestCsvInputStream(InputStream inputStream, String sourceName) throws IOException {
         int ingestedRows = 0;
-
-        InputStream inputStream = Thread.currentThread()
-                .getContextClassLoader()
-                .getResourceAsStream(resourcePath);
-        Assertions.assertNotNull(inputStream, "CSV resource not found: " + resourcePath);
-
-        try (inputStream; BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
             String header = reader.readLine();
-            Assertions.assertNotNull(header, "CSV file is empty: " + resourcePath);
+            Assertions.assertNotNull(header, "CSV file is empty: " + sourceName);
             Assertions.assertEquals(
                     "userId,postId,action,date",
                     header.trim(),
-                    "Unexpected CSV header in " + resourcePath
+                    "Unexpected CSV header in " + sourceName
             );
 
             String line;
@@ -244,7 +383,7 @@ public class UserActivityControllerStepDefinitions {
                 Assertions.assertEquals(
                         4,
                         values.length,
-                        "Invalid CSV row at line %d in %s".formatted(lineNumber, resourcePath)
+                        "Invalid CSV row at line %d in %s".formatted(lineNumber, sourceName)
                 );
 
                 UserClick click = new UserClick();
@@ -258,8 +397,8 @@ public class UserActivityControllerStepDefinitions {
             }
         }
 
-        Assertions.assertTrue(ingestedRows > 0, "CSV has no ingestible rows: " + resourcePath);
-        log.info("Ingested {} events from '{}'", ingestedRows, resourcePath);
+        Assertions.assertTrue(ingestedRows > 0, "CSV has no ingestible rows: " + sourceName);
+        log.info("Ingested {} events from '{}'", ingestedRows, sourceName);
         return ingestedRows;
     }
 
