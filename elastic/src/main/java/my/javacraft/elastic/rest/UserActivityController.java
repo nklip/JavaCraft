@@ -125,7 +125,7 @@ public class UserActivityController {
     })
     @GetMapping(value = "/top/{window}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<UserActivity>> retrieveTopPostsByWindow(
-            @PathVariable String window,
+            @PathVariable("window") String window,
             @RequestParam(required = false, name = "size", defaultValue = "10")
             @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
 
