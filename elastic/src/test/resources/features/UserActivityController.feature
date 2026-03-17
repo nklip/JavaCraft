@@ -40,12 +40,18 @@ Feature: test UserActivityController
   #   posts  1-10: first_seen ≈ 180 d,   net=180  →  hot_score ≈ 13 844  ← rank 4
   #   posts 41-50: first_seen ≈ 365 d,   net=270  →  hot_score ≈ 13 489  ← rank 5
   #
-  # Top  (top_score = upvotes − downvotes, all-time, no time window)
-  #   posts 41-50: 95% upvote  →  net = 270/post  ← rank 1
-  #   posts 11-20: 90% upvote  →  net = 240/post  ← rank 2
-  #   posts 21-30: 85% upvote  →  net = 210/post  ← rank 3
-  #   posts 31-40: mixed       →  net ≈ 175/post  ← rank 4
-  #   posts  1-10: 80% upvote  →  net = 180/post  ← rank 5
+  # Top  (top_score = upvotes − downvotes, filtered by window)
+  #
+  #   Window │ Winner       │ Why
+  #   ───────┼──────────────┼──────────────────────────────────────────────────────
+  #   ALL    │ posts 41-50  │ 95% upvote across full history  → net = 270/post
+  #   YEAR   │ posts 41-50  │ events spread 0-364 d, all inside 365-d window → 270
+  #   MONTH  │ posts 11-20  │ TopEvents has ~22 net in 30 d; HotEvents has 240
+  #   WEEK   │ posts 11-20  │ TopEvents has  ~5 net in  7 d; HotEvents has 240
+  #   DAY    │ posts 11-20  │ TopEvents has  ~0 net in  1 d; HotEvents has 240
+  #
+  #   Key insight: sustained quality (TopEvents) wins long windows;
+  #                recent burst (HotEvents) wins short windows.
   # ════════════════════════════════════════════════════════════════════════════
 
   Scenario: prepare data
@@ -72,7 +78,7 @@ Feature: test UserActivityController
   # Top ranking: top_score = upvotes − downvotes, all-time, no time window.
   # Posts 41-50 use 95% upvote rate → net = 270/post, beating all other generators.
   # HotEvents (90% → 240) and NewEvents (85% → 210) rank below TopEvents.
-  Scenario: Top posts
+  Scenario: Top posts for ALL
     Given data folder 'data/csv' was ingested
     Then top posts endpoint returns 10 ranked results
       | post-41 |
@@ -85,3 +91,68 @@ Feature: test UserActivityController
       | post-48 |
       | post-49 |
       | post-50 |
+
+  # Top/YEAR: 365-day window. TopEvents events span 0-364 days — all inside the window.
+  # Net score identical to ALL-time (270/post). Posts 41-50 still beat HotEvents (240).
+  Scenario: Top posts for YEAR
+    Given data folder 'data/csv' was ingested
+    Then top posts for YEAR returns 10 ranked results
+      | post-41 |
+      | post-42 |
+      | post-43 |
+      | post-44 |
+      | post-45 |
+      | post-46 |
+      | post-47 |
+      | post-48 |
+      | post-49 |
+      | post-50 |
+
+  # Top/MONTH: 30-day window. TopEvents has ~22 net in-window (≈7% of events).
+  # HotEvents has all 240 net in-window (events are within 60 min). Posts 11-20 win.
+  Scenario: Top posts for MONTH
+    Given data folder 'data/csv' was ingested
+    Then top posts for MONTH returns 10 ranked results
+      | post-11 |
+      | post-12 |
+      | post-13 |
+      | post-14 |
+      | post-15 |
+      | post-16 |
+      | post-17 |
+      | post-18 |
+      | post-19 |
+      | post-20 |
+
+  # Top/WEEK: 7-day window. TopEvents has ~5 net in-window (≈2% of events).
+  # HotEvents still has full 240 net (events within 60 min). Posts 11-20 win.
+  Scenario: Top posts for WEEK
+    Given data folder 'data/csv' was ingested
+    Then top posts for WEEK returns 10 ranked results
+      | post-11 |
+      | post-12 |
+      | post-13 |
+      | post-14 |
+      | post-15 |
+      | post-16 |
+      | post-17 |
+      | post-18 |
+      | post-19 |
+      | post-20 |
+
+  # Top/DAY: 24-hour window. TopEvents has ~0 net in-window (<1 event/post expected).
+  # HotEvents has all 240 net (events within 60 min). NewEvents has 210 net (within 24 h).
+  # Posts 11-20 win by largest margin — demonstrates why short-window Top ≠ all-time Top.
+  Scenario: Top posts for DAY
+    Given data folder 'data/csv' was ingested
+    Then top posts for DAY returns 10 ranked results
+      | post-11 |
+      | post-12 |
+      | post-13 |
+      | post-14 |
+      | post-15 |
+      | post-16 |
+      | post-17 |
+      | post-18 |
+      | post-19 |
+      | post-20 |
