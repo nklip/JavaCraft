@@ -48,7 +48,9 @@ public class BestEvents implements EventGenerator {
      *
      * Date pattern: all events are 31–364 days old.
      *   - 31-day floor keeps every event outside the 30-day Top MONTH window.
-     *   - 364-day ceiling keeps every event inside the 365-day Top YEAR window.
+     *   - Ceiling capped at 362 days so that even with 22 h file staleness + 23 h hoursAgo
+     *     + 59 min minutesAgo the oldest event is at most 362d + 45h 59min = 363d 21h 59min,
+     *     safely inside the 365-day Top YEAR window.
      *   - max karma (80) > max RisingEvents karma (60) → posts 01-10 win Top YEAR.
      *   - first_seen ≈ 364 days old → large time penalty in Hot, so Hot is NOT won.
      */
@@ -61,7 +63,7 @@ public class BestEvents implements EventGenerator {
             int upvotePercent = 81 + (postId - 1);    // 81% → 90%, unique per post
             for (int userId = 1; userId <= EventCsvSupport.USERS_PER_POST; userId++) {
                 boolean upvote = EventCsvSupport.isUpvote(userId, postId, upvotePercent);
-                long daysAgo    = 31 + Math.floorMod(postId * 19 + userId * 7, 334); // 31-364 days
+                long daysAgo    = 31 + Math.floorMod(postId * 19 + userId * 7, 332); // 31-362 days
                 long hoursAgo   = Math.floorMod(postId * 11 + userId * 3, 24);
                 long minutesAgo = Math.floorMod(postId * 5 + userId * 13, 60);
                 Instant eventTime = now.minus(daysAgo, ChronoUnit.DAYS)

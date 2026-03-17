@@ -40,7 +40,9 @@ public class RisingEvents implements EventGenerator {
      *
      * Date pattern: all events are 8–29 days old.
      *   - 8-day floor keeps every event outside the 7-day Top WEEK window.
-     *   - 29-day ceiling keeps every event inside the 30-day Top MONTH window.
+     *   - Ceiling capped at 28 days so that even with 22 h file staleness + 23 h hoursAgo
+     *     + 59 min minutesAgo the oldest event is at most 28d + 45h 59min = 29d 21h 59min,
+     *     safely inside the 30-day Top MONTH window.
      *   - max karma (60) > max NewEvents karma (40) → posts 31-40 win Top MONTH.
      */
     @Override
@@ -51,7 +53,7 @@ public class RisingEvents implements EventGenerator {
         for (int postId = 31; postId <= 40; postId++) {
             int upvotePercent = 71 + (postId - 31);    // 71% → 80%, unique per post
             for (int userId = 1; userId <= EventCsvSupport.USERS_PER_POST; userId++) {
-                long daysAgo  = 8 + Math.floorMod(postId * 11 + userId * 7, 22); // 8-29 days
+                long daysAgo  = 8 + Math.floorMod(postId * 11 + userId * 7, 21); // 8-28 days
                 long hoursAgo = Math.floorMod(postId * 13 + userId * 5, 24);
 
                 boolean upvote = EventCsvSupport.isUpvote(userId, postId, upvotePercent);

@@ -1,4 +1,4 @@
-Feature: test UserActivityController
+Feature: test PostRankingController
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # FIXTURE DATA  (src/test/resources/data/csv/)

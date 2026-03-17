@@ -17,12 +17,10 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.cucumber.conf.CucumberSpringConfiguration;
 import my.javacraft.elastic.cucumber.helper.generator.EventCsvSupport;
@@ -54,7 +52,7 @@ import static io.cucumber.spring.CucumberTestContext.SCOPE_CUCUMBER_GLUE;
 @Slf4j
 @Scope(SCOPE_CUCUMBER_GLUE)
 @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
-public class UserActivityControllerStepDefinitions {
+public class PostRankingControllerStepDefinitions {
 
     /** Minimum number of documents expected in the index after full CSV ingestion (5 files × 1 000 rows). */
     private static final long MIN_CSV_DOCUMENTS = 5_000L;
@@ -265,17 +263,8 @@ public class UserActivityControllerStepDefinitions {
         verifyRankedPosts(path, expectedSize, expectedPosts, "top/" + window);
     }
 
-    /**
+    /*
      * Shared assertion logic for all three ranking endpoints.
-     * <p>
-     * Parses the two-column DataTable ({@code postId | karma}) into a map,
-     * polls until the endpoint returns the expected number of results, then
-     * asserts both the postId set and each post's karma value.
-     *
-     * @param path          endpoint path including query params (e.g. {@code /hot?size=10})
-     * @param expectedSize  expected number of results
-     * @param expectedPosts DataTable with columns {@code postId} and {@code karma}
-     * @param label         human-readable name used in failure messages
      */
     private void verifyRankedPosts(String path, int expectedSize, DataTable expectedPosts, String label)
             throws InterruptedException {
@@ -407,7 +396,7 @@ public class UserActivityControllerStepDefinitions {
         MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
         headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
         HttpEntity<String> entity = new HttpEntity<>(null, headers);
-        String url = "http://localhost:%s/api/services/user-activity%s".formatted(port, path);
+        String url = "http://localhost:%s/api/services/posts/ranking%s".formatted(port, path);
 
         HttpEntity<List<PostPreview>> response = new RestTemplate().exchange(
                 url, HttpMethod.GET, entity, new ParameterizedTypeReference<>() {}

@@ -34,9 +34,10 @@ public class NewEvents implements EventGenerator {
      * karma = 2 × upvotePercent − 100  (exact because isUpvote() produces a full
      * permutation of 0-99 over 100 users when gcd(31, 100) = 1).
      *
-     * Date pattern: all events are 2–6 days old.
+     * Date pattern: all events are 2–5 days old.
      *   - 2-day floor guarantees no event falls inside the 24-h Top DAY window.
-     *   - All events are within the 7-day Top WEEK window.
+     *   - Ceiling capped at 5 days so that even with 22 h file staleness + 23 h hoursAgo
+     *     the oldest event is at most 5d + 22h + 23h = 6d 21h, safely inside the 7-day WEEK window.
      *   - max karma (40) > max HotEvents karma (20) → posts 21-30 win Top WEEK.
      */
     @Override
@@ -48,7 +49,7 @@ public class NewEvents implements EventGenerator {
             int upvotePercent = 61 + (postId - 21);    // 61% → 70%, unique per post
             for (int userId = 1; userId <= EventCsvSupport.USERS_PER_POST; userId++) {
                 boolean upvote = EventCsvSupport.isUpvote(userId, postId, upvotePercent);
-                long daysAgo  = 2 + Math.floorMod(postId * 43 + userId * 11, 5); // 2-6 days
+                long daysAgo  = 2 + Math.floorMod(postId * 43 + userId * 11, 4); // 2-5 days
                 long hoursAgo = Math.floorMod(postId * 7 + userId * 13, 24);
                 Instant eventTime = now.minus(daysAgo, ChronoUnit.DAYS)
                         .minus(hoursAgo, ChronoUnit.HOURS);
