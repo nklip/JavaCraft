@@ -16,9 +16,8 @@ import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -233,77 +232,77 @@ public class UserActivityControllerStepDefinitions {
 
     /**
      * Verifies the Hot endpoint returns {@code expectedSize} results whose
-     * postIds exactly match the expected set (order-independent).
+     * postIds and karma values exactly match the expected table (order-independent).
      * Hot score = Σ (upvotes − downvotes) × e^(−λ×ageHours); ties within
-     * one archetype are non-deterministic in ES, so only set equality is checked.
+     * one archetype are non-deterministic in ES, so only map equality is checked.
      */
     @Then("hot posts endpoint returns {int} ranked results")
     public void verifyHotPostsReturnedWithExpectedPosts(int expectedSize, DataTable expectedPosts) throws InterruptedException {
         String path = "/hot?size=" + expectedSize;
-        Set<String> expectedSet = new HashSet<>(expectedPosts.asList());
-
-        Assertions.assertTrue(
-                CucumberSpringConfiguration.assertWithWait(expectedSize, () -> fetchRankedPostsCount(path)),
-                "Timed out waiting for %d hot posts at %s".formatted(expectedSize, path)
-        );
-
-        Set<String> actualSet = fetchRankedPosts(path).stream()
-                .map(PostPreview::getPostId)
-                .collect(Collectors.toSet());
-
-        Assertions.assertEquals(expectedSet, actualSet,
-                "Hot posts postId set mismatch. Expected: %s  Actual: %s".formatted(expectedSet, actualSet));
-        log.info("Hot posts verified — {} posts match expected set {}", actualSet.size(), expectedSet);
+        verifyRankedPosts(path, expectedSize, expectedPosts, "hot");
     }
 
     /**
      * Verifies the Top endpoint returns {@code expectedSize} results whose
-     * postIds exactly match the expected set (order-independent).
+     * postIds and karma values exactly match the expected table (order-independent).
      * Top ranking is pure upvote count; ties within one archetype are
      * non-deterministic in the ES terms aggregation.
      */
     @Then("top posts endpoint returns {int} ranked results")
     public void verifyTopPostsReturnedWithExpectedPosts(int expectedSize, DataTable expectedPosts) throws InterruptedException {
         String path = "/top?size=" + expectedSize;
-        Set<String> expectedSet = new HashSet<>(expectedPosts.asList());
-
-        Assertions.assertTrue(
-                CucumberSpringConfiguration.assertWithWait(expectedSize, () -> fetchRankedPostsCount(path)),
-                "Timed out waiting for %d top posts at %s".formatted(expectedSize, path)
-        );
-
-        Set<String> actualSet = fetchRankedPosts(path)
-                .stream()
-                .map(PostPreview::getPostId)
-                .collect(Collectors.toSet());
-
-        Assertions.assertEquals(expectedSet, actualSet,
-                "Top posts postId set mismatch. Expected: %s  Actual: %s".formatted(expectedSet, actualSet));
-        log.info("Top posts verified — {} posts match expected set {}", actualSet.size(), expectedSet);
+        verifyRankedPosts(path, expectedSize, expectedPosts, "top");
     }
 
     /**
      * Verifies the windowed Top endpoint ({@code /top/{window}}) returns {@code expectedSize}
-     * results whose postIds exactly match the expected set (order-independent).
+     * results whose postIds and karma values exactly match the expected table (order-independent).
      * Window must be one of: DAY, WEEK, MONTH, YEAR (case-insensitive).
      */
     @Then("top posts for {word} returns {int} ranked results")
     public void verifyTopPostsByWindowReturned(String window, int expectedSize, DataTable expectedPosts) throws InterruptedException {
         String path = "/top/" + window.toLowerCase() + "?size=" + expectedSize;
-        Set<String> expectedSet = new HashSet<>(expectedPosts.asList());
+        verifyRankedPosts(path, expectedSize, expectedPosts, "top/" + window);
+    }
+
+    /**
+     * Shared assertion logic for all three ranking endpoints.
+     * <p>
+     * Parses the two-column DataTable ({@code postId | karma}) into a map,
+     * polls until the endpoint returns the expected number of results, then
+     * asserts both the postId set and each post's karma value.
+     *
+     * @param path          endpoint path including query params (e.g. {@code /hot?size=10})
+     * @param expectedSize  expected number of results
+     * @param expectedPosts DataTable with columns {@code postId} and {@code karma}
+     * @param label         human-readable name used in failure messages
+     */
+    private void verifyRankedPosts(String path, int expectedSize, DataTable expectedPosts, String label)
+            throws InterruptedException {
+
+        Map<String, Long> expectedPostKarma = expectedPosts.asMaps().stream()
+                .collect(Collectors.toMap(
+                        row -> row.get("postId"),
+                        row -> Long.parseLong(row.get("karma"))
+                ));
 
         Assertions.assertTrue(
                 CucumberSpringConfiguration.assertWithWait(expectedSize, () -> fetchRankedPostsCount(path)),
-                "Timed out waiting for %d top/%s posts at %s".formatted(expectedSize, window, path)
+                "Timed out waiting for %d %s posts at %s".formatted(expectedSize, label, path)
         );
 
-        Set<String> actualSet = fetchRankedPosts(path).stream()
-                .map(PostPreview::getPostId)
-                .collect(Collectors.toSet());
+        Map<String, Long> actualPostKarma = fetchRankedPosts(path).stream()
+                .collect(Collectors.toMap(PostPreview::getPostId, PostPreview::getKarma));
 
-        Assertions.assertEquals(expectedSet, actualSet,
-                "Top/%s posts postId set mismatch. Expected: %s  Actual: %s".formatted(window, expectedSet, actualSet));
-        log.info("Top/{} posts verified — {} posts match expected set {}", window, actualSet.size(), expectedSet);
+        Assertions.assertEquals(expectedPostKarma.keySet(), actualPostKarma.keySet(),
+                "%s postId set mismatch. Expected: %s  Actual: %s"
+                        .formatted(label, expectedPostKarma.keySet(), actualPostKarma.keySet()));
+
+        Assertions.assertEquals(expectedPostKarma, actualPostKarma,
+                "%s karma mismatch. Expected: %s  Actual: %s"
+                        .formatted(label, expectedPostKarma, actualPostKarma));
+
+        log.info("{} verified — {} posts match expected postId+karma map", label, actualPostKarma.size());
     }
 
     /**
