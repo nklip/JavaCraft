@@ -4,9 +4,8 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.aggregations.Aggregate;
 import co.elastic.clients.elasticsearch._types.aggregations.Buckets;
-import co.elastic.clients.elasticsearch._types.aggregations.DateHistogramAggregate;
-import co.elastic.clients.elasticsearch._types.aggregations.DateHistogramBucket;
 import co.elastic.clients.elasticsearch._types.aggregations.FilterAggregate;
+import co.elastic.clients.elasticsearch._types.aggregations.MinAggregate;
 import co.elastic.clients.elasticsearch._types.aggregations.StringTermsAggregate;
 import co.elastic.clients.elasticsearch._types.aggregations.StringTermsBucket;
 import co.elastic.clients.elasticsearch.core.SearchRequest;
@@ -19,7 +18,6 @@ import java.util.List;
 import java.util.Map;
 import my.javacraft.elastic.model.UserActivity;
 import my.javacraft.elastic.model.UserClickTest;
-import my.javacraft.elastic.service.DateService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,43 +35,66 @@ public class HotServiceTest {
 
     @Mock
     ElasticsearchClient esClient;
-    @Mock
-    DateService dateService;
+
+    // ── unit tests for computeHotScore ────────────────────────────────────────
 
     @Test
-    public void testComputeDecay() {
-        HotService service = new HotService(esClient, dateService);
+    public void testComputeHotScorePositiveVotes() {
+        HotService service = new HotService(esClient);
 
-        // Age 0 → weight 1.0
-        Assertions.assertEquals(1.0, service.computeDecay(0), 0.001);
-        // At half-life (6h) → weight ≈ 0.5
-        long halfLifeMs = (long) HotService.HOT_HALF_LIFE_HOURS * 3_600_000L;
-        Assertions.assertEquals(0.5, service.computeDecay(halfLifeMs), 0.01);
-        // At double half-life (12h) → weight ≈ 0.25
-        Assertions.assertEquals(0.25, service.computeDecay(halfLifeMs * 2), 0.01);
+        // Arrange: first vote exactly TIME_SCALE seconds after the epoch anchor
+        //   seconds = 45 000, order = log₁₀(100) = 2.0
+        //   expected = 2.0 + 45000 / 45000 = 3.0
+        long firstSeenMs = (HotService.EPOCH_ANCHOR_SECONDS + (long) HotService.TIME_SCALE) * 1_000L;
+        double score = service.computeHotScore(110L, 10L, firstSeenMs);   // net = 100
+
+        Assertions.assertEquals(3.0, score, 0.001);
     }
 
     @Test
-    public void testRetrieveHotPostsOrdersByDecayedNetScore() throws IOException {
-        when(dateService.getNDaysBeforeDate(HotService.HOT_WINDOW_DAYS))
-                .thenReturn("2024-01-08T11:00:00.000Z");
+    public void testComputeHotScoreZeroVotes() {
+        HotService service = new HotService(esClient);
 
-        // Fixed reference time: 2024-01-15T11:00:00Z = 1705316400000 ms
-        long nowMs = 1_705_316_400_000L;
-        long recentBucketMs = nowMs - 1_800_000L;    // 30 min ago → decay ≈ 0.944
-        long olderBucketMs  = nowMs - 25_200_000L;   // 7h ago    → decay ≈ 0.446
+        // score = 0 → order = log₁₀(1) × 0 = 0; hot_score = pure time component
+        long firstSeenMs = (HotService.EPOCH_ANCHOR_SECONDS + (long) HotService.TIME_SCALE) * 1_000L;
+        double score = service.computeHotScore(0L, 0L, firstSeenMs);
 
-        // postA: recent bucket, 5 upvotes - 1 downvote = net 4 → score ≈ 4 × 0.944 = 3.78
-        // postB: older bucket, 10 upvotes - 2 downvotes = net 8 → score ≈ 8 × 0.446 = 3.57
-        // postA should rank above postB despite lower net count because it is more recent
+        Assertions.assertEquals(1.0, score, 0.001);   // 0 + 45000/45000
+    }
+
+    @Test
+    public void testComputeHotScoreNegativeVotes() {
+        HotService service = new HotService(esClient);
+
+        // score = -9 → order = log₁₀(9) × (-1) ≈ -0.954
+        // time component = 1.0  →  hot_score ≈ 0.046 (still positive — time dominates)
+        long firstSeenMs = (HotService.EPOCH_ANCHOR_SECONDS + (long) HotService.TIME_SCALE) * 1_000L;
+        double score = service.computeHotScore(1L, 10L, firstSeenMs);   // net = -9
+
+        Assertions.assertTrue(score > 0, "time component must dominate a small negative order");
+        Assertions.assertEquals(1.0 - Math.log10(9), score, 0.001);
+    }
+
+    // ── integration-style tests for retrieveHotPosts ─────────────────────────
+
+    @Test
+    public void testRetrieveHotPostsOrdersBySubmissionTime() throws IOException {
+        // postA submitted 1 day later than postB — same net votes, so time decides ranking
+        long anchorMs = HotService.EPOCH_ANCHOR_SECONDS * 1_000L;
+        long recentMs = anchorMs + 200_000_000L;          // newer
+        long olderMs  = recentMs - 86_400_000L;           // 1 day earlier
+
+        // postA: 5 net, newer → hot_score = log₁₀(5) + (recent−anchor)/45000
+        // postB: 5 net, older → hot_score = log₁₀(5) + (older−anchor)/45000
+        // postA wins because recentMs > olderMs
         SearchResponse<UserActivity> hotResponse = buildHotAggResponse(Map.of(
-                "postA", new long[]{recentBucketMs, 5L, 1L},
-                "postB", new long[]{olderBucketMs,  10L, 2L}
+                "postA", new long[]{recentMs, 5L, 0L},
+                "postB", new long[]{olderMs,  5L, 0L}
         ));
 
-        UserActivity activityA = new UserActivity(UserClickTest.createHitCount(), "2024-01-15T10:30:00.000Z");
+        UserActivity activityA = new UserActivity(UserClickTest.createHitCount(), "2026-01-15T10:30:00.000Z");
         activityA.setPostId("postA");
-        UserActivity activityB = new UserActivity(UserClickTest.createHitCount(), "2024-01-15T04:00:00.000Z");
+        UserActivity activityB = new UserActivity(UserClickTest.createHitCount(), "2026-01-14T10:30:00.000Z");
         activityB.setPostId("postB");
 
         SearchResponse<UserActivity> hydrateResponse = buildHitsResponse(List.of(activityA, activityB));
@@ -83,52 +104,81 @@ public class HotServiceTest {
                 .thenReturn(hotResponse)
                 .thenReturn(hydrateResponse);
 
-        HotService service = new HotService(esClient, dateService);
-        List<UserActivity> result = service.retrieveHotPosts(10, nowMs);
+        List<UserActivity> result = new HotService(esClient).retrieveHotPosts(10);
 
         Assertions.assertNotNull(result);
         Assertions.assertEquals(2, result.size());
-        Assertions.assertEquals("postA", result.get(0).getPostId(), "postA should rank first (more recent)");
+        Assertions.assertEquals("postA", result.get(0).getPostId(), "newer submission must rank first");
         Assertions.assertEquals("postB", result.get(1).getPostId());
     }
 
     @Test
-    public void testRetrieveHotPostsExcludesNetNegativePosts() throws IOException {
-        when(dateService.getNDaysBeforeDate(HotService.HOT_WINDOW_DAYS))
-                .thenReturn("2024-01-08T11:00:00.000Z");
+    public void testRetrieveHotPostsOrdersByVotesWhenSubmissionTimeEqual() throws IOException {
+        // Same submission time, different vote counts — higher net votes wins via log₁₀ order
+        long firstSeenMs = HotService.EPOCH_ANCHOR_SECONDS * 1_000L + 200_000_000L;
 
-        long nowMs = 1_705_316_400_000L;
-        long recentBucketMs = nowMs - 1_800_000L;
-
-        // postA: net negative (1 upvote - 5 downvotes = -4) → excluded
+        // postA: 100 net → order = log₁₀(100) = 2.0
+        // postB:  10 net → order = log₁₀(10)  = 1.0
         SearchResponse<UserActivity> hotResponse = buildHotAggResponse(Map.of(
-                "postA", new long[]{recentBucketMs, 1L, 5L}
+                "postA", new long[]{firstSeenMs, 100L, 0L},
+                "postB", new long[]{firstSeenMs,  10L, 0L}
         ));
+
+        UserActivity activityA = new UserActivity(UserClickTest.createHitCount(), "2026-01-15T10:30:00.000Z");
+        activityA.setPostId("postA");
+        UserActivity activityB = new UserActivity(UserClickTest.createHitCount(), "2026-01-15T10:30:00.000Z");
+        activityB.setPostId("postB");
+
+        SearchResponse<UserActivity> hydrateResponse = buildHitsResponse(List.of(activityA, activityB));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
         when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
-                .thenReturn(hotResponse);
+                .thenReturn(hotResponse)
+                .thenReturn(hydrateResponse);
 
-        HotService service = new HotService(esClient, dateService);
-        List<UserActivity> result = service.retrieveHotPosts(10, nowMs);
+        List<UserActivity> result = new HotService(esClient).retrieveHotPosts(10);
 
         Assertions.assertNotNull(result);
-        Assertions.assertTrue(result.isEmpty(), "net-negative posts must be excluded from Hot");
+        Assertions.assertEquals(2, result.size());
+        Assertions.assertEquals("postA", result.get(0).getPostId(), "more upvotes must rank first when age is equal");
+        Assertions.assertEquals("postB", result.get(1).getPostId());
+    }
+
+    @Test
+    public void testRetrieveHotPostsNetNegativeStillRanked() throws IOException {
+        // Reddit's formula: downvoted post has negative order but positive time component.
+        // The post must still appear — it is NOT filtered out.
+        long firstSeenMs = HotService.EPOCH_ANCHOR_SECONDS * 1_000L + 200_000_000L;
+
+        SearchResponse<UserActivity> hotResponse = buildHotAggResponse(Map.of(
+                "postA", new long[]{firstSeenMs, 1L, 10L}   // net = -9
+        ));
+
+        UserActivity activityA = new UserActivity(UserClickTest.createHitCount(), "2026-01-15T10:30:00.000Z");
+        activityA.setPostId("postA");
+
+        SearchResponse<UserActivity> hydrateResponse = buildHitsResponse(List.of(activityA));
+
+        when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
+        when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
+                .thenReturn(hotResponse)
+                .thenReturn(hydrateResponse);
+
+        List<UserActivity> result = new HotService(esClient).retrieveHotPosts(10);
+
+        Assertions.assertNotNull(result);
+        Assertions.assertFalse(result.isEmpty(), "net-negative posts must still appear — time component keeps score positive");
     }
 
     @Test
     public void testRetrieveHotPostsReturnsEmptyWhenNoActivity() throws IOException {
-        when(dateService.getNDaysBeforeDate(HotService.HOT_WINDOW_DAYS))
-                .thenReturn("2024-01-08T11:00:00.000Z");
-
         SearchResponse<UserActivity> hotResponse = buildHotAggResponse(Map.of());
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
         when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
                 .thenReturn(hotResponse);
 
-        HotService service = new HotService(esClient, dateService);
-        List<UserActivity> result = service.retrieveHotPosts(10, 1_705_316_400_000L);
+        List<UserActivity> result = new HotService(esClient).retrieveHotPosts(10);
 
         Assertions.assertNotNull(result);
         Assertions.assertTrue(result.isEmpty());
@@ -137,8 +187,9 @@ public class HotServiceTest {
     // --------------- helpers ---------------
 
     /**
-     * Builds a mocked SearchResponse with nested terms → date_histogram → filter aggregations.
-     * @param postData map of postId → [bucketTimestampMs, upvoteCount, downvoteCount]
+     * Builds a mocked SearchResponse with nested terms → filter + min aggregations.
+     *
+     * @param postData map of postId → [firstSeenMs, upvoteCount, downvoteCount]
      */
     private SearchResponse<UserActivity> buildHotAggResponse(Map<String, long[]> postData) {
         List<StringTermsBucket> postBuckets = postData.entrySet().stream()
@@ -155,25 +206,18 @@ public class HotServiceTest {
                     Aggregate downvotesAgg = mock(Aggregate.class);
                     when(downvotesAgg.filter()).thenReturn(downvotesFilter);
 
-                    DateHistogramBucket hourBucket = mock(DateHistogramBucket.class);
-                    when(hourBucket.key()).thenReturn(d[0]);
-                    when(hourBucket.aggregations()).thenReturn(Map.of(
-                            "upvotes", upvotesAgg,
-                            "downvotes", downvotesAgg
-                    ));
-
-                    Buckets<DateHistogramBucket> hourBuckets = mock(Buckets.class);
-                    when(hourBuckets.array()).thenReturn(List.of(hourBucket));
-
-                    DateHistogramAggregate dhAgg = mock(DateHistogramAggregate.class);
-                    when(dhAgg.buckets()).thenReturn(hourBuckets);
-
-                    Aggregate byHourAgg = mock(Aggregate.class);
-                    when(byHourAgg.dateHistogram()).thenReturn(dhAgg);
+                    MinAggregate minAgg = mock(MinAggregate.class);
+                    when(minAgg.value()).thenReturn((double) d[0]);
+                    Aggregate firstSeenAgg = mock(Aggregate.class);
+                    when(firstSeenAgg.min()).thenReturn(minAgg);
 
                     StringTermsBucket postBucket = mock(StringTermsBucket.class);
                     when(postBucket.key()).thenReturn(FieldValue.of(e.getKey()));
-                    when(postBucket.aggregations()).thenReturn(Map.of("by_hour", byHourAgg));
+                    when(postBucket.aggregations()).thenReturn(Map.of(
+                            "upvotes",    upvotesAgg,
+                            "downvotes",  downvotesAgg,
+                            "first_seen", firstSeenAgg
+                    ));
                     return postBucket;
                 })
                 .toList();

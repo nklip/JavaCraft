@@ -9,7 +9,6 @@ import co.elastic.clients.elasticsearch.core.search.Hit;
 import co.elastic.clients.json.JsonpUtils;
 import co.elastic.clients.util.NamedValue;
 import java.io.IOException;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -18,7 +17,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.model.UserAction;
 import my.javacraft.elastic.model.UserActivity;
-import my.javacraft.elastic.service.DateService;
 import org.springframework.stereotype.Service;
 
 /*
@@ -42,33 +40,42 @@ import org.springframework.stereotype.Service;
  * 3) Early votes matter more than late votes (a post that reaches 100 votes in hour 1 beats one that reaches 1000
  * votes in hour 10)
  * 4) No hard cutoff — old posts with massive scores can still appear, just very slowly pushed down
+ *
+ * Implementation notes (approximations vs Reddit):
+ *
+ *   • No ES-side hard time window — matches Reddit (no hard cutoff in the formula).
+ *   • Submission time is approximated as min(timestamp) — earliest recorded vote, because
+ *     this service stores user interactions only, not post creation events.
+ *   • Candidate pool: terms(postId, size = N × 10, order = _count DESC).
+ *
+ * ES query:
+ *   terms(postId)
+ *     ├─ filter(action = UPVOTE)   → upvote count
+ *     ├─ filter(action = DOWNVOTE) → downvote count
+ *     └─ min(timestamp)            → earliest activity ≈ submission time
+ *
+ * Java: hot_score = order + (minTimestampSec − EPOCH_ANCHOR_SECONDS) / TIME_SCALE
+ *       sort DESC → top-N → hydrate with collapse query.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class HotService {
 
-    static final int HOT_WINDOW_DAYS = 7;
-    static final int HOT_HALF_LIFE_HOURS = 6;
-    private static final double LAMBDA = Math.log(2) / HOT_HALF_LIFE_HOURS;
+    /** Unix-second epoch anchor used in Reddit's hot formula (Dec 8, 2005). */
+    static final long EPOCH_ANCHOR_SECONDS = 1_134_028_003L;
+
+    /** Score divisor: every 45 000 s ≈ 12.5 h of age adds +1 to hot_score. */
+    static final double TIME_SCALE = 45_000.0;
 
     private final ElasticsearchClient esClient;
-    private final DateService dateService;
 
     public List<UserActivity> retrieveHotPosts(int size) throws IOException {
-        return retrieveHotPosts(size, Instant.now().toEpochMilli());
-    }
-
-    /**
-     * Package-private overload that accepts a fixed reference timestamp for deterministic testing.
-     */
-    List<UserActivity> retrieveHotPosts(int size, long nowMs) throws IOException {
         int querySize = Math.min(size * 10, UserActivityService.MAX_VALUES);
 
-        Map<String, Double> hotScores = queryHotScores(querySize, nowMs);
+        Map<String, Double> hotScores = queryHotScores(querySize);
 
         List<String> hotPostIds = hotScores.entrySet().stream()
-                .filter(e -> e.getValue() > 0)
                 .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
                 .limit(size)
                 .map(Map.Entry::getKey)
@@ -81,25 +88,23 @@ public class HotService {
     }
 
     /**
-     * Exponential decay weight for an event at a given age.
-     * Package-private for direct unit testing.
+     * Reddit hot_score = log₁₀(max(|score|,1)) × sign(score) + (firstSeenSec − EPOCH_ANCHOR) / TIME_SCALE.
+     * Package-private for unit testing.
      */
-    double computeDecay(long ageMs) {
-        double ageHours = (double) ageMs / 3_600_000.0;
-        return Math.exp(-LAMBDA * ageHours);
+    double computeHotScore(long upvotes, long downvotes, long firstSeenMs) {
+        long score = upvotes - downvotes;
+        double order = Math.log10(Math.max(Math.abs(score), 1)) * Math.signum(score);
+        double seconds = (firstSeenMs / 1000.0) - EPOCH_ANCHOR_SECONDS;
+        return order + seconds / TIME_SCALE;
     }
 
     /**
-     * Single aggregation query: terms(postId) → date_histogram → upvote/downvote filters.
+     * Single aggregation query: terms(postId) → upvote/downvote filters + min(timestamp).
      * Returns a map of postId → hot score.
      */
-    private Map<String, Double> queryHotScores(int querySize, long nowMs) throws IOException {
+    private Map<String, Double> queryHotScores(int querySize) throws IOException {
         SearchRequest request = new SearchRequest.Builder()
                 .index(UserActivityService.INDEX_USER_ACTIVITY)
-                .query(q -> q.range(r -> r.date(d -> d
-                        .field(UserActivityService.TIMESTAMP)
-                        .gte(dateService.getNDaysBeforeDate(HOT_WINDOW_DAYS))
-                )))
                 .size(0)
                 .aggregations(UserActivityService.POST_ID, a -> a
                         .terms(t -> t
@@ -107,23 +112,20 @@ public class HotService {
                                 .size(querySize)
                                 .order(NamedValue.of("_count", SortOrder.Desc))
                         )
-                        .aggregations("by_hour", inner -> inner
-                                .dateHistogram(dh -> dh
-                                        .field(UserActivityService.TIMESTAMP)
-                                        .fixedInterval(fi -> fi.time("1h"))
-                                )
-                                .aggregations("upvotes", sub -> sub
-                                        .filter(f -> f.term(t -> t
-                                                .field(UserActivityService.ACTION)
-                                                .value(v -> v.stringValue(UserAction.UPVOTE.name()))
-                                        ))
-                                )
-                                .aggregations("downvotes", sub -> sub
-                                        .filter(f -> f.term(t -> t
-                                                .field(UserActivityService.ACTION)
-                                                .value(v -> v.stringValue(UserAction.DOWNVOTE.name()))
-                                        ))
-                                )
+                        .aggregations("upvotes", sub -> sub
+                                .filter(f -> f.term(t -> t
+                                        .field(UserActivityService.ACTION)
+                                        .value(v -> v.stringValue(UserAction.UPVOTE.name()))
+                                ))
+                        )
+                        .aggregations("downvotes", sub -> sub
+                                .filter(f -> f.term(t -> t
+                                        .field(UserActivityService.ACTION)
+                                        .value(v -> v.stringValue(UserAction.DOWNVOTE.name()))
+                                ))
+                        )
+                        .aggregations("first_seen", sub -> sub
+                                .min(m -> m.field(UserActivityService.TIMESTAMP))
                         )
                 )
                 .build();
@@ -139,25 +141,15 @@ public class HotService {
                 .stream()
                 .collect(Collectors.toMap(
                         b -> b.key().stringValue(),
-                        b -> computeHotScore(b, nowMs)
+                        this::computeHotScoreFromBucket
                 ));
     }
 
-    private double computeHotScore(StringTermsBucket postBucket, long nowMs) {
-        return postBucket.aggregations()
-                .get("by_hour")
-                .dateHistogram()
-                .buckets()
-                .array()
-                .stream()
-                .mapToDouble(hourBucket -> {
-                    long ageMs = nowMs - hourBucket.key();
-                    double decay = computeDecay(ageMs);
-                    long upvotes = hourBucket.aggregations().get("upvotes").filter().docCount();
-                    long downvotes = hourBucket.aggregations().get("downvotes").filter().docCount();
-                    return (upvotes - downvotes) * decay;
-                })
-                .sum();
+    private double computeHotScoreFromBucket(StringTermsBucket postBucket) {
+        long upvotes   = postBucket.aggregations().get("upvotes").filter().docCount();
+        long downvotes = postBucket.aggregations().get("downvotes").filter().docCount();
+        long firstSeenMs = (long) postBucket.aggregations().get("first_seen").min().value();
+        return computeHotScore(upvotes, downvotes, firstSeenMs);
     }
 
     /**
