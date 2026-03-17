@@ -31,6 +31,18 @@ public class HotEvents implements EventGenerator {
     /*
      * Should update postIds from 11 to 20
      * The amount of users which would UPVOTE or DOWNVOTE - 300
+     *
+     * Correctness guarantee (Reddit Hot formula):
+     *   hot_score = log₁₀(net) + (firstSeenSec − anchor) / 45_000
+     *   Time dominates: every 12.5 h of age costs ~1 hot_score point.
+     *
+     * Strategy: all events land within the last 60 minutes so that
+     *   min(timestamp) — used as submission_time proxy — is at most ~60 min old.
+     *   This is ~23 h more recent than NewEvents (first_seen ≤ 24 h),
+     *   translating to ~1.84 hot_score units of separation:
+     *
+     *   posts 11-20 hot_score ≈ 14 189  (first_seen ~60 min, net = 240)
+     *   posts 21-30 hot_score ≈ 14 187  (first_seen ~24 h,  net = 210)  ← 2nd place
      */
     @Override
     public void generateEventsInCsv() {
@@ -40,10 +52,11 @@ public class HotEvents implements EventGenerator {
         for (int postId = 11; postId <= 20; postId++) {
             for (int userId = 1; userId <= EventCsvSupport.USERS_PER_POST; userId++) {
                 boolean upvote = EventCsvSupport.isUpvote(userId, postId, 90);
-                long hoursAgo = Math.floorMod(postId * 7 + userId * 5, 7 * 24L);
-                long minutesAgo = Math.floorMod(postId * 13 + userId * 17, 60);
-                Instant eventTime = now.minus(hoursAgo, ChronoUnit.HOURS)
-                        .minus(minutesAgo, ChronoUnit.MINUTES);
+                // Keep all events within a 60-minute window so first_seen stays very recent
+                long minutesAgo = Math.floorMod(postId * 7 + userId * 5, 60L);
+                long secondsAgo = Math.floorMod(postId * 13 + userId * 17, 60L);
+                Instant eventTime = now.minus(minutesAgo, ChronoUnit.MINUTES)
+                        .minus(secondsAgo, ChronoUnit.SECONDS);
 
                 rows.add(EventCsvSupport.csvLine(userId, postId, upvote, eventTime));
             }

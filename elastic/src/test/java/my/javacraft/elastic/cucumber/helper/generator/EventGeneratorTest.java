@@ -113,11 +113,12 @@ class EventGeneratorTest {
 
     private static Stream<Arguments> generatorCases() {
         return Stream.of(
-                Arguments.of("events-best.csv", new BestEvents(), 1, 10, 180),
-                Arguments.of("events-hot.csv", new HotEvents(), 11, 20, 7),
-                Arguments.of("events-new.csv", new NewEvents(), 21, 30, 1),
+                Arguments.of("events-best.csv",   new BestEvents(),   1,  10, 180),
+                // HotEvents: all events within 60 min — maxAgeDays=1 is a tight upper bound
+                Arguments.of("events-hot.csv",    new HotEvents(),   11,  20,   1),
+                Arguments.of("events-new.csv",    new NewEvents(),   21,  30,   1),
                 Arguments.of("events-rising.csv", new RisingEvents(), 31, 40, 180),
-                Arguments.of("events-top.csv", new TopEvents(), 41, 50, 365)
+                Arguments.of("events-top.csv",    new TopEvents(),   41,  50, 365)
         );
     }
 }
