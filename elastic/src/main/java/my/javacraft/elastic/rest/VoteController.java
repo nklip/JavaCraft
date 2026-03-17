@@ -10,10 +10,10 @@ import jakarta.validation.Valid;
 import java.io.IOException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import my.javacraft.elastic.model.UserPostEvent;
-import my.javacraft.elastic.model.UserPostEventResponse;
+import my.javacraft.elastic.model.VoteRequest;
+import my.javacraft.elastic.model.VoteResponse;
 import my.javacraft.elastic.service.DateService;
-import my.javacraft.elastic.service.activity.UserActivityService;
+import my.javacraft.elastic.service.activity.VoteService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -26,10 +26,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 @Tag(name = "2. User activity", description = "API(s) for hit count services")
 @RequestMapping(path = "/api/services/user-activity")
 @RequiredArgsConstructor
-public class UserActivityController {
+public class VoteController {
 
     private final DateService dateService;
-    private final UserActivityService userActivityService;
+    private final VoteService voteService;
 
     @Operation(
             summary = "Capture user click",
@@ -43,24 +43,23 @@ public class UserActivityController {
     @PostMapping(
             produces = MediaType.APPLICATION_JSON_VALUE,
             consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<UserPostEventResponse> captureUserPostEvent(
+    public ResponseEntity<VoteResponse> captureVoteRequest(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     required = true,
-                    description = "UserPostEvent event",
+                    description = "VoteRequest event",
                     useParameterTypeSchema = true,
                     content = @Content(schema = @Schema(
-                            implementation = UserPostEvent.class
+                            implementation = VoteRequest.class
                     ))
             )
-            @RequestBody @Valid UserPostEvent userPostEvent) throws IOException {
+            @RequestBody @Valid VoteRequest voteRequest) throws IOException {
 
-        log.info("ingesting (UserPostEvent = {})...", userPostEvent);
+        log.info("ingesting (VoteRequest = {})...", voteRequest);
 
-        UserPostEventResponse userPostEventResponse = userActivityService.ingestUserEvent(
-                userPostEvent, dateService.getCurrentDate()
+        VoteResponse voteResponse = voteService.ingestUserEvent(voteRequest, dateService.getCurrentDate()
         );
 
-        return ResponseEntity.ok().body(userPostEventResponse);
+        return ResponseEntity.ok().body(voteResponse);
     }
 
 }

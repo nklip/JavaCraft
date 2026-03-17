@@ -14,9 +14,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.config.Constants;
 import my.javacraft.elastic.model.UserAction;
-import my.javacraft.elastic.model.UserActivity;
-import my.javacraft.elastic.model.UserPostEvent;
-import my.javacraft.elastic.model.UserPostEventResponse;
+import my.javacraft.elastic.model.UserVote;
+import my.javacraft.elastic.model.VoteRequest;
+import my.javacraft.elastic.model.VoteResponse;
 import org.springframework.stereotype.Service;
 
 /*
@@ -41,7 +41,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class UserActivityService {
+public class VoteService {
 
     /**
      * Painless script evaluated by ES on every UPVOTE / DOWNVOTE update.
@@ -54,60 +54,60 @@ public class UserActivityService {
 
     private final ElasticsearchClient esClient;
 
-    public UserPostEventResponse ingestUserEvent(UserPostEvent userPostEvent, String timestamp) throws IOException {
+    public VoteResponse ingestUserEvent(VoteRequest voteRequest, String timestamp) throws IOException {
         // Deterministic ID: one document per (userId, postId) → correct aggregations
-        String documentId = userPostEvent.getUserId() + "_" + userPostEvent.getPostId();
+        String documentId = voteRequest.getUserId() + "_" + voteRequest.getPostId();
 
-        if (UserAction.NOVOTE.name().equals(userPostEvent.getAction().toUpperCase())) {
+        if (UserAction.NOVOTE.name().equals(voteRequest.getAction().toUpperCase())) {
             return removeVote(documentId);
         }
-        return castVote(userPostEvent, timestamp, documentId);
+        return castVote(voteRequest, timestamp, documentId);
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
 
     /** UPVOTE or DOWNVOTE: upsert with Painless deduplication script. */
-    private UserPostEventResponse castVote(UserPostEvent userPostEvent, String timestamp, String documentId)
+    private VoteResponse castVote(VoteRequest voteRequest, String timestamp, String documentId)
             throws IOException {
 
-        UserActivity userActivity = new UserActivity(userPostEvent, timestamp);
+        UserVote userVote = new UserVote(voteRequest, timestamp);
 
         Script script = Script.of(s -> s
                 .source(VOTE_SCRIPT)
                 .params(Map.of(
-                        Constants.ACTION,    JsonData.of(userActivity.getAction()),
+                        Constants.ACTION,    JsonData.of(userVote.getAction()),
                         Constants.TIMESTAMP, JsonData.of(timestamp)
                 ))
         );
 
-        UpdateRequest<UserActivity, UserActivity> updateRequest =
-                new UpdateRequest.Builder<UserActivity, UserActivity>()
-                        .index(Constants.INDEX_USER_ACTIVITY)
+        UpdateRequest<UserVote, UserVote> updateRequest =
+                new UpdateRequest.Builder<UserVote, UserVote>()
+                        .index(Constants.INDEX_USER_VOTE)
                         .id(documentId)
                         .script(script)
-                        .upsert(userActivity)
+                        .upsert(userVote)
                         .build();
 
         log.debug("JSON representation of update request: {}",
                 JsonpUtils.toJsonString(updateRequest, esClient._jsonpMapper()));
 
-        UpdateResponse<UserActivity> updateResponse = esClient.update(updateRequest, UserActivity.class);
+        UpdateResponse<UserVote> updateResponse = esClient.update(updateRequest, UserVote.class);
 
         log.info("vote ingested (documentId='{}', result='{}')", updateResponse.id(), updateResponse.result());
 
-        UserPostEventResponse userPostEventResponse = new UserPostEventResponse();
-        userPostEventResponse.setDocumentId(updateResponse.id());
-        userPostEventResponse.setResult(updateResponse.result());
-        return userPostEventResponse;
+        VoteResponse voteResponse = new VoteResponse();
+        voteResponse.setDocumentId(updateResponse.id());
+        voteResponse.setResult(updateResponse.result());
+        return voteResponse;
     }
 
     /**
      * NOVOTE: delete the (userId, postId) document if it exists.
      * Returns {@code Deleted} when a vote was removed, {@code NotFound} when there was none.
      */
-    private UserPostEventResponse removeVote(String documentId) throws IOException {
+    private VoteResponse removeVote(String documentId) throws IOException {
         DeleteRequest deleteRequest = new DeleteRequest.Builder()
-                .index(Constants.INDEX_USER_ACTIVITY)
+                .index(Constants.INDEX_USER_VOTE)
                 .id(documentId)
                 .build();
 
@@ -115,9 +115,9 @@ public class UserActivityService {
 
         log.info("vote removed (documentId='{}', result='{}')", deleteResponse.id(), deleteResponse.result());
 
-        UserPostEventResponse userPostEventResponse = new UserPostEventResponse();
-        userPostEventResponse.setDocumentId(deleteResponse.id());
-        userPostEventResponse.setResult(deleteResponse.result());
-        return userPostEventResponse;
+        VoteResponse voteResponse = new VoteResponse();
+        voteResponse.setDocumentId(deleteResponse.id());
+        voteResponse.setResult(deleteResponse.result());
+        return voteResponse;
     }
 }

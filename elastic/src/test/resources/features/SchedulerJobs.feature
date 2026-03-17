@@ -4,7 +4,7 @@ Feature: test Scheduler jobs
     Given index 'user-activity' is recreated
 
   Scenario: nothing to remove
-    Given there are no outdated records
+    Given index 'user-activity' is recreated
     Then execute cleanup job with expected result of 0
 
   Scenario: remove 10 old documents

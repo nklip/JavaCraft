@@ -11,15 +11,14 @@ import co.elastic.clients.elasticsearch.core.msearch.MultisearchBody;
 import co.elastic.clients.elasticsearch.core.msearch.MultisearchHeader;
 import co.elastic.clients.elasticsearch.core.msearch.RequestItem;
 import co.elastic.clients.elasticsearch.core.search.Hit;
-import co.elastic.clients.elasticsearch.indices.ExistsRequest;
 import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import my.javacraft.elastic.model.SeekRequest;
-import my.javacraft.elastic.model.SeekType;
-import my.javacraft.elastic.model.SeekTypeMetadata;
+import my.javacraft.elastic.model.ContentSearchRequest;
+import my.javacraft.elastic.model.ContentCategory;
+import my.javacraft.elastic.model.ContentCategoryMetadata;
 import my.javacraft.elastic.service.query.FuzzyFactory;
 import my.javacraft.elastic.service.query.IntervalFactory;
 import my.javacraft.elastic.service.query.SpanFactory;
@@ -51,11 +50,11 @@ public class SearchService {
      * The wildcard query is an expensive query due to the nature of how it was implemented.
      * Few other expensive queries are the range, prefix, fuzzy, regex, and join queries as well as others.
      */
-    public List<Object> wildcardSearch(SeekRequest seekRequest) throws IOException, ElasticsearchException {
-        Query wildcardQuery = wildcardFactory.createQuery(SYNOPSIS, seekRequest.getPattern());
+    public List<Object> wildcardSearch(ContentSearchRequest contentSearchRequest) throws IOException, ElasticsearchException {
+        Query wildcardQuery = wildcardFactory.createQuery(SYNOPSIS, contentSearchRequest.getPattern());
 
         SearchRequest searchRequest = new SearchRequest.Builder()
-                .index(seekRequest.getType())
+                .index(contentSearchRequest.getType())
                 .query(wildcardQuery)
                 .build();
         //SearchRequest searchRequest = SearchRequest.of(r -> r.query(q -> q.bool(b -> b.must(wildcardQuery))));
@@ -69,8 +68,8 @@ public class SearchService {
      * The fuzzy query is an expensive query due to the nature of how it was implemented.
      * Few other expensive queries are the range, prefix, fuzzy, regex, and join queries as well as others.
      */
-    public List<Object> fuzzySearch(SeekRequest seekRequest) throws IOException, ElasticsearchException {
-        Query fuzzyQuery = fuzzyFactory.createQuery(SYNOPSIS, seekRequest.getPattern());
+    public List<Object> fuzzySearch(ContentSearchRequest contentSearchRequest) throws IOException, ElasticsearchException {
+        Query fuzzyQuery = fuzzyFactory.createQuery(SYNOPSIS, contentSearchRequest.getPattern());
 
         SearchRequest searchRequest = SearchRequest.of(r -> r
                 .query(q -> q
@@ -85,8 +84,8 @@ public class SearchService {
         return searchResponse.hits().hits().stream().map(Hit::source).collect(Collectors.toList());
     }
 
-    public List<Object> intervalSearch(SeekRequest seekRequest) throws IOException, ElasticsearchException {
-        Query intervalsQuery = intervalFactory.createQuery(SYNOPSIS, seekRequest.getPattern());
+    public List<Object> intervalSearch(ContentSearchRequest contentSearchRequest) throws IOException, ElasticsearchException {
+        Query intervalsQuery = intervalFactory.createQuery(SYNOPSIS, contentSearchRequest.getPattern());
 
         SearchRequest searchRequest = SearchRequest.of(sr -> sr
                 .query(intervalsQuery)
@@ -98,8 +97,8 @@ public class SearchService {
 
     }
 
-    public List<Object> spanSearch(SeekRequest seekRequest) throws IOException, ElasticsearchException {
-        Query spanQuery = spanFactory.createQuery(SYNOPSIS, seekRequest.getPattern());
+    public List<Object> spanSearch(ContentSearchRequest contentSearchRequest) throws IOException, ElasticsearchException {
+        Query spanQuery = spanFactory.createQuery(SYNOPSIS, contentSearchRequest.getPattern());
 
         SearchRequest searchRequest = SearchRequest.of(r -> r
                 .query(q -> q
@@ -114,8 +113,8 @@ public class SearchService {
         return searchResponse.hits().hits().stream().map(Hit::source).collect(Collectors.toList());
     }
 
-    public List<Document> search(SeekRequest seekRequest) throws IOException, ElasticsearchException {
-        List<RequestItem> requestItems = createRequestItems(seekRequest);
+    public List<Document> search(ContentSearchRequest contentSearchRequest) throws IOException, ElasticsearchException {
+        List<RequestItem> requestItems = createRequestItems(contentSearchRequest);
 
         // executing several searches with a single API request.
         MsearchRequest msearchRequest = new MsearchRequest.Builder().searches(requestItems).build();
@@ -145,38 +144,38 @@ public class SearchService {
         return searchResults;
     }
 
-    private List<RequestItem> createRequestItems(SeekRequest seekRequest) {
+    private List<RequestItem> createRequestItems(ContentSearchRequest contentSearchRequest) {
         List<RequestItem> requestItems = new ArrayList<>();
         
         // get search fields for each type
-        Set<SeekTypeMetadata> seekTypeMetadataList = metadataService.getSeekTypeMetadata();
+        Set<ContentCategoryMetadata> contentCategoryMetadataList = metadataService.getContentCategoryMetadata();
 
         // filter type we look
-        Set<SeekTypeMetadata> seekTypeToUseInQuery = seekTypeMetadataList
+        Set<ContentCategoryMetadata> ContentCategoryToUseInQuery = contentCategoryMetadataList
                 .stream()
-                .filter(s -> s.getSeekType().equals(SeekType.valueByName(seekRequest.getType())))
+                .filter(s -> s.getContentCategory().equals(ContentCategory.valueByName(contentSearchRequest.getType())))
                 .findFirst()
                 .map(Collections::singleton)
                 .orElse(Collections.emptySet());
 
-        if (seekTypeToUseInQuery.isEmpty() || SeekType.valueByName(seekRequest.getType()) == SeekType.ALL) {
-            seekTypeToUseInQuery = seekTypeMetadataList;
+        if (ContentCategoryToUseInQuery.isEmpty() || ContentCategory.valueByName(contentSearchRequest.getType()) == ContentCategory.ALL) {
+            ContentCategoryToUseInQuery = contentCategoryMetadataList;
         }
         
         // generate queries
-        for (SeekTypeMetadata seekTypeMetadata : seekTypeToUseInQuery) {
-            addToRequestItems(seekRequest, seekTypeMetadata, requestItems);
+        for (ContentCategoryMetadata contentCategoryMetadata : ContentCategoryToUseInQuery) {
+            addToRequestItems(contentSearchRequest, contentCategoryMetadata, requestItems);
         }
 
         return requestItems;
     }
 
-    private void addToRequestItems(SeekRequest seekRequest, SeekTypeMetadata seekTypeMetadata, List<RequestItem> requestItems) {
+    private void addToRequestItems(ContentSearchRequest contentSearchRequest, ContentCategoryMetadata contentCategoryMetadata, List<RequestItem> requestItems) {
         List<BoolQuery> boolTypeQueries = new ArrayList<>();
-        List<String> searchFields = seekTypeMetadata.getSearchFields();
+        List<String> searchFields = contentCategoryMetadata.getSearchFields();
         // N fields -> N wildcard queries
         searchFields.forEach(field -> {
-            Query query = wildcardFactory.createQuery(field, seekRequest.getPattern());
+            Query query = wildcardFactory.createQuery(field, contentSearchRequest.getPattern());
 
             boolTypeQueries.add(new BoolQuery.Builder()
                     .boost(NEUTRAL_VALUE)
@@ -190,7 +189,7 @@ public class SearchService {
             requestItems.add(
                     new RequestItem.Builder()
                             .header(new MultisearchHeader.Builder()
-                                    .index(seekTypeMetadata.getSeekType().toString().toLowerCase())
+                                    .index(contentCategoryMetadata.getContentCategory().toString().toLowerCase())
                                     .build()
                             )
                             .body(new MultisearchBody.Builder()
@@ -200,13 +199,6 @@ public class SearchService {
                             .build()
             );
         });
-    }
-
-    public boolean isValidIndex(String index) throws IOException, ElasticsearchException {
-        return esClient
-                .indices()
-                .exists(new ExistsRequest.Builder().index(index).build())
-                .value();
     }
 
 }

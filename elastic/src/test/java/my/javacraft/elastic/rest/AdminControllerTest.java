@@ -20,7 +20,7 @@ public class AdminControllerTest {
     AdminService adminService;
 
     @Test
-    public void testCreateUserActivityIndex() throws IOException {
+    public void testCreateUserVoteIndex() throws IOException {
         AdminController adminController = new AdminController(adminService);
 
         CreateIndexResponse createIndexResponse = CreateIndexResponse.of(builder -> builder
@@ -28,9 +28,9 @@ public class AdminControllerTest {
                 .acknowledged(true)
                 .shardsAcknowledged(true)
         );
-        when(adminService.createUserActivityIndex()).thenReturn(new AdminService.IndexCreationResult(createIndexResponse, true));
+        when(adminService.createUserVoteIndex()).thenReturn(new AdminService.IndexCreationResult(createIndexResponse, true));
 
-        ResponseEntity<CreateIndexResponse> response = adminController.createUserActivityIndex();
+        ResponseEntity<CreateIndexResponse> response = adminController.createUserVoteIndex();
 
         Assertions.assertNotNull(response);
         Assertions.assertNotNull(response.getBody());

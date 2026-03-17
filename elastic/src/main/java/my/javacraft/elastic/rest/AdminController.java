@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
  * One-time setup controller: creates Elasticsearch indexes and their field mappings.
  * <p>
  * Call these endpoints once before using {@link SearchController} or
- * {@link UserActivityController}. No user input is accepted — each endpoint
+ * {@link VoteController}. No user input is accepted — each endpoint
  * creates a specific, pre-defined index with a fixed schema.
  * <p>
  * Re-running an endpoint when the index already exists returns 201 and does
@@ -39,7 +39,7 @@ public class AdminController {
             summary = "Create user-activity index",
             description = "Creates the 'user-activity' index with typed field mappings: "
                     + "timestamp(date), userId/postId/action(keyword). "
-                    + "Required by UserActivityController for ingestion, retrieval, and trending queries."
+                    + "Required by VoteController for ingestion, retrieval, and trending queries."
     )
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Index created successfully"),
@@ -47,9 +47,9 @@ public class AdminController {
             @ApiResponse(responseCode = "500", description = "Elasticsearch error")
     })
     @PutMapping(value = "/indexes/user-activity", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<CreateIndexResponse> createUserActivityIndex() throws IOException {
+    public ResponseEntity<CreateIndexResponse> createUserVoteIndex() throws IOException {
         log.info("request to create user-activity index");
-        AdminService.IndexCreationResult result = adminService.createUserActivityIndex();
+        AdminService.IndexCreationResult result = adminService.createUserVoteIndex();
         return buildResponse(result);
     }
 

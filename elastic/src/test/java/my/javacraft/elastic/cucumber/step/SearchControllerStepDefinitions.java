@@ -9,8 +9,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.cucumber.conf.CucumberSpringConfiguration;
-import my.javacraft.elastic.model.Client;
-import my.javacraft.elastic.model.SeekRequest;
+import my.javacraft.elastic.model.ClientType;
+import my.javacraft.elastic.model.ContentSearchRequest;
 import org.apache.http.HttpHeaders;
 import org.junit.jupiter.api.Assertions;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -112,13 +112,13 @@ public class SearchControllerStepDefinitions {
     }
 
     private String jsonBody(String pattern, String type) throws JsonProcessingException {
-        SeekRequest seekRequest = new SeekRequest();
-        seekRequest.setType(type);
-        seekRequest.setPattern(pattern);
-        seekRequest.setClient(Client.WEB.toString());
+        ContentSearchRequest contentSearchRequest = new ContentSearchRequest();
+        contentSearchRequest.setType(type);
+        contentSearchRequest.setPattern(pattern);
+        contentSearchRequest.setClient(ClientType.WEB.toString());
 
         ObjectMapper objectMapper = new ObjectMapper();
-        String jsonBody = objectMapper.writeValueAsString(seekRequest);
+        String jsonBody = objectMapper.writeValueAsString(contentSearchRequest);
         log.info("created json:\n{}", jsonBody);
         return jsonBody;
     }

@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 import my.javacraft.elastic.config.Constants;
 import my.javacraft.elastic.model.PostPreview;
-import my.javacraft.elastic.model.UserActivity;
+import my.javacraft.elastic.model.UserVote;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -86,13 +86,13 @@ public class HotServiceTest {
         // postA: 5 net, newer → hot_score = log₁₀(5) + (recent−anchor)/45000
         // postB: 5 net, older → hot_score = log₁₀(5) + (older−anchor)/45000
         // postA wins because recentMs > olderMs
-        SearchResponse<UserActivity> response = buildHotAggResponse(Map.of(
+        SearchResponse<UserVote> response = buildHotAggResponse(Map.of(
                 "postA", new long[]{recentMs, 5L, 0L},
                 "postB", new long[]{olderMs,  5L, 0L}
         ));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
-        when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
+        when(esClient.search(any(SearchRequest.class), eq(UserVote.class)))
                 .thenReturn(response);
 
         List<PostPreview> result = new HotService(esClient).retrieveHotPosts(10);
@@ -111,13 +111,13 @@ public class HotServiceTest {
 
         // postA: 100 net → order = log₁₀(100) = 2.0
         // postB:  10 net → order = log₁₀(10)  = 1.0
-        SearchResponse<UserActivity> response = buildHotAggResponse(Map.of(
+        SearchResponse<UserVote> response = buildHotAggResponse(Map.of(
                 "postA", new long[]{firstSeenMs, 100L, 0L},
                 "postB", new long[]{firstSeenMs,  10L, 0L}
         ));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
-        when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
+        when(esClient.search(any(SearchRequest.class), eq(UserVote.class)))
                 .thenReturn(response);
 
         List<PostPreview> result = new HotService(esClient).retrieveHotPosts(10);
@@ -136,27 +136,27 @@ public class HotServiceTest {
         // The post must still appear — it is NOT filtered out.
         long firstSeenMs = HotService.EPOCH_ANCHOR_SECONDS * 1_000L + 200_000_000L;
 
-        SearchResponse<UserActivity> response = buildHotAggResponse(Map.of(
+        SearchResponse<UserVote> response = buildHotAggResponse(Map.of(
                 "postA", new long[]{firstSeenMs, 1L, 10L}   // net = -9
         ));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
-        when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
+        when(esClient.search(any(SearchRequest.class), eq(UserVote.class)))
                 .thenReturn(response);
 
         List<PostPreview> result = new HotService(esClient).retrieveHotPosts(10);
 
         Assertions.assertNotNull(result);
         Assertions.assertFalse(result.isEmpty(), "net-negative posts must still appear — time component keeps score positive");
-        Assertions.assertEquals(-9L, result.get(0).getKarma());
+        Assertions.assertEquals(-9L, result.getFirst().getKarma());
     }
 
     @Test
     public void testRetrieveHotPostsReturnsEmptyWhenNoActivity() throws IOException {
-        SearchResponse<UserActivity> response = buildHotAggResponse(Map.of());
+        SearchResponse<UserVote> response = buildHotAggResponse(Map.of());
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
-        when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
+        when(esClient.search(any(SearchRequest.class), eq(UserVote.class)))
                 .thenReturn(response);
 
         List<PostPreview> result = new HotService(esClient).retrieveHotPosts(10);
@@ -172,7 +172,7 @@ public class HotServiceTest {
      *
      * @param postData map of postId → [firstSeenMs, upvoteCount, downvoteCount]
      */
-    private SearchResponse<UserActivity> buildHotAggResponse(Map<String, long[]> postData) {
+    private SearchResponse<UserVote> buildHotAggResponse(Map<String, long[]> postData) {
         List<StringTermsBucket> postBuckets = postData.entrySet().stream()
                 .map(e -> {
                     long[] d = e.getValue();
@@ -212,7 +212,7 @@ public class HotServiceTest {
         Aggregate aggregate = mock(Aggregate.class);
         when(aggregate.sterms()).thenReturn(sterms);
 
-        SearchResponse<UserActivity> response = mock(SearchResponse.class);
+        SearchResponse<UserVote> response = mock(SearchResponse.class);
         when(response.aggregations()).thenReturn(Map.of(Constants.POST_ID, aggregate));
         return response;
     }

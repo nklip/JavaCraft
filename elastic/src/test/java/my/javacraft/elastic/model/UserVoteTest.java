@@ -10,12 +10,12 @@ import java.util.Set;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-public class UserActivityTest {
+public class UserVoteTest {
 
     @Test
     public void testJsonFormat() throws IOException {
-        UserActivity userActivity = new UserActivity(
-                UserPostEventTest.createHitCount(),
+        UserVote userVote = new UserVote(
+                VoteRequestTest.createHitCount(),
                 "2024-01-08T18:16:41.530Z"
         );
 
@@ -29,7 +29,7 @@ public class UserActivityTest {
                 }""",
                 objectMapper
                         .writerWithDefaultPrettyPrinter()
-                        .writeValueAsString(userActivity)
+                        .writeValueAsString(userVote)
                         .replaceAll("\r", "")
         );
     }
@@ -38,10 +38,10 @@ public class UserActivityTest {
     public void testValidationShouldFailWhenTimestampIsEmpty() {
         try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
             Validator validator = factory.getValidator();
-            UserActivity userActivity = createValidUserActivity();
-            userActivity.setTimestamp("");
+            UserVote userVote = createValidUserVote();
+            userVote.setTimestamp("");
 
-            Set<ConstraintViolation<UserActivity>> violations = validator.validate(userActivity);
+            Set<ConstraintViolation<UserVote>> violations = validator.validate(userVote);
 
             Assertions.assertTrue(violations.stream()
                     .anyMatch(v -> "timestamp".equals(v.getPropertyPath().toString())));
@@ -52,9 +52,9 @@ public class UserActivityTest {
     public void testValidationShouldPassForCompleteActivity() {
         try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
             Validator validator = factory.getValidator();
-            UserActivity userActivity = createValidUserActivity();
+            UserVote userVote = createValidUserVote();
 
-            Set<ConstraintViolation<UserActivity>> violations = validator.validate(userActivity);
+            Set<ConstraintViolation<UserVote>> violations = validator.validate(userVote);
 
             Assertions.assertTrue(violations.isEmpty());
         }
@@ -62,23 +62,23 @@ public class UserActivityTest {
 
     @Test
     public void testConstructorNormalizesActionToUppercase() {
-        UserPostEvent userPostEvent = UserPostEventTest.createHitCount(); // action = "Upvote"
+        VoteRequest voteRequest = VoteRequestTest.createHitCount(); // action = "Upvote"
         String timestamp = "2024-01-08T18:16:41.530Z";
 
-        UserActivity userActivity = new UserActivity(userPostEvent, timestamp);
+        UserVote userVote = new UserVote(voteRequest, timestamp);
 
-        Assertions.assertEquals("12345", userActivity.getPostId());
-        Assertions.assertEquals("nl8888", userActivity.getUserId());
-        Assertions.assertEquals("UPVOTE", userActivity.getAction()); // normalized to uppercase
-        Assertions.assertEquals(timestamp, userActivity.getTimestamp());
+        Assertions.assertEquals("12345", userVote.getPostId());
+        Assertions.assertEquals("nl8888", userVote.getUserId());
+        Assertions.assertEquals("UPVOTE", userVote.getAction()); // normalized to uppercase
+        Assertions.assertEquals(timestamp, userVote.getTimestamp());
     }
 
-    public static UserActivity createValidUserActivity() {
-        UserActivity userActivity = new UserActivity();
-        userActivity.setPostId("12345");
-        userActivity.setUserId("nl8888");
-        userActivity.setAction("UPVOTE");
-        userActivity.setTimestamp("2024-01-08T18:16:41.530Z");
-        return userActivity;
+    public static UserVote createValidUserVote() {
+        UserVote userVote = new UserVote();
+        userVote.setPostId("12345");
+        userVote.setUserId("nl8888");
+        userVote.setAction("UPVOTE");
+        userVote.setTimestamp("2024-01-08T18:16:41.530Z");
+        return userVote;
     }
 }

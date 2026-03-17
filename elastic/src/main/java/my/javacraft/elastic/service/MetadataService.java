@@ -6,14 +6,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collections;
 import java.util.Set;
-import my.javacraft.elastic.model.SeekTypeMetadata;
+import my.javacraft.elastic.model.ContentCategoryMetadata;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
 @Service
 public class MetadataService {
 
-    private final Set<SeekTypeMetadata> seekTypeMetadata;
+    private final Set<ContentCategoryMetadata> contentCategoryMetadata;
 
     // metadata.json must always be present in the current architecture.
     // If it is missing, the application should fail fast.
@@ -21,12 +21,12 @@ public class MetadataService {
         ClassPathResource metadataResource = new ClassPathResource("metadata.json");
         ObjectMapper objectMapper = new ObjectMapper();
         try (InputStream metadataStream = metadataResource.getInputStream()) {
-            seekTypeMetadata = objectMapper.readValue(metadataStream, new TypeReference<>() {});
+            contentCategoryMetadata = objectMapper.readValue(metadataStream, new TypeReference<>() {});
         }
     }
 
-    public Set<SeekTypeMetadata> getSeekTypeMetadata() {
-        return Collections.unmodifiableSet(seekTypeMetadata);
+    public Set<ContentCategoryMetadata> getContentCategoryMetadata() {
+        return Collections.unmodifiableSet(contentCategoryMetadata);
     }
 
 }

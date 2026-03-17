@@ -6,10 +6,10 @@ import lombok.Data;
 import lombok.ToString;
 import my.javacraft.elastic.validation.ValueOfEnum;
 
-// Represents the incoming event for UserActivityService
+// Represents the incoming event for VoteService
 @Data
 @ToString
-public class UserPostEvent {
+public class VoteRequest {
 
     @NotEmpty
     String userId;

@@ -7,15 +7,15 @@ import my.javacraft.elastic.validation.ValueOfEnum;
 
 @Data
 @ToString
-public class SeekRequest {
+public class ContentSearchRequest {
 
-    @ValueOfEnum(enumClass = SeekType.class)
+    @ValueOfEnum(enumClass = ContentCategory.class)
     String type;
 
     @NotBlank
     String pattern;
 
-    @ValueOfEnum(enumClass = Client.class)
+    @ValueOfEnum(enumClass = ClientType.class)
     String client;
 
 }

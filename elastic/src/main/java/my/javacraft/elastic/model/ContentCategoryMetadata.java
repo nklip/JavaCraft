@@ -4,9 +4,9 @@ import java.util.*;
 import lombok.Data;
 
 @Data
-public class SeekTypeMetadata {
+public class ContentCategoryMetadata {
 
-    SeekType seekType;
+    ContentCategory contentCategory;
 
     List<String> searchFields;
 

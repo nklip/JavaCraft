@@ -4,7 +4,7 @@ An Elasticsearch-backed search and user-activity service. Exposes multiple query
 via REST, ingests user click events into user-activity index, and returns popular/trending search activity.
 
 > **First time setup:** call the `AdminController` endpoints once to create all required
-> indexes and their field mappings before using `SearchController` or `UserActivityController`.
+> indexes and their field mappings before using `SearchController` or `UserVoteController`.
 
 **Stack:** Spring Boot, Spring Data Elasticsearch, Swagger/OpenAPI, Cucumber (BDD)
 
@@ -50,13 +50,13 @@ flowchart TD
     Client["HTTP Client"]
     AC["AdminController\n/api/admin"]
     SC["SearchController\n/api/services/search"]
-    UHC["UserActivityController\n/api/services/user-activity"]
+    UHC["UserVoteController\n/api/services/user-activity"]
     AS["AdminService"]
     SS["SearchService"]
-    UHS["UserActivityService"]
-    UHIS["UserActivityIngestionService"]
-    UHPS["UserActivityPopularService"]
-    UHTS["UserActivityTrendingService"]
+    UHS["UserVoteService"]
+    UHIS["UserVoteIngestionService"]
+    UHPS["UserVotePopularService"]
+    UHTS["UserVoteTrendingService"]
     SCHED["SchedulerJobs\n(hourly cleanup)"]
     ES[("Elasticsearch\nlocalhost:9200")]
 
@@ -86,12 +86,12 @@ flowchart TD
 ### Admin — `/api/admin`
 
 One-time setup endpoints. Call these **before** using `SearchController` or
-`UserActivityController`. Each endpoint creates a specific index with a fixed, pre-defined
+`UserVoteController`. Each endpoint creates a specific index with a fixed, pre-defined
 schema — no request body or path variables are accepted.
 
 | Method | Path | Creates index | Used by |
 |--------|------|---------------|---------|
-| `PUT` | `/api/admin/indexes/user-activity` | `user-activity` | `UserActivityController` |
+| `PUT` | `/api/admin/indexes/user-activity` | `user-activity` | `UserVoteController` |
 | `PUT` | `/api/admin/indexes/books` | `books` | `SearchController` |
 | `PUT` | `/api/admin/indexes/movies` | `movies` | `SearchController` |
 | `PUT` | `/api/admin/indexes/music` | `music` | `SearchController` |
@@ -116,9 +116,9 @@ Calling an endpoint when the index already exists returns `500` with an ES
 | Field | ES type | Rationale |
 |-------|---------|-----------|
 | `count` | `long` | incremented by the Painless upsert script |
-| `updated` | `date` (`strict_date_optional_time`) | used in range queries by `UserActivityTrendingService` |
-| `userId` | `keyword` | exact-match term query in `UserActivityPopularService` |
-| `recordId` | `keyword` | used in aggregations in `UserActivityTrendingService` |
+| `updated` | `date` (`strict_date_optional_time`) | used in range queries by `UserVoteTrendingService` |
+| `userId` | `keyword` | exact-match term query in `UserVotePopularService` |
+| `recordId` | `keyword` | used in aggregations in `UserVoteTrendingService` |
 | `searchType` | `keyword` | exact-match term query |
 | `elasticId` | `keyword` | composite document ID, not queried |
 | `searchValue` | `text` | stored only, not queried directly |
@@ -145,7 +145,7 @@ All search endpoints accept `POST` with `application/json` and return `applicati
 | `POST` | `/api/services/search/interval` | IntervalsQuery (maxGaps=3, ordered=true) |
 | `POST` | `/api/services/search/span` | SpanNearQuery (slop=3, inOrder=true) |
 
-**Request body — `SeekRequest`:**
+**Request body — `ContentSearchRequest`:**
 
 ```json
 {
@@ -173,7 +173,7 @@ Both `type` and `client` are validated with `@ValueOfEnum` — case-insensitive,
 POST /api/services/user-activity
 ```
 
-Request body — `UserPostEvent`:
+Request body — `VoteRequest`:
 
 ```json
 {
@@ -188,7 +188,7 @@ All fields are required (`@NotEmpty` / `@NotBlank`). On each call the service up
 into the `user-activity` index — it creates the document on first occurrence and increments
 `count` on subsequent calls for the same `(recordId, searchType, userId)` combination.
 
-Response — `UserPostEventResponse`:
+Response — `VoteRequestResponse`:
 
 ```json
 {
@@ -219,7 +219,7 @@ Response — `UserPostEventResponse`:
 ## 4. Data Model
 <sub>[Back to top](#elasticsearch)</sub>
 
-### `UserActivity` (Elasticsearch document, index: `user-activity`)
+### `UserVote` (Elasticsearch document, index: `user-activity`)
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -231,7 +231,7 @@ Response — `UserPostEventResponse`:
 | `count` | Long | Number of times this record was clicked |
 | `updated` | String | ISO 8601 timestamp of last update |
 
-### `UserPostEvent` (inbound event)
+### `VoteRequest` (inbound event)
 
 | Field | Constraint | Description |
 |-------|-----------|-------------|
@@ -248,16 +248,16 @@ Response — `UserPostEventResponse`:
 ```mermaid
 sequenceDiagram
     participant C as HTTP Client
-    participant UHC as UserActivityController
-    participant UHIS as UserActivityIngestionService
+    participant UHC as UserVoteController
+    participant UHIS as UserVoteIngestionService
     participant ES as Elasticsearch
 
-    C->>UHC: POST /user-activity (UserPostEvent)
-    UHC->>UHIS: ingestUserPostEvent(userPostEvent, now)
+    C->>UHC: POST /user-activity (VoteRequest)
+    UHC->>UHIS: ingestVoteRequest(voteRequest, now)
     UHIS->>ES: Upsert doc id={recordId}-{searchType}-{userId}
     note over ES: Script: ctx._source.count++\nupsert: {count:1, updated:...}
     ES-->>UHIS: UpdateResponse
-    UHIS-->>UHC: UserPostEventResponse
+    UHIS-->>UHC: VoteRequestResponse
     UHC-->>C: 200 {documentId, result}
 ```
 
@@ -332,7 +332,7 @@ scheduler:
 ### Default (multi-search)
 
 Executes an Elasticsearch `_msearch` request across all index fields configured for the
-given `SeekType` in `metadata.json`. Returns raw Elasticsearch `Document` objects.
+given `ContentCategory` in `metadata.json`. Returns raw Elasticsearch `Document` objects.
 
 ### Wildcard
 
@@ -409,7 +409,7 @@ Endpoints annotated with `@Valid` trigger Jakarta Bean Validation. Invalid reque
 |-----------|-----------|---------|
 | `@NotEmpty` | `userId` | Must not be null or empty |
 | `@NotBlank` | `recordId`, `searchType`, `searchPattern` | Must not be blank |
-| `@ValueOfEnum` | `type`, `client` in `SeekRequest` | Must match a known enum constant (case-insensitive) |
+| `@ValueOfEnum` | `type`, `client` in `ContentSearchRequest` | Must match a known enum constant (case-insensitive) |
 
 ### `@ValueOfEnum` — Custom enum validator
 
@@ -419,7 +419,7 @@ Case-insensitive comparison is applied, `null` values are allowed (treated as va
 Usage:
 
 ```java
-@ValueOfEnum(enumClass = SeekType.class)
+@ValueOfEnum(enumClass = ContentCategory.class)
 String type;
 ```
 

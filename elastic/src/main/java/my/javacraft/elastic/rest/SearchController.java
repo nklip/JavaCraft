@@ -13,7 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import my.javacraft.elastic.model.SeekRequest;
+import my.javacraft.elastic.model.ContentSearchRequest;
 import my.javacraft.elastic.service.SearchService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -53,15 +53,15 @@ public class SearchController {
                     description = "Wildcard search request values",
                     useParameterTypeSchema = true,
                     content = @Content(schema = @Schema(
-                            implementation = SeekRequest.class
+                            implementation = ContentSearchRequest.class
                     ))
             )
-            @RequestBody @Valid SeekRequest seekRequest) throws IOException, ElasticsearchException {
+            @RequestBody @Valid ContentSearchRequest contentSearchRequest) throws IOException, ElasticsearchException {
         Instant startTime = Instant.now();
 
-        log.info("searching wildcard for (SearchRequest = {})...", seekRequest);
+        log.info("searching wildcard for (SearchRequest = {})...", contentSearchRequest);
 
-        List<Object> documentList = searchService.wildcardSearch(seekRequest);
+        List<Object> documentList = searchService.wildcardSearch(contentSearchRequest);
 
         log.info("Total time to wildcard search is '{}' ms", Duration.between(startTime, Instant.now()).toMillis());
 
@@ -87,15 +87,15 @@ public class SearchController {
                     description = "Fuzzy search request values",
                     useParameterTypeSchema = true,
                     content = @Content(schema = @Schema(
-                            implementation = SeekRequest.class
+                            implementation = ContentSearchRequest.class
                     ))
             )
-            @RequestBody @Valid SeekRequest seekRequest) throws IOException, ElasticsearchException {
+            @RequestBody @Valid ContentSearchRequest contentSearchRequest) throws IOException, ElasticsearchException {
         Instant startTime = Instant.now();
 
-        log.info("searching fuzzy for (SearchRequest = {})...", seekRequest);
+        log.info("searching fuzzy for (SearchRequest = {})...", contentSearchRequest);
 
-        List<Object> documentList = searchService.fuzzySearch(seekRequest);
+        List<Object> documentList = searchService.fuzzySearch(contentSearchRequest);
 
         log.info("Total time to fuzzy search is '{}' ms", Duration.between(startTime, Instant.now()).toMillis());
 
@@ -121,15 +121,15 @@ public class SearchController {
                     description = "Interval search request values",
                     useParameterTypeSchema = true,
                     content = @Content(schema = @Schema(
-                            implementation = SeekRequest.class
+                            implementation = ContentSearchRequest.class
                     ))
             )
-            @RequestBody @Valid SeekRequest seekRequest) throws IOException, ElasticsearchException {
+            @RequestBody @Valid ContentSearchRequest contentSearchRequest) throws IOException, ElasticsearchException {
         Instant startTime = Instant.now();
 
-        log.info("searching interval for (SearchRequest = {})...", seekRequest);
+        log.info("searching interval for (SearchRequest = {})...", contentSearchRequest);
 
-        List<Object> documentList = searchService.intervalSearch(seekRequest);
+        List<Object> documentList = searchService.intervalSearch(contentSearchRequest);
 
         log.info("Total time to interval search is '{}' ms", Duration.between(startTime, Instant.now()).toMillis());
 
@@ -155,15 +155,15 @@ public class SearchController {
                     description = "Span search request values",
                     useParameterTypeSchema = true,
                     content = @Content(schema = @Schema(
-                            implementation = SeekRequest.class
+                            implementation = ContentSearchRequest.class
                     ))
             )
-            @RequestBody @Valid SeekRequest seekRequest) throws IOException, ElasticsearchException {
+            @RequestBody @Valid ContentSearchRequest contentSearchRequest) throws IOException, ElasticsearchException {
         Instant startTime = Instant.now();
 
-        log.info("searching span for (SearchRequest = {})...", seekRequest);
+        log.info("searching span for (SearchRequest = {})...", contentSearchRequest);
 
-        List<Object> documentList = searchService.spanSearch(seekRequest);
+        List<Object> documentList = searchService.spanSearch(contentSearchRequest);
 
         log.info("Total time to span search is '{}' ms", Duration.between(startTime, Instant.now()).toMillis());
 
@@ -188,15 +188,15 @@ public class SearchController {
                     description = "Search request values",
                     useParameterTypeSchema = true,
                     content = @Content(schema = @Schema(
-                            implementation = SeekRequest.class
+                            implementation = ContentSearchRequest.class
                     ))
             )
-            @RequestBody @Valid SeekRequest seekRequest) throws IOException, ElasticsearchException {
+            @RequestBody @Valid ContentSearchRequest contentSearchRequest) throws IOException, ElasticsearchException {
         Instant startTime = Instant.now();
 
-        log.info("searching (SearchRequest = {})...", seekRequest);
+        log.info("searching (SearchRequest = {})...", contentSearchRequest);
 
-        List<Document> documentList = searchService.search(seekRequest);
+        List<Document> documentList = searchService.search(contentSearchRequest);
 
         log.info("Total time for searching is '{}' ms", Duration.between(startTime, Instant.now()).toMillis());
 

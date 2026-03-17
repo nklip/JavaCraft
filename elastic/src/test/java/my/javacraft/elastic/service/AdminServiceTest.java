@@ -1,6 +1,7 @@
 package my.javacraft.elastic.service;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.mapping.TypeMapping;
 import co.elastic.clients.elasticsearch.indices.CreateIndexRequest;
 import co.elastic.clients.elasticsearch.indices.CreateIndexResponse;
 import co.elastic.clients.elasticsearch.indices.ExistsRequest;
@@ -27,7 +28,7 @@ public class AdminServiceTest {
     ElasticsearchClient esClient;
 
     @Test
-    public void testCreateUserActivityIndex() throws IOException {
+    public void testCreateUserVoteIndex() throws IOException {
         AdminService adminService = new AdminService(esClient);
 
         ElasticsearchIndicesClient indicesClient = Mockito.mock(ElasticsearchIndicesClient.class);
@@ -38,7 +39,7 @@ public class AdminServiceTest {
         when(indicesClient.create(any(CreateIndexRequest.class))).thenReturn(createIndexResponse);
         when(createIndexResponse.acknowledged()).thenReturn(true);
 
-        AdminService.IndexCreationResult response = adminService.createUserActivityIndex();
+        AdminService.IndexCreationResult response = adminService.createUserVoteIndex();
 
         Assertions.assertNotNull(response);
         Assertions.assertTrue(response.created());
@@ -48,7 +49,9 @@ public class AdminServiceTest {
         ArgumentCaptor<CreateIndexRequest> requestCaptor = ArgumentCaptor.forClass(CreateIndexRequest.class);
         verify(indicesClient).create(requestCaptor.capture());
 
-        Map<String, ?> properties = requestCaptor.getValue().mappings().properties();
+        TypeMapping typeMapping = requestCaptor.getValue().mappings();
+        Assertions.assertNotNull(typeMapping);
+        Map<String, ?> properties = typeMapping.properties();
         Assertions.assertTrue(properties.containsKey("timestamp"));
         Assertions.assertTrue(properties.containsKey("userId"));
         Assertions.assertTrue(properties.containsKey("postId"));

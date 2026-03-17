@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Map;
 import my.javacraft.elastic.config.Constants;
 import my.javacraft.elastic.model.PostPreview;
-import my.javacraft.elastic.model.UserActivity;
+import my.javacraft.elastic.model.UserVote;
 import my.javacraft.elastic.service.DateService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -41,10 +41,10 @@ public class TopServiceTest {
 
     @Test
     public void testRetrieveTopPostsAllTime() throws IOException {
-        SearchResponse<UserActivity> aggResponse = buildAggResponse(Map.of("post-1", new long[]{100L, 10L}));
+        SearchResponse<UserVote> aggResponse = buildAggResponse(Map.of("post-1", new long[]{100L, 10L}));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
-        when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
+        when(esClient.search(any(SearchRequest.class), eq(UserVote.class)))
                 .thenReturn(aggResponse);
 
         List<PostPreview> result = new TopService(esClient, dateService).retrieveTopPosts(10);
@@ -60,13 +60,13 @@ public class TopServiceTest {
         // postA: 100 up - 80 down = 20 net   (higher raw upvotes but lower net)
         // postB:  60 up - 10 down = 50 net   (wins on net score)
         // ES candidate pool comes back postA-first (higher _count), Java must re-sort to postB-first
-        SearchResponse<UserActivity> aggResponse = buildAggResponse(Map.of(
+        SearchResponse<UserVote> aggResponse = buildAggResponse(Map.of(
                 "postA", new long[]{100L, 80L},
                 "postB", new long[]{ 60L, 10L}
         ));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
-        when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
+        when(esClient.search(any(SearchRequest.class), eq(UserVote.class)))
                 .thenReturn(aggResponse);
 
         List<PostPreview> result = new TopService(esClient, dateService).retrieveTopPosts(10);
@@ -80,10 +80,10 @@ public class TopServiceTest {
 
     @Test
     public void testRetrieveTopPostsReturnsEmptyWhenNoActivity() throws IOException {
-        SearchResponse<UserActivity> aggResponse = buildAggResponse(Map.of());
+        SearchResponse<UserVote> aggResponse = buildAggResponse(Map.of());
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
-        when(esClient.search(any(SearchRequest.class), eq(UserActivity.class))).thenReturn(aggResponse);
+        when(esClient.search(any(SearchRequest.class), eq(UserVote.class))).thenReturn(aggResponse);
 
         List<PostPreview> result = new TopService(esClient, dateService).retrieveTopPosts(10);
 
@@ -98,10 +98,10 @@ public class TopServiceTest {
         when(dateService.getNDaysBeforeDate(TopService.TopWindow.WEEK.getDays()))
                 .thenReturn("2026-03-09T00:00:00.000Z");
 
-        SearchResponse<UserActivity> aggResponse = buildAggResponse(Map.of("post-recent", new long[]{50L, 5L}));
+        SearchResponse<UserVote> aggResponse = buildAggResponse(Map.of("post-recent", new long[]{50L, 5L}));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
-        when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
+        when(esClient.search(any(SearchRequest.class), eq(UserVote.class)))
                 .thenReturn(aggResponse);
 
         List<PostPreview> result = new TopService(esClient, dateService)
@@ -128,7 +128,7 @@ public class TopServiceTest {
      *
      * @param postData map of postId → [upvoteCount, downvoteCount]
      */
-    private SearchResponse<UserActivity> buildAggResponse(Map<String, long[]> postData) {
+    private SearchResponse<UserVote> buildAggResponse(Map<String, long[]> postData) {
         List<StringTermsBucket> postBuckets = postData.entrySet().stream()
                 .map(e -> {
                     long[] d = e.getValue();
@@ -162,7 +162,7 @@ public class TopServiceTest {
         Aggregate aggregate = mock(Aggregate.class);
         when(aggregate.sterms()).thenReturn(sterms);
 
-        SearchResponse<UserActivity> response = mock(SearchResponse.class);
+        SearchResponse<UserVote> response = mock(SearchResponse.class);
         when(response.aggregations()).thenReturn(Map.of(Constants.POST_ID, aggregate));
         return response;
     }

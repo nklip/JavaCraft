@@ -32,8 +32,8 @@ import my.javacraft.elastic.cucumber.helper.generator.impl.NewEvents;
 import my.javacraft.elastic.cucumber.helper.generator.impl.RisingEvents;
 import my.javacraft.elastic.cucumber.helper.generator.impl.TopEvents;
 import my.javacraft.elastic.model.PostPreview;
-import my.javacraft.elastic.model.UserPostEvent;
-import my.javacraft.elastic.service.activity.UserActivityService;
+import my.javacraft.elastic.model.VoteRequest;
+import my.javacraft.elastic.service.activity.VoteService;
 import org.apache.http.HttpHeaders;
 import org.junit.jupiter.api.Assertions;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -84,7 +84,7 @@ public class PostRankingControllerStepDefinitions {
     @Autowired
     ElasticsearchClient esClient;
     @Autowired
-    UserActivityService userActivityService;
+    VoteService voteService;
 
     /**
      * Generates all 5 CSV fixture files into a fixed temporary directory and stores the path in
@@ -212,18 +212,18 @@ public class PostRankingControllerStepDefinitions {
                 CucumberSpringConfiguration.assertWithWait(true, () -> countIndexDocuments() >= MIN_CSV_DOCUMENTS),
                 ("ES index '%s' does not contain the expected minimum of %d documents after ingesting '%s'. " +
                         "Actual count: %d. Ensure 'Scenario: prepare data' ran first.")
-                        .formatted(Constants.INDEX_USER_ACTIVITY, MIN_CSV_DOCUMENTS, folderPath, countIndexDocuments())
+                        .formatted(Constants.INDEX_USER_VOTE, MIN_CSV_DOCUMENTS, folderPath, countIndexDocuments())
         );
         log.info("ES confirmed: index '{}' has ≥{} documents — folder '{}' is ready",
-                Constants.INDEX_USER_ACTIVITY, MIN_CSV_DOCUMENTS, folderPath);
+                Constants.INDEX_USER_VOTE, MIN_CSV_DOCUMENTS, folderPath);
     }
 
     /** Returns the current document count in the user-activity index, or 0 on any error. */
     private long countIndexDocuments() {
         try {
-            return esClient.count(r -> r.index(Constants.INDEX_USER_ACTIVITY)).count();
+            return esClient.count(r -> r.index(Constants.INDEX_USER_VOTE)).count();
         } catch (IOException e) {
-            log.warn("Failed to count documents in index '{}': {}", Constants.INDEX_USER_ACTIVITY, e.getMessage());
+            log.warn("Failed to count documents in index '{}': {}", Constants.INDEX_USER_VOTE, e.getMessage());
             return 0L;
         }
     }
@@ -366,13 +366,13 @@ public class PostRankingControllerStepDefinitions {
                         "Invalid CSV row at line %d in %s".formatted(lineNumber, sourceName)
                 );
 
-                UserPostEvent click = new UserPostEvent();
+                VoteRequest click = new VoteRequest();
                 click.setUserId(values[0].trim());
                 click.setPostId(values[1].trim());
                 click.setAction(values[2].trim());
 
                 String timestamp = values[3].trim();
-                userActivityService.ingestUserEvent(click, timestamp);
+                voteService.ingestUserEvent(click, timestamp);
                 ingestedRows++;
             }
         }

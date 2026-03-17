@@ -1,6 +1,6 @@
 [
   {
-    "seekType": "BOOKS",
+    "contentCategory": "BOOKS",
     "searchFields": [
       "name",
       "author",
@@ -8,7 +8,7 @@
     ]
   },
   {
-    "seekType": "MOVIES",
+    "contentCategory": "MOVIES",
     "searchFields": [
       "name",
       "director",
@@ -16,7 +16,7 @@
     ]
   },
   {
-    "seekType": "MUSIC",
+    "contentCategory": "MUSIC",
     "searchFields": [
       "band",
       "album",

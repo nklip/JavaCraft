@@ -1,7 +1,7 @@
 package my.javacraft.elastic.validation;
 
 import jakarta.validation.Payload;
-import my.javacraft.elastic.model.Client;
+import my.javacraft.elastic.model.ClientType;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -14,8 +14,8 @@ public class ValueOfEnumValidatorTest {
         ValueOfEnumValidator validator = new ValueOfEnumValidator();
         validator.initialize(testValues);
 
-        Assertions.assertTrue(validator.isValid(Client.MOBILE.toString().toUpperCase(), null));
-        Assertions.assertTrue(validator.isValid(Client.WEB.toString().toLowerCase(), null));
+        Assertions.assertTrue(validator.isValid(ClientType.MOBILE.toString().toUpperCase(), null));
+        Assertions.assertTrue(validator.isValid(ClientType.WEB.toString().toLowerCase(), null));
         Assertions.assertFalse(validator.isValid("random value", null));
         Assertions.assertFalse(validator.isValid(null, null));
     }
@@ -43,7 +43,7 @@ public class ValueOfEnumValidatorTest {
 
         @Override
         public Class<? extends Enum<?>> enumClass() {
-            return Client.class;
+            return ClientType.class;
         }
     }
 }

@@ -1,6 +1,6 @@
 package my.javacraft.elastic.model;
 
-public enum Client {
+public enum ClientType {
 
     MOBILE,
     WEB

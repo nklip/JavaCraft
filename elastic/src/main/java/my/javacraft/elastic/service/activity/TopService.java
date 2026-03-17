@@ -15,7 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.config.Constants;
 import my.javacraft.elastic.model.PostPreview;
 import my.javacraft.elastic.model.UserAction;
-import my.javacraft.elastic.model.UserActivity;
+import my.javacraft.elastic.model.UserVote;
 import my.javacraft.elastic.service.DateService;
 import org.springframework.stereotype.Service;
 
@@ -103,7 +103,7 @@ public class TopService {
         int querySize = Math.min(size * 10, Constants.MAX_VALUES);
 
         SearchRequest.Builder builder = new SearchRequest.Builder()
-                .index(Constants.INDEX_USER_ACTIVITY)
+                .index(Constants.INDEX_USER_VOTE)
                 .size(0)
                 .aggregations(Constants.POST_ID, a -> a
                         .terms(t -> t
@@ -135,7 +135,7 @@ public class TopService {
         SearchRequest request = builder.build();
         log.debug("top aggregation query: {}", JsonpUtils.toJsonString(request, esClient._jsonpMapper()));
 
-        return esClient.search(request, UserActivity.class)
+        return esClient.search(request, UserVote.class)
                 .aggregations()
                 .get(Constants.POST_ID)
                 .sterms()

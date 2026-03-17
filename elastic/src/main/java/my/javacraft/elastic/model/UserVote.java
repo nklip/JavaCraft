@@ -4,20 +4,20 @@ import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
-import my.javacraft.elastic.service.activity.UserActivityService;
+import my.javacraft.elastic.service.activity.VoteService;
 
 /**
  * Vote document stored in the 'user-activity' index.
  * Document ID is {@code userId_postId} — one document per (user, post) pair.
  *
  * <p>The document represents the user's <em>current</em> vote on a post.
- * {@link UserActivityService} enforces
+ * {@link VoteService} enforces
  * the following state machine:
  * <ul>
  *   <li>First vote → document created ({@code Result.Created})</li>
  *   <li>Same action repeated → no write ({@code Result.NoOp})</li>
  *   <li>Opposite action → action and timestamp updated ({@code Result.Updated})</li>
- *   <li>{@code NOVOTE} → document deleted, no {@code UserActivity} is created
+ *   <li>{@code NOVOTE} → document deleted, no {@code UserVote} is created
  *       ({@code Result.Deleted} or {@code Result.NotFound})</li>
  * </ul>
  *
@@ -28,7 +28,7 @@ import my.javacraft.elastic.service.activity.UserActivityService;
 @Data
 @ToString
 @NoArgsConstructor
-public class UserActivity {
+public class UserVote {
 
     @NotEmpty
     String postId;
@@ -43,10 +43,10 @@ public class UserActivity {
     @NotEmpty
     String timestamp;
 
-    public UserActivity(UserPostEvent userPostEvent, String timestamp) {
-        this.postId = userPostEvent.getPostId();
-        this.userId = userPostEvent.getUserId();
-        this.action = userPostEvent.getAction().toUpperCase();
+    public UserVote(VoteRequest voteRequest, String timestamp) {
+        this.postId = voteRequest.getPostId();
+        this.userId = voteRequest.getUserId();
+        this.action = voteRequest.getAction().toUpperCase();
         this.timestamp = timestamp;
     }
 }

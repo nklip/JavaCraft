@@ -32,14 +32,14 @@ public class SearchControllerTest {
         document.put("result", "test1 value");
         List<Object> documentList = new ArrayList<>();
         documentList.add(document);
-        when(searchService.wildcardSearch(any(SeekRequest.class))).thenReturn(documentList);
+        when(searchService.wildcardSearch(any(ContentSearchRequest.class))).thenReturn(documentList);
 
-        SeekRequest seekRequest = new SeekRequest();
-        seekRequest.setClient(Client.WEB.toString());
-        seekRequest.setType(SeekType.ALL.toString());
-        seekRequest.setPattern("test1");
+        ContentSearchRequest contentSearchRequest = new ContentSearchRequest();
+        contentSearchRequest.setClient(ClientType.WEB.toString());
+        contentSearchRequest.setType(ContentCategory.ALL.toString());
+        contentSearchRequest.setPattern("test1");
 
-        ResponseEntity<List<Object>> response = searchServiceController.wildcardSearch(seekRequest);
+        ResponseEntity<List<Object>> response = searchServiceController.wildcardSearch(contentSearchRequest);
 
         Assertions.assertNotNull(response);
         Assertions.assertNotNull(response.getBody());
@@ -55,14 +55,14 @@ public class SearchControllerTest {
         document.put("result", "test2 value");
         List<Object> documentList = new ArrayList<>();
         documentList.add(document);
-        when(searchService.fuzzySearch(any(SeekRequest.class))).thenReturn(documentList);
+        when(searchService.fuzzySearch(any(ContentSearchRequest.class))).thenReturn(documentList);
 
-        SeekRequest seekRequest = new SeekRequest();
-        seekRequest.setClient(Client.WEB.toString());
-        seekRequest.setType(SeekType.ALL.toString());
-        seekRequest.setPattern("tes?");
+        ContentSearchRequest contentSearchRequest = new ContentSearchRequest();
+        contentSearchRequest.setClient(ClientType.WEB.toString());
+        contentSearchRequest.setType(ContentCategory.ALL.toString());
+        contentSearchRequest.setPattern("tes?");
 
-        ResponseEntity<List<Object>> response = searchServiceController.fuzzySearch(seekRequest);
+        ResponseEntity<List<Object>> response = searchServiceController.fuzzySearch(contentSearchRequest);
 
         Assertions.assertNotNull(response);
         Assertions.assertNotNull(response.getBody());
@@ -78,14 +78,14 @@ public class SearchControllerTest {
         document.put("result", "test3 should be submitted");
         List<Object> documentList = new ArrayList<>();
         documentList.add(document);
-        when(searchService.intervalSearch(any(SeekRequest.class))).thenReturn(documentList);
+        when(searchService.intervalSearch(any(ContentSearchRequest.class))).thenReturn(documentList);
 
-        SeekRequest seekRequest = new SeekRequest();
-        seekRequest.setClient(Client.WEB.toString());
-        seekRequest.setType(SeekType.ALL.toString());
-        seekRequest.setPattern("test3 submitted");
+        ContentSearchRequest contentSearchRequest = new ContentSearchRequest();
+        contentSearchRequest.setClient(ClientType.WEB.toString());
+        contentSearchRequest.setType(ContentCategory.ALL.toString());
+        contentSearchRequest.setPattern("test3 submitted");
 
-        ResponseEntity<List<Object>> response = searchServiceController.intervalSearch(seekRequest);
+        ResponseEntity<List<Object>> response = searchServiceController.intervalSearch(contentSearchRequest);
 
         Assertions.assertNotNull(response);
         Assertions.assertNotNull(response.getBody());
@@ -101,14 +101,14 @@ public class SearchControllerTest {
         document.put("result", "test3 should be submitted");
         List<Object> documentList = new ArrayList<>();
         documentList.add(document);
-        when(searchService.spanSearch(any(SeekRequest.class))).thenReturn(documentList);
+        when(searchService.spanSearch(any(ContentSearchRequest.class))).thenReturn(documentList);
 
-        SeekRequest seekRequest = new SeekRequest();
-        seekRequest.setClient(Client.WEB.toString());
-        seekRequest.setType(SeekType.ALL.toString());
-        seekRequest.setPattern("test3 submitted");
+        ContentSearchRequest contentSearchRequest = new ContentSearchRequest();
+        contentSearchRequest.setClient(ClientType.WEB.toString());
+        contentSearchRequest.setType(ContentCategory.ALL.toString());
+        contentSearchRequest.setPattern("test3 submitted");
 
-        ResponseEntity<List<Object>> response = searchServiceController.spanSearch(seekRequest);
+        ResponseEntity<List<Object>> response = searchServiceController.spanSearch(contentSearchRequest);
 
         Assertions.assertNotNull(response);
         Assertions.assertNotNull(response.getBody());
@@ -121,14 +121,14 @@ public class SearchControllerTest {
         SearchController searchServiceController = new SearchController(searchService);
 
         List<Document> documentList = new ArrayList<>();
-        when(searchService.search(any(SeekRequest.class))).thenReturn(documentList);
+        when(searchService.search(any(ContentSearchRequest.class))).thenReturn(documentList);
 
-        SeekRequest seekRequest = new SeekRequest();
-        seekRequest.setClient(Client.WEB.toString());
-        seekRequest.setType(SeekType.ALL.toString());
-        seekRequest.setPattern("test4");
+        ContentSearchRequest contentSearchRequest = new ContentSearchRequest();
+        contentSearchRequest.setClient(ClientType.WEB.toString());
+        contentSearchRequest.setType(ContentCategory.ALL.toString());
+        contentSearchRequest.setPattern("test4");
 
-        ResponseEntity<List<Document>> response = searchServiceController.search(seekRequest);
+        ResponseEntity<List<Document>> response = searchServiceController.search(contentSearchRequest);
 
         Assertions.assertNotNull(response);
         Assertions.assertNotNull(response.getBody());

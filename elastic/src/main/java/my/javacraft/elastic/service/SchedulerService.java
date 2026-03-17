@@ -27,7 +27,7 @@ public class SchedulerService {
                     )
             );
             DeleteByQueryRequest deleteByQueryRequest = new DeleteByQueryRequest.Builder()
-                    .index(Constants.INDEX_USER_ACTIVITY)
+                    .index(Constants.INDEX_USER_VOTE)
                     .query(rangeQuery._toQuery())
                     .build();
 
