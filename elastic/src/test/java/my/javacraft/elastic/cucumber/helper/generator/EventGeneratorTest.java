@@ -24,6 +24,9 @@ class EventGeneratorTest {
 
     Path outputDirectory = Path.of("src/test/resources/data/csv");
 
+    /**
+     * Enable this test to generate a new set of inputs in data/csv folder
+     */
     @Disabled
     @ParameterizedTest
     @MethodSource("generatorCases")
