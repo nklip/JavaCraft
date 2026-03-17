@@ -27,6 +27,21 @@ public class RisingEvents implements EventGenerator {
     /*
      * Should update postIds from 31 to 40
      * The amount of users which would UPVOTE or DOWNVOTE - 100
+     *
+     * Each postId has a unique upvote percentage so that karma is unique per post:
+     *
+     *   postId 31 → upvote% 71 → karma 42
+     *   postId 32 → upvote% 72 → karma 44
+     *   ...
+     *   postId 40 → upvote% 80 → karma 60
+     *
+     * karma = 2 × upvotePercent − 100  (exact because isUpvote() produces a full
+     * permutation of 0-99 over 100 users when gcd(31, 100) = 1).
+     *
+     * Date pattern: all events are 8–29 days old.
+     *   - 8-day floor keeps every event outside the 7-day Top WEEK window.
+     *   - 29-day ceiling keeps every event inside the 30-day Top MONTH window.
+     *   - max karma (60) > max NewEvents karma (40) → posts 31-40 win Top MONTH.
      */
     @Override
     public void generateEventsInCsv() {
@@ -34,24 +49,10 @@ public class RisingEvents implements EventGenerator {
         List<String> rows = new ArrayList<>(10 * EventCsvSupport.USERS_PER_POST);
 
         for (int postId = 31; postId <= 40; postId++) {
+            int upvotePercent = 71 + (postId - 31);    // 71% → 80%, unique per post
             for (int userId = 1; userId <= EventCsvSupport.USERS_PER_POST; userId++) {
-                int upvotePercent;
-                long daysAgo;
-                long hoursAgo;
-
-                if (userId <= 60) {
-                    upvotePercent = 72;
-                    daysAgo = 120 + Math.floorMod(postId * 7 + userId * 3, 60);
-                    hoursAgo = Math.floorMod(postId * 5 + userId * 11, 24);
-                } else if (userId <= 80) {
-                    upvotePercent = 85;
-                    daysAgo = 15 + Math.floorMod(postId * 11 + userId * 5, 45);
-                    hoursAgo = Math.floorMod(postId * 13 + userId * 7, 24);
-                } else {
-                    upvotePercent = 95;
-                    daysAgo = Math.floorMod(postId * 3 + userId * 2, 7);
-                    hoursAgo = Math.floorMod(postId * 17 + userId * 19, 24);
-                }
+                long daysAgo  = 8 + Math.floorMod(postId * 11 + userId * 7, 22); // 8-29 days
+                long hoursAgo = Math.floorMod(postId * 13 + userId * 5, 24);
 
                 boolean upvote = EventCsvSupport.isUpvote(userId, postId, upvotePercent);
                 long minutesAgo = Math.floorMod(postId * 23 + userId * 29, 60);

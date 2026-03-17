@@ -280,29 +280,21 @@ public class UserActivityControllerStepDefinitions {
     private void verifyRankedPosts(String path, int expectedSize, DataTable expectedPosts, String label)
             throws InterruptedException {
 
-        Map<String, Long> expectedPostKarma = expectedPosts.asMaps().stream()
-                .collect(Collectors.toMap(
-                        row -> row.get("postId"),
-                        row -> Long.parseLong(row.get("karma"))
-                ));
-
         Assertions.assertTrue(
                 CucumberSpringConfiguration.assertWithWait(expectedSize, () -> fetchRankedPostsCount(path)),
                 "Timed out waiting for %d %s posts at %s".formatted(expectedSize, label, path)
         );
 
-        Map<String, Long> actualPostKarma = fetchRankedPosts(path).stream()
-                .collect(Collectors.toMap(PostPreview::getPostId, PostPreview::getKarma));
+        List<PostPreview> actualPosts = fetchRankedPosts(path);
 
-        Assertions.assertEquals(expectedPostKarma.keySet(), actualPostKarma.keySet(),
-                "%s postId set mismatch. Expected: %s  Actual: %s"
-                        .formatted(label, expectedPostKarma.keySet(), actualPostKarma.keySet()));
+        for (int i = 0; i < actualPosts.size(); i++) {
+            PostPreview actualPost = actualPosts.get(i);
+            // first row is column names
+            List<String> expectedRow = expectedPosts.row(i + 1);
 
-        Assertions.assertEquals(expectedPostKarma, actualPostKarma,
-                "%s karma mismatch. Expected: %s  Actual: %s"
-                        .formatted(label, expectedPostKarma, actualPostKarma));
-
-        log.info("{} verified — {} posts match expected postId+karma map", label, actualPostKarma.size());
+            // karma is the 2nd column
+            Assertions.assertEquals(Long.parseLong(expectedRow.get(1)), actualPost.getKarma());
+        }
     }
 
     /**

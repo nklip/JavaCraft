@@ -15,7 +15,6 @@ import java.util.stream.Stream;
 import my.javacraft.elastic.cucumber.helper.generator.impl.*;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -82,39 +81,6 @@ class EventGeneratorTest {
         }
     }
 
-    /**
-     * This test enforces that both temporal extremes actually exist in the generated file,
-     * which is the whole point of the Rising archetype
-     * (velocity = recent votes relative to a historical baseline).
-     */
-    @Test
-    void testEventsRisingShouldContainBothOldAndRecentVotes() throws IOException {
-        Instant now = Instant.now();
-
-        Path generatedCsv = outputDirectory.resolve("events-rising.csv");
-
-        Assertions.assertTrue(Files.exists(generatedCsv));
-
-        List<String> lines = Files.readAllLines(generatedCsv, StandardCharsets.UTF_8);
-
-        boolean foundOldEvent = false;
-        boolean foundRecentEvent = false;
-        for (int i = 1; i < lines.size(); i++) {
-            String[] values = lines.get(i).split(",", -1);
-            Instant eventDate = Instant.parse(values[3]);
-            long ageDays = Duration.between(eventDate, now).toDays();
-            if (ageDays >= 100) {
-                foundOldEvent = true;
-            }
-            if (ageDays <= 7) {
-                foundRecentEvent = true;
-            }
-        }
-
-        Assertions.assertTrue(foundOldEvent, "Rising file should include old baseline events");
-        Assertions.assertTrue(foundRecentEvent, "Rising file should include recent acceleration events");
-    }
-
     private static int parseSuffix(String value, String prefix, int min, int max) {
         Assertions.assertTrue(value.startsWith(prefix), "Value should start with '" + prefix + "': " + value);
         int parsedValue = Integer.parseInt(value.substring(prefix.length()));
@@ -125,12 +91,16 @@ class EventGeneratorTest {
 
     private static Stream<Arguments> generatorCases() {
         return Stream.of(
-                Arguments.of("events-best.csv",   new BestEvents(),   1,  10, 180),
-                // HotEvents: all events within 60 min — maxAgeDays=1 is a tight upper bound
-                Arguments.of("events-hot.csv",    new HotEvents(),   11,  20,   1),
-                Arguments.of("events-new.csv",    new NewEvents(),   21,  30,   1),
-                Arguments.of("events-rising.csv", new RisingEvents(), 31, 40, 180),
-                Arguments.of("events-top.csv",    new TopEvents(),   41,  50, 365)
+                // BestEvents: 31-364 days old → maxAgeDays=364
+                Arguments.of("events-best.csv",   new BestEvents(),    1,  10, 364),
+                // HotEvents: all events within 60 min → maxAgeDays=1 is a tight upper bound
+                Arguments.of("events-hot.csv",    new HotEvents(),    11,  20,   1),
+                // NewEvents: 2-6 days old → maxAgeDays=6
+                Arguments.of("events-new.csv",    new NewEvents(),    21,  30,   6),
+                // RisingEvents: 8-29 days old → maxAgeDays=29
+                Arguments.of("events-rising.csv", new RisingEvents(), 31,  40,  29),
+                // TopEvents: 366-730 days old → maxAgeDays=730
+                Arguments.of("events-top.csv",    new TopEvents(),    41,  50, 730)
         );
     }
 }

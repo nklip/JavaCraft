@@ -180,4 +180,31 @@ public class UserActivityControllerTest {
                 .anyMatch(v -> v.getMessage().contains("less than or equal to " + UserActivityService.MAX_VALUES)));
     }
 
+    @Test
+    public void testRetrieveHotPostsReturnsServiceResultsAsIs() throws IOException {
+        UserActivityController userActivityController = new UserActivityController(
+                dateService, userActivityService, topService, hotService, userActivityIngestionService
+        );
+
+        // Hot endpoint delegates ordering entirely to HotService — no controller-level sort
+        List<PostPreview> posts = List.of(
+                new PostPreview("postA", 10L),
+                new PostPreview("postB", 50L),
+                new PostPreview("postC", 30L)
+        );
+        when(hotService.retrieveHotPosts(anyInt())).thenReturn(posts);
+
+        ResponseEntity<List<PostPreview>> response = userActivityController.retrieveHotPosts(10);
+
+        Assertions.assertNotNull(response.getBody());
+        List<PostPreview> body = response.getBody();
+        Assertions.assertEquals(3, body.size());
+        Assertions.assertEquals("postA", body.get(0).getPostId(), "order must match service output");
+        Assertions.assertEquals(10L,     body.get(0).getKarma());
+        Assertions.assertEquals("postB", body.get(1).getPostId());
+        Assertions.assertEquals(50L,     body.get(1).getKarma());
+        Assertions.assertEquals("postC", body.get(2).getPostId());
+        Assertions.assertEquals(30L,     body.get(2).getKarma());
+    }
+
 }

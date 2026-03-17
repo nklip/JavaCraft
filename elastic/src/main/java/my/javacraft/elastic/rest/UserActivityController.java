@@ -94,6 +94,25 @@ public class UserActivityController {
     }
 
     @Operation(
+            summary = "Hot posts",
+            description = "Returns globally hot posts ranked by exponential time-decay weighted net score."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successful"),
+            @ApiResponse(responseCode = "404", description = "Not found"),
+            @ApiResponse(responseCode = "406", description = "Resource unavailable")
+    })
+    @GetMapping(value = "/hot", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<PostPreview>> retrieveHotPosts(
+            @RequestParam(required = false, name = "size", defaultValue = "10")
+            @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
+
+        log.info("retrieving hot posts (limit = '{}')...", size);
+
+        return ResponseEntity.ok().body(hotService.retrieveHotPosts(size));
+    }
+
+    @Operation(
             summary = "Top posts — all time",
             description = "Returns globally top posts ranked by net score (upvotes − downvotes) across all time."
     )
@@ -145,25 +164,6 @@ public class UserActivityController {
         return ResponseEntity.ok().body(posts);
     }
 
-    @Operation(
-            summary = "Hot posts",
-            description = "Returns globally hot posts ranked by exponential time-decay weighted net score."
-    )
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Successful"),
-            @ApiResponse(responseCode = "404", description = "Not found"),
-            @ApiResponse(responseCode = "406", description = "Resource unavailable")
-    })
-    @GetMapping(value = "/hot", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<PostPreview>> retrieveHotPosts(
-            @RequestParam(required = false, name = "size", defaultValue = "10")
-            @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
 
-        log.info("retrieving hot posts (limit = '{}')...", size);
-
-        List<PostPreview> posts = hotService.retrieveHotPosts(size);
-
-        return ResponseEntity.ok().body(posts);
-    }
 
 }

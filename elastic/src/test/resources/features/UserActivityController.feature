@@ -6,57 +6,68 @@ Feature: test UserActivityController
   # Run EventGeneratorTest to regenerate fresh CSV files before Cucumber tests.
   # ═══════════════════════════════════════════════════════════════════════════════
   # Five CSV files, 100 users × 50 posts = 5,000 events total.
-  # Each file is designed for a specific algorithm so different ranking algorithms
-  # produce visibly different top-10 results on the same shared dataset.
+  # Each file targets a specific time band so that every Top window has a different
+  # winner — no two windows share the same top-10 posts.
   # Files share no post IDs and can be ingested in parallel.
   #
   # Columns: userId, postId, action (UPVOTE|DOWNVOTE), date (ISO-8601 UTC)
   #
-  # ┌──────────────────────┬───────────┬──────┬────────────────────────────────────────────────────┐
-  # │ File                 │ Posts     │ Up % │ Date pattern / intent                              │
-  # ├──────────────────────┼───────────┼──────┼────────────────────────────────────────────────────┤
-  # │ events-best.csv      │ post-01…10│  80% │ Spread 0–180 days — steady quality baseline        │
-  # ├──────────────────────┼───────────┼──────┼────────────────────────────────────────────────────┤
-  # │ events-hot.csv       │ post-11…20│  90% │ ALL events within the last 60 minutes              │
-  # │                      │           │      │ → first_seen ≈ 60 min → wins Hot (time dominates)  │
-  # ├──────────────────────┼───────────┼──────┼────────────────────────────────────────────────────┤
-  # │ events-new.csv       │ post-21…30│  85% │ All events within the last 24 hours                │
-  # │                      │           │      │ → first_seen ≈ 24 h → 2nd in Hot                   │
-  # ├──────────────────────┼───────────┼──────┼────────────────────────────────────────────────────┤
-  # │ events-rising.csv    │ post-31…40│ mix  │ Old baseline (120–180 days) + recent spike (0–7 d) │
-  # ├──────────────────────┼───────────┼──────┼────────────────────────────────────────────────────┤
-  # │ events-top.csv       │ post-41…50│  95% │ Spread 0–365 days — net = 90/post                 │
-  # │                      │           │      │ → highest net score → wins Top; old first_seen     │
-  # │                      │           │      │   means it does NOT win Hot                        │
-  # └──────────────────────┴───────────┴──────┴────────────────────────────────────────────────────┘
+  # ┌──────────────────────┬───────────┬──────────┬────────────────────────────────────────────────┐
+  # │ File                 │ Posts     │ upvote % │ Date pattern / intent                          │
+  # ├──────────────────────┼───────────┼──────────┼────────────────────────────────────────────────┤
+  # │ events-hot.csv       │ post-11…20│  51–60%  │ ALL events within the last 60 minutes          │
+  # │                      │           │          │ → first_seen ≈ 60 min → wins Hot + Top DAY     │
+  # ├──────────────────────┼───────────┼──────────┼────────────────────────────────────────────────┤
+  # │ events-new.csv       │ post-21…30│  61–70%  │ All events 2–6 days ago                        │
+  # │                      │           │          │ → inside WEEK window, outside DAY → Top WEEK   │
+  # ├──────────────────────┼───────────┼──────────┼────────────────────────────────────────────────┤
+  # │ events-rising.csv    │ post-31…40│  71–80%  │ All events 8–29 days ago                       │
+  # │                      │           │          │ → inside MONTH window, outside WEEK → Top MONTH│
+  # ├──────────────────────┼───────────┼──────────┼────────────────────────────────────────────────┤
+  # │ events-best.csv      │ post-01…10│  81–90%  │ All events 31–364 days ago                     │
+  # │                      │           │          │ → inside YEAR window, outside MONTH → Top YEAR │
+  # ├──────────────────────┼───────────┼──────────┼────────────────────────────────────────────────┤
+  # │ events-top.csv       │ post-41…50│  91–100% │ All events 366–730 days ago                    │
+  # │                      │           │          │ → outside YEAR; only Top ALL counts them        │
+  # └──────────────────────┴───────────┴──────────┴────────────────────────────────────────────────┘
+  #
+  # ── KARMA IS UNIQUE PER POST ─────────────────────────────────────────────────────────────────────
+  #
+  # Each generator assigns upvotePercent = base + (postId - firstPostId), so every post in
+  # the dataset has a different karma value.
+  #
+  # karma = 2 × upvotePercent − 100  (exact, because isUpvote() uses a deterministic hash:
+  #   bucket = floorMod(userId*31 + postId*17, 100); gcd(31,100)=1
+  #   → for userId 1-100 the buckets are a full permutation of 0-99
+  #   → upvotePercent% of the 100 users always upvote, regardless of postId)
+  #
+  # All 50 posts produce the sequence 2, 4, 6, …, 100 — no overlaps between generators:
+  #
+  #   posts 11-20  karma  2,  4, …  20   (HotEvents,    51–60%)   → Top DAY
+  #   posts 21-30  karma 22, 24, …  40   (NewEvents,    61–70%)   → Top WEEK
+  #   posts 31-40  karma 42, 44, …  60   (RisingEvents, 71–80%)   → Top MONTH
+  #   posts 01-10  karma 62, 64, …  80   (BestEvents,   81–90%)   → Top YEAR
+  #   posts 41-50  karma 82, 84, … 100   (TopEvents,    91–100%)  → Top ALL
   #
   # ── EXPECTED RANKING DIFFERENCES ──────────────────────────────────────────────────────────────────
   #
-  # Hot  (Reddit formula: hot_score = log₁₀(net) + (firstSeenSec − 1134028003) / 45 000)
+  # Hot  (Reddit formula: hot_score = log₁₀(karma) + (firstSeenSec − 1134028003) / 45 000)
   #   Time dominates — every 12.5 h of age costs ~1 hot_score point.
-  #   posts 11-20: first_seen ≈  60 min,  net=80  →  hot_score ≈ 13 516  ← rank 1
-  #   posts 21-30: first_seen ≈  24 h,   net=70  →  hot_score ≈ 13 514  ← rank 2
-  #   posts 31-40: first_seen ≈ 120+ d,  net≈58  →  hot_score ≈ 13 141  ← rank 3
-  #   posts  1-10: first_seen ≈ 180 d,   net=60  →  hot_score ≈ 13 489  ← rank 4
-  #   posts 41-50: first_seen ≈ 365 d,   net=90  →  hot_score ≈ 13 131  ← rank 5
+  #   posts 11-20: first_seen ≈  60 min,  karma  2–20  → wins Hot (2+ days fresher than NewEvents)
+  #   posts 21-30: first_seen ≈ 2–6 d,   karma 22–40  → 2nd place
+  #   posts 31-40: first_seen ≈ 8–29 d,  karma 42–60  → 3rd place
+  #   posts  1-10: first_seen ≈ 364 d,   karma 62–80  → 4th place
+  #   posts 41-50: first_seen ≈ 730 d,   karma 82–100 → last (time penalty too large)
   #
   # Top  (top_score = upvotes − downvotes, filtered by window)
   #
-  #   Window │ Winner       │ karma │ Why
-  #   ───────┼──────────────┼───────┼──────────────────────────────────────────────────────
-  #   ALL    │ posts 41-50  │   90  │ 95% upvote across full history  → 95 up − 5 down
-  #   YEAR   │ posts 41-50  │   90  │ events spread 0-364 d, all inside 365-d window → 90
-  #   MONTH  │ posts 11-20  │   80  │ HotEvents: all 100 events within 60 min → 90 up − 10 down
-  #   WEEK   │ posts 11-20  │   80  │ HotEvents: all 100 events within 60 min → 90 up − 10 down
-  #   DAY    │ posts 11-20  │   80  │ HotEvents: all 100 events within 60 min → 90 up − 10 down
-  #
-  #   karma is exact because isUpvote() uses a deterministic hash:
-  #     bucket = floorMod(userId*31 + postId*17, 100); gcd(31,100)=1
-  #     → for userId 1-100 the buckets are a full permutation of 0-99
-  #     → upvotePercent% of 100 users always upvote, regardless of postId
-  #
-  #   Key insight: sustained quality (TopEvents) wins long windows;
-  #                recent burst (HotEvents) wins short windows.
+  #   Window │ Winner        │ Why
+  #   ───────┼───────────────┼─────────────────────────────────────────────────────────
+  #   DAY    │ posts 11-20   │ only group with votes in last 24 h; karma 2-20
+  #   WEEK   │ posts 21-30   │ 2-6 d old → in WEEK, not in DAY; karma 22-40 > 20
+  #   MONTH  │ posts 31-40   │ 8-29 d old → in MONTH, not in WEEK; karma 42-60 > 40
+  #   YEAR   │ posts 01-10   │ 31-364 d old → in YEAR, not in MONTH; karma 62-80 > 60
+  #   ALL    │ posts 41-50   │ 366-730 d old → only visible in ALL; karma 82-100 > 80
   # ════════════════════════════════════════════════════════════════════════════
 
   Scenario: prepare data
@@ -64,112 +75,118 @@ Feature: test UserActivityController
     Given data folder 'data/csv' created in tmp directory
     Given data folder 'data/csv' ingested
 
-  # Hot ranking: Reddit's hot_score = log₁₀(net) + (firstSeenSec − anchor) / 45 000.
-  # Time dominates: posts 11-20 have first_seen ≈ 60 min vs. 24 h for posts 21-30.
-  # Separation ≈ 1.84 hot_score points → posts 11-20 win Hot.
-  # karma = 80: 90% upvote × 100 users → 90 up − 10 down = 80.
+  # Hot ranking: Reddit's hot_score = log₁₀(karma) + (firstSeenSec − anchor) / 45 000.
+  # Time dominates: posts 11-20 have first_seen ≈ 60 min vs. 2+ days for posts 21-30.
+  # Separation ≥ 3.84 hot_score points → posts 11-20 win Hot by a wide margin.
+  # karma per post: postId 11→2, 12→4, ..., 20→20  (upvote% = 51 + (postId−11))
   Scenario: Hot posts
     Given data folder 'data/csv' was ingested
     Then hot posts endpoint returns 10 ranked results
       | postId  | karma |
-      | post-11 | 80    |
-      | post-12 | 80    |
-      | post-13 | 80    |
-      | post-14 | 80    |
-      | post-15 | 80    |
-      | post-16 | 80    |
-      | post-17 | 80    |
-      | post-18 | 80    |
-      | post-19 | 80    |
-      | post-20 | 80    |
+      | post-20 | 20    |
+      | post-19 | 18    |
+      | post-18 | 16    |
+      | post-17 | 14    |
+      | post-16 | 12    |
+      | post-15 | 10    |
+      | post-14 | 8     |
+      | post-13 | 6     |
+      | post-12 | 4     |
+      | post-11 | 2     |
 
   # Top ranking: top_score = upvotes − downvotes, all-time, no time window.
-  # Posts 41-50 use 95% upvote rate → net = 90/post, beating all other generators.
-  # HotEvents (90% → 80) and NewEvents (85% → 70) rank below TopEvents.
-  # karma = 90: 95% upvote × 100 users → 95 up − 5 down = 90.
+  # Posts 41-50: 91–100% upvote rate → karma 82-100/post, highest across all generators.
+  # Events are 366-730 days old — outside YEAR window, only visible in ALL.
+  # karma per post: postId 41→82, 42→84, ..., 50→100  (upvote% = 91 + (postId−41))
   Scenario: Top posts for ALL
     Given data folder 'data/csv' was ingested
     Then top posts endpoint returns 10 ranked results
       | postId  | karma |
-      | post-41 | 90    |
-      | post-42 | 90    |
-      | post-43 | 90    |
-      | post-44 | 90    |
+      | post-50 | 100   |
+      | post-49 | 98    |
+      | post-48 | 96    |
+      | post-47 | 94    |
+      | post-46 | 92    |
       | post-45 | 90    |
-      | post-46 | 90    |
-      | post-47 | 90    |
-      | post-48 | 90    |
-      | post-49 | 90    |
-      | post-50 | 90    |
+      | post-44 | 88    |
+      | post-43 | 86    |
+      | post-42 | 84    |
+      | post-41 | 82    |
 
-  # Top/YEAR: 365-day window. TopEvents events span 0-364 days — all inside the window.
-  # Net score identical to ALL-time (90/post). Posts 41-50 still beat HotEvents (80).
-  # karma = 90: same 95 up − 5 down, all events within the 365-d window.
+  # Top/YEAR: 365-day window.
+  # BestEvents events are 31-364 days old → all inside the YEAR window.
+  # TopEvents events are 366-730 days old → outside YEAR, so they don't compete here.
+  # karma per post: postId 01→62, 02→64, ..., 10→80  (upvote% = 81 + (postId−1))
   Scenario: Top posts for YEAR
     Given data folder 'data/csv' was ingested
     Then top posts for YEAR returns 10 ranked results
       | postId  | karma |
-      | post-41 | 90    |
-      | post-42 | 90    |
-      | post-43 | 90    |
-      | post-44 | 90    |
-      | post-45 | 90    |
-      | post-46 | 90    |
-      | post-47 | 90    |
-      | post-48 | 90    |
-      | post-49 | 90    |
-      | post-50 | 90    |
+      | post-10 | 80    |
+      | post-09 | 78    |
+      | post-08 | 76    |
+      | post-07 | 74    |
+      | post-06 | 72    |
+      | post-05 | 70    |
+      | post-04 | 68    |
+      | post-03 | 66    |
+      | post-02 | 64    |
+      | post-01 | 62    |
 
-  # Top/MONTH: 30-day window. HotEvents has all 80 net in-window (events within 60 min).
-  # TopEvents has only ~7 net in-window (≈7% of events fall inside 30 d). Posts 11-20 win.
-  # karma = 80: all 100 HotEvents votes within 60 min, well inside the 30-d window.
+  # Top/MONTH: 30-day window.
+  # RisingEvents events are 8-29 days old → all inside the MONTH window.
+  # NewEvents events are 2-6 days old → also in MONTH, but karma max=40 < 42.
+  # HotEvents events are within 60 min → also in MONTH, but karma max=20 < 42.
+  # karma per post: postId 31→42, 32→44, ..., 40→60  (upvote% = 71 + (postId−31))
   Scenario: Top posts for MONTH
     Given data folder 'data/csv' was ingested
     Then top posts for MONTH returns 10 ranked results
       | postId  | karma |
-      | post-11 | 80    |
-      | post-12 | 80    |
-      | post-13 | 80    |
-      | post-14 | 80    |
-      | post-15 | 80    |
-      | post-16 | 80    |
-      | post-17 | 80    |
-      | post-18 | 80    |
-      | post-19 | 80    |
-      | post-20 | 80    |
+      | post-40 | 60    |
+      | post-39 | 58    |
+      | post-38 | 56    |
+      | post-37 | 54    |
+      | post-36 | 52    |
+      | post-35 | 50    |
+      | post-34 | 48    |
+      | post-33 | 46    |
+      | post-32 | 44    |
+      | post-31 | 42    |
 
-  # Top/WEEK: 7-day window. HotEvents still has full 80 net (events within 60 min).
-  # TopEvents has ~5 net in-window (≈2% of events fall inside 7 d). Posts 11-20 win.
-  # karma = 80: all 100 HotEvents votes within 60 min, well inside the 7-d window.
+  # Top/WEEK: 7-day window.
+  # NewEvents events are 2-6 days old → all inside the WEEK window.
+  # HotEvents events are within 60 min → also in WEEK, but karma max=20 < 22.
+  # RisingEvents events are 8-29 days old → outside WEEK, so they don't compete here.
+  # karma per post: postId 21→22, 22→24, ..., 30→40  (upvote% = 61 + (postId−21))
   Scenario: Top posts for WEEK
     Given data folder 'data/csv' was ingested
     Then top posts for WEEK returns 10 ranked results
       | postId  | karma |
-      | post-11 | 80    |
-      | post-12 | 80    |
-      | post-13 | 80    |
-      | post-14 | 80    |
-      | post-15 | 80    |
-      | post-16 | 80    |
-      | post-17 | 80    |
-      | post-18 | 80    |
-      | post-19 | 80    |
-      | post-20 | 80    |
+      | post-30 | 40    |
+      | post-29 | 38    |
+      | post-28 | 36    |
+      | post-27 | 34    |
+      | post-26 | 32    |
+      | post-25 | 30    |
+      | post-24 | 28    |
+      | post-23 | 26    |
+      | post-22 | 24    |
+      | post-21 | 22    |
 
-  # Top/DAY: 24-hour window. HotEvents has all 80 net (events within 60 min).
-  # TopEvents has ~0 net in-window (<1 event/post expected). Posts 11-20 win.
-  # karma = 80: all 100 HotEvents votes within 60 min, well inside the 24-h window.
+  # Top/DAY: 24-hour window.
+  # HotEvents events are within 60 min → fully inside the DAY window.
+  # NewEvents events are 2-6 days old → outside DAY, so they don't compete here.
+  # karma per post: postId 11→2, 12→4, ..., 20→20  (upvote% = 51 + (postId−11))
   Scenario: Top posts for DAY
     Given data folder 'data/csv' was ingested
     Then top posts for DAY returns 10 ranked results
       | postId  | karma |
-      | post-11 | 80    |
-      | post-12 | 80    |
-      | post-13 | 80    |
-      | post-14 | 80    |
-      | post-15 | 80    |
-      | post-16 | 80    |
-      | post-17 | 80    |
-      | post-18 | 80    |
-      | post-19 | 80    |
-      | post-20 | 80    |
+      | post-20 | 20    |
+      | post-19 | 18    |
+      | post-18 | 16    |
+      | post-17 | 14    |
+      | post-16 | 12    |
+      | post-15 | 10    |
+      | post-14 | 8     |
+      | post-13 | 6     |
+      | post-12 | 4     |
+      | post-11 | 2     |

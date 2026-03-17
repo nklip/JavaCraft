@@ -40,20 +40,28 @@ public class TopEvents implements EventGenerator {
      * Should update postIds from 41 to 50
      * The amount of users which would UPVOTE or DOWNVOTE - 100
      *
-     * Correctness guarantee (Reddit Top formula):
-     *   top_score = upvotes - downvotes  (no time decay, all-time window)
+     * Each postId has a unique upvote percentage so that karma is unique per post:
      *
-     * Strategy: 95% upvote rate → net = 95 − 5 = 90 per post.
-     *   This exceeds every other generator's net score:
+     *   postId 41 → upvote% 91 → karma 82
+     *   postId 42 → upvote% 92 → karma 84
+     *   ...
+     *   postId 50 → upvote% 100 → karma 100
      *
-     *   posts 41-50  net = 90  (TopEvents,  95% upvote)  ← rank 1
-     *   posts 11-20  net = 80  (HotEvents,  90% upvote)  ← rank 2
-     *   posts 21-30  net = 70  (NewEvents,  85% upvote)  ← rank 3
-     *   posts 31-40  net ≈ 58  (RisingEvents, mixed)     ← rank 4
-     *   posts  1-10  net = 60  (BestEvents,  80% upvote) ← rank 5
+     * karma = 2 × upvotePercent − 100  (exact because isUpvote() produces a full
+     * permutation of 0-99 over 100 users when gcd(31, 100) = 1).
      *
-     * Events are spread across 365 days to represent long-term sustained quality.
-     * Time spread intentionally makes first_seen old, so TopEvents does NOT win Hot.
+     * All karma groups across all generators form a non-overlapping sequence:
+     *
+     *   posts 11-20  karma  2-20  (HotEvents,    51-60%)   → Top DAY
+     *   posts 21-30  karma 22-40  (NewEvents,    61-70%)   → Top WEEK
+     *   posts 31-40  karma 42-60  (RisingEvents, 71-80%)   → Top MONTH
+     *   posts 01-10  karma 62-80  (BestEvents,   81-90%)   → Top YEAR
+     *   posts 41-50  karma 82-100 (TopEvents,    91-100%)  → Top ALL
+     *
+     * Date pattern: all events are 366–730 days old.
+     *   - 366-day floor puts every event outside the 365-day Top YEAR window.
+     *   - Top ALL has no time filter, so all votes count → posts 41-50 win Top ALL.
+     *   - first_seen > 365 days old → massive time penalty in Hot, so Hot is NOT won.
      */
     @Override
     public void generateEventsInCsv() {
@@ -61,11 +69,11 @@ public class TopEvents implements EventGenerator {
         List<String> rows = new ArrayList<>(10 * EventCsvSupport.USERS_PER_POST);
 
         for (int postId = 41; postId <= 50; postId++) {
+            int upvotePercent = 91 + (postId - 41);    // 91% → 100%, unique per post
             for (int userId = 1; userId <= EventCsvSupport.USERS_PER_POST; userId++) {
-                // 95% upvote rate → net = 90/post, beats all other generators
-                boolean upvote = EventCsvSupport.isUpvote(userId, postId, 95);
-                long daysAgo = Math.floorMod(postId * 13 + userId * 17, 365);
-                long hoursAgo = Math.floorMod(postId * 19 + userId * 23, 24);
+                boolean upvote = EventCsvSupport.isUpvote(userId, postId, upvotePercent);
+                long daysAgo    = 366 + Math.floorMod(postId * 13 + userId * 17, 365); // 366-730 days
+                long hoursAgo   = Math.floorMod(postId * 19 + userId * 23, 24);
                 long minutesAgo = Math.floorMod(postId * 7 + userId * 29, 60);
                 Instant eventTime = now.minus(daysAgo, ChronoUnit.DAYS)
                         .minus(hoursAgo, ChronoUnit.HOURS)

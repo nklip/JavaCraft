@@ -40,11 +40,21 @@ public class HotEvents implements EventGenerator {
      *
      * Strategy: all events land within the last 60 minutes so that
      *   min(timestamp) — used as submission_time proxy — is at most ~60 min old.
-     *   This is ~23 h more recent than NewEvents (first_seen ≤ 24 h),
-     *   translating to ~1.84 hot_score units of separation:
+     *   NewEvents events are 2+ days old → time penalty ≥ 3.84 hot_score points,
+     *   which dwarfs any karma log₁₀ difference → posts 11-20 always win Hot.
      *
-     *   posts 11-20 hot_score ≈ 13 516  (first_seen ~60 min, net = 80)
-     *   posts 21-30 hot_score ≈ 13 514  (first_seen ~24 h,  net = 70)  ← 2nd place
+     * Each postId has a unique upvote percentage so that karma is unique per post:
+     *
+     *   postId 11 → upvote% 51 → karma  2
+     *   postId 12 → upvote% 52 → karma  4
+     *   ...
+     *   postId 20 → upvote% 60 → karma 20
+     *
+     * karma = 2 × upvotePercent − 100  (exact because isUpvote() produces a full
+     * permutation of 0-99 over 100 users when gcd(31, 100) = 1).
+     *
+     * Top window: all 100 votes within the last 60 min → fully counted in Top DAY.
+     * max karma (20) < min NewEvents karma (22) → posts 11-20 win only Top DAY.
      */
     @Override
     public void generateEventsInCsv() {
@@ -52,8 +62,9 @@ public class HotEvents implements EventGenerator {
         List<String> rows = new ArrayList<>(10 * EventCsvSupport.USERS_PER_POST);
 
         for (int postId = 11; postId <= 20; postId++) {
+            int upvotePercent = 51 + (postId - 11);    // 51% → 60%, unique per post
             for (int userId = 1; userId <= EventCsvSupport.USERS_PER_POST; userId++) {
-                boolean upvote = EventCsvSupport.isUpvote(userId, postId, 90);
+                boolean upvote = EventCsvSupport.isUpvote(userId, postId, upvotePercent);
                 // Keep all events within a 60-minute window so first_seen stays very recent
                 long minutesAgo = Math.floorMod(postId * 7 + userId * 5, 60L);
                 long secondsAgo = Math.floorMod(postId * 13 + userId * 17, 60L);

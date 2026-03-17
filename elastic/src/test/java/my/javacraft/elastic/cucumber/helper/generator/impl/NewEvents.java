@@ -23,6 +23,21 @@ public class NewEvents implements EventGenerator {
     /*
      * Should update postIds from 21 to 30
      * The amount of users which would UPVOTE or DOWNVOTE - 100
+     *
+     * Each postId has a unique upvote percentage so that karma is unique per post:
+     *
+     *   postId 21 → upvote% 61 → karma 22
+     *   postId 22 → upvote% 62 → karma 24
+     *   ...
+     *   postId 30 → upvote% 70 → karma 40
+     *
+     * karma = 2 × upvotePercent − 100  (exact because isUpvote() produces a full
+     * permutation of 0-99 over 100 users when gcd(31, 100) = 1).
+     *
+     * Date pattern: all events are 2–6 days old.
+     *   - 2-day floor guarantees no event falls inside the 24-h Top DAY window.
+     *   - All events are within the 7-day Top WEEK window.
+     *   - max karma (40) > max HotEvents karma (20) → posts 21-30 win Top WEEK.
      */
     @Override
     public void generateEventsInCsv() {
@@ -30,10 +45,13 @@ public class NewEvents implements EventGenerator {
         List<String> rows = new ArrayList<>(10 * EventCsvSupport.USERS_PER_POST);
 
         for (int postId = 21; postId <= 30; postId++) {
+            int upvotePercent = 61 + (postId - 21);    // 61% → 70%, unique per post
             for (int userId = 1; userId <= EventCsvSupport.USERS_PER_POST; userId++) {
-                boolean upvote = EventCsvSupport.isUpvote(userId, postId, 85);
-                long minutesAgo = Math.floorMod(postId * 43 + userId * 11, 24 * 60L);
-                Instant eventTime = now.minus(minutesAgo, ChronoUnit.MINUTES);
+                boolean upvote = EventCsvSupport.isUpvote(userId, postId, upvotePercent);
+                long daysAgo  = 2 + Math.floorMod(postId * 43 + userId * 11, 5); // 2-6 days
+                long hoursAgo = Math.floorMod(postId * 7 + userId * 13, 24);
+                Instant eventTime = now.minus(daysAgo, ChronoUnit.DAYS)
+                        .minus(hoursAgo, ChronoUnit.HOURS);
 
                 rows.add(EventCsvSupport.csvLine(userId, postId, upvote, eventTime));
             }
