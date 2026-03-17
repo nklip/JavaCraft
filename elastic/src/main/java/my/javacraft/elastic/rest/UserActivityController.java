@@ -93,8 +93,8 @@ public class UserActivityController {
     }
 
     @Operation(
-            summary = "Top posts",
-            description = "Returns globally top posts ranked by total upvote count descending."
+            summary = "Top posts — all time",
+            description = "Returns globally top posts ranked by net score (upvotes − downvotes) across all time."
     )
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Successful"),
@@ -106,9 +106,40 @@ public class UserActivityController {
             @RequestParam(required = false, name = "size", defaultValue = "10")
             @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
 
-        log.info("retrieving top posts (limit = '{}')...", size);
+        log.info("retrieving top posts all-time (limit = '{}')...", size);
 
         List<UserActivity> mapList = topService.retrieveTopPosts(size);
+
+        return ResponseEntity.ok().body(mapList);
+    }
+
+    @Operation(
+            summary = "Top posts — by window",
+            description = "Returns top posts ranked by net score (upvotes − downvotes) within a time window. "
+                    + "Valid windows: day (24 h), week (7 d), month (30 d), year (365 d)."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successful"),
+            @ApiResponse(responseCode = "400", description = "Invalid window value"),
+            @ApiResponse(responseCode = "406", description = "Resource unavailable")
+    })
+    @GetMapping(value = "/top/{window}", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<UserActivity>> retrieveTopPostsByWindow(
+            @PathVariable String window,
+            @RequestParam(required = false, name = "size", defaultValue = "10")
+            @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
+
+        TopService.TopWindow tw;
+        try {
+            tw = TopService.TopWindow.valueOf(window.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            log.warn("invalid top window '{}', must be one of: day, week, month, year", window);
+            return ResponseEntity.badRequest().build();
+        }
+
+        log.info("retrieving top posts (window = '{}', limit = '{}')...", tw, size);
+
+        List<UserActivity> mapList = topService.retrieveTopPosts(size, tw);
 
         return ResponseEntity.ok().body(mapList);
     }

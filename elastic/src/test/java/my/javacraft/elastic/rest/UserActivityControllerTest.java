@@ -150,6 +150,35 @@ public class UserActivityControllerTest {
 //    }
 
     @Test
+    public void testTopPostsByWindow() throws IOException {
+        UserActivityController userActivityController = new UserActivityController(
+                dateService, userActivityService, topService, hotService, userActivityIngestionService
+        );
+
+        List<UserActivity> activityList = new ArrayList<>();
+        when(topService.retrieveTopPosts(anyInt(), eq(TopService.TopWindow.WEEK))).thenReturn(activityList);
+
+        ResponseEntity<List<UserActivity>> response = userActivityController
+                .retrieveTopPostsByWindow("week", 10);
+
+        Assertions.assertNotNull(response);
+        Assertions.assertEquals(200, response.getStatusCode().value());
+        Assertions.assertNotNull(response.getBody());
+    }
+
+    @Test
+    public void testTopPostsByWindowReturnsBadRequestForInvalidWindow() throws IOException {
+        UserActivityController userActivityController = new UserActivityController(
+                dateService, userActivityService, topService, hotService, userActivityIngestionService
+        );
+
+        ResponseEntity<List<UserActivity>> response = userActivityController
+                .retrieveTopPostsByWindow("invalid", 10);
+
+        Assertions.assertEquals(400, response.getStatusCode().value());
+    }
+
+    @Test
     public void testTopPostsValidationShouldFailWhenSizeLessThanOne() throws NoSuchMethodException {
         UserActivityController userActivityController = new UserActivityController(
                 dateService, userActivityService, topService, hotService, userActivityIngestionService
