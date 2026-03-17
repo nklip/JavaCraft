@@ -1,5 +1,6 @@
 package my.javacraft.elastic.cucumber.step;
 
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import io.cucumber.datatable.DataTable;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
@@ -15,9 +16,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -28,6 +27,7 @@ import my.javacraft.elastic.cucumber.conf.CucumberSpringConfiguration;
 import my.javacraft.elastic.model.UserClick;
 import my.javacraft.elastic.model.UserActivity;
 import my.javacraft.elastic.service.activity.UserActivityIngestionService;
+import my.javacraft.elastic.service.activity.UserActivityService;
 import org.apache.http.HttpHeaders;
 import org.junit.jupiter.api.Assertions;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,25 +48,19 @@ import static io.cucumber.spring.CucumberTestContext.SCOPE_CUCUMBER_GLUE;
 @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 public class UserActivityControllerStepDefinitions {
 
-    /**
-     * Tracks which CSV folders have been fully ingested AND confirmed searchable in ES.
-     * Static so the flag survives across scenario instances within one test run.
-     * Set to {@code true} only after ES returns the expected document count,
-     * so "was ingested" steps can depend on it without re-polling ES themselves.
-     */
-    private static final Map<String, Boolean> INGESTED_FOLDERS = new ConcurrentHashMap<>();
+    /** Minimum number of documents expected in the index after full CSV ingestion (5 files × 3 000 rows). */
+    private static final long MIN_CSV_DOCUMENTS = 15_000L;
 
     @LocalServerPort
     int port;
 
-//    @Autowired
-//    ElasticsearchClient esClient;
+    @Autowired
+    ElasticsearchClient esClient;
     @Autowired
     UserActivityIngestionService userActivityIngestionService;
 
     @Given("data folder {string} ingested")
     public void ingestDataFolderInParallel(String folderPath) throws IOException, InterruptedException {
-        INGESTED_FOLDERS.put(folderPath, false);
 
         List<String> csvResourcePaths = listCsvResourcePaths(folderPath);
         Assertions.assertFalse(csvResourcePaths.isEmpty(), "No CSV files found in folder: " + folderPath);
@@ -95,36 +89,35 @@ public class UserActivityControllerStepDefinitions {
         log.info("Ingested {} rows from {} files in '{}' — waiting for ES confirmation...",
                 totalRows, csvResourcePaths.size(), folderPath);
 
-        // Block until ES confirms the documents are indexed and searchable.
-        // Fresh posts (61-70) rank highest in Top; returning 10 results proves all archetypes are ready.
-//        Assertions.assertTrue(
-//                CucumberSpringConfiguration.assertWithWait(10, () -> fetchRankedPostsCount("/top?size=10")),
-//                ("ES did not confirm searchability within the wait window after ingesting %d rows from '%s'. " +
-//                        "Expected top-10 fresh posts (61-70) to be indexed.").formatted(totalRows, folderPath)
-//        );
-
-        Thread.sleep(1500);
-
-        INGESTED_FOLDERS.put(folderPath, true);
         log.info("ES confirmed: '{}' fully ingested and searchable ({} rows)", folderPath, totalRows);
     }
 
     /**
-     * Precondition: asserts that {@link #ingestDataFolderInParallel} already completed
-     * successfully for this folder path — including ES confirmation — in the current test run.
-     * Fails immediately with a diagnostic message if "prepare data" was not run first,
-     * without re-polling ES (the ingestion step is the single source of truth for readiness).
+     * Precondition: polls ES until the 'user-activity' index contains at least
+     * {@value #MIN_CSV_DOCUMENTS} documents, confirming that the CSV data ingested
+     * by {@link #ingestDataFolderInParallel} is fully visible to search queries.
+     * Fails with a clear diagnostic message if the count is not reached within the wait window.
      */
     @Given("data folder {string} was ingested")
-    public void verifyDataFolderWasIngested(String folderPath) {
-        Assertions.assertEquals(Boolean.TRUE, INGESTED_FOLDERS.get(folderPath),
-                ("""
-                Folder '%s' has not been ingested yet.
-                Run the full feature file so that 'Scenario: prepare data' executes first (
-                    'Given data folder \\'%s\\' ingested' must complete before this step
-                ).
-                """).formatted(folderPath, folderPath));
-        log.info("Dependency satisfied: folder '{}' was ingested and ES-confirmed earlier in this run", folderPath);
+    public void verifyDataFolderWasIngested(String folderPath) throws InterruptedException {
+        Assertions.assertTrue(
+                CucumberSpringConfiguration.assertWithWait(true, () -> countIndexDocuments() >= MIN_CSV_DOCUMENTS),
+                ("ES index '%s' does not contain the expected minimum of %d documents after ingesting '%s'. " +
+                        "Actual count: %d. Ensure 'Scenario: prepare data' ran first.")
+                        .formatted(UserActivityService.INDEX_USER_ACTIVITY, MIN_CSV_DOCUMENTS, folderPath, countIndexDocuments())
+        );
+        log.info("ES confirmed: index '{}' has ≥{} documents — folder '{}' is ready",
+                UserActivityService.INDEX_USER_ACTIVITY, MIN_CSV_DOCUMENTS, folderPath);
+    }
+
+    /** Returns the current document count in the user-activity index, or 0 on any error. */
+    private long countIndexDocuments() {
+        try {
+            return esClient.count(r -> r.index(UserActivityService.INDEX_USER_ACTIVITY)).count();
+        } catch (IOException e) {
+            log.warn("Failed to count documents in index '{}': {}", UserActivityService.INDEX_USER_ACTIVITY, e.getMessage());
+            return 0L;
+        }
     }
 
     /**

@@ -1,7 +1,7 @@
 Feature: test Scheduler jobs
 
   Scenario: prepare data
-    Given index 'user-activity' exists
+    Given index 'user-activity' is recreated
 
   Scenario: nothing to remove
     Given there are no outdated records

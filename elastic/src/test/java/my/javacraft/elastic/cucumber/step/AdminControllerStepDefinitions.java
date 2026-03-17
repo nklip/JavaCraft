@@ -2,6 +2,7 @@ package my.javacraft.elastic.cucumber.step;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.*;
+import co.elastic.clients.elasticsearch.indices.ExistsRequest;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.cucumber.java.en.Given;
@@ -32,6 +33,25 @@ public class AdminControllerStepDefinitions {
 
     @Autowired
     ElasticsearchClient esClient;
+
+    /**
+     * Drops the index if it exists, then recreates it via the admin endpoint.
+     * Use in test {@code prepare data} scenarios that must start with a clean slate,
+     * e.g. scheduler tests that assert zero outdated records but could otherwise see
+     * leftover documents from a previous feature run.
+     */
+    @Given("index {string} is recreated")
+    public void recreateIndex(String index) throws IOException {
+        if (!SUPPORTED_INDEXES.contains(index)) {
+            throw new IllegalArgumentException("AdminController does not support index: " + index);
+        }
+        ExistsRequest existsRequest = new ExistsRequest.Builder().index(index).build();
+        if (esClient.indices().exists(existsRequest).value()) {
+            esClient.indices().delete(d -> d.index(index));
+            log.info("index '{}' deleted for clean-slate recreation", index);
+        }
+        createIndex(index);
+    }
 
     @Given("index {string} exists")
     public void createIndex(String index) {

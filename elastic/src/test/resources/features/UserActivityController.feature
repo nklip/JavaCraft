@@ -21,13 +21,13 @@ Feature: test UserActivityController
   # │                      │           │      │ → first_seen ≈ 60 min → wins Hot (time dominates)  │
   # ├──────────────────────┼───────────┼──────┼────────────────────────────────────────────────────┤
   # │ events-new.csv       │ post-21…30│  85% │ All events within the last 24 hours                │
-  # │                      │           │      │ → first_seen ≈ 24 h → 2nd in Hot                  │
+  # │                      │           │      │ → first_seen ≈ 24 h → 2nd in Hot                   │
   # ├──────────────────────┼───────────┼──────┼────────────────────────────────────────────────────┤
   # │ events-rising.csv    │ post-31…40│ mix  │ Old baseline (120–180 days) + recent spike (0–7 d) │
   # ├──────────────────────┼───────────┼──────┼────────────────────────────────────────────────────┤
   # │ events-top.csv       │ post-41…50│  95% │ Spread 0–365 days — net = 270/post                 │
-  # │                      │           │      │ → highest net score → wins Top; old first_seen      │
-  # │                      │           │      │   means it does NOT win Hot                         │
+  # │                      │           │      │ → highest net score → wins Top; old first_seen     │
+  # │                      │           │      │   means it does NOT win Hot                        │
   # └──────────────────────┴───────────┴──────┴────────────────────────────────────────────────────┘
   #
   # ── EXPECTED RANKING DIFFERENCES ──────────────────────────────────────────────────────────────────
