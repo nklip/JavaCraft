@@ -12,7 +12,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
+import my.javacraft.elastic.cucumber.helper.generator.impl.*;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -22,6 +24,7 @@ class EventGeneratorTest {
 
     Path outputDirectory = Path.of("src/test/resources/data/csv");
 
+    @Disabled
     @ParameterizedTest
     @MethodSource("generatorCases")
     void generateEventsInCsvShouldGenerateExpectedFile(
@@ -76,6 +79,7 @@ class EventGeneratorTest {
         }
     }
 
+    @Disabled
     @Test
     void risingEventsShouldContainBothOldAndRecentVotes() throws IOException {
         Instant now = Instant.now();

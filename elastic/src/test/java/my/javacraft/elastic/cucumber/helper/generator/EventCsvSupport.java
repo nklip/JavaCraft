@@ -11,8 +11,9 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
-final class EventCsvSupport {
-    static final int USERS_PER_POST = 300;
+public final class EventCsvSupport {
+    public static final int USERS_PER_POST = 300;
+
     private static final String CSV_HEADER = "userId,postId,action,date";
     private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ISO_INSTANT;
     private static final String OUTPUT_DIRECTORY_PROPERTY = "elastic.events.csv.output";
@@ -20,17 +21,17 @@ final class EventCsvSupport {
     private EventCsvSupport() {
     }
 
-    static Instant now() {
+    public static Instant now() {
         return Instant.now().truncatedTo(ChronoUnit.SECONDS);
     }
 
-    static boolean isUpvote(int userId, int postId, int upvotePercent) {
+    public static boolean isUpvote(int userId, int postId, int upvotePercent) {
         int normalizedPercent = Math.max(0, Math.min(100, upvotePercent));
         int bucket = Math.floorMod(userId * 31 + postId * 17, 100);
         return bucket < normalizedPercent;
     }
 
-    static String csvLine(int userId, int postId, boolean upvote, Instant eventTime) {
+    public static String csvLine(int userId, int postId, boolean upvote, Instant eventTime) {
         String action = upvote ? "UPVOTE" : "DOWNVOTE";
         return "user-%03d,post-%02d,%s,%s".formatted(
                 userId,
@@ -40,7 +41,7 @@ final class EventCsvSupport {
         );
     }
 
-    static void writeCsv(String fileName, List<String> lines) {
+    public static void writeCsv(String fileName, List<String> lines) {
         Path outputDirectory = resolveOutputDirectory();
         Path outputFile = outputDirectory.resolve(fileName);
 

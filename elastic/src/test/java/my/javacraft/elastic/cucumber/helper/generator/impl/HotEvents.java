@@ -1,9 +1,11 @@
-package my.javacraft.elastic.cucumber.helper.generator;
+package my.javacraft.elastic.cucumber.helper.generator.impl;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import my.javacraft.elastic.cucumber.helper.generator.EventCsvSupport;
+import my.javacraft.elastic.cucumber.helper.generator.EventGenerator;
 
 /*
  * 🔥 Hot
