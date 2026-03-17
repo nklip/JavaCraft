@@ -7,7 +7,7 @@ import co.elastic.clients.elasticsearch.core.DeleteByQueryResponse;
 import java.io.IOException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import my.javacraft.elastic.service.activity.UserActivityService;
+import my.javacraft.elastic.config.Constants;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -22,12 +22,12 @@ public class SchedulerService {
         try {
             RangeQuery rangeQuery = RangeQuery.of(r -> r
                     .date(d -> d
-                            .field(UserActivityService.TIMESTAMP)
-                            .lte(dateService.getNDaysBeforeDate(UserActivityService.SIX_MONTHS))
+                            .field(Constants.TIMESTAMP)
+                            .lte(dateService.getNDaysBeforeDate(Constants.YEAR))
                     )
             );
             DeleteByQueryRequest deleteByQueryRequest = new DeleteByQueryRequest.Builder()
-                    .index(UserActivityService.INDEX_USER_ACTIVITY)
+                    .index(Constants.INDEX_USER_ACTIVITY)
                     .query(rangeQuery._toQuery())
                     .build();
 

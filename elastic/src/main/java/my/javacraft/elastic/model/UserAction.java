@@ -1,12 +1,14 @@
 package my.javacraft.elastic.model;
 
+import my.javacraft.elastic.service.activity.UserActivityService;
+
 /**
  * Enum of valid user interaction types for the 'user-activity' index.
  * Used as the {@code action} keyword field — must stay uppercase to match ES keyword values.
- * Validated at the API layer via {@code @ValueOfEnum} on {@link UserClick#action}.
+ * Validated at the API layer via {@code @ValueOfEnum} on {@link UserPostEvent#action}.
  *
  * <p>State-machine semantics enforced by
- * {@link my.javacraft.elastic.service.activity.UserActivityIngestionService}:
+ * {@link UserActivityService}:
  * <ul>
  *   <li>{@code UPVOTE}  — cast or switch to an upvote; deduplication via Painless script.</li>
  *   <li>{@code DOWNVOTE} — cast or switch to a downvote; deduplication via Painless script.</li>

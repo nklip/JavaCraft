@@ -11,6 +11,7 @@ import java.util.Comparator;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import my.javacraft.elastic.config.Constants;
 import my.javacraft.elastic.model.PostPreview;
 import my.javacraft.elastic.model.UserAction;
 import my.javacraft.elastic.model.UserActivity;
@@ -71,7 +72,7 @@ public class HotService {
     private final ElasticsearchClient esClient;
 
     public List<PostPreview> retrieveHotPosts(int size) throws IOException {
-        int querySize = Math.min(size * 10, UserActivityService.MAX_VALUES);
+        int querySize = Math.min(size * 10, Constants.MAX_VALUES);
         return queryHotPosts(querySize, size);
     }
 
@@ -93,28 +94,28 @@ public class HotService {
      */
     private List<PostPreview> queryHotPosts(int querySize, int limit) throws IOException {
         SearchRequest request = new SearchRequest.Builder()
-                .index(UserActivityService.INDEX_USER_ACTIVITY)
+                .index(Constants.INDEX_USER_ACTIVITY)
                 .size(0)
-                .aggregations(UserActivityService.POST_ID, a -> a
+                .aggregations(Constants.POST_ID, a -> a
                         .terms(t -> t
-                                .field(UserActivityService.POST_ID)
+                                .field(Constants.POST_ID)
                                 .size(querySize)
                                 .order(NamedValue.of("_count", SortOrder.Desc))
                         )
                         .aggregations("upvotes", sub -> sub
                                 .filter(f -> f.term(t -> t
-                                        .field(UserActivityService.ACTION)
+                                        .field(Constants.ACTION)
                                         .value(v -> v.stringValue(UserAction.UPVOTE.name()))
                                 ))
                         )
                         .aggregations("downvotes", sub -> sub
                                 .filter(f -> f.term(t -> t
-                                        .field(UserActivityService.ACTION)
+                                        .field(Constants.ACTION)
                                         .value(v -> v.stringValue(UserAction.DOWNVOTE.name()))
                                 ))
                         )
                         .aggregations("first_seen", sub -> sub
-                                .min(m -> m.field(UserActivityService.TIMESTAMP))
+                                .min(m -> m.field(Constants.TIMESTAMP))
                         )
                 )
                 .build();
@@ -123,7 +124,7 @@ public class HotService {
 
         return esClient.search(request, UserActivity.class)
                 .aggregations()
-                .get(UserActivityService.POST_ID)
+                .get(Constants.POST_ID)
                 .sterms()
                 .buckets()
                 .array()

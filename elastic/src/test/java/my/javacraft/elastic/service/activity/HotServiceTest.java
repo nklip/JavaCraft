@@ -14,6 +14,7 @@ import co.elastic.clients.json.jackson.JacksonJsonpMapper;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import my.javacraft.elastic.config.Constants;
 import my.javacraft.elastic.model.PostPreview;
 import my.javacraft.elastic.model.UserActivity;
 import org.junit.jupiter.api.Assertions;
@@ -212,7 +213,7 @@ public class HotServiceTest {
         when(aggregate.sterms()).thenReturn(sterms);
 
         SearchResponse<UserActivity> response = mock(SearchResponse.class);
-        when(response.aggregations()).thenReturn(Map.of(UserActivityService.POST_ID, aggregate));
+        when(response.aggregations()).thenReturn(Map.of(Constants.POST_ID, aggregate));
         return response;
     }
 }

@@ -10,10 +10,10 @@ import java.io.IOException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import my.javacraft.elastic.config.Constants;
 import my.javacraft.elastic.model.PostPreview;
 import my.javacraft.elastic.service.activity.HotService;
 import my.javacraft.elastic.service.activity.TopService;
-import my.javacraft.elastic.service.activity.UserActivityService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -42,7 +42,7 @@ public class PostRankingController {
     @GetMapping(value = "/hot", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<PostPreview>> retrieveHotPosts(
             @RequestParam(required = false, name = "size", defaultValue = "10")
-            @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
+            @Min(1) @Max(Constants.MAX_VALUES) int size) throws IOException {
 
         log.info("retrieving hot posts (limit = '{}')...", size);
 
@@ -61,7 +61,7 @@ public class PostRankingController {
     @GetMapping(value = "/top", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<PostPreview>> retrieveTopPosts(
             @RequestParam(required = false, name = "size", defaultValue = "10")
-            @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
+            @Min(1) @Max(Constants.MAX_VALUES) int size) throws IOException {
 
         log.info("retrieving top posts all-time (limit = '{}')...", size);
 
@@ -82,7 +82,7 @@ public class PostRankingController {
     public ResponseEntity<List<PostPreview>> retrieveTopPostsByWindow(
             @PathVariable("window") String window,
             @RequestParam(required = false, name = "size", defaultValue = "10")
-            @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
+            @Min(1) @Max(Constants.MAX_VALUES) int size) throws IOException {
 
         TopService.TopWindow tw;
         try {

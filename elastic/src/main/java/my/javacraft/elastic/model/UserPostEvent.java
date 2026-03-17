@@ -9,7 +9,7 @@ import my.javacraft.elastic.validation.ValueOfEnum;
 // Represents the incoming event for UserActivityService
 @Data
 @ToString
-public class UserClick {
+public class UserPostEvent {
 
     @NotEmpty
     String userId;

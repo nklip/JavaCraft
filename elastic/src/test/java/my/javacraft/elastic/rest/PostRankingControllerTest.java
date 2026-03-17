@@ -8,10 +8,10 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import my.javacraft.elastic.config.Constants;
 import my.javacraft.elastic.model.PostPreview;
 import my.javacraft.elastic.service.activity.HotService;
 import my.javacraft.elastic.service.activity.TopService;
-import my.javacraft.elastic.service.activity.UserActivityService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -101,11 +101,11 @@ public class PostRankingControllerTest {
         Set<ConstraintViolation<PostRankingController>> violations;
         try (ValidatorFactory validatorFactory = Validation.buildDefaultValidatorFactory()) {
             violations = validatorFactory.getValidator().forExecutables()
-                    .validateParameters(controller, method, new Object[]{UserActivityService.MAX_VALUES + 1});
+                    .validateParameters(controller, method, new Object[]{Constants.MAX_VALUES + 1});
         }
 
         Assertions.assertTrue(violations.stream()
-                .anyMatch(v -> v.getMessage().contains("less than or equal to " + UserActivityService.MAX_VALUES)));
+                .anyMatch(v -> v.getMessage().contains("less than or equal to " + Constants.MAX_VALUES)));
     }
 
     @Test

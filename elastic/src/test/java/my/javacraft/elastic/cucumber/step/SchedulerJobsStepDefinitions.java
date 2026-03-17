@@ -9,12 +9,12 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import my.javacraft.elastic.config.Constants;
 import my.javacraft.elastic.cucumber.conf.CucumberSpringConfiguration;
-import my.javacraft.elastic.model.UserClick;
-import my.javacraft.elastic.model.UserClickResponse;
+import my.javacraft.elastic.model.UserPostEvent;
+import my.javacraft.elastic.model.UserPostEventResponse;
 import my.javacraft.elastic.service.DateService;
 import my.javacraft.elastic.service.SchedulerService;
-import my.javacraft.elastic.service.activity.UserActivityIngestionService;
 import my.javacraft.elastic.service.activity.UserActivityService;
 import org.junit.jupiter.api.Assertions;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,7 +28,7 @@ import static io.cucumber.spring.CucumberTestContext.SCOPE_CUCUMBER_GLUE;
 public class SchedulerJobsStepDefinitions {
 
     @Autowired
-    UserActivityIngestionService userActivityIngestionService;
+    UserActivityService userActivityService;
     @Autowired
     DateService dateService;
     @Autowired
@@ -54,16 +54,18 @@ public class SchedulerJobsStepDefinitions {
         }
         log.info("creating outdated records...");
 
-        List<UserClickResponse> responses = new ArrayList<>();
+        List<UserPostEventResponse> responses = new ArrayList<>();
         for (int i = 0; i < records; i++) {
-            UserClick userClick = new UserClick();
-            userClick.setPostId("post-id-" + i);
-            userClick.setAction("Upvote");
-            userClick.setUserId("nl8111");
+            UserPostEvent userPostEvent = new UserPostEvent();
+            userPostEvent.setPostId("post-id-" + i);
+            userPostEvent.setAction("Upvote");
+            userPostEvent.setUserId("nl8111");
 
-            UserClickResponse userClickResponse = userActivityIngestionService.ingestUserClick(
-                    userClick, dateService.getNDaysBeforeDate(200 + i));
-            responses.add(userClickResponse);
+            UserPostEventResponse userPostEventResponse = userActivityService.ingestUserEvent(
+                    userPostEvent,
+                    dateService.getNDaysBeforeDate(400 + i)
+            );
+            responses.add(userPostEventResponse);
         }
 
         log.info("created outdated records = {}", responses.size());
@@ -83,12 +85,12 @@ public class SchedulerJobsStepDefinitions {
         try {
             RangeQuery rangeQuery = RangeQuery
                     .of(r -> r.date(d -> d
-                            .field(UserActivityService.TIMESTAMP)
-                            .lte(dateService.getNDaysBeforeDate(UserActivityService.SIX_MONTHS))
+                            .field(Constants.TIMESTAMP)
+                            .lte(dateService.getNDaysBeforeDate(Constants.YEAR))
                     )
             );
             CountRequest countRequest = new CountRequest.Builder()
-                    .index(UserActivityService.INDEX_USER_ACTIVITY)
+                    .index(Constants.INDEX_USER_ACTIVITY)
                     .query(rangeQuery._toQuery())
                     .build();
             return esClient.count(countRequest).count();

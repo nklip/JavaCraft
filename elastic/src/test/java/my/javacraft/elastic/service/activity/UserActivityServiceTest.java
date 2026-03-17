@@ -8,9 +8,9 @@ import co.elastic.clients.elasticsearch.core.UpdateRequest;
 import co.elastic.clients.elasticsearch.core.UpdateResponse;
 import co.elastic.clients.json.jackson.JacksonJsonpMapper;
 import java.io.IOException;
-import my.javacraft.elastic.model.UserClick;
-import my.javacraft.elastic.model.UserClickResponse;
-import my.javacraft.elastic.model.UserClickTest;
+import my.javacraft.elastic.model.UserPostEvent;
+import my.javacraft.elastic.model.UserPostEventResponse;
+import my.javacraft.elastic.model.UserPostEventTest;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,15 +35,15 @@ import static org.mockito.Mockito.when;
  */
 @SuppressWarnings("unchecked")
 @ExtendWith(MockitoExtension.class)
-public class UserActivityIngestionServiceTest {
+public class UserActivityServiceTest {
 
     @Mock
     ElasticsearchClient esClient;
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private UserActivityIngestionService service() {
-        return new UserActivityIngestionService(esClient);
+    private UserActivityService service() {
+        return new UserActivityService(esClient);
     }
 
     private void stubDelete(String docId, Result result) throws IOException {
@@ -68,12 +68,12 @@ public class UserActivityIngestionServiceTest {
     @Test
     public void testFirstVoteCreatesDocument() throws IOException {
         // Arrange
-        UserClick userClick = UserClickTest.createHitCount();
-        String expectedId = userClick.getUserId() + "_" + userClick.getPostId();
+        UserPostEvent userPostEvent = UserPostEventTest.createHitCount();
+        String expectedId = userPostEvent.getUserId() + "_" + userPostEvent.getPostId();
         stubUpdate(expectedId, Result.Created);
 
         // Act
-        UserClickResponse response = service().ingestUserClick(userClick, "2024-01-15T10:00:00Z");
+        UserPostEventResponse response = service().ingestUserEvent(userPostEvent, "2024-01-15T10:00:00Z");
 
         // Assert
         Assertions.assertEquals(expectedId, response.getDocumentId());
@@ -83,12 +83,12 @@ public class UserActivityIngestionServiceTest {
     @Test
     public void testSameVoteRepeatedIsIgnored() throws IOException {
         // Arrange: ES Painless script returns NoOp when action hasn't changed
-        UserClick userClick = UserClickTest.createHitCount();   // action = UPVOTE
-        String expectedId = userClick.getUserId() + "_" + userClick.getPostId();
+        UserPostEvent userPostEvent = UserPostEventTest.createHitCount();   // action = UPVOTE
+        String expectedId = userPostEvent.getUserId() + "_" + userPostEvent.getPostId();
         stubUpdate(expectedId, Result.NoOp);
 
         // Act: user tries to upvote the same post a second time
-        UserClickResponse response = service().ingestUserClick(userClick, "2024-01-15T10:05:00Z");
+        UserPostEventResponse response = service().ingestUserEvent(userPostEvent, "2024-01-15T10:05:00Z");
 
         // Assert: no document was written
         Assertions.assertEquals(expectedId, response.getDocumentId());
@@ -98,13 +98,13 @@ public class UserActivityIngestionServiceTest {
     @Test
     public void testDifferentVoteChangesAction() throws IOException {
         // Arrange: ES Painless script returns Updated when user switches from UPVOTE → DOWNVOTE
-        UserClick userClick = UserClickTest.createHitCount();   // first action = UPVOTE
-        userClick.setAction("Downvote");                        // now changing to DOWNVOTE
-        String expectedId = userClick.getUserId() + "_" + userClick.getPostId();
+        UserPostEvent userPostEvent = UserPostEventTest.createHitCount();   // first action = UPVOTE
+        userPostEvent.setAction("Downvote");                        // now changing to DOWNVOTE
+        String expectedId = userPostEvent.getUserId() + "_" + userPostEvent.getPostId();
         stubUpdate(expectedId, Result.Updated);
 
         // Act
-        UserClickResponse response = service().ingestUserClick(userClick, "2024-01-15T10:10:00Z");
+        UserPostEventResponse response = service().ingestUserEvent(userPostEvent, "2024-01-15T10:10:00Z");
 
         // Assert: the document was updated in-place (still one doc per user+post)
         Assertions.assertEquals(expectedId, response.getDocumentId());
@@ -114,13 +114,13 @@ public class UserActivityIngestionServiceTest {
     @Test
     public void testNovoteDeletesExistingVote() throws IOException {
         // Arrange: user cancels a vote they previously cast
-        UserClick userClick = UserClickTest.createHitCount();
-        userClick.setAction("novote");           // case-insensitive: normalised to NOVOTE
-        String expectedId = userClick.getUserId() + "_" + userClick.getPostId();
+        UserPostEvent userPostEvent = UserPostEventTest.createHitCount();
+        userPostEvent.setAction("novote");           // case-insensitive: normalised to NOVOTE
+        String expectedId = userPostEvent.getUserId() + "_" + userPostEvent.getPostId();
         stubDelete(expectedId, Result.Deleted);
 
         // Act
-        UserClickResponse response = service().ingestUserClick(userClick, "2024-01-15T10:20:00Z");
+        UserPostEventResponse response = service().ingestUserEvent(userPostEvent, "2024-01-15T10:20:00Z");
 
         // Assert: document removed, no vote stored
         Assertions.assertEquals(expectedId, response.getDocumentId());
@@ -130,13 +130,13 @@ public class UserActivityIngestionServiceTest {
     @Test
     public void testNovoteOnNonExistentVoteReturnsNotFound() throws IOException {
         // Arrange: user sends NOVOTE but has never voted on this post
-        UserClick userClick = UserClickTest.createHitCount();
-        userClick.setAction("NOVOTE");
-        String expectedId = userClick.getUserId() + "_" + userClick.getPostId();
+        UserPostEvent userPostEvent = UserPostEventTest.createHitCount();
+        userPostEvent.setAction("NOVOTE");
+        String expectedId = userPostEvent.getUserId() + "_" + userPostEvent.getPostId();
         stubDelete(expectedId, Result.NotFound);
 
         // Act
-        UserClickResponse response = service().ingestUserClick(userClick, "2024-01-15T10:20:00Z");
+        UserPostEventResponse response = service().ingestUserEvent(userPostEvent, "2024-01-15T10:20:00Z");
 
         // Assert: graceful no-op, no exception thrown
         Assertions.assertEquals(expectedId, response.getDocumentId());

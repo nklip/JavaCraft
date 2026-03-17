@@ -15,7 +15,7 @@ public class UserActivityTest {
     @Test
     public void testJsonFormat() throws IOException {
         UserActivity userActivity = new UserActivity(
-                UserClickTest.createHitCount(),
+                UserPostEventTest.createHitCount(),
                 "2024-01-08T18:16:41.530Z"
         );
 
@@ -62,10 +62,10 @@ public class UserActivityTest {
 
     @Test
     public void testConstructorNormalizesActionToUppercase() {
-        UserClick userClick = UserClickTest.createHitCount(); // action = "Upvote"
+        UserPostEvent userPostEvent = UserPostEventTest.createHitCount(); // action = "Upvote"
         String timestamp = "2024-01-08T18:16:41.530Z";
 
-        UserActivity userActivity = new UserActivity(userClick, timestamp);
+        UserActivity userActivity = new UserActivity(userPostEvent, timestamp);
 
         Assertions.assertEquals("12345", userActivity.getPostId());
         Assertions.assertEquals("nl8888", userActivity.getUserId());

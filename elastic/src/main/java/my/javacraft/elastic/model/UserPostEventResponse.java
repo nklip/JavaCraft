@@ -6,8 +6,9 @@ import lombok.ToString;
 
 @Data
 @ToString
-public class UserClickResponse {
+public class UserPostEventResponse {
 
+    // Deterministic ID: one document per (userId, postId) → correct aggregations
     private String documentId;
 
     private Result result;

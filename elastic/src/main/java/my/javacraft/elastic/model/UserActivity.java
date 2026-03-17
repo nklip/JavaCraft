@@ -4,13 +4,14 @@ import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
+import my.javacraft.elastic.service.activity.UserActivityService;
 
 /**
  * Vote document stored in the 'user-activity' index.
  * Document ID is {@code userId_postId} — one document per (user, post) pair.
  *
  * <p>The document represents the user's <em>current</em> vote on a post.
- * {@link my.javacraft.elastic.service.activity.UserActivityIngestionService} enforces
+ * {@link UserActivityService} enforces
  * the following state machine:
  * <ul>
  *   <li>First vote → document created ({@code Result.Created})</li>
@@ -42,10 +43,10 @@ public class UserActivity {
     @NotEmpty
     String timestamp;
 
-    public UserActivity(UserClick userClick, String timestamp) {
-        this.postId = userClick.getPostId();
-        this.userId = userClick.getUserId();
-        this.action = userClick.getAction().toUpperCase();
+    public UserActivity(UserPostEvent userPostEvent, String timestamp) {
+        this.postId = userPostEvent.getPostId();
+        this.userId = userPostEvent.getUserId();
+        this.action = userPostEvent.getAction().toUpperCase();
         this.timestamp = timestamp;
     }
 }

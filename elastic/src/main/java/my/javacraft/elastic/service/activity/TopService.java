@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import my.javacraft.elastic.config.Constants;
 import my.javacraft.elastic.model.PostPreview;
 import my.javacraft.elastic.model.UserAction;
 import my.javacraft.elastic.model.UserActivity;
@@ -99,26 +100,26 @@ public class TopService {
      * @param since ISO-8601 lower bound for the range filter, or {@code null} for "all time"
      */
     private List<PostPreview> queryTopPosts(int size, String since) throws IOException {
-        int querySize = Math.min(size * 10, UserActivityService.MAX_VALUES);
+        int querySize = Math.min(size * 10, Constants.MAX_VALUES);
 
         SearchRequest.Builder builder = new SearchRequest.Builder()
-                .index(UserActivityService.INDEX_USER_ACTIVITY)
+                .index(Constants.INDEX_USER_ACTIVITY)
                 .size(0)
-                .aggregations(UserActivityService.POST_ID, a -> a
+                .aggregations(Constants.POST_ID, a -> a
                         .terms(t -> t
-                                .field(UserActivityService.POST_ID)
+                                .field(Constants.POST_ID)
                                 .size(querySize)
                                 .order(NamedValue.of("_count", SortOrder.Desc))
                         )
                         .aggregations("upvotes", sub -> sub
                                 .filter(f -> f.term(t -> t
-                                        .field(UserActivityService.ACTION)
+                                        .field(Constants.ACTION)
                                         .value(v -> v.stringValue(UserAction.UPVOTE.name()))
                                 ))
                         )
                         .aggregations("downvotes", sub -> sub
                                 .filter(f -> f.term(t -> t
-                                        .field(UserActivityService.ACTION)
+                                        .field(Constants.ACTION)
                                         .value(v -> v.stringValue(UserAction.DOWNVOTE.name()))
                                 ))
                         )
@@ -126,7 +127,7 @@ public class TopService {
 
         if (since != null) {
             builder.query(q -> q.range(r -> r.date(d -> d
-                    .field(UserActivityService.TIMESTAMP)
+                    .field(Constants.TIMESTAMP)
                     .gte(since)
             )));
         }
@@ -136,7 +137,7 @@ public class TopService {
 
         return esClient.search(request, UserActivity.class)
                 .aggregations()
-                .get(UserActivityService.POST_ID)
+                .get(Constants.POST_ID)
                 .sterms()
                 .buckets()
                 .array()

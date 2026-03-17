@@ -173,7 +173,7 @@ Both `type` and `client` are validated with `@ValueOfEnum` — case-insensitive,
 POST /api/services/user-activity
 ```
 
-Request body — `UserClick`:
+Request body — `UserPostEvent`:
 
 ```json
 {
@@ -188,7 +188,7 @@ All fields are required (`@NotEmpty` / `@NotBlank`). On each call the service up
 into the `user-activity` index — it creates the document on first occurrence and increments
 `count` on subsequent calls for the same `(recordId, searchType, userId)` combination.
 
-Response — `UserClickResponse`:
+Response — `UserPostEventResponse`:
 
 ```json
 {
@@ -231,7 +231,7 @@ Response — `UserClickResponse`:
 | `count` | Long | Number of times this record was clicked |
 | `updated` | String | ISO 8601 timestamp of last update |
 
-### `UserClick` (inbound event)
+### `UserPostEvent` (inbound event)
 
 | Field | Constraint | Description |
 |-------|-----------|-------------|
@@ -252,12 +252,12 @@ sequenceDiagram
     participant UHIS as UserActivityIngestionService
     participant ES as Elasticsearch
 
-    C->>UHC: POST /user-activity (UserClick)
-    UHC->>UHIS: ingestUserClick(userClick, now)
+    C->>UHC: POST /user-activity (UserPostEvent)
+    UHC->>UHIS: ingestUserPostEvent(userPostEvent, now)
     UHIS->>ES: Upsert doc id={recordId}-{searchType}-{userId}
     note over ES: Script: ctx._source.count++\nupsert: {count:1, updated:...}
     ES-->>UHIS: UpdateResponse
-    UHIS-->>UHC: UserClickResponse
+    UHIS-->>UHC: UserPostEventResponse
     UHC-->>C: 200 {documentId, result}
 ```
 

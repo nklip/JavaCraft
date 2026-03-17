@@ -12,7 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import my.javacraft.elastic.service.activity.UserActivityService;
+import my.javacraft.elastic.config.Constants;
 import org.springframework.stereotype.Service;
 
 /**
@@ -52,7 +52,7 @@ public class AdminService {
      * </ul>
      */
     public IndexCreationResult createUserActivityIndex() throws IOException {
-        log.info("creating index '{}'...", UserActivityService.INDEX_USER_ACTIVITY);
+        log.info("creating index '{}'...", Constants.INDEX_USER_ACTIVITY);
 
         Map<String, Property> properties = new LinkedHashMap<>();
         properties.put("timestamp", Property.of(p -> p.date(d -> d.format("strict_date_optional_time"))));
@@ -60,7 +60,7 @@ public class AdminService {
         properties.put("postId", Property.of(p -> p.keyword(k -> k)));
         properties.put("action", Property.of(p -> p.keyword(k -> k)));
 
-        return createIndex(UserActivityService.INDEX_USER_ACTIVITY, properties);
+        return createIndex(Constants.INDEX_USER_ACTIVITY, properties);
     }
 
     /**

@@ -1,6 +1,5 @@
 package my.javacraft.elastic.rest;
 
-import co.elastic.clients.elasticsearch.core.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -11,11 +10,9 @@ import jakarta.validation.Valid;
 import java.io.IOException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import my.javacraft.elastic.model.UserActivity;
-import my.javacraft.elastic.model.UserClick;
-import my.javacraft.elastic.model.UserClickResponse;
+import my.javacraft.elastic.model.UserPostEvent;
+import my.javacraft.elastic.model.UserPostEventResponse;
 import my.javacraft.elastic.service.DateService;
-import my.javacraft.elastic.service.activity.UserActivityIngestionService;
 import my.javacraft.elastic.service.activity.UserActivityService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -33,7 +30,6 @@ public class UserActivityController {
 
     private final DateService dateService;
     private final UserActivityService userActivityService;
-    private final UserActivityIngestionService userActivityIngestionService;
 
     @Operation(
             summary = "Capture user click",
@@ -47,41 +43,24 @@ public class UserActivityController {
     @PostMapping(
             produces = MediaType.APPLICATION_JSON_VALUE,
             consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<UserClickResponse> captureUserClick(
+    public ResponseEntity<UserPostEventResponse> captureUserPostEvent(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     required = true,
-                    description = "UserClick event",
+                    description = "UserPostEvent event",
                     useParameterTypeSchema = true,
                     content = @Content(schema = @Schema(
-                            implementation = UserClick.class
+                            implementation = UserPostEvent.class
                     ))
             )
-            @RequestBody @Valid UserClick userClick) throws IOException {
+            @RequestBody @Valid UserPostEvent userPostEvent) throws IOException {
 
-        log.info("ingesting (UserClick = {})...", userClick);
+        log.info("ingesting (UserPostEvent = {})...", userPostEvent);
 
-        UserClickResponse userClickResponse = userActivityIngestionService.ingestUserClick(userClick, dateService.getCurrentDate());
+        UserPostEventResponse userPostEventResponse = userActivityService.ingestUserEvent(
+                userPostEvent, dateService.getCurrentDate()
+        );
 
-        return ResponseEntity.ok().body(userClickResponse);
+        return ResponseEntity.ok().body(userPostEventResponse);
     }
 
-    @Operation(
-            summary = "Search activity by userId",
-            description = "Fetch the search activity by userId"
-    )
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Successful"),
-            @ApiResponse(responseCode = "404", description = "Not found"),
-            @ApiResponse(responseCode = "406", description = "Resource unavailable")
-    })
-    @GetMapping(value = "/documents/{documentId}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<GetResponse<UserActivity>> getHitCount(
-            @PathVariable("documentId") String documentId) throws IOException {
-
-        log.info("executing getHitCount (documentId = '{}')...", documentId);
-
-        GetResponse<UserActivity> map = userActivityService.getUserActivityByDocumentId(documentId);
-
-        return ResponseEntity.ok().body(map);
-    }
 }
