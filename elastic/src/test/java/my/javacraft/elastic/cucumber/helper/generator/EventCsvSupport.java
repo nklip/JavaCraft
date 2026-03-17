@@ -12,7 +12,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 public final class EventCsvSupport {
-    public static final int USERS_PER_POST = 300;
+    public static final int USERS_PER_POST = 100;
 
     private static final String CSV_HEADER = "userId,postId,action,date";
     private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ISO_INSTANT;

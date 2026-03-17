@@ -46,7 +46,7 @@ class EventGeneratorTest {
         Assertions.assertTrue(Files.exists(generatedCsv), "CSV file must be generated: " + fileName);
 
         List<String> lines = Files.readAllLines(generatedCsv, StandardCharsets.UTF_8);
-        Assertions.assertEquals(3001, lines.size(), "Expected 3000 events + header");
+        Assertions.assertEquals(1001, lines.size(), "Expected 1000 events + header");
         Assertions.assertEquals("userId,postId,action,date", lines.getFirst());
 
         Set<String> uniqueRows = new HashSet<>();
@@ -57,7 +57,7 @@ class EventGeneratorTest {
             String[] values = line.split(",", -1);
             Assertions.assertEquals(4, values.length, "Invalid CSV row: " + line);
 
-            int userId = parseSuffix(values[0], "user-", 1, 300);
+            int userId = parseSuffix(values[0], "user-", 1, 100);
             int postId = parseSuffix(values[1], "post-", firstPost, lastPost);
             Assertions.assertTrue(values[2].equals("UPVOTE") || values[2].equals("DOWNVOTE"),
                     "Unexpected action: " + values[2]);
@@ -73,12 +73,12 @@ class EventGeneratorTest {
             usersByPost.computeIfAbsent(postId, key -> new HashSet<>()).add(userId);
         }
 
-        Assertions.assertEquals(3000, uniqueRows.size(), "Each (user,post) pair must be unique");
+        Assertions.assertEquals(1000, uniqueRows.size(), "Each (user,post) pair must be unique");
         Assertions.assertEquals(10, usersByPost.size(), "Expected 10 generated posts");
         for (int postId = firstPost; postId <= lastPost; postId++) {
             Set<Integer> users = usersByPost.get(postId);
             Assertions.assertNotNull(users, "Missing generated post: post-%02d".formatted(postId));
-            Assertions.assertEquals(300, users.size(), "Each post must have 300 user events");
+            Assertions.assertEquals(100, users.size(), "Each post must have 100 user events");
         }
     }
 

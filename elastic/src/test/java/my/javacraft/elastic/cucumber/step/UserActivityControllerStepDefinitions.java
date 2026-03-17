@@ -49,7 +49,7 @@ import static io.cucumber.spring.CucumberTestContext.SCOPE_CUCUMBER_GLUE;
 public class UserActivityControllerStepDefinitions {
 
     /** Minimum number of documents expected in the index after full CSV ingestion (5 files × 3 000 rows). */
-    private static final long MIN_CSV_DOCUMENTS = 15_000L;
+    private static final long MIN_CSV_DOCUMENTS = 5_000L;
 
     @LocalServerPort
     int port;
@@ -60,7 +60,7 @@ public class UserActivityControllerStepDefinitions {
     UserActivityIngestionService userActivityIngestionService;
 
     @Given("data folder {string} ingested")
-    public void ingestDataFolderInParallel(String folderPath) throws IOException, InterruptedException {
+    public void ingestDataFolderInParallel(String folderPath) throws IOException {
 
         List<String> csvResourcePaths = listCsvResourcePaths(folderPath);
         Assertions.assertFalse(csvResourcePaths.isEmpty(), "No CSV files found in folder: " + folderPath);

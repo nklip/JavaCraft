@@ -34,7 +34,7 @@ public class BestEvents implements EventGenerator {
 
     /*
      * Should update postIds from 01 to 10
-     * The amount of users which would UPVOTE or DOWNVOTE - 300
+     * The amount of users which would UPVOTE or DOWNVOTE - 100
      */
     @Override
     public void generateEventsInCsv() {

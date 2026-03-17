@@ -26,7 +26,7 @@ public class RisingEvents implements EventGenerator {
 
     /*
      * Should update postIds from 31 to 40
-     * The amount of users which would UPVOTE or DOWNVOTE - 300
+     * The amount of users which would UPVOTE or DOWNVOTE - 100
      */
     @Override
     public void generateEventsInCsv() {
@@ -39,11 +39,11 @@ public class RisingEvents implements EventGenerator {
                 long daysAgo;
                 long hoursAgo;
 
-                if (userId <= 180) {
+                if (userId <= 60) {
                     upvotePercent = 72;
                     daysAgo = 120 + Math.floorMod(postId * 7 + userId * 3, 60);
                     hoursAgo = Math.floorMod(postId * 5 + userId * 11, 24);
-                } else if (userId <= 240) {
+                } else if (userId <= 80) {
                     upvotePercent = 85;
                     daysAgo = 15 + Math.floorMod(postId * 11 + userId * 5, 45);
                     hoursAgo = Math.floorMod(postId * 13 + userId * 7, 24);

@@ -32,7 +32,7 @@ public class HotEvents implements EventGenerator {
 
     /*
      * Should update postIds from 11 to 20
-     * The amount of users which would UPVOTE or DOWNVOTE - 300
+     * The amount of users which would UPVOTE or DOWNVOTE - 100
      *
      * Correctness guarantee (Reddit Hot formula):
      *   hot_score = log₁₀(net) + (firstSeenSec − anchor) / 45_000
@@ -43,8 +43,8 @@ public class HotEvents implements EventGenerator {
      *   This is ~23 h more recent than NewEvents (first_seen ≤ 24 h),
      *   translating to ~1.84 hot_score units of separation:
      *
-     *   posts 11-20 hot_score ≈ 14 189  (first_seen ~60 min, net = 240)
-     *   posts 21-30 hot_score ≈ 14 187  (first_seen ~24 h,  net = 210)  ← 2nd place
+     *   posts 11-20 hot_score ≈ 13 516  (first_seen ~60 min, net = 80)
+     *   posts 21-30 hot_score ≈ 13 514  (first_seen ~24 h,  net = 70)  ← 2nd place
      */
     @Override
     public void generateEventsInCsv() {

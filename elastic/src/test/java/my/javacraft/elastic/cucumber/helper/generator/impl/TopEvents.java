@@ -38,19 +38,19 @@ public class TopEvents implements EventGenerator {
 
     /*
      * Should update postIds from 41 to 50
-     * The amount of users which would UPVOTE or DOWNVOTE - 300
+     * The amount of users which would UPVOTE or DOWNVOTE - 100
      *
      * Correctness guarantee (Reddit Top formula):
-     *   top_score = upvotes − downvotes  (no time decay, all-time window)
+     *   top_score = upvotes - downvotes  (no time decay, all-time window)
      *
-     * Strategy: 95% upvote rate → net = 285 − 15 = 270 per post.
+     * Strategy: 95% upvote rate → net = 95 − 5 = 90 per post.
      *   This exceeds every other generator's net score:
      *
-     *   posts 41-50  net = 270  (TopEvents,  95% upvote)  ← rank 1
-     *   posts 11-20  net = 240  (HotEvents,  90% upvote)  ← rank 2
-     *   posts 21-30  net = 210  (NewEvents,  85% upvote)  ← rank 3
-     *   posts 31-40  net ≈ 175  (RisingEvents, mixed)     ← rank 4
-     *   posts  1-10  net = 180  (BestEvents,  80% upvote) ← rank 5
+     *   posts 41-50  net = 90  (TopEvents,  95% upvote)  ← rank 1
+     *   posts 11-20  net = 80  (HotEvents,  90% upvote)  ← rank 2
+     *   posts 21-30  net = 70  (NewEvents,  85% upvote)  ← rank 3
+     *   posts 31-40  net ≈ 58  (RisingEvents, mixed)     ← rank 4
+     *   posts  1-10  net = 60  (BestEvents,  80% upvote) ← rank 5
      *
      * Events are spread across 365 days to represent long-term sustained quality.
      * Time spread intentionally makes first_seen old, so TopEvents does NOT win Hot.
@@ -62,7 +62,7 @@ public class TopEvents implements EventGenerator {
 
         for (int postId = 41; postId <= 50; postId++) {
             for (int userId = 1; userId <= EventCsvSupport.USERS_PER_POST; userId++) {
-                // 95% upvote rate → net = 270/post, beats all other generators
+                // 95% upvote rate → net = 90/post, beats all other generators
                 boolean upvote = EventCsvSupport.isUpvote(userId, postId, 95);
                 long daysAgo = Math.floorMod(postId * 13 + userId * 17, 365);
                 long hoursAgo = Math.floorMod(postId * 19 + userId * 23, 24);

@@ -22,7 +22,7 @@ public class NewEvents implements EventGenerator {
 
     /*
      * Should update postIds from 21 to 30
-     * The amount of users which would UPVOTE or DOWNVOTE - 300
+     * The amount of users which would UPVOTE or DOWNVOTE - 100
      */
     @Override
     public void generateEventsInCsv() {
