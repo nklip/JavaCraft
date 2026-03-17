@@ -10,14 +10,12 @@ import co.elastic.clients.elasticsearch._types.aggregations.StringTermsAggregate
 import co.elastic.clients.elasticsearch._types.aggregations.StringTermsBucket;
 import co.elastic.clients.elasticsearch.core.SearchRequest;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
-import co.elastic.clients.elasticsearch.core.search.Hit;
-import co.elastic.clients.elasticsearch.core.search.HitsMetadata;
 import co.elastic.clients.json.jackson.JacksonJsonpMapper;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import my.javacraft.elastic.model.PostPreview;
 import my.javacraft.elastic.model.UserActivity;
-import my.javacraft.elastic.model.UserClickTest;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -87,29 +85,22 @@ public class HotServiceTest {
         // postA: 5 net, newer → hot_score = log₁₀(5) + (recent−anchor)/45000
         // postB: 5 net, older → hot_score = log₁₀(5) + (older−anchor)/45000
         // postA wins because recentMs > olderMs
-        SearchResponse<UserActivity> hotResponse = buildHotAggResponse(Map.of(
+        SearchResponse<UserActivity> response = buildHotAggResponse(Map.of(
                 "postA", new long[]{recentMs, 5L, 0L},
                 "postB", new long[]{olderMs,  5L, 0L}
         ));
 
-        UserActivity activityA = new UserActivity(UserClickTest.createHitCount(), "2026-01-15T10:30:00.000Z");
-        activityA.setPostId("postA");
-        UserActivity activityB = new UserActivity(UserClickTest.createHitCount(), "2026-01-14T10:30:00.000Z");
-        activityB.setPostId("postB");
-
-        SearchResponse<UserActivity> hydrateResponse = buildHitsResponse(List.of(activityA, activityB));
-
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
         when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
-                .thenReturn(hotResponse)
-                .thenReturn(hydrateResponse);
+                .thenReturn(response);
 
-        List<UserActivity> result = new HotService(esClient).retrieveHotPosts(10);
+        List<PostPreview> result = new HotService(esClient).retrieveHotPosts(10);
 
         Assertions.assertNotNull(result);
         Assertions.assertEquals(2, result.size());
         Assertions.assertEquals("postA", result.get(0).getPostId(), "newer submission must rank first");
         Assertions.assertEquals("postB", result.get(1).getPostId());
+        Assertions.assertEquals(5L, result.get(0).getKarma());
     }
 
     @Test
@@ -119,29 +110,23 @@ public class HotServiceTest {
 
         // postA: 100 net → order = log₁₀(100) = 2.0
         // postB:  10 net → order = log₁₀(10)  = 1.0
-        SearchResponse<UserActivity> hotResponse = buildHotAggResponse(Map.of(
+        SearchResponse<UserActivity> response = buildHotAggResponse(Map.of(
                 "postA", new long[]{firstSeenMs, 100L, 0L},
                 "postB", new long[]{firstSeenMs,  10L, 0L}
         ));
 
-        UserActivity activityA = new UserActivity(UserClickTest.createHitCount(), "2026-01-15T10:30:00.000Z");
-        activityA.setPostId("postA");
-        UserActivity activityB = new UserActivity(UserClickTest.createHitCount(), "2026-01-15T10:30:00.000Z");
-        activityB.setPostId("postB");
-
-        SearchResponse<UserActivity> hydrateResponse = buildHitsResponse(List.of(activityA, activityB));
-
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
         when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
-                .thenReturn(hotResponse)
-                .thenReturn(hydrateResponse);
+                .thenReturn(response);
 
-        List<UserActivity> result = new HotService(esClient).retrieveHotPosts(10);
+        List<PostPreview> result = new HotService(esClient).retrieveHotPosts(10);
 
         Assertions.assertNotNull(result);
         Assertions.assertEquals(2, result.size());
         Assertions.assertEquals("postA", result.get(0).getPostId(), "more upvotes must rank first when age is equal");
         Assertions.assertEquals("postB", result.get(1).getPostId());
+        Assertions.assertEquals(100L, result.get(0).getKarma());
+        Assertions.assertEquals(10L,  result.get(1).getKarma());
     }
 
     @Test
@@ -150,35 +135,30 @@ public class HotServiceTest {
         // The post must still appear — it is NOT filtered out.
         long firstSeenMs = HotService.EPOCH_ANCHOR_SECONDS * 1_000L + 200_000_000L;
 
-        SearchResponse<UserActivity> hotResponse = buildHotAggResponse(Map.of(
+        SearchResponse<UserActivity> response = buildHotAggResponse(Map.of(
                 "postA", new long[]{firstSeenMs, 1L, 10L}   // net = -9
         ));
 
-        UserActivity activityA = new UserActivity(UserClickTest.createHitCount(), "2026-01-15T10:30:00.000Z");
-        activityA.setPostId("postA");
-
-        SearchResponse<UserActivity> hydrateResponse = buildHitsResponse(List.of(activityA));
-
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
         when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
-                .thenReturn(hotResponse)
-                .thenReturn(hydrateResponse);
+                .thenReturn(response);
 
-        List<UserActivity> result = new HotService(esClient).retrieveHotPosts(10);
+        List<PostPreview> result = new HotService(esClient).retrieveHotPosts(10);
 
         Assertions.assertNotNull(result);
         Assertions.assertFalse(result.isEmpty(), "net-negative posts must still appear — time component keeps score positive");
+        Assertions.assertEquals(-9L, result.get(0).getKarma());
     }
 
     @Test
     public void testRetrieveHotPostsReturnsEmptyWhenNoActivity() throws IOException {
-        SearchResponse<UserActivity> hotResponse = buildHotAggResponse(Map.of());
+        SearchResponse<UserActivity> response = buildHotAggResponse(Map.of());
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
         when(esClient.search(any(SearchRequest.class), eq(UserActivity.class)))
-                .thenReturn(hotResponse);
+                .thenReturn(response);
 
-        List<UserActivity> result = new HotService(esClient).retrieveHotPosts(10);
+        List<PostPreview> result = new HotService(esClient).retrieveHotPosts(10);
 
         Assertions.assertNotNull(result);
         Assertions.assertTrue(result.isEmpty());
@@ -233,23 +213,6 @@ public class HotServiceTest {
 
         SearchResponse<UserActivity> response = mock(SearchResponse.class);
         when(response.aggregations()).thenReturn(Map.of(UserActivityService.POST_ID, aggregate));
-        return response;
-    }
-
-    private SearchResponse<UserActivity> buildHitsResponse(List<UserActivity> activities) {
-        List<Hit<UserActivity>> hits = activities.stream()
-                .map(a -> new Hit.Builder<UserActivity>()
-                        .index(UserActivityService.INDEX_USER_ACTIVITY)
-                        .id("id-" + a.getPostId())
-                        .source(a)
-                        .build())
-                .toList();
-
-        HitsMetadata<UserActivity> hitsMetadata = mock(HitsMetadata.class);
-        when(hitsMetadata.hits()).thenReturn(hits);
-
-        SearchResponse<UserActivity> response = mock(SearchResponse.class);
-        when(response.hits()).thenReturn(hitsMetadata);
         return response;
     }
 }

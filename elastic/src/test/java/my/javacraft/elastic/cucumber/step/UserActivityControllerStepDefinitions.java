@@ -33,8 +33,8 @@ import my.javacraft.elastic.cucumber.helper.generator.impl.HotEvents;
 import my.javacraft.elastic.cucumber.helper.generator.impl.NewEvents;
 import my.javacraft.elastic.cucumber.helper.generator.impl.RisingEvents;
 import my.javacraft.elastic.cucumber.helper.generator.impl.TopEvents;
+import my.javacraft.elastic.model.PostPreview;
 import my.javacraft.elastic.model.UserClick;
-import my.javacraft.elastic.model.UserActivity;
 import my.javacraft.elastic.service.activity.UserActivityIngestionService;
 import my.javacraft.elastic.service.activity.UserActivityService;
 import org.apache.http.HttpHeaders;
@@ -248,7 +248,7 @@ public class UserActivityControllerStepDefinitions {
         );
 
         Set<String> actualSet = fetchRankedPosts(path).stream()
-                .map(UserActivity::getPostId)
+                .map(PostPreview::getPostId)
                 .collect(Collectors.toSet());
 
         Assertions.assertEquals(expectedSet, actualSet,
@@ -274,7 +274,7 @@ public class UserActivityControllerStepDefinitions {
 
         Set<String> actualSet = fetchRankedPosts(path)
                 .stream()
-                .map(UserActivity::getPostId)
+                .map(PostPreview::getPostId)
                 .collect(Collectors.toSet());
 
         Assertions.assertEquals(expectedSet, actualSet,
@@ -298,7 +298,7 @@ public class UserActivityControllerStepDefinitions {
         );
 
         Set<String> actualSet = fetchRankedPosts(path).stream()
-                .map(UserActivity::getPostId)
+                .map(PostPreview::getPostId)
                 .collect(Collectors.toSet());
 
         Assertions.assertEquals(expectedSet, actualSet,
@@ -412,16 +412,16 @@ public class UserActivityControllerStepDefinitions {
     }
 
     /** Single direct call to a ranking endpoint; returns the response body. */
-    private List<UserActivity> fetchRankedPosts(String path) {
+    private List<PostPreview> fetchRankedPosts(String path) {
         MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
         headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
         HttpEntity<String> entity = new HttpEntity<>(null, headers);
         String url = "http://localhost:%s/api/services/user-activity%s".formatted(port, path);
 
-        HttpEntity<List<UserActivity>> response = new RestTemplate().exchange(
+        HttpEntity<List<PostPreview>> response = new RestTemplate().exchange(
                 url, HttpMethod.GET, entity, new ParameterizedTypeReference<>() {}
         );
-        List<UserActivity> body = response.getBody();
+        List<PostPreview> body = response.getBody();
         return body == null ? List.of() : body;
     }
 

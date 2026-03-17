@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import my.javacraft.elastic.model.PostPreview;
 import my.javacraft.elastic.model.UserClick;
 import my.javacraft.elastic.model.UserClickResponse;
 import my.javacraft.elastic.model.UserActivity;
@@ -91,10 +92,10 @@ public class UserActivityControllerTest {
                 dateService, userActivityService, topService, hotService, userActivityIngestionService
         );
 
-        List<UserActivity> activityList = new ArrayList<>();
-        when(topService.retrieveTopPosts(anyInt())).thenReturn(activityList);
+        List<PostPreview> posts = new ArrayList<>();
+        when(topService.retrieveTopPosts(anyInt())).thenReturn(posts);
 
-        ResponseEntity<List<UserActivity>> response = userActivityController
+        ResponseEntity<List<PostPreview>> response = userActivityController
                 .retrieveTopPosts(10);
 
         Assertions.assertNotNull(response);
@@ -107,47 +108,15 @@ public class UserActivityControllerTest {
                 dateService, userActivityService, topService, hotService, userActivityIngestionService
         );
 
-        List<UserActivity> activityList = new ArrayList<>();
-        when(hotService.retrieveHotPosts(anyInt())).thenReturn(activityList);
+        List<PostPreview> posts = new ArrayList<>();
+        when(hotService.retrieveHotPosts(anyInt())).thenReturn(posts);
 
-        ResponseEntity<List<UserActivity>> response = userActivityController
+        ResponseEntity<List<PostPreview>> response = userActivityController
                 .retrieveHotPosts(10);
 
         Assertions.assertNotNull(response);
         Assertions.assertNotNull(response.getBody());
     }
-
-//    @Test
-//    public void testDeleteIndex() throws IOException {
-//        UserActivityController userActivityController = new UserActivityController(
-//                dateService, userActivityService, topService, hotService, userActivityIngestionService
-//        );
-//
-//        DeleteIndexResponse deleteIndexResponse = Mockito.mock(DeleteIndexResponse.class);
-//        when(userActivityService.deleteIndex(anyString())).thenReturn(deleteIndexResponse);
-//
-//        ResponseEntity<DeleteIndexResponse> response = userActivityController
-//                .deleteIndex("nl88888");
-//
-//        Assertions.assertNotNull(response);
-//        Assertions.assertNotNull(response.getBody());
-//    }
-
-//    @Test
-//    public void testDeleteHitCountDocument() throws IOException {
-//        UserActivityController userActivityController = new UserActivityController(
-//                dateService, userActivityService, topService, hotService, userActivityIngestionService
-//        );
-//
-//        DeleteResponse deleteResponse = Mockito.mock(DeleteResponse.class);
-//        when(userActivityService.deleteDocument(anyString(), anyString())).thenReturn(deleteResponse);
-//
-//        ResponseEntity<DeleteResponse> response = userActivityController
-//                .deleteHitCountDocument("hit_count", "nl88888");
-//
-//        Assertions.assertNotNull(response);
-//        Assertions.assertNotNull(response.getBody());
-//    }
 
     @Test
     public void testTopPostsByWindow() throws IOException {
@@ -155,10 +124,10 @@ public class UserActivityControllerTest {
                 dateService, userActivityService, topService, hotService, userActivityIngestionService
         );
 
-        List<UserActivity> activityList = new ArrayList<>();
-        when(topService.retrieveTopPosts(anyInt(), eq(TopService.TopWindow.WEEK))).thenReturn(activityList);
+        List<PostPreview> posts = new ArrayList<>();
+        when(topService.retrieveTopPosts(anyInt(), eq(TopService.TopWindow.WEEK))).thenReturn(posts);
 
-        ResponseEntity<List<UserActivity>> response = userActivityController
+        ResponseEntity<List<PostPreview>> response = userActivityController
                 .retrieveTopPostsByWindow("week", 10);
 
         Assertions.assertNotNull(response);
@@ -172,7 +141,7 @@ public class UserActivityControllerTest {
                 dateService, userActivityService, topService, hotService, userActivityIngestionService
         );
 
-        ResponseEntity<List<UserActivity>> response = userActivityController
+        ResponseEntity<List<PostPreview>> response = userActivityController
                 .retrieveTopPostsByWindow("invalid", 10);
 
         Assertions.assertEquals(400, response.getStatusCode().value());

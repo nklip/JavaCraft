@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import my.javacraft.elastic.model.PostPreview;
 import my.javacraft.elastic.model.UserClick;
 import my.javacraft.elastic.model.UserClickResponse;
 import my.javacraft.elastic.model.UserActivity;
@@ -102,15 +103,15 @@ public class UserActivityController {
             @ApiResponse(responseCode = "406", description = "Resource unavailable")
     })
     @GetMapping(value = "/top", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<UserActivity>> retrieveTopPosts(
+    public ResponseEntity<List<PostPreview>> retrieveTopPosts(
             @RequestParam(required = false, name = "size", defaultValue = "10")
             @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
 
         log.info("retrieving top posts all-time (limit = '{}')...", size);
 
-        List<UserActivity> mapList = topService.retrieveTopPosts(size);
+        List<PostPreview> posts = topService.retrieveTopPosts(size);
 
-        return ResponseEntity.ok().body(mapList);
+        return ResponseEntity.ok().body(posts);
     }
 
     @Operation(
@@ -124,7 +125,7 @@ public class UserActivityController {
             @ApiResponse(responseCode = "406", description = "Resource unavailable")
     })
     @GetMapping(value = "/top/{window}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<UserActivity>> retrieveTopPostsByWindow(
+    public ResponseEntity<List<PostPreview>> retrieveTopPostsByWindow(
             @PathVariable("window") String window,
             @RequestParam(required = false, name = "size", defaultValue = "10")
             @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
@@ -139,9 +140,9 @@ public class UserActivityController {
 
         log.info("retrieving top posts (window = '{}', limit = '{}')...", tw, size);
 
-        List<UserActivity> mapList = topService.retrieveTopPosts(size, tw);
+        List<PostPreview> posts = topService.retrieveTopPosts(size, tw);
 
-        return ResponseEntity.ok().body(mapList);
+        return ResponseEntity.ok().body(posts);
     }
 
     @Operation(
@@ -154,58 +155,15 @@ public class UserActivityController {
             @ApiResponse(responseCode = "406", description = "Resource unavailable")
     })
     @GetMapping(value = "/hot", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<UserActivity>> retrieveHotPosts(
+    public ResponseEntity<List<PostPreview>> retrieveHotPosts(
             @RequestParam(required = false, name = "size", defaultValue = "10")
             @Min(1) @Max(UserActivityService.MAX_VALUES) int size) throws IOException {
 
         log.info("retrieving hot posts (limit = '{}')...", size);
 
-        List<UserActivity> mapList = hotService.retrieveHotPosts(size);
+        List<PostPreview> posts = hotService.retrieveHotPosts(size);
 
-        return ResponseEntity.ok().body(mapList);
+        return ResponseEntity.ok().body(posts);
     }
-
-//    @Operation(
-//            summary = "Delete index",
-//            description = "Delete index"
-//    )
-//    @ApiResponses(value = {
-//            @ApiResponse(responseCode = "200", description = "Successful"),
-//            @ApiResponse(responseCode = "404", description = "Not found"),
-//            @ApiResponse(responseCode = "406", description = "Resource unavailable")
-//    })
-//    @DeleteMapping("/indexes/{index}")
-//    public ResponseEntity<DeleteIndexResponse> deleteIndex(
-//            @PathVariable("index") String index) throws IOException {
-//
-//        log.info("executing deleteIndex (index = '{}')...", index);
-//
-//        DeleteIndexResponse deleteIndexResponse = userActivityService.deleteIndex(index);
-//
-//        return ResponseEntity.ok()
-//                .body(deleteIndexResponse);
-//    }
-//
-//    @Operation(
-//            summary = "Delete hit count document",
-//            description = "Delete hit count document"
-//    )
-//    @ApiResponses(value = {
-//            @ApiResponse(responseCode = "200", description = "Successful"),
-//            @ApiResponse(responseCode = "404", description = "Not found"),
-//            @ApiResponse(responseCode = "406", description = "Resource unavailable")
-//    })
-//    @DeleteMapping("/indexes/{index}/documents/{documentId}")
-//    public ResponseEntity<DeleteResponse> deleteHitCountDocument(
-//            @PathVariable("index") String index,
-//            @PathVariable("documentId") String documentId) throws IOException {
-//
-//        log.info("executing deleteHitCountDocument (index = '{}', documentId = '{}')...", index, documentId);
-//
-//        DeleteResponse deleteResponse = userActivityService.deleteDocument(index, documentId);
-//
-//        return ResponseEntity.ok()
-//                .body(deleteResponse);
-//    }
 
 }

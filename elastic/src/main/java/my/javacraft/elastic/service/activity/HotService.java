@@ -1,20 +1,17 @@
 package my.javacraft.elastic.service.activity;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.SortOrder;
 import co.elastic.clients.elasticsearch._types.aggregations.StringTermsBucket;
 import co.elastic.clients.elasticsearch.core.SearchRequest;
-import co.elastic.clients.elasticsearch.core.search.Hit;
 import co.elastic.clients.json.JsonpUtils;
 import co.elastic.clients.util.NamedValue;
 import java.io.IOException;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import my.javacraft.elastic.model.PostPreview;
 import my.javacraft.elastic.model.UserAction;
 import my.javacraft.elastic.model.UserActivity;
 import org.springframework.stereotype.Service;
@@ -55,7 +52,7 @@ import org.springframework.stereotype.Service;
  *     └─ min(timestamp)            → earliest activity ≈ submission time
  *
  * Java: hot_score = order + (minTimestampSec − EPOCH_ANCHOR_SECONDS) / TIME_SCALE
- *       sort DESC → top-N → hydrate with collapse query.
+ *       sort DESC → top-N → PostPreview(postId, karma).
  */
 @Slf4j
 @Service
@@ -68,23 +65,14 @@ public class HotService {
     /** Score divisor: every 45 000 s ≈ 12.5 h of age adds +1 to hot_score. */
     static final double TIME_SCALE = 45_000.0;
 
+    /** Intermediate holder produced by the aggregation phase, before final projection. */
+    private record HotRanked(String postId, double hotScore, long karma) {}
+
     private final ElasticsearchClient esClient;
 
-    public List<UserActivity> retrieveHotPosts(int size) throws IOException {
+    public List<PostPreview> retrieveHotPosts(int size) throws IOException {
         int querySize = Math.min(size * 10, UserActivityService.MAX_VALUES);
-
-        Map<String, Double> hotScores = queryHotScores(querySize);
-
-        List<String> hotPostIds = hotScores.entrySet().stream()
-                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
-                .limit(size)
-                .map(Map.Entry::getKey)
-                .toList();
-
-        if (hotPostIds.isEmpty()) {
-            return List.of();
-        }
-        return hydrateActivities(hotPostIds);
+        return queryHotPosts(querySize, size);
     }
 
     /**
@@ -100,9 +88,10 @@ public class HotService {
 
     /**
      * Single aggregation query: terms(postId) → upvote/downvote filters + min(timestamp).
-     * Returns a map of postId → hot score.
+     * Ranks by hot score in Java, then projects to PostPreview(postId, karma).
+     * No hydration query needed — all required data comes from the aggregation.
      */
-    private Map<String, Double> queryHotScores(int querySize) throws IOException {
+    private List<PostPreview> queryHotPosts(int querySize, int limit) throws IOException {
         SearchRequest request = new SearchRequest.Builder()
                 .index(UserActivityService.INDEX_USER_ACTIVITY)
                 .size(0)
@@ -139,55 +128,21 @@ public class HotService {
                 .buckets()
                 .array()
                 .stream()
-                .collect(Collectors.toMap(
-                        b -> b.key().stringValue(),
-                        this::computeHotScoreFromBucket
-                ));
-    }
-
-    private double computeHotScoreFromBucket(StringTermsBucket postBucket) {
-        long upvotes   = postBucket.aggregations().get("upvotes").filter().docCount();
-        long downvotes = postBucket.aggregations().get("downvotes").filter().docCount();
-        long firstSeenMs = (long) postBucket.aggregations().get("first_seen").min().value();
-        return computeHotScore(upvotes, downvotes, firstSeenMs);
-    }
-
-    /**
-     * Query: fetch one representative (most recent) UserActivity per hot postId.
-     * Preserves the hot score order from the caller.
-     */
-    private List<UserActivity> hydrateActivities(List<String> hotPostIds) throws IOException {
-        SearchRequest request = new SearchRequest.Builder()
-                .index(UserActivityService.INDEX_USER_ACTIVITY)
-                .query(q -> q.terms(t -> t
-                        .field(UserActivityService.POST_ID)
-                        .terms(tv -> tv.value(
-                                hotPostIds.stream().map(FieldValue::of).toList()
-                        ))
-                ))
-                .size(hotPostIds.size())
-                .collapse(c -> c.field(UserActivityService.POST_ID))
-                .sort(so -> so.field(f -> f
-                        .field(UserActivityService.TIMESTAMP)
-                        .order(SortOrder.Desc)
-                ))
-                .build();
-
-        log.debug("hot hydration query: {}", JsonpUtils.toJsonString(request, esClient._jsonpMapper()));
-
-        Map<String, UserActivity> byPostId = esClient.search(request, UserActivity.class)
-                .hits()
-                .hits()
-                .stream()
-                .filter(hit -> hit.source() != null)
-                .collect(Collectors.toMap(
-                        hit -> hit.source().getPostId(),
-                        Hit::source
-                ));
-
-        return hotPostIds.stream()
-                .map(byPostId::get)
-                .filter(Objects::nonNull)
+                .map(this::toHotRanked)
+                .sorted(Comparator.comparingDouble(HotRanked::hotScore).reversed())
+                .limit(limit)
+                .map(h -> new PostPreview(h.postId(), h.karma()))
                 .toList();
+    }
+
+    private HotRanked toHotRanked(StringTermsBucket bucket) {
+        long upvotes   = bucket.aggregations().get("upvotes").filter().docCount();
+        long downvotes = bucket.aggregations().get("downvotes").filter().docCount();
+        long firstSeenMs = (long) bucket.aggregations().get("first_seen").min().value();
+        return new HotRanked(
+                bucket.key().stringValue(),
+                computeHotScore(upvotes, downvotes, firstSeenMs),
+                upvotes - downvotes
+        );
     }
 }

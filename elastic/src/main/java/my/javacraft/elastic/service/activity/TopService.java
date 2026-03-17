@@ -1,20 +1,18 @@
 package my.javacraft.elastic.service.activity;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.SortOrder;
 import co.elastic.clients.elasticsearch.core.SearchRequest;
-import co.elastic.clients.elasticsearch.core.search.Hit;
 import co.elastic.clients.json.JsonpUtils;
 import co.elastic.clients.util.NamedValue;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import my.javacraft.elastic.model.PostPreview;
 import my.javacraft.elastic.model.UserAction;
 import my.javacraft.elastic.model.UserActivity;
 import my.javacraft.elastic.service.DateService;
@@ -56,7 +54,7 @@ import org.springframework.stereotype.Service;
  *
  *           Optional date range filter: timestamp >= (now − window.days)
  *
- * Java: top_score = upvotes − downvotes → sort DESC → top-N → hydrate with collapse query.
+ * Java: karma = upvotes − downvotes → sort DESC → top-N → PostPreview(postId, karma).
  */
 @Slf4j
 @Service
@@ -83,31 +81,24 @@ public class TopService {
     private final DateService dateService;
 
     /** Top posts across all time — no time filter. */
-    public List<UserActivity> retrieveTopPosts(int size) throws IOException {
-        return queryAndHydrate(size, null);
+    public List<PostPreview> retrieveTopPosts(int size) throws IOException {
+        return queryTopPosts(size, null);
     }
 
     /** Top posts within the given time window (day / week / month / year). */
-    public List<UserActivity> retrieveTopPosts(int size, TopWindow window) throws IOException {
+    public List<PostPreview> retrieveTopPosts(int size, TopWindow window) throws IOException {
         String since = dateService.getNDaysBeforeDate(window.getDays());
-        return queryAndHydrate(size, since);
-    }
-
-    private List<UserActivity> queryAndHydrate(int size, String since) throws IOException {
-        List<String> orderedPostIds = queryTopPostIds(size, since);
-        if (orderedPostIds.isEmpty()) {
-            return List.of();
-        }
-        return hydrateActivities(orderedPostIds);
+        return queryTopPosts(size, since);
     }
 
     /**
      * Aggregation query: terms(postId) → filter(UPVOTE) + filter(DOWNVOTE).
-     * Net score computed in Java; posts re-sorted and limited to {@code size}.
+     * Net score (karma) computed in Java; posts sorted and limited to {@code size}.
+     * Projects directly to PostPreview — no hydration query needed.
      *
      * @param since ISO-8601 lower bound for the range filter, or {@code null} for "all time"
      */
-    private List<String> queryTopPostIds(int size, String since) throws IOException {
+    private List<PostPreview> queryTopPosts(int size, String since) throws IOException {
         int querySize = Math.min(size * 10, UserActivityService.MAX_VALUES);
 
         SearchRequest.Builder builder = new SearchRequest.Builder()
@@ -158,46 +149,7 @@ public class TopService {
                 .entrySet().stream()
                 .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
                 .limit(size)
-                .map(Map.Entry::getKey)
-                .toList();
-    }
-
-    /**
-     * Hydration query: fetch one representative (most recent) UserActivity per postId,
-     * preserving the top-score order from the aggregation.
-     */
-    private List<UserActivity> hydrateActivities(List<String> orderedPostIds) throws IOException {
-        SearchRequest request = new SearchRequest.Builder()
-                .index(UserActivityService.INDEX_USER_ACTIVITY)
-                .query(q -> q.terms(t -> t
-                        .field(UserActivityService.POST_ID)
-                        .terms(tv -> tv.value(
-                                orderedPostIds.stream().map(FieldValue::of).toList()
-                        ))
-                ))
-                .size(orderedPostIds.size())
-                .collapse(c -> c.field(UserActivityService.POST_ID))
-                .sort(so -> so.field(f -> f
-                        .field(UserActivityService.TIMESTAMP)
-                        .order(SortOrder.Desc)
-                ))
-                .build();
-
-        log.debug("top hydration query: {}", JsonpUtils.toJsonString(request, esClient._jsonpMapper()));
-
-        Map<String, UserActivity> byPostId = esClient.search(request, UserActivity.class)
-                .hits()
-                .hits()
-                .stream()
-                .filter(hit -> hit.source() != null)
-                .collect(Collectors.toMap(
-                        hit -> hit.source().getPostId(),
-                        Hit::source
-                ));
-
-        return orderedPostIds.stream()
-                .map(byPostId::get)
-                .filter(Objects::nonNull)
+                .map(e -> new PostPreview(e.getKey(), e.getValue()))
                 .toList();
     }
 }
