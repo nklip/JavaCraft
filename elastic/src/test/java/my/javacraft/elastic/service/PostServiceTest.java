@@ -67,13 +67,13 @@ public class PostServiceTest {
     }
 
     @Test
-    public void testUpdateKarmaIssuesScriptedUpdate() throws IOException {
+    public void testUpdateScoresIssuesScriptedUpdate() throws IOException {
         UpdateResponse<Post> updateResponse = mock(UpdateResponse.class);
         when(updateResponse.result()).thenReturn(Result.Updated);
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
         when(esClient.update(any(UpdateRequest.class), any(Class.class))).thenReturn(updateResponse);
 
-        service().updateKarma("post-1", 1);
+        service().updateScores("post-1", 1);
 
         ArgumentCaptor<UpdateRequest<Post, Post>> captor = ArgumentCaptor.forClass(UpdateRequest.class);
         verify(esClient).update(captor.capture(), any(Class.class));
@@ -81,12 +81,12 @@ public class PostServiceTest {
         UpdateRequest<Post, Post> request = captor.getValue();
         Assertions.assertEquals("post-1", request.id());
         Assertions.assertEquals("posts", request.index());
-        Assertions.assertNotNull(request.script(), "scripted update must be used for atomic karma increment");
-        Assertions.assertNull(request.upsert(), "karma update must not upsert — post must pre-exist");
+        Assertions.assertNotNull(request.script(), "scripted update must be used for atomic karma+hotScore increment");
+        Assertions.assertNull(request.upsert(), "scores update must not upsert — post must pre-exist");
     }
 
     @Test
-    public void testUpdateKarmaSkipsOrphanedVoteGracefully() throws IOException {
+    public void testUpdateScoresSkipsOrphanedVoteGracefully() throws IOException {
         ErrorCause errorCause = mock(ErrorCause.class);
         when(errorCause.type()).thenReturn("document_missing_exception");
         ElasticsearchException esException = mock(ElasticsearchException.class);
@@ -95,13 +95,13 @@ public class PostServiceTest {
         when(esClient.update(any(UpdateRequest.class), any(Class.class))).thenThrow(esException);
 
         Assertions.assertDoesNotThrow(
-                () -> service().updateKarma("post-id-0", 1),
-                "karma update for orphaned vote must be silently skipped, not thrown"
+                () -> service().updateScores("post-id-0", 1),
+                "scores update for orphaned vote must be silently skipped, not thrown"
         );
     }
 
     @Test
-    public void testUpdateKarmaRethrowsOtherElasticsearchExceptions() throws IOException {
+    public void testUpdateScoresRethrowsOtherElasticsearchExceptions() throws IOException {
         ErrorCause errorCause = mock(ErrorCause.class);
         when(errorCause.type()).thenReturn("index_not_found_exception");
         ElasticsearchException esException = mock(ElasticsearchException.class);
@@ -111,21 +111,21 @@ public class PostServiceTest {
 
         Assertions.assertThrows(
                 ElasticsearchException.class,
-                () -> service().updateKarma("post-1", 1),
+                () -> service().updateScores("post-1", 1),
                 "unexpected ES errors must not be silently swallowed"
         );
     }
 
     @Test
-    public void testUpdateKarmaCalledMultipleTimes() throws IOException {
+    public void testUpdateScoresCalledMultipleTimes() throws IOException {
         UpdateResponse<Post> updateResponse = mock(UpdateResponse.class);
         when(updateResponse.result()).thenReturn(Result.Updated);
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
         when(esClient.update(any(UpdateRequest.class), any(Class.class))).thenReturn(updateResponse);
 
-        service().updateKarma("post-1",  1);
-        service().updateKarma("post-1", -1);
-        service().updateKarma("post-1",  2);
+        service().updateScores("post-1",  1);
+        service().updateScores("post-1", -1);
+        service().updateScores("post-1",  2);
 
         verify(esClient, times(3)).update(any(UpdateRequest.class), any(Class.class));
     }

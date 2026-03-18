@@ -11,7 +11,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.config.Constants;
-import my.javacraft.elastic.model.PostPreview;
+import my.javacraft.elastic.model.Post;
 import my.javacraft.elastic.service.activity.HotRankingService;
 import my.javacraft.elastic.service.activity.NewRankingService;
 import my.javacraft.elastic.service.activity.TopRankingService;
@@ -34,8 +34,7 @@ public class PostRankingController {
 
     @Operation(
             summary = "New posts",
-            description = "Returns the most recently submitted posts in reverse-chronological order. "
-                    + "Every post appears immediately regardless of votes — no decay, no score influence."
+            description = "Returns the most recently submitted posts in reverse-chronological order."
     )
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Successful"),
@@ -43,7 +42,7 @@ public class PostRankingController {
             @ApiResponse(responseCode = "406", description = "Resource unavailable")
     })
     @GetMapping(value = "/new", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<PostPreview>> retrieveNewPosts(
+    public ResponseEntity<List<Post>> retrieveNewPosts(
             @RequestParam(required = false, name = "size", defaultValue = "10")
             @Min(1) @Max(Constants.MAX_VALUES) int size) throws IOException {
 
@@ -62,7 +61,7 @@ public class PostRankingController {
             @ApiResponse(responseCode = "406", description = "Resource unavailable")
     })
     @GetMapping(value = "/hot", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<PostPreview>> retrieveHotPosts(
+    public ResponseEntity<List<Post>> retrieveHotPosts(
             @RequestParam(required = false, name = "size", defaultValue = "10")
             @Min(1) @Max(Constants.MAX_VALUES) int size) throws IOException {
 
@@ -81,7 +80,7 @@ public class PostRankingController {
             @ApiResponse(responseCode = "406", description = "Resource unavailable")
     })
     @GetMapping(value = "/top", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<PostPreview>> retrieveTopPosts(
+    public ResponseEntity<List<Post>> retrieveTopPosts(
             @RequestParam(required = false, name = "size", defaultValue = "10")
             @Min(1) @Max(Constants.MAX_VALUES) int size) throws IOException {
 
@@ -92,7 +91,7 @@ public class PostRankingController {
 
     @Operation(
             summary = "Top posts — by window",
-            description = "Returns top posts ranked by net score (upvotes − downvotes) within a time window. "
+            description = "Returns top posts ranked by net score within a time window. "
                     + "Valid windows: day (24 h), week (7 d), month (30 d), year (365 d)."
     )
     @ApiResponses(value = {
@@ -101,7 +100,7 @@ public class PostRankingController {
             @ApiResponse(responseCode = "406", description = "Resource unavailable")
     })
     @GetMapping(value = "/top/{window}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<PostPreview>> retrieveTopPostsByWindow(
+    public ResponseEntity<List<Post>> retrieveTopPostsByWindow(
             @PathVariable("window") String window,
             @RequestParam(required = false, name = "size", defaultValue = "10")
             @Min(1) @Max(Constants.MAX_VALUES) int size) throws IOException {

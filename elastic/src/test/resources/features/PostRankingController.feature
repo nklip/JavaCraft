@@ -15,8 +15,8 @@ Feature: test PostRankingController
   # ┌──────────────────────┬───────────┬──────────┬────────────────────────────────────────────────┐
   # │ File                 │ Posts     │ upvote % │ Date pattern / intent                          │
   # ├──────────────────────┼───────────┼──────────┼────────────────────────────────────────────────┤
-  # │ events-hot.csv       │ post-11…20│  51–60%  │ ALL events within the last 60 minutes          │
-  # │                      │           │          │ → first_seen ≈ 60 min → wins Hot + Top DAY     │
+  # │ events-hot.csv       │ post-11…20│  51–60%  │ post.createdAt = 9–54 min ago                  │
+  # │                      │           │          │ → wins Hot + Top DAY + New feed                │
   # ├──────────────────────┼───────────┼──────────┼────────────────────────────────────────────────┤
   # │ events-new.csv       │ post-21…30│  61–70%  │ All events 2–6 days ago                        │
   # │                      │           │          │ → inside WEEK window, outside DAY → Top WEEK   │
@@ -51,19 +51,19 @@ Feature: test PostRankingController
   #
   # ── EXPECTED RANKING DIFFERENCES ──────────────────────────────────────────────────────────────────
   #
-  # Hot  (Reddit formula: hot_score = log₁₀(karma) + (firstSeenSec − 1134028003) / 45 000)
+  # Hot  (Reddit formula: hot_score = log₁₀(karma) + (post.createdAt − 1134028003) / 45 000)
   #   Time dominates — every 12.5 h of age costs ~1 hot_score point.
-  #   posts 11-20: first_seen ≈  60 min,  karma  2–20  → wins Hot (2+ days fresher than NewEvents)
-  #   posts 21-30: first_seen ≈ 2–6 d,   karma 22–40  → 2nd place
-  #   posts 31-40: first_seen ≈ 8–29 d,  karma 42–60  → 3rd place
-  #   posts  1-10: first_seen ≈ 364 d,   karma 62–80  → 4th place
-  #   posts 41-50: first_seen ≈ 730 d,   karma 82–100 → last (time penalty too large)
+  #   posts 11-20: createdAt ≈  9–54 min, karma  2–20  → wins Hot (2+ days fresher than NewEvents)
+  #   posts 21-30: createdAt ≈ 2–5 d,    karma 22–40  → 2nd place
+  #   posts 31-40: createdAt ≈ 8–29 d,   karma 42–60  → 3rd place
+  #   posts  1-10: createdAt ≈ 364 d,    karma 62–80  → 4th place
+  #   posts 41-50: createdAt ≈ 730 d,    karma 82–100 → last (time penalty too large)
   #
   # Top  (top_score = upvotes − downvotes, filtered by window)
   #
   #   Window │ Winner        │ Why
   #   ───────┼───────────────┼─────────────────────────────────────────────────────────
-  #   DAY    │ posts 11-20   │ only group with votes in last 24 h; karma 2-20
+  #   DAY    │ posts 11-20   │ only group with createdAt in last 24 h; karma 2-20
   #   WEEK   │ posts 21-30   │ 2-6 d old → in WEEK, not in DAY; karma 22-40 > 20
   #   MONTH  │ posts 31-40   │ 8-29 d old → in MONTH, not in WEEK; karma 42-60 > 40
   #   YEAR   │ posts 01-10   │ 31-364 d old → in YEAR, not in MONTH; karma 62-80 > 60
@@ -76,8 +76,8 @@ Feature: test PostRankingController
     Given data folder 'data/csv' created in tmp directory
     Given data folder 'data/csv' ingested
 
-  # Hot ranking: Reddit's hot_score = log₁₀(karma) + (firstSeenSec − anchor) / 45 000.
-  # Time dominates: posts 11-20 have first_seen ≈ 60 min vs. 2+ days for posts 21-30.
+  # Hot ranking: Reddit's hot_score = log₁₀(karma) + (post.createdAt − anchor) / 45 000.
+  # Time dominates: posts 11-20 have createdAt 9–54 min ago vs. 2+ days for posts 21-30.
   # Separation ≥ 3.84 hot_score points → posts 11-20 win Hot by a wide margin.
   # karma per post: postId 11→2, 12→4, ..., 20→20  (upvote% = 51 + (postId−11))
   Scenario: Hot posts
@@ -96,30 +96,27 @@ Feature: test PostRankingController
       | post-11 | 2     |
 
   # New ranking: sorted by post.createdAt DESC from the 'posts' index (actual submission time).
-  # NewEvents (posts 21-30): createdAt = min(vote_timestamp) = 2–5 days ago.
-  # HotEvents (posts 11-20): createdAt = 7–10 days ago (old posts with a viral vote burst).
-  # → NewEvents createdAt is always more recent than HotEvents createdAt → posts 21-30 win New.
+  # HotEvents (posts 11-20): createdAt = 9–54 minutes ago (post-20→9 min, post-19→14 min, …, post-11→54 min).
+  # NewEvents (posts 21-30): createdAt = 2–5 days ago.
+  # → HotEvents createdAt is always more recent than NewEvents createdAt → posts 11-20 win New.
   #
-  # Order within NewEvents determined by each post's min(vote_timestamp):
-  #   daysAgo  = 2 + floorMod(postId*43 + userId*11, 4)   range 2–5 days
-  #   hoursAgo = floorMod(postId*7  + userId*13, 24)       range 0–23 hours
-  # Even postIds (22,24,26,28,30): max(daysAgo*24+hoursAgo)=141 h → createdAt more recent → first
-  # Odd  postIds (21,23,25,27,29): max(daysAgo*24+hoursAgo)=143 h → createdAt older → last
-  # Within each parity group, createdAt values are equal; tie-break: postId ASC (alphabetical).
+  # Order within HotEvents: each post has a distinct createdAt = 9+(20−postId)×5 minutes ago.
+  # Descending by createdAt equals descending by postId: post-20, post-19, …, post-11.
+  # karma per post: postId 11→2, 12→4, ..., 20→20  (upvote% = 51 + (postId−11))
   Scenario: New posts
     Given data folder 'data/csv' was ingested
     Then new posts endpoint returns 10 ranked results
       | postId  | karma |
-      | post-22 | 24    |
-      | post-24 | 28    |
-      | post-26 | 32    |
-      | post-28 | 36    |
-      | post-30 | 40    |
-      | post-21 | 22    |
-      | post-23 | 26    |
-      | post-25 | 30    |
-      | post-27 | 34    |
-      | post-29 | 38    |
+      | post-20 | 20    |
+      | post-19 | 18    |
+      | post-18 | 16    |
+      | post-17 | 14    |
+      | post-16 | 12    |
+      | post-15 | 10    |
+      | post-14 | 8     |
+      | post-13 | 6     |
+      | post-12 | 4     |
+      | post-11 | 2     |
 
   # Top ranking: top_score = upvotes − downvotes, all-time, no time window.
   # Posts 41-50: 91–100% upvote rate → karma 82-100/post, highest across all generators.
@@ -162,7 +159,7 @@ Feature: test PostRankingController
   # Top/MONTH: 30-day window.
   # RisingEvents events are 8-29 days old → all inside the MONTH window.
   # NewEvents events are 2-6 days old → also in MONTH, but karma max=40 < 42.
-  # HotEvents events are within 60 min → also in MONTH, but karma max=20 < 42.
+  # HotEvents createdAt 9–54 min ago → also in MONTH, but karma max=20 < 42.
   # karma per post: postId 31→42, 32→44, ..., 40→60  (upvote% = 71 + (postId−31))
   Scenario: Top posts for MONTH
     Given data folder 'data/csv' was ingested
@@ -181,7 +178,7 @@ Feature: test PostRankingController
 
   # Top/WEEK: 7-day window.
   # NewEvents events are 2-6 days old → all inside the WEEK window.
-  # HotEvents events are within 60 min → also in WEEK, but karma max=20 < 22.
+  # HotEvents createdAt 9–54 min ago → also in WEEK, but karma max=20 < 22.
   # RisingEvents events are 8-29 days old → outside WEEK, so they don't compete here.
   # karma per post: postId 21→22, 22→24, ..., 30→40  (upvote% = 61 + (postId−21))
   Scenario: Top posts for WEEK
@@ -200,7 +197,7 @@ Feature: test PostRankingController
       | post-21 | 22    |
 
   # Top/DAY: 24-hour window.
-  # HotEvents events are within 60 min → fully inside the DAY window.
+  # HotEvents createdAt 9–54 min ago → fully inside the DAY window.
   # NewEvents events are 2-6 days old → outside DAY, so they don't compete here.
   # karma per post: postId 11→2, 12→4, ..., 20→20  (upvote% = 51 + (postId−11))
   Scenario: Top posts for DAY

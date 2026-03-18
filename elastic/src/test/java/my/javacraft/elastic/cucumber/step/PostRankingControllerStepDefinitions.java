@@ -29,7 +29,6 @@ import my.javacraft.elastic.cucumber.helper.generator.VoteGenerator;
 import my.javacraft.elastic.cucumber.helper.generator.impl.*;
 import my.javacraft.elastic.cucumber.helper.generator.impl.TopVotesGenerator;
 import my.javacraft.elastic.model.Post;
-import my.javacraft.elastic.model.PostPreview;
 import my.javacraft.elastic.model.VoteRequest;
 import my.javacraft.elastic.service.activity.VoteService;
 import org.apache.http.HttpHeaders;
@@ -174,7 +173,7 @@ public class PostRankingControllerStepDefinitions {
      *   <li>{@code posts/posts-*.csv} — creates post documents with {@code karma = 0}</li>
      *   <li>{@code votes/votes-*.csv} — processes votes, which increment/decrement post karma</li>
      * </ol>
-     * Posts must be fully indexed before votes so that {@link PostService#updateKarma}
+     * Posts must be fully indexed before votes so that {@code PostService#updateScores}
      * finds an existing document on every vote.
      * Within each phase files are ingested in parallel.
      */
@@ -190,7 +189,7 @@ public class PostRankingControllerStepDefinitions {
         totalRows += ingestPhase(postsCsvs, folderPath, "posts");
         totalRows += ingestPhase(votesCsvs, folderPath, "votes");
 
-        // Force a refresh so that all karma updates written by updateKarma() during
+        // Force a refresh so that all karma updates written by updateScores() during
         // votes ingestion are immediately visible in subsequent search queries.
         // Without this, ES may still serve the pre-update karma=0 values from its
         // segment cache until the automatic 1-second refresh cycle kicks in.
@@ -324,15 +323,15 @@ public class PostRankingControllerStepDefinitions {
                 "Timed out waiting for %d %s posts at %s".formatted(expectedSize, label, path)
         );
 
-        List<PostPreview> actualPosts = fetchRankedPosts(path);
+        List<Post> actualPosts = fetchRankedPosts(path);
 
         for (int i = 0; i < actualPosts.size(); i++) {
-            PostPreview actualPost = actualPosts.get(i);
+            Post actualPost = actualPosts.get(i);
             // first row is column names
             List<String> expectedRow = expectedPosts.row(i + 1);
 
             // karma is the 2nd column
-            Assertions.assertEquals(Long.parseLong(expectedRow.get(1)), actualPost.getKarma());
+            Assertions.assertEquals(Long.parseLong(expectedRow.get(1)), actualPost.karma());
         }
     }
 
@@ -386,7 +385,7 @@ public class PostRankingControllerStepDefinitions {
     /**
      * Routes ingestion based on file name prefix:
      * <ul>
-     *   <li>{@code posts-*.csv}  → {@link #ingestPostsCsvFile} → 'posts' index via {@link PostService}</li>
+     *   <li>{@code posts-*.csv}  → {@link #ingestPostsCsvFile} → 'posts' index via {@code esClient.index()}</li>
      *   <li>{@code events-*.csv} → {@link #ingestEventsCsvInputStream} → 'user-votes' index via {@link VoteService}</li>
      * </ul>
      */
@@ -428,10 +427,12 @@ public class PostRankingControllerStepDefinitions {
                         "Invalid CSV row at line %d in %s".formatted(lineNumber, csvFile));
 
                 // CSV columns: postId, createdAt, author
-                String postId   = values[0].trim();
+                String postId    = values[0].trim();
                 String createdAt = values[1].trim();
-                String author   = values[2].trim();
-                Post post = new Post(postId, author, createdAt, 0L);
+                String author    = values[2].trim();
+                long epochSec    = Instant.parse(createdAt).getEpochSecond();
+                double hotScore  = (epochSec - 1_134_028_003L) / 45_000.0;
+                Post post = new Post(postId, author, createdAt, 0L, hotScore);
                 esClient.index(i -> i
                         .index(Constants.INDEX_POSTS)
                         .id(postId)
@@ -496,16 +497,16 @@ public class PostRankingControllerStepDefinitions {
     }
 
     /** Single direct call to a ranking endpoint; returns the response body. */
-    private List<PostPreview> fetchRankedPosts(String path) {
+    private List<Post> fetchRankedPosts(String path) {
         MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
         headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
         HttpEntity<String> entity = new HttpEntity<>(null, headers);
         String url = "http://localhost:%s/api/services/posts/ranking%s".formatted(port, path);
 
-        HttpEntity<List<PostPreview>> response = new RestTemplate().exchange(
+        HttpEntity<List<Post>> response = new RestTemplate().exchange(
                 url, HttpMethod.GET, entity, new ParameterizedTypeReference<>() {}
         );
-        List<PostPreview> body = response.getBody();
+        List<Post> body = response.getBody();
         return body == null ? List.of() : body;
     }
 

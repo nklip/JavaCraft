@@ -119,7 +119,7 @@ public class VoteService {
             default      -> 0;  // NoOp: same vote repeated, karma unchanged
         };
         if (delta != 0) {
-            postService.updateKarma(voteRequest.getPostId(), delta);
+            postService.updateScores(voteRequest.getPostId(), delta);
         }
 
         VoteResponse voteResponse = new VoteResponse();
@@ -151,7 +151,7 @@ public class VoteService {
             UserVote oldVote = existing.source();   // @Nullable — null when _source is disabled
             if (oldVote != null) {
                 int delta = UserAction.UPVOTE.name().equals(oldVote.getAction()) ? -1 : 1;
-                postService.updateKarma(postId, delta);
+                postService.updateScores(postId, delta);
             }
         }
 

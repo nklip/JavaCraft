@@ -1,1 +1,0 @@
-package my.javacraft.elastic.service.post;

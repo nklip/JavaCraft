@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import my.javacraft.elastic.config.Constants;
-import my.javacraft.elastic.model.PostPreview;
+import my.javacraft.elastic.model.Post;
 import my.javacraft.elastic.service.activity.HotRankingService;
 import my.javacraft.elastic.service.activity.NewRankingService;
 import my.javacraft.elastic.service.activity.TopRankingService;
@@ -39,10 +39,10 @@ public class PostRankingControllerTest {
 
     @Test
     public void testNewPosts() throws IOException {
-        List<PostPreview> posts = new ArrayList<>();
+        List<Post> posts = new ArrayList<>();
         when(newRankingService.retrieveNewPosts(anyInt())).thenReturn(posts);
 
-        ResponseEntity<List<PostPreview>> response = controller().retrieveNewPosts(10);
+        ResponseEntity<List<Post>> response = controller().retrieveNewPosts(10);
 
         Assertions.assertNotNull(response);
         Assertions.assertNotNull(response.getBody());
@@ -51,32 +51,32 @@ public class PostRankingControllerTest {
     @Test
     public void testNewPostsReturnsServiceResultsInOrder() throws IOException {
         // New endpoint must preserve service output order (chronological, not karma-sorted)
-        List<PostPreview> posts = List.of(
-                new PostPreview("postA", 2L),
-                new PostPreview("postB", 20L),
-                new PostPreview("postC", 10L)
+        List<Post> posts = List.of(
+                new Post("postA", "user-001", "2024-01-03T00:00:00Z",  2L, 0.0),
+                new Post("postB", "user-002", "2024-01-02T00:00:00Z", 20L, 0.0),
+                new Post("postC", "user-003", "2024-01-01T00:00:00Z", 10L, 0.0)
         );
         when(newRankingService.retrieveNewPosts(anyInt())).thenReturn(posts);
 
-        ResponseEntity<List<PostPreview>> response = controller().retrieveNewPosts(10);
+        ResponseEntity<List<Post>> response = controller().retrieveNewPosts(10);
 
         Assertions.assertNotNull(response.getBody());
-        List<PostPreview> body = response.getBody();
+        List<Post> body = response.getBody();
         Assertions.assertEquals(3, body.size());
-        Assertions.assertEquals("postA", body.get(0).getPostId(), "order must match service output");
-        Assertions.assertEquals(2L,      body.get(0).getKarma());
-        Assertions.assertEquals("postB", body.get(1).getPostId());
-        Assertions.assertEquals(20L,     body.get(1).getKarma());
-        Assertions.assertEquals("postC", body.get(2).getPostId());
-        Assertions.assertEquals(10L,     body.get(2).getKarma());
+        Assertions.assertEquals("postA", body.get(0).postId(), "order must match service output");
+        Assertions.assertEquals(2L,      body.get(0).karma());
+        Assertions.assertEquals("postB", body.get(1).postId());
+        Assertions.assertEquals(20L,     body.get(1).karma());
+        Assertions.assertEquals("postC", body.get(2).postId());
+        Assertions.assertEquals(10L,     body.get(2).karma());
     }
 
     @Test
     public void testTopPosts() throws IOException {
-        List<PostPreview> posts = new ArrayList<>();
+        List<Post> posts = new ArrayList<>();
         when(topRankingService.retrieveTopPosts(anyInt())).thenReturn(posts);
 
-        ResponseEntity<List<PostPreview>> response = controller().retrieveTopPosts(10);
+        ResponseEntity<List<Post>> response = controller().retrieveTopPosts(10);
 
         Assertions.assertNotNull(response);
         Assertions.assertNotNull(response.getBody());
@@ -84,10 +84,10 @@ public class PostRankingControllerTest {
 
     @Test
     public void testHotPosts() throws IOException {
-        List<PostPreview> posts = new ArrayList<>();
+        List<Post> posts = new ArrayList<>();
         when(hotRankingService.retrieveHotPosts(anyInt())).thenReturn(posts);
 
-        ResponseEntity<List<PostPreview>> response = controller().retrieveHotPosts(10);
+        ResponseEntity<List<Post>> response = controller().retrieveHotPosts(10);
 
         Assertions.assertNotNull(response);
         Assertions.assertNotNull(response.getBody());
@@ -95,10 +95,10 @@ public class PostRankingControllerTest {
 
     @Test
     public void testTopPostsByWindow() throws IOException {
-        List<PostPreview> posts = new ArrayList<>();
+        List<Post> posts = new ArrayList<>();
         when(topRankingService.retrieveTopPosts(anyInt(), eq(TopRankingService.TopWindow.WEEK))).thenReturn(posts);
 
-        ResponseEntity<List<PostPreview>> response = controller().retrieveTopPostsByWindow("week", 10);
+        ResponseEntity<List<Post>> response = controller().retrieveTopPostsByWindow("week", 10);
 
         Assertions.assertNotNull(response);
         Assertions.assertEquals(200, response.getStatusCode().value());
@@ -107,7 +107,7 @@ public class PostRankingControllerTest {
 
     @Test
     public void testTopPostsByWindowReturnsBadRequestForInvalidWindow() throws IOException {
-        ResponseEntity<List<PostPreview>> response = controller().retrieveTopPostsByWindow("invalid", 10);
+        ResponseEntity<List<Post>> response = controller().retrieveTopPostsByWindow("invalid", 10);
 
         Assertions.assertEquals(400, response.getStatusCode().value());
     }
@@ -144,23 +144,23 @@ public class PostRankingControllerTest {
     @Test
     public void testRetrieveHotPostsReturnsServiceResultsAsIs() throws IOException {
         // Hot endpoint delegates ordering entirely to HotRankingService — no controller-level sort
-        List<PostPreview> posts = List.of(
-                new PostPreview("postA", 10L),
-                new PostPreview("postB", 50L),
-                new PostPreview("postC", 30L)
+        List<Post> posts = List.of(
+                new Post("postA", "user-001", "2024-01-01T00:00:00Z", 10L, 3.5),
+                new Post("postB", "user-002", "2024-01-01T00:00:00Z", 50L, 5.0),
+                new Post("postC", "user-003", "2024-01-01T00:00:00Z", 30L, 4.2)
         );
         when(hotRankingService.retrieveHotPosts(anyInt())).thenReturn(posts);
 
-        ResponseEntity<List<PostPreview>> response = controller().retrieveHotPosts(10);
+        ResponseEntity<List<Post>> response = controller().retrieveHotPosts(10);
 
         Assertions.assertNotNull(response.getBody());
-        List<PostPreview> body = response.getBody();
+        List<Post> body = response.getBody();
         Assertions.assertEquals(3, body.size());
-        Assertions.assertEquals("postA", body.get(0).getPostId(), "order must match service output");
-        Assertions.assertEquals(10L,     body.get(0).getKarma());
-        Assertions.assertEquals("postB", body.get(1).getPostId());
-        Assertions.assertEquals(50L,     body.get(1).getKarma());
-        Assertions.assertEquals("postC", body.get(2).getPostId());
-        Assertions.assertEquals(30L,     body.get(2).getKarma());
+        Assertions.assertEquals("postA", body.get(0).postId(), "order must match service output");
+        Assertions.assertEquals(10L,     body.get(0).karma());
+        Assertions.assertEquals("postB", body.get(1).postId());
+        Assertions.assertEquals(50L,     body.get(1).karma());
+        Assertions.assertEquals("postC", body.get(2).postId());
+        Assertions.assertEquals(30L,     body.get(2).karma());
     }
 }

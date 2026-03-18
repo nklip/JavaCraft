@@ -22,7 +22,7 @@ public class NewVotesGenerator implements VoteGenerator {
     private static final String POSTS_NEW_FILE = "posts-new.csv";
 
     /*
-     * MUST HAVE: Top 10 New postIds MUST have postIds from 21 to 30
+     * MUST HAVE: Top 10 for Top WEEK postIds MUST have postIds from 21 to 30
      *
      * The amount of users which would UPVOTE or DOWNVOTE - 100
      *
@@ -56,9 +56,10 @@ public class NewVotesGenerator implements VoteGenerator {
             /*
              * createdAt = min(vote_timestamp) for this post — the oldest vote is the
              * best proxy for when the post was first published.
-             * All votes are 2–5 days old, so createdAt lands in that same range and is
-             * always more recent than HotVotesGenerator createdAt (7–10 days ago), ensuring
-             * posts 21-30 win the 'New' feed sorted by createdAt DESC.
+             * All votes are 2–5 days old, so createdAt lands in that same range.
+             * HotVotesGenerator createdAt is now 9–54 min ago, so posts 11-20 are
+             * MORE recent and win the 'New' feed sorted by createdAt DESC.
+             * Posts 21-30 still win Top WEEK (karma 22-40 beats Hot karma 2-20).
              */
             Instant createdAt = Instant.MAX;
             for (int userId = 1; userId <= CsvSupport.USERS_PER_POST; userId++) {

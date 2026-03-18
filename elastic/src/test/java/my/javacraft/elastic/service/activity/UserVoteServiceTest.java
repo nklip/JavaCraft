@@ -41,13 +41,13 @@ import static org.mockito.Mockito.when;
  * Also verifies that karma deltas are forwarded to PostService on every meaningful state change:
  *
  * <pre>
- *   Created  + UPVOTE   → postService.updateKarma(postId, +1)
- *   Created  + DOWNVOTE → postService.updateKarma(postId, −1)
+ *   Created  + UPVOTE   → postService.updateScores(postId, +1)
+ *   Created  + DOWNVOTE → postService.updateScores(postId, −1)
  *   NoOp     + any      → no karma update
- *   Updated  + UPVOTE   → postService.updateKarma(postId, +2)
- *   Updated  + DOWNVOTE → postService.updateKarma(postId, −2)
- *   Deleted  + was UPVOTE   → postService.updateKarma(postId, −1)
- *   Deleted  + was DOWNVOTE → postService.updateKarma(postId, +1)
+ *   Updated  + UPVOTE   → postService.updateScores(postId, +2)
+ *   Updated  + DOWNVOTE → postService.updateScores(postId, −2)
+ *   Deleted  + was UPVOTE   → postService.updateScores(postId, −1)
+ *   Deleted  + was DOWNVOTE → postService.updateScores(postId, +1)
  *   NotFound + any      → no karma update
  * </pre>
  */
@@ -102,7 +102,7 @@ public class UserVoteServiceTest {
 
         Assertions.assertEquals(expectedId, response.getDocumentId());
         Assertions.assertEquals(Result.Created, response.getResult());
-        verify(postService).updateKarma(voteRequest.getPostId(), 1);
+        verify(postService).updateScores(voteRequest.getPostId(), 1);
     }
 
     @Test
@@ -115,7 +115,7 @@ public class UserVoteServiceTest {
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:00:00Z");
 
         Assertions.assertEquals(Result.Created, response.getResult());
-        verify(postService).updateKarma(voteRequest.getPostId(), -1);
+        verify(postService).updateScores(voteRequest.getPostId(), -1);
     }
 
     @Test
@@ -127,7 +127,7 @@ public class UserVoteServiceTest {
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:05:00Z");
 
         Assertions.assertEquals(Result.NoOp, response.getResult());
-        verify(postService, never()).updateKarma(anyString(), anyInt());
+        verify(postService, never()).updateScores(anyString(), anyInt());
     }
 
     @Test
@@ -140,7 +140,7 @@ public class UserVoteServiceTest {
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:10:00Z");
 
         Assertions.assertEquals(Result.Updated, response.getResult());
-        verify(postService).updateKarma(voteRequest.getPostId(), -2);
+        verify(postService).updateScores(voteRequest.getPostId(), -2);
     }
 
     @Test
@@ -153,7 +153,7 @@ public class UserVoteServiceTest {
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:10:00Z");
 
         Assertions.assertEquals(Result.Updated, response.getResult());
-        verify(postService).updateKarma(voteRequest.getPostId(), 2);
+        verify(postService).updateScores(voteRequest.getPostId(), 2);
     }
 
     @Test
@@ -167,7 +167,7 @@ public class UserVoteServiceTest {
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:20:00Z");
 
         Assertions.assertEquals(Result.Deleted, response.getResult());
-        verify(postService).updateKarma(voteRequest.getPostId(), -1);
+        verify(postService).updateScores(voteRequest.getPostId(), -1);
     }
 
     @Test
@@ -181,7 +181,7 @@ public class UserVoteServiceTest {
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:20:00Z");
 
         Assertions.assertEquals(Result.Deleted, response.getResult());
-        verify(postService).updateKarma(voteRequest.getPostId(), 1);
+        verify(postService).updateScores(voteRequest.getPostId(), 1);
     }
 
     @Test
@@ -197,7 +197,7 @@ public class UserVoteServiceTest {
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:20:00Z");
 
         Assertions.assertEquals(Result.NotFound, response.getResult());
-        verify(postService, never()).updateKarma(anyString(), anyInt());
+        verify(postService, never()).updateScores(anyString(), anyInt());
     }
 
     @Test
@@ -216,6 +216,6 @@ public class UserVoteServiceTest {
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:20:00Z");
 
         Assertions.assertEquals(Result.Deleted, response.getResult());
-        verify(postService, never()).updateKarma(anyString(), anyInt());
+        verify(postService, never()).updateScores(anyString(), anyInt());
     }
 }
