@@ -7,6 +7,7 @@ This module should contain leetcode problems, solutions, and tests.
 2. [Fast and slow pointers](#2-fast-and-slow-pointers)
 3. [Sliding Window](#3-sliding-window)
 4. [Intervals](#4-intervals)
+5. [In-Place Reversal of a Linked List](#5-in-place-reversal-of-a-linked-list)
 
 ---
 ### 1. Two pointers
@@ -179,5 +180,114 @@ Space: O(N), as we need to return a list containing all the merged intervals.
 #### 4.4. How to detect it should be used
 
 This approach is quite useful when dealing with intervals, overlapping items or merging intervals.
+
+---
+
+### 5. In-Place Reversal of a Linked List
+
+In-place refers to an algorithm that processes or modifies a data structure using only the existing memory space, without requiring additional memory proportional to the input size.
+
+#### 5.1. Idea
+
+The in-place reversal algorithm for a singly linked list follows these key steps:
+
+1. Initialize three pointers: prev as NULL, current as the head of the list, and next as NULL.
+2. Iterate through the list until current becomes NULL:
+3. Store the next node: next = current.next
+4. Reverse the current node’s pointer: current.next = prev
+5. Move prev and current one step forward:
+   * prev = current
+   * current = next
+6. Set the new head of the reversed list to prev.
+
+This algorithm effectively reverses the direction of each link in the list, thereby reversing the entire list.
+
+#### 5.2. Illustration
+
+![1](./images/5_reverse_linked_list_1.webp)
+![2](./images/5_reverse_linked_list_2.webp)
+![3](./images/5_reverse_linked_list_3.webp)
+![4](./images/5_reverse_linked_list_4.webp)
+![5](./images/5_reverse_linked_list_5.webp)
+![6](./images/5_reverse_linked_list_6.webp)
+![7](./images/5_reverse_linked_list_7.webp)
+![8](./images/5_reverse_linked_list_8.webp)
+
+#### 5.3. Complexity
+
+Time: O(n)
+Space: O(1)
+
+##### 5.3.1. Why O(n) time:
+The time complexity of this algorithm is O(n), where n is the number of nodes in the linked list. This is because we traverse the list exactly once, performing a constant number of operations for each node.
+
+##### 5.3.1. Why O(1) space:
+The space complexity is O(1), or constant space. We only use a fixed number of pointers (prev, current, and next) regardless of the size of the input list. This is what makes the algorithm “in-place” – it doesn’t require additional space proportional to the input size.
+
+This combination of linear time complexity and constant space complexity makes the in-place reversal algorithm highly efficient and desirable in many scenarios, especially when dealing with large lists or in memory-constrained environments.
+
+#### 5.4. How to detect it should be used
+
+https://leetcode.com/problems/reverse-linked-list/description/
+
+#### 5.5. Code
+
+```java
+import java.util.ArrayList;
+import java.util.List;
+
+class ListNode {
+    int val;
+    ListNode next;
+
+    ListNode(int val) {
+        this.val = val;
+    }
+}
+
+public class ReverseLinkedListExample {
+
+    static ListNode reverseLinkedList(ListNode head) {
+        ListNode prev = null;
+        ListNode current = head;
+
+        while (current != null) {
+            ListNode next = current.next;
+            current.next = prev;
+            prev = current;
+            current = next;
+        }
+
+        return prev; // prev is now the new head
+    }
+
+    static ListNode createLinkedList(int[] values) {
+        ListNode dummy = new ListNode(0);
+        ListNode current = dummy;
+        for (int value : values) {
+            current.next = new ListNode(value);
+            current = current.next;
+        }
+        return dummy.next;
+    }
+
+    static List<Integer> linkedListToList(ListNode head) {
+        List<Integer> result = new ArrayList<>();
+        ListNode current = head;
+        while (current != null) {
+            result.add(current.val);
+            current = current.next;
+        }
+        return result;
+    }
+
+    public static void main(String[] args) {
+        ListNode originalList = createLinkedList(new int[]{1, 2, 3, 4, 5});
+        ListNode reversedList = reverseLinkedList(originalList);
+
+        System.out.println("Reversed list: " + linkedListToList(reversedList));
+    }
+}
+```
 
 ---
