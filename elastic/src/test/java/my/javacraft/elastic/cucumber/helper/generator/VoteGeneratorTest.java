@@ -99,8 +99,8 @@ class VoteGeneratorTest {
                 Arguments.of("votes-new.csv",    new NewVotesGenerator(),    21,  30,   6),
                 // RisingVotesGenerator: 8-29 days old → maxAgeDays=29
                 Arguments.of("votes-rising.csv", new RisingVotesGenerator(), 31,  40,  29),
-                // TopVotesGenerator: 366-730 days old → maxAgeDays=730
-                Arguments.of("votes-top.csv",    new TopVotesGenerator(),    41,  50, 730)
+                // TopVotesGenerator: 366-730 days old + up to 23h 59min → maxAgeDays=731
+                Arguments.of("votes-top.csv",    new TopVotesGenerator(),    41,  50, 731)
         );
     }
 }

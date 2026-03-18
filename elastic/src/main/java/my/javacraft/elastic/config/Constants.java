@@ -11,4 +11,5 @@ public final class Constants {
     public static final String POST_ID = "postId";
     public static final String ACTION = "action";
     public static final String KARMA = "karma";
+    public static final String AUTHOR = "author";
 }

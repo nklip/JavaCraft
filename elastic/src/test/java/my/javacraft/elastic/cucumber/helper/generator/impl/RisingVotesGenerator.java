@@ -53,8 +53,10 @@ public class RisingVotesGenerator implements VoteGenerator {
         List<String> eventRows = new ArrayList<>(10 * CsvSupport.USERS_PER_POST);
         List<String> postRows  = new ArrayList<>(10);
 
+        int postCount = 0;
         for (int postId = 31; postId <= 40; postId++) {
             int upvotePercent = 71 + (postId - 31);    // 71% → 80%, unique per post
+            int authorUserId = ++postCount;             // unique author per post: user-001 … user-010
 
             Instant createdAt = Instant.MAX;
             for (int userId = 1; userId <= CsvSupport.USERS_PER_POST; userId++) {
@@ -72,7 +74,7 @@ public class RisingVotesGenerator implements VoteGenerator {
                 }
                 eventRows.add(CsvSupport.csvLine(userId, postId, upvote, eventTime));
             }
-            postRows.add(CsvSupport.postCsvLine(postId, createdAt));
+            postRows.add(CsvSupport.postCsvLine(postId, createdAt, authorUserId));
         }
 
         CsvSupport.writeVotesCsv(VOTES_RISING_FILE, eventRows);

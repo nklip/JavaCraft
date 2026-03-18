@@ -64,8 +64,10 @@ public class HotVotesGenerator implements VoteGenerator {
         List<String> eventRows = new ArrayList<>(10 * CsvSupport.USERS_PER_POST);
         List<String> postRows  = new ArrayList<>(10);
 
+        int postCount = 0;
         for (int postId = 11; postId <= 20; postId++) {
             int upvotePercent = 51 + (postId - 11);    // 51% → 60%, unique per post
+            int authorUserId = ++postCount;             // unique author per post: user-001 … user-010
 
             /*
              * createdAt = 7–10 days ago — these are older posts that received a burst of
@@ -74,7 +76,6 @@ public class HotVotesGenerator implements VoteGenerator {
              * never appear in the top-10 of the 'New' feed, which is sorted by createdAt DESC.
              */
             int createdDaysAgo = 7 + Math.floorMod(postId * 11, 4);  // 7–10 days
-            postRows.add(CsvSupport.postCsvLine(postId, now.minus(createdDaysAgo, ChronoUnit.DAYS)));
 
             for (int userId = 1; userId <= CsvSupport.USERS_PER_POST; userId++) {
                 boolean upvote = CsvSupport.isUpvote(userId, postId, upvotePercent);
@@ -86,6 +87,7 @@ public class HotVotesGenerator implements VoteGenerator {
 
                 eventRows.add(CsvSupport.csvLine(userId, postId, upvote, eventTime));
             }
+            postRows.add(CsvSupport.postCsvLine(postId, now.minus(createdDaysAgo, ChronoUnit.DAYS), authorUserId));
         }
 
         CsvSupport.writeVotesCsv(VOTES_HOT_FILE, eventRows);

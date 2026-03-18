@@ -34,8 +34,8 @@ public class NewRankingServiceTest {
         // Posts returned in createdAt DESC order from 'posts' index; karma embedded in document.
         // postA is newer (appears first in ES hits) but has lower karma — karma must NOT reorder.
         SearchResponse<Post> response = buildPostsResponse(List.of(
-                new Post("postA", "2024-01-02T00:00:00.000Z", 60L),
-                new Post("postB", "2024-01-01T00:00:00.000Z", 80L)
+                new Post("postA", "user-001", "2024-01-02T00:00:00.000Z", 60L),
+                new Post("postB", "user-002", "2024-01-01T00:00:00.000Z", 80L)
         ));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
@@ -57,9 +57,9 @@ public class NewRankingServiceTest {
     public void testRetrieveNewPostsKarmaDoesNotAffectOrder() throws IOException {
         // ES returns hits in createdAt DESC order; service must preserve that order exactly.
         SearchResponse<Post> response = buildPostsResponse(List.of(
-                new Post("postA", "2024-01-03T00:00:00.000Z",  1L),  // newest,  karma=1
-                new Post("postB", "2024-01-02T00:00:00.000Z", 50L),  // middle
-                new Post("postC", "2024-01-01T00:00:00.000Z", 100L)  // oldest, karma=100
+                new Post("postA", "user-001", "2024-01-03T00:00:00.000Z",  1L),  // newest,  karma=1
+                new Post("postB", "user-002", "2024-01-02T00:00:00.000Z", 50L),  // middle
+                new Post("postC", "user-003", "2024-01-01T00:00:00.000Z", 100L)  // oldest, karma=100
         ));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
@@ -76,11 +76,11 @@ public class NewRankingServiceTest {
     @Test
     public void testRetrieveNewPostsRespectsLimit() throws IOException {
         SearchResponse<Post> response = buildPostsResponse(List.of(
-                new Post("postA", "2024-01-05T00:00:00.000Z", 10L),
-                new Post("postB", "2024-01-04T00:00:00.000Z", 10L),
-                new Post("postC", "2024-01-03T00:00:00.000Z", 10L),
-                new Post("postD", "2024-01-02T00:00:00.000Z", 10L),
-                new Post("postE", "2024-01-01T00:00:00.000Z", 10L)
+                new Post("postA", "user-001", "2024-01-05T00:00:00.000Z", 10L),
+                new Post("postB", "user-002", "2024-01-04T00:00:00.000Z", 10L),
+                new Post("postC", "user-003", "2024-01-03T00:00:00.000Z", 10L),
+                new Post("postD", "user-004", "2024-01-02T00:00:00.000Z", 10L),
+                new Post("postE", "user-005", "2024-01-01T00:00:00.000Z", 10L)
         ));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());

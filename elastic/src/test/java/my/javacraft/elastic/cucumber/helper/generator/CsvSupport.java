@@ -15,7 +15,7 @@ public final class CsvSupport {
     public static final int USERS_PER_POST = 100;
 
     private static final String CSV_HEADER = "userId,postId,action,date";
-    private static final String POSTS_CSV_HEADER = "postId,createdAt";
+    private static final String POSTS_CSV_HEADER = "postId,createdAt,author";
     private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ISO_INSTANT;
     public static final String OUTPUT_DIRECTORY_PROPERTY = "elastic.events.csv.output";
 
@@ -42,8 +42,8 @@ public final class CsvSupport {
         );
     }
 
-    public static String postCsvLine(int postId, Instant createdAt) {
-        return "post-%02d,%s".formatted(postId, TIMESTAMP_FORMATTER.format(createdAt));
+    public static String postCsvLine(int postId, Instant createdAt, int authorId) {
+        return "post-%02d,%s,user-%03d".formatted(postId, TIMESTAMP_FORMATTER.format(createdAt), authorId);
     }
 
     /** Writes vote rows to {@code {outputDir}/votes/{fileName}}. */

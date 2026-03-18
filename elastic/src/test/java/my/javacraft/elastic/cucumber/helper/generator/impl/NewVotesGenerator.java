@@ -48,8 +48,10 @@ public class NewVotesGenerator implements VoteGenerator {
         List<String> eventRows = new ArrayList<>(10 * CsvSupport.USERS_PER_POST);
         List<String> postRows  = new ArrayList<>(10);
 
+        int postCount = 0;
         for (int postId = 21; postId <= 30; postId++) {
             int upvotePercent = 61 + (postId - 21);    // 61% → 70%, unique per post
+            int authorUserId = ++postCount;             // unique author per post: user-001 … user-010
 
             /*
              * createdAt = min(vote_timestamp) for this post — the oldest vote is the
@@ -71,7 +73,7 @@ public class NewVotesGenerator implements VoteGenerator {
                 }
                 eventRows.add(CsvSupport.csvLine(userId, postId, upvote, eventTime));
             }
-            postRows.add(CsvSupport.postCsvLine(postId, createdAt));
+            postRows.add(CsvSupport.postCsvLine(postId, createdAt, authorUserId));
         }
 
         CsvSupport.writeVotesCsv(VOTES_NEW_FILE, eventRows);

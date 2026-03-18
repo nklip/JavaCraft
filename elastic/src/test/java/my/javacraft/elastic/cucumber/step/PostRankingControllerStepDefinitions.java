@@ -28,9 +28,9 @@ import my.javacraft.elastic.cucumber.helper.generator.CsvSupport;
 import my.javacraft.elastic.cucumber.helper.generator.VoteGenerator;
 import my.javacraft.elastic.cucumber.helper.generator.impl.*;
 import my.javacraft.elastic.cucumber.helper.generator.impl.TopVotesGenerator;
+import my.javacraft.elastic.model.Post;
 import my.javacraft.elastic.model.PostPreview;
 import my.javacraft.elastic.model.VoteRequest;
-import my.javacraft.elastic.service.PostService;
 import my.javacraft.elastic.service.activity.VoteService;
 import org.apache.http.HttpHeaders;
 import org.junit.jupiter.api.Assertions;
@@ -86,8 +86,6 @@ public class PostRankingControllerStepDefinitions {
     ElasticsearchClient esClient;
     @Autowired
     VoteService voteService;
-    @Autowired
-    PostService postService;
 
     /**
      * Generates all 5 CSV fixture files into a fixed temporary directory and stores the path in
@@ -191,6 +189,13 @@ public class PostRankingControllerStepDefinitions {
         int totalRows = 0;
         totalRows += ingestPhase(postsCsvs, folderPath, "posts");
         totalRows += ingestPhase(votesCsvs, folderPath, "votes");
+
+        // Force a refresh so that all karma updates written by updateKarma() during
+        // votes ingestion are immediately visible in subsequent search queries.
+        // Without this, ES may still serve the pre-update karma=0 values from its
+        // segment cache until the automatic 1-second refresh cycle kicks in.
+        esClient.indices().refresh(r -> r.index(Constants.INDEX_POSTS));
+        log.info("posts index refreshed after vote ingestion");
 
         Assertions.assertTrue(totalRows > 0, "CSV folder has no ingestible rows: " + folderPath);
         log.info("Ingested {} rows from {} files in '{}'", totalRows, csvFiles.size(), folderPath);
@@ -395,12 +400,22 @@ public class PostRankingControllerStepDefinitions {
         }
     }
 
+    /**
+     * Ingests historical post fixtures directly into Elasticsearch, bypassing
+     * {@link my.javacraft.elastic.service.PostService#submitPost} which generates
+     * server-side IDs and timestamps.
+     * <p>
+     * Using {@code esClient.index()} rather than the production service keeps the
+     * production API clean (pure insert, server-generated ID/timestamp) while still
+     * allowing the test harness to seed posts with deterministic IDs and historical
+     * {@code createdAt} values needed for time-windowed ranking scenarios.
+     */
     private int ingestPostsCsvFile(Path csvFile) throws IOException {
         int ingestedRows = 0;
         try (var reader = new BufferedReader(new InputStreamReader(Files.newInputStream(csvFile), StandardCharsets.UTF_8))) {
             String header = reader.readLine();
             Assertions.assertNotNull(header, "CSV file is empty: " + csvFile);
-            Assertions.assertEquals("postId,createdAt", header.trim(),
+            Assertions.assertEquals("postId,createdAt,author", header.trim(),
                     "Unexpected CSV header in " + csvFile);
 
             String line;
@@ -409,10 +424,19 @@ public class PostRankingControllerStepDefinitions {
                 lineNumber++;
                 if (line.isBlank()) continue;
                 String[] values = line.split(",", -1);
-                Assertions.assertEquals(2, values.length,
+                Assertions.assertEquals(3, values.length,
                         "Invalid CSV row at line %d in %s".formatted(lineNumber, csvFile));
 
-                postService.createPost(values[0].trim(), values[1].trim());
+                // CSV columns: postId, createdAt, author
+                String postId   = values[0].trim();
+                String createdAt = values[1].trim();
+                String author   = values[2].trim();
+                Post post = new Post(postId, author, createdAt, 0L);
+                esClient.index(i -> i
+                        .index(Constants.INDEX_POSTS)
+                        .id(postId)
+                        .document(post)
+                );
                 ingestedRows++;
             }
         }

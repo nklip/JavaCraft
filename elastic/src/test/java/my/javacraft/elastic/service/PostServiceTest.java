@@ -4,11 +4,14 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.ElasticsearchException;
 import co.elastic.clients.elasticsearch._types.ErrorCause;
 import co.elastic.clients.elasticsearch._types.Result;
+import co.elastic.clients.elasticsearch.core.IndexRequest;
+import co.elastic.clients.elasticsearch.core.IndexResponse;
 import co.elastic.clients.elasticsearch.core.UpdateRequest;
 import co.elastic.clients.elasticsearch.core.UpdateResponse;
 import co.elastic.clients.json.jackson.JacksonJsonpMapper;
 import java.io.IOException;
 import my.javacraft.elastic.model.Post;
+import my.javacraft.elastic.service.post.IdGenerator;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,26 +31,39 @@ public class PostServiceTest {
 
     @Mock
     ElasticsearchClient esClient;
+    @Mock
+    IdGenerator idGenerator;
 
     private PostService service() {
-        return new PostService(esClient);
+        return new PostService(esClient, idGenerator);
     }
 
     @Test
-    public void testCreatePostUpsertWithZeroKarma() throws IOException {
-        UpdateResponse<Post> updateResponse = mock(UpdateResponse.class);
-        when(updateResponse.result()).thenReturn(Result.Created);
+    public void testSubmitPostIndexesWithServerGeneratedIdAndZeroKarma() throws IOException {
+        when(idGenerator.generateUniquePostId()).thenReturn("abc123");
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
-        when(esClient.update(any(UpdateRequest.class), any(Class.class))).thenReturn(updateResponse);
+        when(esClient.index(any(IndexRequest.class))).thenReturn(mock(IndexResponse.class));
 
-        service().createPost("post-1", "2024-01-15T10:00:00.000Z");
+        Post returned = service().submitPost("user-001");
 
-        ArgumentCaptor<UpdateRequest<Post, Post>> captor = ArgumentCaptor.forClass(UpdateRequest.class);
-        verify(esClient).update(captor.capture(), any(Class.class));
+        ArgumentCaptor<IndexRequest<Post>> captor = ArgumentCaptor.forClass(IndexRequest.class);
+        verify(esClient).index(captor.capture());
 
-        UpdateRequest<Post, Post> request = captor.getValue();
-        Assertions.assertEquals("post-1", request.id());
+        IndexRequest<Post> request = captor.getValue();
         Assertions.assertEquals("posts", request.index());
+        Assertions.assertEquals("abc123", request.id());
+
+        Post doc = request.document();
+        Assertions.assertEquals("abc123", doc.postId());
+        Assertions.assertEquals("user-001", doc.author());
+        Assertions.assertEquals(0L, doc.karma(), "initial karma must be zero");
+        Assertions.assertNotNull(doc.createdAt(), "createdAt must be server-generated");
+
+        // returned Post must reflect exactly what was indexed
+        Assertions.assertEquals("abc123", returned.postId());
+        Assertions.assertEquals("user-001", returned.author());
+        Assertions.assertEquals(0L, returned.karma());
+        Assertions.assertNotNull(returned.createdAt());
     }
 
     @Test
@@ -71,8 +87,6 @@ public class PostServiceTest {
 
     @Test
     public void testUpdateKarmaSkipsOrphanedVoteGracefully() throws IOException {
-        // document_missing_exception = no post document in the index (orphaned vote from scheduler test,
-        // or posts index not yet seeded). Must be silently swallowed, not propagated.
         ErrorCause errorCause = mock(ErrorCause.class);
         when(errorCause.type()).thenReturn("document_missing_exception");
         ElasticsearchException esException = mock(ElasticsearchException.class);
@@ -88,7 +102,6 @@ public class PostServiceTest {
 
     @Test
     public void testUpdateKarmaRethrowsOtherElasticsearchExceptions() throws IOException {
-        // Any exception type other than document_missing_exception must propagate.
         ErrorCause errorCause = mock(ErrorCause.class);
         when(errorCause.type()).thenReturn("index_not_found_exception");
         ElasticsearchException esException = mock(ElasticsearchException.class);

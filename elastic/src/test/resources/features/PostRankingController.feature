@@ -71,8 +71,8 @@ Feature: test PostRankingController
   # ════════════════════════════════════════════════════════════════════════════
 
   Scenario: prepare data
-    Given index 'user-votes' exists
-    Given index 'posts' exists
+    Given index 'posts' is recreated
+    Given index 'user-votes' is recreated
     Given data folder 'data/csv' created in tmp directory
     Given data folder 'data/csv' ingested
 

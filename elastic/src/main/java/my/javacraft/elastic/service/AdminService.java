@@ -47,6 +47,7 @@ public class AdminService {
 
         Map<String, Property> properties = new LinkedHashMap<>();
         properties.put("postId",    Property.of(p -> p.keyword(k -> k)));
+        properties.put("author",    Property.of(p -> p.keyword(k -> k)));
         properties.put("createdAt", Property.of(p -> p.date(d -> d.format("strict_date_optional_time"))));
         properties.put("karma",     Property.of(p -> p.long_(l -> l)));
 

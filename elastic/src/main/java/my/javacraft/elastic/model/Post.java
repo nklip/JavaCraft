@@ -10,6 +10,8 @@ package my.javacraft.elastic.model;
  */
 public record Post(
         String postId,
+        /** userId of the person who submitted this post. */
+        String author,
         /** ISO-8601 UTC timestamp of when the post was created. */
         String createdAt,
         /** Denormalized net vote score: upvotes − downvotes. Updated on every vote. */
