@@ -24,7 +24,7 @@ public class AdminControllerTest {
         AdminController adminController = new AdminController(adminService);
 
         CreateIndexResponse createIndexResponse = CreateIndexResponse.of(builder -> builder
-                .index("user-vote")
+                .index("user-votes")
                 .acknowledged(true)
                 .shardsAcknowledged(true)
         );

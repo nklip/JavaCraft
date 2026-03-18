@@ -7,8 +7,6 @@ import co.elastic.clients.json.JsonpUtils;
 import co.elastic.clients.util.NamedValue;
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,7 +18,7 @@ import my.javacraft.elastic.service.DateService;
 import org.springframework.stereotype.Service;
 
 /*
- * TopService simulates Reddit's 'Top' category.
+ * TopRankingService simulates Reddit's 'Top' category.
  *
  * 🏆 Top (day / week / month / year / all)
  *
@@ -60,7 +58,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class TopService {
+public class TopRankingService {
 
     /**
      * Time windows accepted by {@link #retrieveTopPosts(int, TopWindow)}.
@@ -103,7 +101,7 @@ public class TopService {
         int querySize = Math.min(size * 10, Constants.MAX_VALUES);
 
         SearchRequest.Builder builder = new SearchRequest.Builder()
-                .index(Constants.INDEX_USER_VOTE)
+                .index(Constants.INDEX_USER_VOTES)
                 .size(0)
                 .aggregations(Constants.POST_ID, a -> a
                         .terms(t -> t
@@ -142,15 +140,13 @@ public class TopService {
                 .buckets()
                 .array()
                 .stream()
-                .collect(Collectors.toMap(
-                        b -> b.key().stringValue(),
-                        b -> b.aggregations().get("upvotes").filter().docCount()
-                           - b.aggregations().get("downvotes").filter().docCount()
+                .map(b -> new PostPreview(
+                        b.key().stringValue(),
+                        b.aggregations().get("upvotes").filter().docCount()
+                        - b.aggregations().get("downvotes").filter().docCount()
                 ))
-                .entrySet().stream()
-                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .sorted()
                 .limit(size)
-                .map(e -> new PostPreview(e.getKey(), e.getValue()))
                 .toList();
     }
 }

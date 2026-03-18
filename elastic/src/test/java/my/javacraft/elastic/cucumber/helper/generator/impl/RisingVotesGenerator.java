@@ -4,8 +4,8 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
-import my.javacraft.elastic.cucumber.helper.generator.EventCsvSupport;
-import my.javacraft.elastic.cucumber.helper.generator.EventGenerator;
+import my.javacraft.elastic.cucumber.helper.generator.CsvSupport;
+import my.javacraft.elastic.cucumber.helper.generator.VoteGenerator;
 
 /*
  * ⬆️ Rising
@@ -21,11 +21,13 @@ import my.javacraft.elastic.cucumber.helper.generator.EventGenerator;
  * 5) Drops off once velocity slows or the post ages out of the candidate window
  *
  */
-public class RisingEvents implements EventGenerator {
-    private static final String EVENTS_RISING_FILE = "events-rising.csv";
+public class RisingVotesGenerator implements VoteGenerator {
+    private static final String VOTES_RISING_FILE = "votes-rising.csv";
+    private static final String POSTS_RISING_FILE = "posts-rising.csv";
 
     /*
-     * Should update postIds from 31 to 40
+     * MUST HAVE: Top 10 'Rising' postIds MUST have postIds from 31 to 40
+     *
      * The amount of users which would UPVOTE or DOWNVOTE - 100
      *
      * Each postId has a unique upvote percentage so that karma is unique per post:
@@ -43,29 +45,37 @@ public class RisingEvents implements EventGenerator {
      *   - Ceiling capped at 28 days so that even with 22 h file staleness + 23 h hoursAgo
      *     + 59 min minutesAgo the oldest event is at most 28d + 45h 59min = 29d 21h 59min,
      *     safely inside the 30-day Top MONTH window.
-     *   - max karma (60) > max NewEvents karma (40) → posts 31-40 win Top MONTH.
+     *   - max karma (60) > max NewVotesGenerator karma (40) → posts 31-40 win Top MONTH.
      */
     @Override
-    public void generateEventsInCsv() {
-        Instant now = EventCsvSupport.now();
-        List<String> rows = new ArrayList<>(10 * EventCsvSupport.USERS_PER_POST);
+    public void generatePostVotesInCsv() {
+        Instant now = CsvSupport.now();
+        List<String> eventRows = new ArrayList<>(10 * CsvSupport.USERS_PER_POST);
+        List<String> postRows  = new ArrayList<>(10);
 
         for (int postId = 31; postId <= 40; postId++) {
             int upvotePercent = 71 + (postId - 31);    // 71% → 80%, unique per post
-            for (int userId = 1; userId <= EventCsvSupport.USERS_PER_POST; userId++) {
+
+            Instant createdAt = Instant.MAX;
+            for (int userId = 1; userId <= CsvSupport.USERS_PER_POST; userId++) {
                 long daysAgo  = 8 + Math.floorMod(postId * 11 + userId * 7, 21); // 8-28 days
                 long hoursAgo = Math.floorMod(postId * 13 + userId * 5, 24);
 
-                boolean upvote = EventCsvSupport.isUpvote(userId, postId, upvotePercent);
+                boolean upvote = CsvSupport.isUpvote(userId, postId, upvotePercent);
                 long minutesAgo = Math.floorMod(postId * 23 + userId * 29, 60);
                 Instant eventTime = now.minus(daysAgo, ChronoUnit.DAYS)
                         .minus(hoursAgo, ChronoUnit.HOURS)
                         .minus(minutesAgo, ChronoUnit.MINUTES);
 
-                rows.add(EventCsvSupport.csvLine(userId, postId, upvote, eventTime));
+                if (eventTime.isBefore(createdAt)) {
+                    createdAt = eventTime;
+                }
+                eventRows.add(CsvSupport.csvLine(userId, postId, upvote, eventTime));
             }
+            postRows.add(CsvSupport.postCsvLine(postId, createdAt));
         }
 
-        EventCsvSupport.writeCsv(EVENTS_RISING_FILE, rows);
+        CsvSupport.writeVotesCsv(VOTES_RISING_FILE, eventRows);
+        CsvSupport.writePostsCsv(POSTS_RISING_FILE, postRows);
     }
 }

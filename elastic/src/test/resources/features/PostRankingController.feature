@@ -71,7 +71,8 @@ Feature: test PostRankingController
   # ════════════════════════════════════════════════════════════════════════════
 
   Scenario: prepare data
-    Given index 'user-vote' exists
+    Given index 'user-votes' exists
+    Given index 'posts' exists
     Given data folder 'data/csv' created in tmp directory
     Given data folder 'data/csv' ingested
 
@@ -93,6 +94,32 @@ Feature: test PostRankingController
       | post-13 | 6     |
       | post-12 | 4     |
       | post-11 | 2     |
+
+  # New ranking: sorted by post.createdAt DESC from the 'posts' index (actual submission time).
+  # NewEvents (posts 21-30): createdAt = min(vote_timestamp) = 2–5 days ago.
+  # HotEvents (posts 11-20): createdAt = 7–10 days ago (old posts with a viral vote burst).
+  # → NewEvents createdAt is always more recent than HotEvents createdAt → posts 21-30 win New.
+  #
+  # Order within NewEvents determined by each post's min(vote_timestamp):
+  #   daysAgo  = 2 + floorMod(postId*43 + userId*11, 4)   range 2–5 days
+  #   hoursAgo = floorMod(postId*7  + userId*13, 24)       range 0–23 hours
+  # Even postIds (22,24,26,28,30): max(daysAgo*24+hoursAgo)=141 h → createdAt more recent → first
+  # Odd  postIds (21,23,25,27,29): max(daysAgo*24+hoursAgo)=143 h → createdAt older → last
+  # Within each parity group, createdAt values are equal; tie-break: postId ASC (alphabetical).
+  Scenario: New posts
+    Given data folder 'data/csv' was ingested
+    Then new posts endpoint returns 10 ranked results
+      | postId  | karma |
+      | post-22 | 24    |
+      | post-24 | 28    |
+      | post-26 | 32    |
+      | post-28 | 36    |
+      | post-30 | 40    |
+      | post-21 | 22    |
+      | post-23 | 26    |
+      | post-25 | 30    |
+      | post-27 | 34    |
+      | post-29 | 38    |
 
   # Top ranking: top_score = upvotes − downvotes, all-time, no time window.
   # Posts 41-50: 91–100% upvote rate → karma 82-100/post, highest across all generators.

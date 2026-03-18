@@ -4,13 +4,17 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.Result;
 import co.elastic.clients.elasticsearch.core.DeleteRequest;
 import co.elastic.clients.elasticsearch.core.DeleteResponse;
+import co.elastic.clients.elasticsearch.core.GetRequest;
+import co.elastic.clients.elasticsearch.core.GetResponse;
 import co.elastic.clients.elasticsearch.core.UpdateRequest;
 import co.elastic.clients.elasticsearch.core.UpdateResponse;
 import co.elastic.clients.json.jackson.JacksonJsonpMapper;
 import java.io.IOException;
+import my.javacraft.elastic.model.UserVote;
 import my.javacraft.elastic.model.VoteRequest;
-import my.javacraft.elastic.model.VoteResponse;
 import my.javacraft.elastic.model.VoteRequestTest;
+import my.javacraft.elastic.model.VoteResponse;
+import my.javacraft.elastic.service.PostService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,7 +22,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -30,8 +38,18 @@ import static org.mockito.Mockito.when;
  *   Diff action → Updated (script updates action + timestamp)
  * </pre>
  *
- * In production the script runs inside ES; here we mock the UpdateResponse / DeleteResponse
- * to represent each of those outcomes and verify the service returns them correctly.
+ * Also verifies that karma deltas are forwarded to PostService on every meaningful state change:
+ *
+ * <pre>
+ *   Created  + UPVOTE   → postService.updateKarma(postId, +1)
+ *   Created  + DOWNVOTE → postService.updateKarma(postId, −1)
+ *   NoOp     + any      → no karma update
+ *   Updated  + UPVOTE   → postService.updateKarma(postId, +2)
+ *   Updated  + DOWNVOTE → postService.updateKarma(postId, −2)
+ *   Deleted  + was UPVOTE   → postService.updateKarma(postId, −1)
+ *   Deleted  + was DOWNVOTE → postService.updateKarma(postId, +1)
+ *   NotFound + any      → no karma update
+ * </pre>
  */
 @SuppressWarnings("unchecked")
 @ExtendWith(MockitoExtension.class)
@@ -39,11 +57,11 @@ public class UserVoteServiceTest {
 
     @Mock
     ElasticsearchClient esClient;
-
-    // ── helpers ───────────────────────────────────────────────────────────────
+    @Mock
+    PostService postService;
 
     private VoteService service() {
-        return new VoteService(esClient);
+        return new VoteService(esClient, postService);
     }
 
     private void stubDelete(String docId, Result result) throws IOException {
@@ -61,83 +79,143 @@ public class UserVoteServiceTest {
         when(esClient.update(any(UpdateRequest.class), any(Class.class))).thenReturn(updateResponse);
     }
 
+    private void stubGet(boolean found, String action) throws IOException {
+        GetResponse<UserVote> getResponse = mock(GetResponse.class);
+        when(getResponse.found()).thenReturn(found);
+        if (found) {
+            UserVote vote = mock(UserVote.class);
+            when(vote.getAction()).thenReturn(action);
+            when(getResponse.source()).thenReturn(vote);
+        }
+        when(esClient.get(any(GetRequest.class), any(Class.class))).thenReturn(getResponse);
+    }
+
     // ── tests ─────────────────────────────────────────────────────────────────
 
     @Test
-    public void testFirstVoteCreatesDocument() throws IOException {
-        // Arrange
-        VoteRequest voteRequest = VoteRequestTest.createHitCount();
+    public void testFirstVoteCreatesDocumentAndUpdatesKarma() throws IOException {
+        VoteRequest voteRequest = VoteRequestTest.createHitCount();   // action = UPVOTE
         String expectedId = voteRequest.getUserId() + "_" + voteRequest.getPostId();
         stubUpdate(expectedId, Result.Created);
 
-        // Act
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:00:00Z");
 
-        // Assert
         Assertions.assertEquals(expectedId, response.getDocumentId());
         Assertions.assertEquals(Result.Created, response.getResult());
+        verify(postService).updateKarma(voteRequest.getPostId(), 1);
     }
 
     @Test
-    public void testSameVoteRepeatedIsIgnored() throws IOException {
-        // Arrange: ES Painless script returns NoOp when action hasn't changed
+    public void testFirstDownvoteCreatesDocumentAndDecrementsKarma() throws IOException {
+        VoteRequest voteRequest = VoteRequestTest.createHitCount();
+        voteRequest.setAction("DOWNVOTE");
+        String expectedId = voteRequest.getUserId() + "_" + voteRequest.getPostId();
+        stubUpdate(expectedId, Result.Created);
+
+        VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:00:00Z");
+
+        Assertions.assertEquals(Result.Created, response.getResult());
+        verify(postService).updateKarma(voteRequest.getPostId(), -1);
+    }
+
+    @Test
+    public void testSameVoteRepeatedDoesNotChangeKarma() throws IOException {
         VoteRequest voteRequest = VoteRequestTest.createHitCount();   // action = UPVOTE
         String expectedId = voteRequest.getUserId() + "_" + voteRequest.getPostId();
         stubUpdate(expectedId, Result.NoOp);
 
-        // Act: user tries to upvote the same post a second time
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:05:00Z");
 
-        // Assert: no document was written
-        Assertions.assertEquals(expectedId, response.getDocumentId());
         Assertions.assertEquals(Result.NoOp, response.getResult());
+        verify(postService, never()).updateKarma(anyString(), anyInt());
     }
 
     @Test
-    public void testDifferentVoteChangesAction() throws IOException {
-        // Arrange: ES Painless script returns Updated when user switches from UPVOTE → DOWNVOTE
-        VoteRequest voteRequest = VoteRequestTest.createHitCount();   // first action = UPVOTE
-        voteRequest.setAction("Downvote");                        // now changing to DOWNVOTE
+    public void testDownvoteAfterUpvoteFlipsKarmaByTwo() throws IOException {
+        VoteRequest voteRequest = VoteRequestTest.createHitCount();
+        voteRequest.setAction("Downvote");                         // switching UPVOTE → DOWNVOTE
         String expectedId = voteRequest.getUserId() + "_" + voteRequest.getPostId();
         stubUpdate(expectedId, Result.Updated);
 
-        // Act
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:10:00Z");
 
-        // Assert: the document was updated in-place (still one doc per user+post)
-        Assertions.assertEquals(expectedId, response.getDocumentId());
         Assertions.assertEquals(Result.Updated, response.getResult());
+        verify(postService).updateKarma(voteRequest.getPostId(), -2);
     }
 
     @Test
-    public void testNovoteDeletesExistingVote() throws IOException {
-        // Arrange: user cancels a vote they previously cast
+    public void testUpvoteAfterDownvoteFlipsKarmaByTwo() throws IOException {
         VoteRequest voteRequest = VoteRequestTest.createHitCount();
-        voteRequest.setAction("novote");           // case-insensitive: normalised to NOVOTE
+        voteRequest.setAction("UPVOTE");                           // switching DOWNVOTE → UPVOTE
         String expectedId = voteRequest.getUserId() + "_" + voteRequest.getPostId();
+        stubUpdate(expectedId, Result.Updated);
+
+        VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:10:00Z");
+
+        Assertions.assertEquals(Result.Updated, response.getResult());
+        verify(postService).updateKarma(voteRequest.getPostId(), 2);
+    }
+
+    @Test
+    public void testNovoteAfterUpvoteDecrementsKarma() throws IOException {
+        VoteRequest voteRequest = VoteRequestTest.createHitCount();
+        voteRequest.setAction("novote");
+        String expectedId = voteRequest.getUserId() + "_" + voteRequest.getPostId();
+        stubGet(true, "UPVOTE");
         stubDelete(expectedId, Result.Deleted);
 
-        // Act
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:20:00Z");
 
-        // Assert: document removed, no vote stored
-        Assertions.assertEquals(expectedId, response.getDocumentId());
         Assertions.assertEquals(Result.Deleted, response.getResult());
+        verify(postService).updateKarma(voteRequest.getPostId(), -1);
     }
 
     @Test
-    public void testNovoteOnNonExistentVoteReturnsNotFound() throws IOException {
-        // Arrange: user sends NOVOTE but has never voted on this post
+    public void testNovoteAfterDownvoteIncrementsKarma() throws IOException {
         VoteRequest voteRequest = VoteRequestTest.createHitCount();
         voteRequest.setAction("NOVOTE");
         String expectedId = voteRequest.getUserId() + "_" + voteRequest.getPostId();
-        stubDelete(expectedId, Result.NotFound);
+        stubGet(true, "DOWNVOTE");
+        stubDelete(expectedId, Result.Deleted);
 
-        // Act
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:20:00Z");
 
-        // Assert: graceful no-op, no exception thrown
-        Assertions.assertEquals(expectedId, response.getDocumentId());
+        Assertions.assertEquals(Result.Deleted, response.getResult());
+        verify(postService).updateKarma(voteRequest.getPostId(), 1);
+    }
+
+    @Test
+    public void testNovoteOnNonExistentVoteDoesNotChangeKarma() throws IOException {
+        VoteRequest voteRequest = VoteRequestTest.createHitCount();
+        voteRequest.setAction("NOVOTE");
+        String expectedId = voteRequest.getUserId() + "_" + voteRequest.getPostId();
+        // Don't stub found() — deleteResult=NotFound short-circuits the &&, so found() is never called.
+        GetResponse<UserVote> getResponse = mock(GetResponse.class);
+        when(esClient.get(any(GetRequest.class), any(Class.class))).thenReturn(getResponse);
+        stubDelete(expectedId, Result.NotFound);
+
+        VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:20:00Z");
+
         Assertions.assertEquals(Result.NotFound, response.getResult());
+        verify(postService, never()).updateKarma(anyString(), anyInt());
+    }
+
+    @Test
+    public void testNovoteWhenSourceNullDoesNotUpdateKarma() throws IOException {
+        // Guard against NPE: found()=true but source()=null occurs when _source is disabled on the index.
+        // Karma must not be updated and no NullPointerException must be thrown.
+        VoteRequest voteRequest = VoteRequestTest.createHitCount();
+        voteRequest.setAction("NOVOTE");
+        String expectedId = voteRequest.getUserId() + "_" + voteRequest.getPostId();
+        GetResponse<UserVote> getResponse = mock(GetResponse.class);
+        when(getResponse.found()).thenReturn(true);
+        // source() not stubbed → returns null (Mockito default), simulating _source disabled
+        when(esClient.get(any(GetRequest.class), any(Class.class))).thenReturn(getResponse);
+        stubDelete(expectedId, Result.Deleted);
+
+        VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:20:00Z");
+
+        Assertions.assertEquals(Result.Deleted, response.getResult());
+        verify(postService, never()).updateKarma(anyString(), anyInt());
     }
 }

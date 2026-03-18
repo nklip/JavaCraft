@@ -4,10 +4,12 @@ import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
+import my.javacraft.elastic.service.activity.HotRankingService;
+import my.javacraft.elastic.service.activity.TopRankingService;
 import my.javacraft.elastic.service.activity.VoteService;
 
 /**
- * Vote document stored in the 'user-vote' index.
+ * Vote document stored in the 'user-votes' index.
  * Document ID is {@code userId_postId} — one document per (user, post) pair.
  *
  * <p>The document represents the user's <em>current</em> vote on a post.
@@ -22,8 +24,8 @@ import my.javacraft.elastic.service.activity.VoteService;
  * </ul>
  *
  * <p>The {@code action} field is always stored in uppercase (e.g. {@code UPVOTE}, {@code DOWNVOTE})
- * to match the ES keyword values queried by {@link my.javacraft.elastic.service.activity.TopService}
- * and {@link my.javacraft.elastic.service.activity.HotService}.
+ * to match the ES keyword values queried by {@link TopRankingService}
+ * and {@link HotRankingService}.
  */
 @Data
 @ToString

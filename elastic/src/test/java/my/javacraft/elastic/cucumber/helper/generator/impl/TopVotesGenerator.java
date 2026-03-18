@@ -4,8 +4,8 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
-import my.javacraft.elastic.cucumber.helper.generator.EventCsvSupport;
-import my.javacraft.elastic.cucumber.helper.generator.EventGenerator;
+import my.javacraft.elastic.cucumber.helper.generator.CsvSupport;
+import my.javacraft.elastic.cucumber.helper.generator.VoteGenerator;
 
 /*
  * 🏆 Top (day / week / month / year / all)
@@ -33,11 +33,13 @@ import my.javacraft.elastic.cucumber.helper.generator.EventGenerator;
  * 2) Best/Top are the same algorithm (Best is just an alias Reddit uses for "Top — All Time" on some views)
  * 3) Rewards sustained quality; a niche post with a dedicated community can still win "month" or "year"
  */
-public class TopEvents implements EventGenerator {
-    private static final String EVENTS_TOP_FILE = "events-top.csv";
+public class TopVotesGenerator implements VoteGenerator {
+    private static final String VOTES_TOP_FILE = "votes-top.csv";
+    private static final String POSTS_TOP_FILE = "posts-top.csv";
 
     /*
-     * Should update postIds from 41 to 50
+     * MUST HAVE: Top 10 'Top for ALL' postIds MUST have postIds from 41 to 50
+     *
      * The amount of users which would UPVOTE or DOWNVOTE - 100
      *
      * Each postId has a unique upvote percentage so that karma is unique per post:
@@ -52,11 +54,11 @@ public class TopEvents implements EventGenerator {
      *
      * All karma groups across all generators form a non-overlapping sequence:
      *
-     *   posts 11-20  karma  2-20  (HotEvents,    51-60%)   → Top DAY
-     *   posts 21-30  karma 22-40  (NewEvents,    61-70%)   → Top WEEK
-     *   posts 31-40  karma 42-60  (RisingEvents, 71-80%)   → Top MONTH
-     *   posts 01-10  karma 62-80  (BestEvents,   81-90%)   → Top YEAR
-     *   posts 41-50  karma 82-100 (TopEvents,    91-100%)  → Top ALL
+     *   posts 11-20  karma  2-20  (HotVotesGenerator,    51-60%)   → Top DAY
+     *   posts 21-30  karma 22-40  (NewVotesGenerator,    61-70%)   → Top WEEK
+     *   posts 31-40  karma 42-60  (RisingVotesGenerator, 71-80%)   → Top MONTH
+     *   posts 01-10  karma 62-80  (BestVoteGenerator,   81-90%)   → Top YEAR
+     *   posts 41-50  karma 82-100 (TopVotesGenerator,    91-100%)  → Top ALL
      *
      * Date pattern: all events are 366–730 days old.
      *   - 366-day floor puts every event outside the 365-day Top YEAR window.
@@ -64,14 +66,17 @@ public class TopEvents implements EventGenerator {
      *   - first_seen > 365 days old → massive time penalty in Hot, so Hot is NOT won.
      */
     @Override
-    public void generateEventsInCsv() {
-        Instant now = EventCsvSupport.now();
-        List<String> rows = new ArrayList<>(10 * EventCsvSupport.USERS_PER_POST);
+    public void generatePostVotesInCsv() {
+        Instant now = CsvSupport.now();
+        List<String> eventRows = new ArrayList<>(10 * CsvSupport.USERS_PER_POST);
+        List<String> postRows  = new ArrayList<>(10);
 
         for (int postId = 41; postId <= 50; postId++) {
             int upvotePercent = 91 + (postId - 41);    // 91% → 100%, unique per post
-            for (int userId = 1; userId <= EventCsvSupport.USERS_PER_POST; userId++) {
-                boolean upvote = EventCsvSupport.isUpvote(userId, postId, upvotePercent);
+
+            Instant createdAt = Instant.MAX;
+            for (int userId = 1; userId <= CsvSupport.USERS_PER_POST; userId++) {
+                boolean upvote = CsvSupport.isUpvote(userId, postId, upvotePercent);
                 long daysAgo    = 366 + Math.floorMod(postId * 13 + userId * 17, 365); // 366-730 days
                 long hoursAgo   = Math.floorMod(postId * 19 + userId * 23, 24);
                 long minutesAgo = Math.floorMod(postId * 7 + userId * 29, 60);
@@ -79,10 +84,15 @@ public class TopEvents implements EventGenerator {
                         .minus(hoursAgo, ChronoUnit.HOURS)
                         .minus(minutesAgo, ChronoUnit.MINUTES);
 
-                rows.add(EventCsvSupport.csvLine(userId, postId, upvote, eventTime));
+                if (eventTime.isBefore(createdAt)) {
+                    createdAt = eventTime;
+                }
+                eventRows.add(CsvSupport.csvLine(userId, postId, upvote, eventTime));
             }
+            postRows.add(CsvSupport.postCsvLine(postId, createdAt));
         }
 
-        EventCsvSupport.writeCsv(EVENTS_TOP_FILE, rows);
+        CsvSupport.writeVotesCsv(VOTES_TOP_FILE, eventRows);
+        CsvSupport.writePostsCsv(POSTS_TOP_FILE, postRows);
     }
 }

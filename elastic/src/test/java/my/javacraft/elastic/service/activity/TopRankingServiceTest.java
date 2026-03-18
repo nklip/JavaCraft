@@ -30,7 +30,7 @@ import static org.mockito.Mockito.when;
 
 @SuppressWarnings({"unchecked"})
 @ExtendWith(MockitoExtension.class)
-public class TopServiceTest {
+public class TopRankingServiceTest {
 
     @Mock
     ElasticsearchClient esClient;
@@ -47,7 +47,7 @@ public class TopServiceTest {
         when(esClient.search(any(SearchRequest.class), eq(UserVote.class)))
                 .thenReturn(aggResponse);
 
-        List<PostPreview> result = new TopService(esClient, dateService).retrieveTopPosts(10);
+        List<PostPreview> result = new TopRankingService(esClient, dateService).retrieveTopPosts(10);
 
         Assertions.assertNotNull(result);
         Assertions.assertEquals(1, result.size());
@@ -69,7 +69,7 @@ public class TopServiceTest {
         when(esClient.search(any(SearchRequest.class), eq(UserVote.class)))
                 .thenReturn(aggResponse);
 
-        List<PostPreview> result = new TopService(esClient, dateService).retrieveTopPosts(10);
+        List<PostPreview> result = new TopRankingService(esClient, dateService).retrieveTopPosts(10);
 
         Assertions.assertEquals(2, result.size());
         Assertions.assertEquals("postB", result.get(0).getPostId(), "postB (net=50) must rank above postA (net=20)");
@@ -85,7 +85,7 @@ public class TopServiceTest {
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
         when(esClient.search(any(SearchRequest.class), eq(UserVote.class))).thenReturn(aggResponse);
 
-        List<PostPreview> result = new TopService(esClient, dateService).retrieveTopPosts(10);
+        List<PostPreview> result = new TopRankingService(esClient, dateService).retrieveTopPosts(10);
 
         Assertions.assertNotNull(result);
         Assertions.assertTrue(result.isEmpty());
@@ -95,7 +95,7 @@ public class TopServiceTest {
 
     @Test
     public void testRetrieveTopPostsByWeek() throws IOException {
-        when(dateService.getNDaysBeforeDate(TopService.TopWindow.WEEK.getDays()))
+        when(dateService.getNDaysBeforeDate(TopRankingService.TopWindow.WEEK.getDays()))
                 .thenReturn("2026-03-09T00:00:00.000Z");
 
         SearchResponse<UserVote> aggResponse = buildAggResponse(Map.of("post-recent", new long[]{50L, 5L}));
@@ -104,8 +104,8 @@ public class TopServiceTest {
         when(esClient.search(any(SearchRequest.class), eq(UserVote.class)))
                 .thenReturn(aggResponse);
 
-        List<PostPreview> result = new TopService(esClient, dateService)
-                .retrieveTopPosts(10, TopService.TopWindow.WEEK);
+        List<PostPreview> result = new TopRankingService(esClient, dateService)
+                .retrieveTopPosts(10, TopRankingService.TopWindow.WEEK);
 
         Assertions.assertNotNull(result);
         Assertions.assertEquals(1, result.size());
@@ -115,10 +115,10 @@ public class TopServiceTest {
 
     @Test
     public void testAllWindowValuesHaveCorrectDays() {
-        Assertions.assertEquals(1,   TopService.TopWindow.DAY.getDays());
-        Assertions.assertEquals(7,   TopService.TopWindow.WEEK.getDays());
-        Assertions.assertEquals(30,  TopService.TopWindow.MONTH.getDays());
-        Assertions.assertEquals(365, TopService.TopWindow.YEAR.getDays());
+        Assertions.assertEquals(1,   TopRankingService.TopWindow.DAY.getDays());
+        Assertions.assertEquals(7,   TopRankingService.TopWindow.WEEK.getDays());
+        Assertions.assertEquals(30,  TopRankingService.TopWindow.MONTH.getDays());
+        Assertions.assertEquals(365, TopRankingService.TopWindow.YEAR.getDays());
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

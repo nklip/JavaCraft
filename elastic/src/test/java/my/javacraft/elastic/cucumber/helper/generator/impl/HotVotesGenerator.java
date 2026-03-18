@@ -4,8 +4,8 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
-import my.javacraft.elastic.cucumber.helper.generator.EventCsvSupport;
-import my.javacraft.elastic.cucumber.helper.generator.EventGenerator;
+import my.javacraft.elastic.cucumber.helper.generator.CsvSupport;
+import my.javacraft.elastic.cucumber.helper.generator.VoteGenerator;
 
 /*
  * 🔥 Hot
@@ -27,11 +27,13 @@ import my.javacraft.elastic.cucumber.helper.generator.EventGenerator;
  * votes in hour 10)
  * 4) No hard cutoff — old posts with massive scores can still appear, just very slowly pushed down
  */
-public class HotEvents implements EventGenerator {
-    private static final String EVENTS_HOT_FILE = "events-hot.csv";
+public class HotVotesGenerator implements VoteGenerator {
+    private static final String VOTES_HOT_FILE = "votes-hot.csv";
+    private static final String POSTS_HOT_FILE = "posts-hot.csv";
 
     /*
-     * Should update postIds from 11 to 20
+     * MUST HAVE: Top 10 'Hot' postIds MUST have postIds from 11 to 20
+     *
      * The amount of users which would UPVOTE or DOWNVOTE - 100
      *
      * Correctness guarantee (Reddit Hot formula):
@@ -40,7 +42,7 @@ public class HotEvents implements EventGenerator {
      *
      * Strategy: all events land within the last 60 minutes so that
      *   min(timestamp) — used as submission_time proxy — is at most ~60 min old.
-     *   NewEvents events are 2+ days old → time penalty ≥ 3.84 hot_score points,
+     *   NewVotesGenerator events are 2+ days old → time penalty ≥ 3.84 hot_score points,
      *   which dwarfs any karma log₁₀ difference → posts 11-20 always win Hot.
      *
      * Each postId has a unique upvote percentage so that karma is unique per post:
@@ -54,27 +56,39 @@ public class HotEvents implements EventGenerator {
      * permutation of 0-99 over 100 users when gcd(31, 100) = 1).
      *
      * Top window: all 100 votes within the last 60 min → fully counted in Top DAY.
-     * max karma (20) < min NewEvents karma (22) → posts 11-20 win only Top DAY.
+     * max karma (20) < min NewVotesGenerator karma (22) → posts 11-20 win only Top DAY.
      */
     @Override
-    public void generateEventsInCsv() {
-        Instant now = EventCsvSupport.now();
-        List<String> rows = new ArrayList<>(10 * EventCsvSupport.USERS_PER_POST);
+    public void generatePostVotesInCsv() {
+        Instant now = CsvSupport.now();
+        List<String> eventRows = new ArrayList<>(10 * CsvSupport.USERS_PER_POST);
+        List<String> postRows  = new ArrayList<>(10);
 
         for (int postId = 11; postId <= 20; postId++) {
             int upvotePercent = 51 + (postId - 11);    // 51% → 60%, unique per post
-            for (int userId = 1; userId <= EventCsvSupport.USERS_PER_POST; userId++) {
-                boolean upvote = EventCsvSupport.isUpvote(userId, postId, upvotePercent);
+
+            /*
+             * createdAt = 7–10 days ago — these are older posts that received a burst of
+             * fresh votes within the last 60 min (simulates a viral "second wind").
+             * Setting createdAt well before NewVotesGenerator (2–5 days old) ensures posts 11-20
+             * never appear in the top-10 of the 'New' feed, which is sorted by createdAt DESC.
+             */
+            int createdDaysAgo = 7 + Math.floorMod(postId * 11, 4);  // 7–10 days
+            postRows.add(CsvSupport.postCsvLine(postId, now.minus(createdDaysAgo, ChronoUnit.DAYS)));
+
+            for (int userId = 1; userId <= CsvSupport.USERS_PER_POST; userId++) {
+                boolean upvote = CsvSupport.isUpvote(userId, postId, upvotePercent);
                 // Keep all events within a 60-minute window so first_seen stays very recent
                 long minutesAgo = Math.floorMod(postId * 7 + userId * 5, 60L);
                 long secondsAgo = Math.floorMod(postId * 13 + userId * 17, 60L);
                 Instant eventTime = now.minus(minutesAgo, ChronoUnit.MINUTES)
                         .minus(secondsAgo, ChronoUnit.SECONDS);
 
-                rows.add(EventCsvSupport.csvLine(userId, postId, upvote, eventTime));
+                eventRows.add(CsvSupport.csvLine(userId, postId, upvote, eventTime));
             }
         }
 
-        EventCsvSupport.writeCsv(EVENTS_HOT_FILE, rows);
+        CsvSupport.writeVotesCsv(VOTES_HOT_FILE, eventRows);
+        CsvSupport.writePostsCsv(POSTS_HOT_FILE, postRows);
     }
 }

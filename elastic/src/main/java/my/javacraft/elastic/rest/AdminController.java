@@ -36,8 +36,26 @@ public class AdminController {
     private final AdminService adminService;
 
     @Operation(
-            summary = "Create user-vote index",
-            description = "Creates the 'user-vote' index with typed field mappings: "
+            summary = "Create posts index",
+            description = "Creates the 'posts' index with typed field mappings: "
+                    + "postId(keyword), createdAt(date). "
+                    + "Required by NewRankingService for chronological 'New' feed ordering."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Index created successfully"),
+            @ApiResponse(responseCode = "201", description = "Index already exists; no changes were made"),
+            @ApiResponse(responseCode = "500", description = "Elasticsearch error")
+    })
+    @PutMapping(value = "/indexes/posts", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<CreateIndexResponse> createPostsIndex() throws IOException {
+        log.info("request to create posts index");
+        AdminService.IndexCreationResult result = adminService.createPostsIndex();
+        return buildResponse(result);
+    }
+
+    @Operation(
+            summary = "Create user-votes index",
+            description = "Creates the 'user-votes' index with typed field mappings: "
                     + "timestamp(date), userId/postId/action(keyword). "
                     + "Required by VoteController for ingestion, retrieval, and trending queries."
     )
@@ -46,9 +64,9 @@ public class AdminController {
             @ApiResponse(responseCode = "201", description = "Index already exists; no changes were made"),
             @ApiResponse(responseCode = "500", description = "Elasticsearch error")
     })
-    @PutMapping(value = "/indexes/user-vote", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PutMapping(value = "/indexes/user-votes", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<CreateIndexResponse> createUserVoteIndex() throws IOException {
-        log.info("request to create user-vote index");
+        log.info("request to create user-votes index");
         AdminService.IndexCreationResult result = adminService.createUserVoteIndex();
         return buildResponse(result);
     }

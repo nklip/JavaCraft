@@ -12,8 +12,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.config.Constants;
 import my.javacraft.elastic.model.PostPreview;
-import my.javacraft.elastic.service.activity.HotService;
-import my.javacraft.elastic.service.activity.TopService;
+import my.javacraft.elastic.service.activity.HotRankingService;
+import my.javacraft.elastic.service.activity.NewRankingService;
+import my.javacraft.elastic.service.activity.TopRankingService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -27,8 +28,29 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class PostRankingController {
 
-    private final TopService topService;
-    private final HotService hotService;
+    private final TopRankingService topRankingService;
+    private final HotRankingService hotRankingService;
+    private final NewRankingService newRankingService;
+
+    @Operation(
+            summary = "New posts",
+            description = "Returns the most recently submitted posts in reverse-chronological order. "
+                    + "Every post appears immediately regardless of votes — no decay, no score influence."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successful"),
+            @ApiResponse(responseCode = "404", description = "Not found"),
+            @ApiResponse(responseCode = "406", description = "Resource unavailable")
+    })
+    @GetMapping(value = "/new", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<PostPreview>> retrieveNewPosts(
+            @RequestParam(required = false, name = "size", defaultValue = "10")
+            @Min(1) @Max(Constants.MAX_VALUES) int size) throws IOException {
+
+        log.info("retrieving new posts (limit = '{}')...", size);
+
+        return ResponseEntity.ok().body(newRankingService.retrieveNewPosts(size));
+    }
 
     @Operation(
             summary = "Hot posts",
@@ -46,7 +68,7 @@ public class PostRankingController {
 
         log.info("retrieving hot posts (limit = '{}')...", size);
 
-        return ResponseEntity.ok().body(hotService.retrieveHotPosts(size));
+        return ResponseEntity.ok().body(hotRankingService.retrieveHotPosts(size));
     }
 
     @Operation(
@@ -65,7 +87,7 @@ public class PostRankingController {
 
         log.info("retrieving top posts all-time (limit = '{}')...", size);
 
-        return ResponseEntity.ok().body(topService.retrieveTopPosts(size));
+        return ResponseEntity.ok().body(topRankingService.retrieveTopPosts(size));
     }
 
     @Operation(
@@ -84,9 +106,9 @@ public class PostRankingController {
             @RequestParam(required = false, name = "size", defaultValue = "10")
             @Min(1) @Max(Constants.MAX_VALUES) int size) throws IOException {
 
-        TopService.TopWindow tw;
+        TopRankingService.TopWindow tw;
         try {
-            tw = TopService.TopWindow.valueOf(window.toUpperCase());
+            tw = TopRankingService.TopWindow.valueOf(window.toUpperCase());
         } catch (IllegalArgumentException e) {
             log.warn("invalid top window '{}', must be one of: day, week, month, year", window);
             return ResponseEntity.badRequest().build();
@@ -94,6 +116,6 @@ public class PostRankingController {
 
         log.info("retrieving top posts (window = '{}', limit = '{}')...", tw, size);
 
-        return ResponseEntity.ok().body(topService.retrieveTopPosts(size, tw));
+        return ResponseEntity.ok().body(topRankingService.retrieveTopPosts(size, tw));
     }
 }

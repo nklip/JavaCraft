@@ -19,7 +19,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
-class EventGeneratorTest {
+class VoteGeneratorTest {
 
     Path outputDirectory = Path.of("src/test/resources/data/csv");
 
@@ -31,17 +31,17 @@ class EventGeneratorTest {
     @MethodSource("generatorCases")
     void generateEventsInCsvShouldGenerateExpectedFile(
             String fileName,
-            EventGenerator generator,
+            VoteGenerator generator,
             int firstPost,
             int lastPost,
             int maxAgeDays
     ) throws IOException {
         Instant beforeGeneration = Instant.now();
 
-        generator.generateEventsInCsv();
+        generator.generatePostVotesInCsv();
 
         Instant afterGeneration = Instant.now();
-        Path generatedCsv = outputDirectory.resolve(fileName);
+        Path generatedCsv = outputDirectory.resolve("votes").resolve(fileName);
         Assertions.assertTrue(Files.exists(generatedCsv), "CSV file must be generated: " + fileName);
 
         List<String> lines = Files.readAllLines(generatedCsv, StandardCharsets.UTF_8);
@@ -91,16 +91,16 @@ class EventGeneratorTest {
 
     private static Stream<Arguments> generatorCases() {
         return Stream.of(
-                // BestEvents: 31-364 days old → maxAgeDays=364
-                Arguments.of("events-best.csv",   new BestEvents(),    1,  10, 364),
-                // HotEvents: all events within 60 min → maxAgeDays=1 is a tight upper bound
-                Arguments.of("events-hot.csv",    new HotEvents(),    11,  20,   1),
-                // NewEvents: 2-6 days old → maxAgeDays=6
-                Arguments.of("events-new.csv",    new NewEvents(),    21,  30,   6),
-                // RisingEvents: 8-29 days old → maxAgeDays=29
-                Arguments.of("events-rising.csv", new RisingEvents(), 31,  40,  29),
-                // TopEvents: 366-730 days old → maxAgeDays=730
-                Arguments.of("events-top.csv",    new TopEvents(),    41,  50, 730)
+                // BestVoteGenerator: 31-364 days old → maxAgeDays=364
+                Arguments.of("votes-best.csv",   new BestVoteGenerator(),    1,  10, 364),
+                // HotVotesGenerator: all events within 60 min → maxAgeDays=1 is a tight upper bound
+                Arguments.of("votes-hot.csv",    new HotVotesGenerator(),    11,  20,   1),
+                // NewVotesGenerator: 2-6 days old → maxAgeDays=6
+                Arguments.of("votes-new.csv",    new NewVotesGenerator(),    21,  30,   6),
+                // RisingVotesGenerator: 8-29 days old → maxAgeDays=29
+                Arguments.of("votes-rising.csv", new RisingVotesGenerator(), 31,  40,  29),
+                // TopVotesGenerator: 366-730 days old → maxAgeDays=730
+                Arguments.of("votes-top.csv",    new TopVotesGenerator(),    41,  50, 730)
         );
     }
 }

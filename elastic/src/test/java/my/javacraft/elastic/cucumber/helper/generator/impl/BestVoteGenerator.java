@@ -4,8 +4,8 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
-import my.javacraft.elastic.cucumber.helper.generator.EventCsvSupport;
-import my.javacraft.elastic.cucumber.helper.generator.EventGenerator;
+import my.javacraft.elastic.cucumber.helper.generator.CsvSupport;
+import my.javacraft.elastic.cucumber.helper.generator.VoteGenerator;
 
 /*
  * ⭐ Best (Controversial's opposite)
@@ -29,11 +29,13 @@ import my.javacraft.elastic.cucumber.helper.generator.EventGenerator;
  * 3) Designed for comment sorting — surfaces reliably good comments, not just lucky early ones
  * 4) Used as the default comment sort ("Best" in the UI)
  */
-public class BestEvents implements EventGenerator {
-    private static final String EVENTS_BEST_FILE = "events-best.csv";
+public class BestVoteGenerator implements VoteGenerator {
+    private static final String VOTES_BEST_FILE = "votes-best.csv";
+    private static final String POSTS_BEST_FILE = "posts-best.csv";
 
     /*
-     * Should update postIds from 01 to 10
+     * MUST HAVE: Top 10 'Best' postIds MUST have postIds from 01 to 10
+     *
      * The amount of users which would UPVOTE or DOWNVOTE - 100
      *
      * Each postId has a unique upvote percentage so that karma is unique per post:
@@ -51,18 +53,21 @@ public class BestEvents implements EventGenerator {
      *   - Ceiling capped at 362 days so that even with 22 h file staleness + 23 h hoursAgo
      *     + 59 min minutesAgo the oldest event is at most 362d + 45h 59min = 363d 21h 59min,
      *     safely inside the 365-day Top YEAR window.
-     *   - max karma (80) > max RisingEvents karma (60) → posts 01-10 win Top YEAR.
+     *   - max karma (80) > max RisingVotesGenerator karma (60) → posts 01-10 win Top YEAR.
      *   - first_seen ≈ 364 days old → large time penalty in Hot, so Hot is NOT won.
      */
     @Override
-    public void generateEventsInCsv() {
-        Instant now = EventCsvSupport.now();
-        List<String> rows = new ArrayList<>(10 * EventCsvSupport.USERS_PER_POST);
+    public void generatePostVotesInCsv() {
+        Instant now = CsvSupport.now();
+        List<String> eventRows = new ArrayList<>(10 * CsvSupport.USERS_PER_POST);
+        List<String> postRows  = new ArrayList<>(10);
 
         for (int postId = 1; postId <= 10; postId++) {
             int upvotePercent = 81 + (postId - 1);    // 81% → 90%, unique per post
-            for (int userId = 1; userId <= EventCsvSupport.USERS_PER_POST; userId++) {
-                boolean upvote = EventCsvSupport.isUpvote(userId, postId, upvotePercent);
+
+            Instant createdAt = Instant.MAX;
+            for (int userId = 1; userId <= CsvSupport.USERS_PER_POST; userId++) {
+                boolean upvote = CsvSupport.isUpvote(userId, postId, upvotePercent);
                 long daysAgo    = 31 + Math.floorMod(postId * 19 + userId * 7, 332); // 31-362 days
                 long hoursAgo   = Math.floorMod(postId * 11 + userId * 3, 24);
                 long minutesAgo = Math.floorMod(postId * 5 + userId * 13, 60);
@@ -70,10 +75,15 @@ public class BestEvents implements EventGenerator {
                         .minus(hoursAgo, ChronoUnit.HOURS)
                         .minus(minutesAgo, ChronoUnit.MINUTES);
 
-                rows.add(EventCsvSupport.csvLine(userId, postId, upvote, eventTime));
+                if (eventTime.isBefore(createdAt)) {
+                    createdAt = eventTime;
+                }
+                eventRows.add(CsvSupport.csvLine(userId, postId, upvote, eventTime));
             }
+            postRows.add(CsvSupport.postCsvLine(postId, createdAt));
         }
 
-        EventCsvSupport.writeCsv(EVENTS_BEST_FILE, rows);
+        CsvSupport.writeVotesCsv(VOTES_BEST_FILE, eventRows);
+        CsvSupport.writePostsCsv(POSTS_BEST_FILE, postRows);
     }
 }

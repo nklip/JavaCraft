@@ -24,15 +24,13 @@ import java.util.concurrent.Future;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.config.Constants;
 import my.javacraft.elastic.cucumber.conf.CucumberSpringConfiguration;
-import my.javacraft.elastic.cucumber.helper.generator.EventCsvSupport;
-import my.javacraft.elastic.cucumber.helper.generator.EventGenerator;
-import my.javacraft.elastic.cucumber.helper.generator.impl.BestEvents;
-import my.javacraft.elastic.cucumber.helper.generator.impl.HotEvents;
-import my.javacraft.elastic.cucumber.helper.generator.impl.NewEvents;
-import my.javacraft.elastic.cucumber.helper.generator.impl.RisingEvents;
-import my.javacraft.elastic.cucumber.helper.generator.impl.TopEvents;
+import my.javacraft.elastic.cucumber.helper.generator.CsvSupport;
+import my.javacraft.elastic.cucumber.helper.generator.VoteGenerator;
+import my.javacraft.elastic.cucumber.helper.generator.impl.*;
+import my.javacraft.elastic.cucumber.helper.generator.impl.TopVotesGenerator;
 import my.javacraft.elastic.model.PostPreview;
 import my.javacraft.elastic.model.VoteRequest;
+import my.javacraft.elastic.service.PostService;
 import my.javacraft.elastic.service.activity.VoteService;
 import org.apache.http.HttpHeaders;
 import org.junit.jupiter.api.Assertions;
@@ -54,19 +52,22 @@ import static io.cucumber.spring.CucumberTestContext.SCOPE_CUCUMBER_GLUE;
 @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 public class PostRankingControllerStepDefinitions {
 
-    /** Minimum number of documents expected in the index after full CSV ingestion (5 files × 1 000 rows). */
+    /** Minimum number of vote documents expected in user-votes index after full CSV ingestion (5 files × 1 000 rows). */
     private static final long MIN_CSV_DOCUMENTS = 5_000L;
 
-    /** Number of CSV files expected in the generated data folder (one per EventGenerator). */
-    private static final int EXPECTED_CSV_FILES = 5;
+    /** Minimum number of post documents expected in posts index after full CSV ingestion (5 generators × 10 posts). */
+    private static final long MIN_POSTS_DOCUMENTS = 50L;
+
+    /** Number of CSV files expected in the generated data folder (5 events + 5 posts, one pair per VoteGenerator). */
+    private static final int EXPECTED_CSV_FILES = 10;
 
     /**
      * Maximum age of cached CSV files before they must be regenerated.
      * <p>
      * Driven by the tightest time window in the test suite: {@code Top posts for DAY} filters
-     * {@code timestamp >= now − 24 h}. HotEvents timestamps are spread within the last 60 minutes
+     * {@code timestamp >= now − 24 h}. HotVotesGenerator timestamps are spread within the last 60 minutes
      * of generation, so they fall outside the DAY window once the files are ~24 h old.
-     * Using 22 h leaves a 2-hour safety buffer (60 min for HotEvents spread + ~60 min for test
+     * Using 22 h leaves a 2-hour safety buffer (60 min for HotVotesGenerator spread + ~60 min for test
      * execution time or clock drift).
      */
     private static final long MAX_CSV_AGE_HOURS = 22;
@@ -85,6 +86,8 @@ public class PostRankingControllerStepDefinitions {
     ElasticsearchClient esClient;
     @Autowired
     VoteService voteService;
+    @Autowired
+    PostService postService;
 
     /**
      * Generates all 5 CSV fixture files into a fixed temporary directory and stores the path in
@@ -97,10 +100,10 @@ public class PostRankingControllerStepDefinitions {
      * Idempotent with age check: if the directory already contains all {@value #EXPECTED_CSV_FILES}
      * CSV files AND they are younger than {@value #MAX_CSV_AGE_HOURS} hours, generation is skipped.
      * Files older than that are regenerated because time-windowed scenarios (e.g. {@code Top posts
-     * for DAY}) depend on HotEvents timestamps being inside the last-24-hours window.
+     * for DAY}) depend on HotVotesGenerator timestamps being inside the last-24-hours window.
      * <p>
      * The generators are pointed at the temp dir via the
-     * {@value EventCsvSupport#OUTPUT_DIRECTORY_PROPERTY} system property, which is cleared
+     * {@value CsvSupport#OUTPUT_DIRECTORY_PROPERTY} system property, which is cleared
      * immediately after generation so it does not bleed into other tests.
      */
     @Given("data folder {string} created in tmp directory")
@@ -110,23 +113,23 @@ public class PostRankingControllerStepDefinitions {
         tmpCsvDir = Path.of(System.getProperty("java.io.tmpdir"), "javacraft-events", relPath);
         Files.createDirectories(tmpCsvDir);
 
-        if (csvFilesAlreadyExistsInValidState()) {
+        if (csvFilesAlreadyExistsInValidState() && false) {
             log.info("CSV files still fresh in '{}', skipping generation", tmpCsvDir);
             return;
         }
         log.info("CSV files missing or stale in '{}', regenerating", tmpCsvDir);
 
-        System.setProperty(EventCsvSupport.OUTPUT_DIRECTORY_PROPERTY, tmpCsvDir.toString());
+        System.setProperty(CsvSupport.OUTPUT_DIRECTORY_PROPERTY, tmpCsvDir.toString());
         try {
-            List<EventGenerator> generators = List.of(
-                    new BestEvents(), new HotEvents(), new NewEvents(), new RisingEvents(), new TopEvents()
+            List<VoteGenerator> generators = List.of(
+                    new BestVoteGenerator(), new HotVotesGenerator(), new NewVotesGenerator(), new RisingVotesGenerator(), new TopVotesGenerator()
             );
-            for (EventGenerator generator : generators) {
-                generator.generateEventsInCsv();
+            for (VoteGenerator generator : generators) {
+                generator.generatePostVotesInCsv();
             }
             log.info("Generated {} CSV files in '{}'", generators.size(), tmpCsvDir);
         } finally {
-            System.clearProperty(EventCsvSupport.OUTPUT_DIRECTORY_PROPERTY);
+            System.clearProperty(CsvSupport.OUTPUT_DIRECTORY_PROPERTY);
         }
     }
 
@@ -135,16 +138,16 @@ public class PostRankingControllerStepDefinitions {
      * CSV files, and the newest file is younger than {@value #MAX_CSV_AGE_HOURS} hours.
      * <p>
      * The age check is necessary because time-windowed scenarios (e.g. {@code Top posts for DAY})
-     * depend on HotEvents timestamps being inside the {@code now − 24 h} window. Files older than
+     * depend on HotVotesGenerator timestamps being inside the {@code now − 24 h} window. Files older than
      * {@value #MAX_CSV_AGE_HOURS} hours would cause those scenarios to return 0 results for
-     * HotEvents and fail the assertion.
+     * HotVotesGenerator and fail the assertion.
      */
     private static boolean csvFilesAlreadyExistsInValidState() throws IOException {
         if (tmpCsvDir == null || !Files.isDirectory(tmpCsvDir)) {
             return false;
         }
         List<Path> csvFiles;
-        try (var stream = Files.list(tmpCsvDir)) {
+        try (var stream = Files.walk(tmpCsvDir)) {
             csvFiles = stream
                     .filter(Files::isRegularFile)
                     .filter(p -> p.getFileName().toString().endsWith(".csv"))
@@ -168,64 +171,106 @@ public class PostRankingControllerStepDefinitions {
     }
 
     /**
-     * Ingests all CSV files from either the temp directory (when
-     * {@link #createDataFolderInTmpDirectory} ran first) or the test-resources classpath.
-     * Files are ingested in parallel — one thread per file, bounded by available CPUs.
+     * Ingests all CSV files in two ordered phases:
+     * <ol>
+     *   <li>{@code posts/posts-*.csv} — creates post documents with {@code karma = 0}</li>
+     *   <li>{@code votes/votes-*.csv} — processes votes, which increment/decrement post karma</li>
+     * </ol>
+     * Posts must be fully indexed before votes so that {@link PostService#updateKarma}
+     * finds an existing document on every vote.
+     * Within each phase files are ingested in parallel.
      */
     @Given("data folder {string} ingested")
     public void ingestDataFolderInParallel(String folderPath) throws IOException {
         List<Path> csvFiles = listCsvFiles(folderPath);
         Assertions.assertFalse(csvFiles.isEmpty(), "No CSV files found in folder: " + folderPath);
 
-        int totalRows = 0;
-        int threads = Math.min(csvFiles.size(), Math.max(1, Runtime.getRuntime().availableProcessors()));
-        try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
-            List<Future<Integer>> futures = csvFiles.stream()
-                    .map(path -> pool.submit(() -> ingestCsvFile(path)))
-                    .toList();
+        List<Path> postsCsvs = csvFiles.stream().filter(p -> p.getFileName().toString().startsWith("posts-")).toList();
+        List<Path> votesCsvs = csvFiles.stream().filter(p -> p.getFileName().toString().startsWith("votes-")).toList();
 
-            for (Future<Integer> future : futures) {
-                try {
-                    totalRows += future.get();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException("CSV folder ingestion interrupted: " + folderPath, e);
-                } catch (ExecutionException e) {
-                    throw new IllegalStateException("Failed to ingest CSV from folder: " + folderPath, e.getCause());
-                }
-            }
-        }
+        int totalRows = 0;
+        totalRows += ingestPhase(postsCsvs, folderPath, "posts");
+        totalRows += ingestPhase(votesCsvs, folderPath, "votes");
 
         Assertions.assertTrue(totalRows > 0, "CSV folder has no ingestible rows: " + folderPath);
         log.info("Ingested {} rows from {} files in '{}'", totalRows, csvFiles.size(), folderPath);
     }
 
+    private int ingestPhase(List<Path> files, String folderPath, String label) throws IOException {
+        if (files.isEmpty()) return 0;
+        int totalRows = 0;
+        int threads = Math.min(files.size(), Math.max(1, Runtime.getRuntime().availableProcessors()));
+        try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
+            List<Future<Integer>> futures = files.stream()
+                    .map(path -> pool.submit(() -> ingestCsvFile(path)))
+                    .toList();
+            for (Future<Integer> future : futures) {
+                try {
+                    totalRows += future.get();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("CSV folder ingestion interrupted (" + label + "): " + folderPath, e);
+                } catch (ExecutionException e) {
+                    throw new IllegalStateException("Failed to ingest CSV from folder (" + label + "): " + folderPath, e.getCause());
+                }
+            }
+        }
+        log.info("Phase '{}': ingested {} rows from {} files", label, totalRows, files.size());
+        return totalRows;
+    }
+
     /**
-     * Precondition: polls ES until the 'user-vote' index contains at least
-     * {@value #MIN_CSV_DOCUMENTS} documents, confirming that the CSV data ingested
-     * by {@link #ingestDataFolderInParallel} is fully visible to search queries.
-     * Fails with a clear diagnostic message if the count is not reached within the wait window.
+     * Precondition: polls ES until both the 'user-votes' index (≥{@value #MIN_CSV_DOCUMENTS} docs)
+     * and the 'posts' index (≥{@value #MIN_POSTS_DOCUMENTS} docs) are fully populated.
+     * Fails with a clear diagnostic message if either count is not reached within the wait window.
      */
     @Given("data folder {string} was ingested")
     public void verifyDataFolderWasIngested(String folderPath) throws InterruptedException {
         Assertions.assertTrue(
-                CucumberSpringConfiguration.assertWithWait(true, () -> countIndexDocuments() >= MIN_CSV_DOCUMENTS),
+                CucumberSpringConfiguration.assertWithWait(true, () -> countVoteDocuments() >= MIN_CSV_DOCUMENTS),
                 ("ES index '%s' does not contain the expected minimum of %d documents after ingesting '%s'. " +
                         "Actual count: %d. Ensure 'Scenario: prepare data' ran first.")
-                        .formatted(Constants.INDEX_USER_VOTE, MIN_CSV_DOCUMENTS, folderPath, countIndexDocuments())
+                        .formatted(Constants.INDEX_USER_VOTES, MIN_CSV_DOCUMENTS, folderPath, countVoteDocuments())
         );
-        log.info("ES confirmed: index '{}' has ≥{} documents — folder '{}' is ready",
-                Constants.INDEX_USER_VOTE, MIN_CSV_DOCUMENTS, folderPath);
+        Assertions.assertTrue(
+                CucumberSpringConfiguration.assertWithWait(true, () -> countPostDocuments() >= MIN_POSTS_DOCUMENTS),
+                ("ES index '%s' does not contain the expected minimum of %d documents after ingesting '%s'. " +
+                        "Actual count: %d. Ensure 'Scenario: prepare data' ran first.")
+                        .formatted(Constants.INDEX_POSTS, MIN_POSTS_DOCUMENTS, folderPath, countPostDocuments())
+        );
+        log.info("ES confirmed: '{}' ≥{} docs, '{}' ≥{} docs — folder '{}' is ready",
+                Constants.INDEX_USER_VOTES, MIN_CSV_DOCUMENTS,
+                Constants.INDEX_POSTS, MIN_POSTS_DOCUMENTS,
+                folderPath);
     }
 
-    /** Returns the current document count in the user-vote index, or 0 on any error. */
-    private long countIndexDocuments() {
+    private long countVoteDocuments() {
         try {
-            return esClient.count(r -> r.index(Constants.INDEX_USER_VOTE)).count();
+            return esClient.count(r -> r.index(Constants.INDEX_USER_VOTES)).count();
         } catch (IOException e) {
-            log.warn("Failed to count documents in index '{}': {}", Constants.INDEX_USER_VOTE, e.getMessage());
+            log.warn("Failed to count documents in index '{}': {}", Constants.INDEX_USER_VOTES, e.getMessage());
             return 0L;
         }
+    }
+
+    private long countPostDocuments() {
+        try {
+            return esClient.count(r -> r.index(Constants.INDEX_POSTS)).count();
+        } catch (IOException e) {
+            log.warn("Failed to count documents in index '{}': {}", Constants.INDEX_POSTS, e.getMessage());
+            return 0L;
+        }
+    }
+
+    /**
+     * Verifies the New endpoint returns {@code expectedSize} results in reverse-chronological order.
+     * Submission time is approximated as min(timestamp). The expected table must list posts
+     * in submission-time DESC order (most recently submitted first).
+     */
+    @Then("new posts endpoint returns {int} ranked results")
+    public void verifyNewPostsReturned(int expectedSize, DataTable expectedPosts) throws InterruptedException {
+        String path = "/new?size=" + expectedSize;
+        verifyRankedPosts(path, expectedSize, expectedPosts, "new");
     }
 
     /**
@@ -293,7 +338,7 @@ public class PostRankingControllerStepDefinitions {
      */
     private List<Path> listCsvFiles(String folderPath) throws IOException {
         if (tmpCsvDir != null) {
-            try (var stream = Files.list(tmpCsvDir)) {
+            try (var stream = Files.walk(tmpCsvDir)) {
                 return stream
                         .filter(Files::isRegularFile)
                         .filter(p -> p.getFileName().toString().endsWith(".csv"))
@@ -320,14 +365,12 @@ public class PostRankingControllerStepDefinitions {
             Assertions.assertNotNull(folderUrl, "CSV folder not found in test resources: " + folderPath);
 
             Path folder = Paths.get(folderUrl.toURI());
-            try (var pathStream = Files.list(folder)) {
+            try (var pathStream = Files.walk(folder)) {
                 return pathStream
                         .filter(Files::isRegularFile)
-                        .map(Path::getFileName)
-                        .map(Path::toString)
-                        .filter(name -> name.endsWith(".csv"))
+                        .filter(p -> p.getFileName().toString().endsWith(".csv"))
                         .sorted()
-                        .map(name -> folderPath + "/" + name)
+                        .map(p -> folderPath + "/" + folder.relativize(p).toString().replace('\\', '/'))
                         .toList();
             }
         } catch (URISyntaxException e) {
@@ -335,13 +378,50 @@ public class PostRankingControllerStepDefinitions {
         }
     }
 
+    /**
+     * Routes ingestion based on file name prefix:
+     * <ul>
+     *   <li>{@code posts-*.csv}  → {@link #ingestPostsCsvFile} → 'posts' index via {@link PostService}</li>
+     *   <li>{@code events-*.csv} → {@link #ingestEventsCsvInputStream} → 'user-votes' index via {@link VoteService}</li>
+     * </ul>
+     */
     private int ingestCsvFile(Path csvFile) throws IOException {
+        String fileName = csvFile.getFileName().toString();
+        if (fileName.startsWith("posts-")) {
+            return ingestPostsCsvFile(csvFile);
+        }
         try (InputStream inputStream = Files.newInputStream(csvFile)) {
-            return ingestCsvInputStream(inputStream, csvFile.toString());
+            return ingestEventsCsvInputStream(inputStream, csvFile.toString());
         }
     }
 
-    private int ingestCsvInputStream(InputStream inputStream, String sourceName) throws IOException {
+    private int ingestPostsCsvFile(Path csvFile) throws IOException {
+        int ingestedRows = 0;
+        try (var reader = new BufferedReader(new InputStreamReader(Files.newInputStream(csvFile), StandardCharsets.UTF_8))) {
+            String header = reader.readLine();
+            Assertions.assertNotNull(header, "CSV file is empty: " + csvFile);
+            Assertions.assertEquals("postId,createdAt", header.trim(),
+                    "Unexpected CSV header in " + csvFile);
+
+            String line;
+            int lineNumber = 1;
+            while ((line = reader.readLine()) != null) {
+                lineNumber++;
+                if (line.isBlank()) continue;
+                String[] values = line.split(",", -1);
+                Assertions.assertEquals(2, values.length,
+                        "Invalid CSV row at line %d in %s".formatted(lineNumber, csvFile));
+
+                postService.createPost(values[0].trim(), values[1].trim());
+                ingestedRows++;
+            }
+        }
+        Assertions.assertTrue(ingestedRows > 0, "Posts CSV has no ingestible rows: " + csvFile);
+        log.info("Ingested {} posts from '{}'", ingestedRows, csvFile);
+        return ingestedRows;
+    }
+
+    private int ingestEventsCsvInputStream(InputStream inputStream, String sourceName) throws IOException {
         int ingestedRows = 0;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
             String header = reader.readLine();

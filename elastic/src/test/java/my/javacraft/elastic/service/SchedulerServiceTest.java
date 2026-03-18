@@ -38,7 +38,7 @@ class SchedulerServiceTest {
         ArgumentCaptor<DeleteByQueryRequest> requestCaptor = ArgumentCaptor.forClass(DeleteByQueryRequest.class);
         verify(esClient).deleteByQuery(requestCaptor.capture());
         Assertions.assertNotNull(requestCaptor.getValue());
-        Assertions.assertEquals(Constants.INDEX_USER_VOTE, requestCaptor.getValue().index().getFirst());
+        Assertions.assertEquals(Constants.INDEX_USER_VOTES, requestCaptor.getValue().index().getFirst());
         Assertions.assertNotNull(requestCaptor.getValue().query());
     }
 
@@ -54,7 +54,7 @@ class SchedulerServiceTest {
                 schedulerService::removeOldActivityRecords
         );
 
-        Assertions.assertEquals("Failed to remove outdated user-vote records.", exception.getMessage());
+        Assertions.assertEquals("Failed to remove outdated user-votes records.", exception.getMessage());
         Assertions.assertNotNull(exception.getCause());
         Assertions.assertEquals("cluster unavailable", exception.getCause().getMessage());
     }

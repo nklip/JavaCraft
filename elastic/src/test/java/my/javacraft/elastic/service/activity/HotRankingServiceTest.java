@@ -30,7 +30,7 @@ import static org.mockito.Mockito.when;
 
 @SuppressWarnings({"unchecked"})
 @ExtendWith(MockitoExtension.class)
-public class HotServiceTest {
+public class HotRankingServiceTest {
 
     @Mock
     ElasticsearchClient esClient;
@@ -39,12 +39,12 @@ public class HotServiceTest {
 
     @Test
     public void testComputeHotScorePositiveVotes() {
-        HotService service = new HotService(esClient);
+        HotRankingService service = new HotRankingService(esClient);
 
         // Arrange: first vote exactly TIME_SCALE seconds after the epoch anchor
         //   seconds = 45 000, order = log₁₀(100) = 2.0
         //   expected = 2.0 + 45000 / 45000 = 3.0
-        long firstSeenMs = (HotService.EPOCH_ANCHOR_SECONDS + (long) HotService.TIME_SCALE) * 1_000L;
+        long firstSeenMs = (HotRankingService.EPOCH_ANCHOR_SECONDS + (long) HotRankingService.TIME_SCALE) * 1_000L;
         double score = service.computeHotScore(110L, 10L, firstSeenMs);   // net = 100
 
         Assertions.assertEquals(3.0, score, 0.001);
@@ -52,10 +52,10 @@ public class HotServiceTest {
 
     @Test
     public void testComputeHotScoreZeroVotes() {
-        HotService service = new HotService(esClient);
+        HotRankingService service = new HotRankingService(esClient);
 
         // score = 0 → order = log₁₀(1) × 0 = 0; hot_score = pure time component
-        long firstSeenMs = (HotService.EPOCH_ANCHOR_SECONDS + (long) HotService.TIME_SCALE) * 1_000L;
+        long firstSeenMs = (HotRankingService.EPOCH_ANCHOR_SECONDS + (long) HotRankingService.TIME_SCALE) * 1_000L;
         double score = service.computeHotScore(0L, 0L, firstSeenMs);
 
         Assertions.assertEquals(1.0, score, 0.001);   // 0 + 45000/45000
@@ -63,11 +63,11 @@ public class HotServiceTest {
 
     @Test
     public void testComputeHotScoreNegativeVotes() {
-        HotService service = new HotService(esClient);
+        HotRankingService service = new HotRankingService(esClient);
 
         // score = -9 → order = log₁₀(9) × (-1) ≈ -0.954
         // time component = 1.0  →  hot_score ≈ 0.046 (still positive — time dominates)
-        long firstSeenMs = (HotService.EPOCH_ANCHOR_SECONDS + (long) HotService.TIME_SCALE) * 1_000L;
+        long firstSeenMs = (HotRankingService.EPOCH_ANCHOR_SECONDS + (long) HotRankingService.TIME_SCALE) * 1_000L;
         double score = service.computeHotScore(1L, 10L, firstSeenMs);   // net = -9
 
         Assertions.assertTrue(score > 0, "time component must dominate a small negative order");
@@ -79,7 +79,7 @@ public class HotServiceTest {
     @Test
     public void testRetrieveHotPostsOrdersBySubmissionTime() throws IOException {
         // postA submitted 1 day later than postB — same net votes, so time decides ranking
-        long anchorMs = HotService.EPOCH_ANCHOR_SECONDS * 1_000L;
+        long anchorMs = HotRankingService.EPOCH_ANCHOR_SECONDS * 1_000L;
         long recentMs = anchorMs + 200_000_000L;          // newer
         long olderMs  = recentMs - 86_400_000L;           // 1 day earlier
 
@@ -95,7 +95,7 @@ public class HotServiceTest {
         when(esClient.search(any(SearchRequest.class), eq(UserVote.class)))
                 .thenReturn(response);
 
-        List<PostPreview> result = new HotService(esClient).retrieveHotPosts(10);
+        List<PostPreview> result = new HotRankingService(esClient).retrieveHotPosts(10);
 
         Assertions.assertNotNull(result);
         Assertions.assertEquals(2, result.size());
@@ -107,7 +107,7 @@ public class HotServiceTest {
     @Test
     public void testRetrieveHotPostsOrdersByVotesWhenSubmissionTimeEqual() throws IOException {
         // Same submission time, different vote counts — higher net votes wins via log₁₀ order
-        long firstSeenMs = HotService.EPOCH_ANCHOR_SECONDS * 1_000L + 200_000_000L;
+        long firstSeenMs = HotRankingService.EPOCH_ANCHOR_SECONDS * 1_000L + 200_000_000L;
 
         // postA: 100 net → order = log₁₀(100) = 2.0
         // postB:  10 net → order = log₁₀(10)  = 1.0
@@ -120,7 +120,7 @@ public class HotServiceTest {
         when(esClient.search(any(SearchRequest.class), eq(UserVote.class)))
                 .thenReturn(response);
 
-        List<PostPreview> result = new HotService(esClient).retrieveHotPosts(10);
+        List<PostPreview> result = new HotRankingService(esClient).retrieveHotPosts(10);
 
         Assertions.assertNotNull(result);
         Assertions.assertEquals(2, result.size());
@@ -134,7 +134,7 @@ public class HotServiceTest {
     public void testRetrieveHotPostsNetNegativeStillRanked() throws IOException {
         // Reddit's formula: downvoted post has negative order but positive time component.
         // The post must still appear — it is NOT filtered out.
-        long firstSeenMs = HotService.EPOCH_ANCHOR_SECONDS * 1_000L + 200_000_000L;
+        long firstSeenMs = HotRankingService.EPOCH_ANCHOR_SECONDS * 1_000L + 200_000_000L;
 
         SearchResponse<UserVote> response = buildHotAggResponse(Map.of(
                 "postA", new long[]{firstSeenMs, 1L, 10L}   // net = -9
@@ -144,7 +144,7 @@ public class HotServiceTest {
         when(esClient.search(any(SearchRequest.class), eq(UserVote.class)))
                 .thenReturn(response);
 
-        List<PostPreview> result = new HotService(esClient).retrieveHotPosts(10);
+        List<PostPreview> result = new HotRankingService(esClient).retrieveHotPosts(10);
 
         Assertions.assertNotNull(result);
         Assertions.assertFalse(result.isEmpty(), "net-negative posts must still appear — time component keeps score positive");
@@ -159,7 +159,7 @@ public class HotServiceTest {
         when(esClient.search(any(SearchRequest.class), eq(UserVote.class)))
                 .thenReturn(response);
 
-        List<PostPreview> result = new HotService(esClient).retrieveHotPosts(10);
+        List<PostPreview> result = new HotRankingService(esClient).retrieveHotPosts(10);
 
         Assertions.assertNotNull(result);
         Assertions.assertTrue(result.isEmpty());

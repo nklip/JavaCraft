@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
  * <p>
  * Two groups of indexes are managed:
  * <ul>
- *   <li><b>user-vote</b> – used by VoteController for ingestion and retrieval</li>
+ *   <li><b>user-votes</b> – used by VoteController for ingestion and retrieval</li>
  *   <li><b>books / movies / music</b> – used by SearchController for full-text search</li>
  * </ul>
  * Index names for the search group match the lowercased {@code ContentCategory} enum values
@@ -35,13 +35,31 @@ public class AdminService {
     static final String INDEX_MOVIES = "movies";
     static final String INDEX_MUSIC = "music";
 
+    /**
+     * Creates the {@code posts} index with typed field mappings.
+     * <ul>
+     *   <li>{@code postId}   – {@code keyword} (exact-match queries)</li>
+     *   <li>{@code createdAt} – {@code date} with ISO-8601 format (sort queries)</li>
+     * </ul>
+     */
+    public IndexCreationResult createPostsIndex() throws IOException {
+        log.info("creating index '{}'...", Constants.INDEX_POSTS);
+
+        Map<String, Property> properties = new LinkedHashMap<>();
+        properties.put("postId",    Property.of(p -> p.keyword(k -> k)));
+        properties.put("createdAt", Property.of(p -> p.date(d -> d.format("strict_date_optional_time"))));
+        properties.put("karma",     Property.of(p -> p.long_(l -> l)));
+
+        return createIndex(Constants.INDEX_POSTS, properties);
+    }
+
     private final ElasticsearchClient esClient;
 
     public record IndexCreationResult(CreateIndexResponse response, boolean created) {
     }
 
     /**
-     * Creates the {@code user-vote} index with typed field mappings.
+     * Creates the {@code user-votes} index with typed field mappings.
      * <p>
      * Field types are chosen to match the immutable event document
      * used by {@code UserVote} and the queries in activity services:
@@ -52,7 +70,7 @@ public class AdminService {
      * </ul>
      */
     public IndexCreationResult createUserVoteIndex() throws IOException {
-        log.info("creating index '{}'...", Constants.INDEX_USER_VOTE);
+        log.info("creating index '{}'...", Constants.INDEX_USER_VOTES);
 
         Map<String, Property> properties = new LinkedHashMap<>();
         properties.put("timestamp", Property.of(p -> p.date(d -> d.format("strict_date_optional_time"))));
@@ -60,7 +78,7 @@ public class AdminService {
         properties.put("postId", Property.of(p -> p.keyword(k -> k)));
         properties.put("action", Property.of(p -> p.keyword(k -> k)));
 
-        return createIndex(Constants.INDEX_USER_VOTE, properties);
+        return createIndex(Constants.INDEX_USER_VOTES, properties);
     }
 
     /**

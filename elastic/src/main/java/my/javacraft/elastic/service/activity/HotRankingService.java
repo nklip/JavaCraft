@@ -18,7 +18,7 @@ import my.javacraft.elastic.model.UserVote;
 import org.springframework.stereotype.Service;
 
 /*
- * HotService simulates Reddit's 'Hot' category.
+ * HotRankingService simulates Reddit's 'Hot' category.
  *
  * 🔥 Hot
  *
@@ -58,7 +58,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class HotService {
+public class HotRankingService {
 
     /** Unix-second epoch anchor used in Reddit's hot formula (Dec 8, 2005). */
     static final long EPOCH_ANCHOR_SECONDS = 1_134_028_003L;
@@ -94,7 +94,7 @@ public class HotService {
      */
     private List<PostPreview> queryHotPosts(int querySize, int limit) throws IOException {
         SearchRequest request = new SearchRequest.Builder()
-                .index(Constants.INDEX_USER_VOTE)
+                .index(Constants.INDEX_USER_VOTES)
                 .size(0)
                 .aggregations(Constants.POST_ID, a -> a
                         .terms(t -> t

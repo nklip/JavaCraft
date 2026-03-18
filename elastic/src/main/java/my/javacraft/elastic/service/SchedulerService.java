@@ -27,7 +27,7 @@ public class SchedulerService {
                     )
             );
             DeleteByQueryRequest deleteByQueryRequest = new DeleteByQueryRequest.Builder()
-                    .index(Constants.INDEX_USER_VOTE)
+                    .index(Constants.INDEX_USER_VOTES)
                     .query(rangeQuery._toQuery())
                     .build();
 
@@ -35,8 +35,8 @@ public class SchedulerService {
             DeleteByQueryResponse deleteByQueryResponse = esClient.deleteByQuery(deleteByQueryRequest);
             return deleteByQueryResponse.deleted();
         } catch (IOException ioe) {
-            log.error("Failed to remove outdated user-vote records.", ioe);
-            throw new IllegalStateException("Failed to remove outdated user-vote records.", ioe);
+            log.error("Failed to remove outdated user-votes records.", ioe);
+            throw new IllegalStateException("Failed to remove outdated user-votes records.", ioe);
         }
     }
 }

@@ -12,6 +12,6 @@ package my.javacraft.elastic.cucumber.helper.generator;
  *
  * Events should be generated within the last 6 months.
  */
-public interface EventGenerator {
-    void generateEventsInCsv();
+public interface VoteGenerator {
+    void generatePostVotesInCsv();
 }

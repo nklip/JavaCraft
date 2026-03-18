@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 @RestController
 @Validated
 @Tag(name = "2. User activity", description = "API(s) for hit count services")
-@RequestMapping(path = "/api/services/user-vote")
+@RequestMapping(path = "/api/services/user-votes")
 @RequiredArgsConstructor
 public class VoteController {
 
@@ -34,17 +34,20 @@ public class VoteController {
     @Operation(
             summary = "Process VoteRequest",
             description = """
-            ┌──────────┬──────────┬──────────┐
-            │ Status   │ Action   │ Result   │
-            ├──────────┼──────────┼──────────┤
-            │ NOTHING  │ UPVOTE   │ UPVOTE   │
-            │ UPVOTE   │ UPVOTE   │ UPVOTE   │
-            │ DOWNVOTE │ UPVOTE   │ UPVOTE   │
-            │ UPVOTE   │ DOWNVOTE │ DOWNVOTE │
-            │ NOTHING  │ DOWNVOTE │ DOWNVOTE │
-            │ DOWNVOTE │ DOWNVOTE │ DOWNVOTE │
-            │ DOWNVOTE │ UPVOTE   │ UPVOTE   │
-            └──────────┴──────────┴──────────┘
+            Karma change text table:
+            ┌──────────────┬────────────┬───────────┬───────┬─────────────────────┐
+            │ Prior state  │ New action │ ES Result │ Delta │ Math                │
+            ├──────────────┼────────────┼───────────┼───────┼─────────────────────┤
+            │ No document  │ UPVOTE     │ Created   │ +1    │ 0 -> +1             │
+            │ No document  │ DOWNVOTE   │ Created   │ -1    │ 0 -> -1             │
+            │ UPVOTE       │ UPVOTE     │ NoOp      │ 0     │ no write            │
+            │ DOWNVOTE     │ DOWNVOTE   │ NoOp      │ 0     │ no write            │
+            │ DOWNVOTE     │ UPVOTE     │ Updated   │ +2    │ -1 -> +1 = net +2   │
+            │ UPVOTE       │ DOWNVOTE   │ Updated   │ -2    │ +1 -> -1 = net -2   │
+            │ was UPVOTE   │ NOVOTE     │ Deleted   │ -1    │ +1 -> 0 = net -1    │
+            │ was DOWNVOTE │ NOVOTE     │ Deleted   │ +1    │ -1 -> 0 = net +1    │
+            │ No document  │ NOVOTE     │ NotFound  │ 0     │ nothing to undo     │
+            └──────────────┴────────────┴───────────┴───────┴─────────────────────┘
             """
     )
     @ApiResponses(value = {
