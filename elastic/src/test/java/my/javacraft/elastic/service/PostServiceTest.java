@@ -56,13 +56,15 @@ public class PostServiceTest {
         Post doc = request.document();
         Assertions.assertEquals("abc123", doc.postId());
         Assertions.assertEquals("user-001", doc.author());
-        Assertions.assertEquals(0L, doc.karma(), "initial karma must be zero");
+        Assertions.assertEquals(0L,  doc.karma(),       "initial karma must be zero");
+        Assertions.assertEquals(0.0, doc.risingScore(), "initial risingScore must be zero — no votes yet");
         Assertions.assertNotNull(doc.createdAt(), "createdAt must be server-generated");
 
         // returned Post must reflect exactly what was indexed
         Assertions.assertEquals("abc123", returned.postId());
         Assertions.assertEquals("user-001", returned.author());
-        Assertions.assertEquals(0L, returned.karma());
+        Assertions.assertEquals(0L,  returned.karma());
+        Assertions.assertEquals(0.0, returned.risingScore());
         Assertions.assertNotNull(returned.createdAt());
     }
 

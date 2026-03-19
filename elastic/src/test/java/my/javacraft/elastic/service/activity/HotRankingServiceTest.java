@@ -33,8 +33,8 @@ public class HotRankingServiceTest {
         // ES returns hits sorted by hotScore DESC — service must preserve that order.
         // postA has a lower karma but was submitted more recently, so its hotScore is higher.
         SearchResponse<Post> response = buildPostsResponse(List.of(
-                new Post("postA", "user-001", "2024-06-01T00:00:00Z",  5L, 20.5),  // higher hotScore
-                new Post("postB", "user-002", "2024-01-01T00:00:00Z", 50L, 18.3)   // lower hotScore
+                new Post("postA", "user-001", "2024-06-01T00:00:00Z",  5L, 20.5, 0.0),  // higher hotScore
+                new Post("postB", "user-002", "2024-01-01T00:00:00Z", 50L, 18.3, 0.0)   // lower hotScore
         ));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
@@ -54,7 +54,7 @@ public class HotRankingServiceTest {
         // Reddit's formula: downvoted post has negative order but positive time component.
         // The post must still appear — it is NOT filtered out.
         SearchResponse<Post> response = buildPostsResponse(List.of(
-                new Post("postA", "user-001", "2024-01-01T00:00:00Z", -9L, 0.046)
+                new Post("postA", "user-001", "2024-01-01T00:00:00Z", -9L, 0.046, 0.0)
         ));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
@@ -83,11 +83,11 @@ public class HotRankingServiceTest {
     @Test
     public void testRetrieveHotPostsRespectsLimit() throws IOException {
         SearchResponse<Post> response = buildPostsResponse(List.of(
-                new Post("postA", "user-001", "2024-01-05T00:00:00Z", 10L, 5.0),
-                new Post("postB", "user-002", "2024-01-04T00:00:00Z", 10L, 4.8),
-                new Post("postC", "user-003", "2024-01-03T00:00:00Z", 10L, 4.6),
-                new Post("postD", "user-004", "2024-01-02T00:00:00Z", 10L, 4.4),
-                new Post("postE", "user-005", "2024-01-01T00:00:00Z", 10L, 4.2)
+                new Post("postA", "user-001", "2024-01-05T00:00:00Z", 10L, 5.0, 0.0),
+                new Post("postB", "user-002", "2024-01-04T00:00:00Z", 10L, 4.8, 0.0),
+                new Post("postC", "user-003", "2024-01-03T00:00:00Z", 10L, 4.6, 0.0),
+                new Post("postD", "user-004", "2024-01-02T00:00:00Z", 10L, 4.4, 0.0),
+                new Post("postE", "user-005", "2024-01-01T00:00:00Z", 10L, 4.2, 0.0)
         ));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());

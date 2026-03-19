@@ -2,6 +2,7 @@ package my.javacraft.elastic.service;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.ElasticsearchException;
+import co.elastic.clients.elasticsearch._types.ErrorCause;
 import co.elastic.clients.elasticsearch._types.Script;
 import co.elastic.clients.elasticsearch.core.IndexRequest;
 import co.elastic.clients.elasticsearch.core.UpdateRequest;
@@ -11,6 +12,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.config.Constants;
@@ -48,7 +50,11 @@ public class PostService {
             "double sign = k > 0 ? 1.0 : (k < 0 ? -1.0 : 0.0); " +
             "double order = Math.log10(Math.max((double) Math.abs(k), 1.0)) * sign; " +
             "long epochSec = Instant.parse(ctx._source.createdAt).getEpochSecond(); " +
-            "ctx._source.hotScore = order + (epochSec - 1134028003L) / 45000.0;";
+            "ctx._source.hotScore = order + (epochSec - 1134028003L) / 45000.0; " +
+            "long nowSec = params.nowSec; " +
+            "long ageSeconds = nowSec - epochSec; " +
+            "if (ageSeconds < 1L) { ageSeconds = 1L; } " +
+            "ctx._source.risingScore = (double) k / (double) ageSeconds;";
 
     private final ElasticsearchClient esClient;
     private final IdGenerator idGenerator;
@@ -68,8 +74,29 @@ public class PostService {
         Instant created  = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         String createdAt = created.toString();
         double hotScore  = (created.getEpochSecond() - HOT_EPOCH_ANCHOR) / HOT_TIME_SCALE;
-        Post post = new Post(postId, authorUserId, createdAt, 0L, hotScore);
+        Post post = new Post(postId, authorUserId, createdAt, 0L, hotScore, 0.0);
 
+        /*
+         * Painless script approaches which didn't work out
+         * ┌────────────────────────────────────┬────────┬──────────────────────────────────────────────────────┐
+         * │ Approach                           │ Works? │ Why it failed                                        │
+         * ├────────────────────────────────────┼────────┼──────────────────────────────────────────────────────┤
+         * │ params.nowEpoch in Math.max(…, 1L) │  No    │ params.* is static type def;                         │
+         * │                                    │        │ no Math.max(def, long) overload                      │
+         * ├────────────────────────────────────┼────────┼──────────────────────────────────────────────────────┤
+         * │ System.currentTimeMillis()         │  No    │ Not in the Painless update-context whitelist         │
+         * ├────────────────────────────────────┼────────┼──────────────────────────────────────────────────────┤
+         * │ Instant.now()                      │ No     │ Non-deterministic;                                   │
+         * │                                    │        │ excluded from update-context whitelist               │
+         * ├────────────────────────────────────┼────────┼──────────────────────────────────────────────────────┤
+         * │ ctx._now                           │  No    │ Watcher-specific field;                              │
+         * │                                    │        │ null in standard update context                      │
+         * ├────────────────────────────────────┼────────┼──────────────────────────────────────────────────────┤
+         * │ long nowSec = params.nowSec;       │ Yes    │ Runtime coercion from JSON number -> long;           │
+         * │                                    │        │ all subsequent ops are fully typed                   │
+         * └────────────────────────────────────┴────────┴──────────────────────────────────────────────────────┘
+         *
+         */
         IndexRequest<Post> request = new IndexRequest.Builder<Post>()
                 .index(Constants.INDEX_POSTS)
                 .id(postId)
@@ -95,9 +122,13 @@ public class PostService {
      * @param delta  +1/−1 for new vote; +2/−2 for vote flip; never 0 (callers skip)
      */
     public void updateScores(String postId, int delta) throws IOException {
+        long nowSec = Instant.now().getEpochSecond();
         Script script = Script.of(s -> s
                 .source(SCORES_SCRIPT)
-                .params(Map.of("delta", JsonData.of(delta)))
+                .params(Map.of(
+                        "delta",  JsonData.of(delta),
+                        "nowSec", JsonData.of(nowSec)
+                ))
         );
 
         var request = new UpdateRequest.Builder<Post, Post>()
@@ -117,6 +148,16 @@ public class PostService {
                         postId, Constants.INDEX_POSTS);
                 return;
             }
+            ErrorCause errorCause = ex.error();
+            log.error("script update failed — postId='{}', type='{}', reason='{}', causedBy='{}'",
+                    postId,
+                    errorCause.type(),
+                    errorCause.reason(),
+                    Optional.of(errorCause)
+                            .map(ErrorCause::causedBy)
+                            .map(ErrorCause::reason)
+                            .orElse("none")
+            );
             throw ex;
         }
     }

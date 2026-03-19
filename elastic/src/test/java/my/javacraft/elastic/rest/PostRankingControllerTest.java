@@ -52,9 +52,9 @@ public class PostRankingControllerTest {
     public void testNewPostsReturnsServiceResultsInOrder() throws IOException {
         // New endpoint must preserve service output order (chronological, not karma-sorted)
         List<Post> posts = List.of(
-                new Post("postA", "user-001", "2024-01-03T00:00:00Z",  2L, 0.0),
-                new Post("postB", "user-002", "2024-01-02T00:00:00Z", 20L, 0.0),
-                new Post("postC", "user-003", "2024-01-01T00:00:00Z", 10L, 0.0)
+                new Post("postA", "user-001", "2024-01-03T00:00:00Z",  2L, 0.0, 0.0),
+                new Post("postB", "user-002", "2024-01-02T00:00:00Z", 20L, 0.0, 0.0),
+                new Post("postC", "user-003", "2024-01-01T00:00:00Z", 10L, 0.0, 0.0)
         );
         when(newRankingService.retrieveNewPosts(anyInt())).thenReturn(posts);
 
@@ -145,9 +145,9 @@ public class PostRankingControllerTest {
     public void testRetrieveHotPostsReturnsServiceResultsAsIs() throws IOException {
         // Hot endpoint delegates ordering entirely to HotRankingService — no controller-level sort
         List<Post> posts = List.of(
-                new Post("postA", "user-001", "2024-01-01T00:00:00Z", 10L, 3.5),
-                new Post("postB", "user-002", "2024-01-01T00:00:00Z", 50L, 5.0),
-                new Post("postC", "user-003", "2024-01-01T00:00:00Z", 30L, 4.2)
+                new Post("postA", "user-001", "2024-01-01T00:00:00Z", 10L, 3.5, 0.0),
+                new Post("postB", "user-002", "2024-01-01T00:00:00Z", 50L, 5.0, 0.0),
+                new Post("postC", "user-003", "2024-01-01T00:00:00Z", 30L, 4.2, 0.0)
         );
         when(hotRankingService.retrieveHotPosts(anyInt())).thenReturn(posts);
 

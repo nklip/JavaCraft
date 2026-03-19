@@ -37,7 +37,7 @@ public class TopRankingServiceTest {
     public void testRetrieveTopPostsAllTime() throws IOException {
         // ES returns hits sorted by karma DESC — service must preserve that order.
         SearchResponse<Post> response = buildPostsResponse(List.of(
-                new Post("post-1", "user-001", "2024-01-01T00:00:00Z", 90L, 3.0)
+                new Post("post-1", "user-001", "2024-01-01T00:00:00Z", 90L, 3.0, 0.0)
         ));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
@@ -56,8 +56,8 @@ public class TopRankingServiceTest {
         // ES sorts by karma DESC — service returns in the order provided by ES.
         // postB has higher karma and is returned first by ES (simulated here).
         SearchResponse<Post> response = buildPostsResponse(List.of(
-                new Post("postB", "user-002", "2024-01-01T00:00:00Z", 50L, 2.5),
-                new Post("postA", "user-001", "2024-01-01T00:00:00Z", 20L, 2.0)
+                new Post("postB", "user-002", "2024-01-01T00:00:00Z", 50L, 2.5, 0.0),
+                new Post("postA", "user-001", "2024-01-01T00:00:00Z", 20L, 2.0, 0.0)
         ));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
@@ -93,7 +93,7 @@ public class TopRankingServiceTest {
                 .thenReturn("2026-03-09T00:00:00.000Z");
 
         SearchResponse<Post> response = buildPostsResponse(List.of(
-                new Post("post-recent", "user-001", "2026-03-10T00:00:00Z", 45L, 2.0)
+                new Post("post-recent", "user-001", "2026-03-10T00:00:00Z", 45L, 2.0, 0.0)
         ));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());

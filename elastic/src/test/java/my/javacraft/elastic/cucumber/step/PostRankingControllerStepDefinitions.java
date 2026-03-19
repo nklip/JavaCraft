@@ -200,7 +200,7 @@ public class PostRankingControllerStepDefinitions {
         log.info("Ingested {} rows from {} files in '{}'", totalRows, csvFiles.size(), folderPath);
     }
 
-    private int ingestPhase(List<Path> files, String folderPath, String label) throws IOException {
+    private int ingestPhase(List<Path> files, String folderPath, String label) {
         if (files.isEmpty()) return 0;
         int totalRows = 0;
         int threads = Math.min(files.size(), Math.max(1, Runtime.getRuntime().availableProcessors()));
@@ -432,7 +432,7 @@ public class PostRankingControllerStepDefinitions {
                 String author    = values[2].trim();
                 long epochSec    = Instant.parse(createdAt).getEpochSecond();
                 double hotScore  = (epochSec - 1_134_028_003L) / 45_000.0;
-                Post post = new Post(postId, author, createdAt, 0L, hotScore);
+                Post post = new Post(postId, author, createdAt, 0L, hotScore, 0.0);
                 esClient.index(i -> i
                         .index(Constants.INDEX_POSTS)
                         .id(postId)

@@ -12,5 +12,4 @@ public final class Constants {
     public static final String ACTION = "action";
     public static final String KARMA = "karma";
     public static final String HOT_SCORE = "hotScore";
-    public static final String AUTHOR = "author";
 }

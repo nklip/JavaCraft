@@ -11,6 +11,8 @@ package my.javacraft.elastic.cucumber.helper.generator;
  * Each generateEventsInCsv should generate between 1000-6000 events, depends on necessity.
  *
  * Events should be generated within the last 6 months.
+ *
+ * Should have next implementations: Best / Hot / New / Rising / Top (day, week, month, year, all)
  */
 public interface VoteGenerator {
     void generatePostVotesInCsv();
