@@ -17,7 +17,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.config.Constants;
 import my.javacraft.elastic.model.Post;
-import my.javacraft.elastic.service.post.IdGenerator;
 import org.springframework.stereotype.Service;
 
 /**

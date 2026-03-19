@@ -11,7 +11,7 @@ import my.javacraft.elastic.model.VoteRequest;
 import my.javacraft.elastic.model.VoteResponse;
 import my.javacraft.elastic.service.DateService;
 import my.javacraft.elastic.service.SchedulerService;
-import my.javacraft.elastic.service.activity.VoteService;
+import my.javacraft.elastic.service.VoteService;
 import org.junit.jupiter.api.Assertions;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Scope;
@@ -58,7 +58,7 @@ public class SchedulerJobsStepDefinitions {
         Assertions.assertTrue(
                 CucumberSpringConfiguration.assertWithWait(
                         expectedResult,
-                        () -> schedulerService.removeOldActivityRecords()
+                        () -> schedulerService.removeOldUserVotes()
                 )
         );
     }

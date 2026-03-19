@@ -37,21 +37,21 @@ import my.javacraft.elastic.cucumber.helper.generator.VoteGenerator;
  * The ⭐ Best sort uses the Wilson score lower bound (95 % confidence interval on
  * the upvote ratio). Wilson score is bounded asymptotically by the upvote ratio:
  * no matter how many voters you add, Wilson(90 %) < 0.90 < Wilson(91 %) for
- * large n. So BestVoteGenerator (81-90 %) can NEVER beat TopVotesGenerator
+ * large n. So BestVotesGenerator (81-90 %) can NEVER beat TopVotesGenerator
  * (91-100 %) in Wilson score when both use the same voter count.
  *
- * To let posts 01-10 (BestVoteGenerator, 83-92 %) win Best, we must bring
- * TopVotesGenerator's Wilson scores BELOW BestVoteGenerator's Wilson scores.
+ * To let posts 01-10 (BestVotesGenerator, 83-92 %) win Best, we must bring
+ * TopVotesGenerator's Wilson scores BELOW BestVotesGenerator's Wilson scores.
  * That means TopVotesGenerator must use a LOWER upvote ratio (61-70 %).
  *
  * To keep posts 41-50 winning Top ALL (highest karma, no time filter), the
  * reduced ratio is compensated by more voters: n=500 gives
  *   karma = 500 × (2 × upvote% − 1): 110, 120, …, 200
- * which is above BestVoteGenerator's maximum (84).
+ * which is above BestVotesGenerator's maximum (84).
  *
  * Wilson score comparison (deciding the Best winner):
- *   BestVoteGenerator  post-01 ( 83 %, n=100): Wilson ≈ 0.745  ← lowest, still wins
- *   BestVoteGenerator  post-10 ( 92 %, n=100): Wilson ≈ 0.850  ← highest BestVoteGenerator
+ *   BestVotesGenerator  post-01 ( 83 %, n=100): Wilson ≈ 0.745  ← lowest, still wins
+ *   BestVotesGenerator  post-10 ( 92 %, n=100): Wilson ≈ 0.850  ← highest BestVotesGenerator
  *   TopVotesGenerator  post-41 ( 61 %, n=500): Wilson ≈ 0.567  ← highest TopVotesGenerator …loses
  *   TopVotesGenerator  post-50 ( 70 %, n=500): Wilson ≈ 0.658  ← loses to even post-01
  */
@@ -61,7 +61,7 @@ public class TopVotesGenerator implements VoteGenerator {
 
     /**
      * 500 voters per post — 5× the shared constant — so that karma (110-200) exceeds
-     * BestVoteGenerator's ceiling (80) at the lower 61-70 % upvote ratios used here.
+     * BestVotesGenerator's ceiling (80) at the lower 61-70 % upvote ratios used here.
      * karma = n × (2 × upvote% − 1), e.g. 500 × 0.22 = 110 for post-41 (61 %).
      */
     private static final int USERS_PER_POST = 500;
@@ -86,7 +86,7 @@ public class TopVotesGenerator implements VoteGenerator {
      *   posts 21-30  karma   2–  20  (NewVotesGenerator,    51-60%, n=100)  → New feed
      *   posts 11-20  karma  24–  42  (HotVotesGenerator,    62-71%, n=100)  → Hot + Top DAY + Top WEEK
      *   posts 31-40  karma  44–  62  (RisingVotesGenerator, 72-81%, n=100)  → Top MONTH
-     *   posts 01-10  karma  66–  84  (BestVoteGenerator,    83-92%, n=100)  → Top YEAR + Best ⭐
+     *   posts 01-10  karma  66–  84  (BestVotesGenerator,    83-92%, n=100)  → Top YEAR + Best ⭐
      *   posts 41-50  karma 110– 200  (TopVotesGenerator,    61-70%, n=500)  → Top ALL
      *
      * Date pattern: all events are 366–730 days old.

@@ -4,9 +4,9 @@ import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
-import my.javacraft.elastic.service.activity.HotRankingService;
-import my.javacraft.elastic.service.activity.TopRankingService;
-import my.javacraft.elastic.service.activity.VoteService;
+import my.javacraft.elastic.service.ranking.HotRankingService;
+import my.javacraft.elastic.service.ranking.TopRankingService;
+import my.javacraft.elastic.service.VoteService;
 
 /**
  * Vote document stored in the 'user-votes' index.

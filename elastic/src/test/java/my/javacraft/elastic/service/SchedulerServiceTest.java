@@ -25,14 +25,14 @@ class SchedulerServiceTest {
     private DateService dateService;
 
     @Test
-    void testRemoveOldActivityRecordsShouldReturnDeletedCount() throws IOException {
+    void testRemoveOldUserVotesShouldReturnDeletedCount() throws IOException {
         SchedulerService schedulerService = new SchedulerService(esClient, dateService);
         DeleteByQueryResponse response = new DeleteByQueryResponse.Builder().deleted(42L).build();
 
         when(dateService.getNDaysBeforeDate(Constants.YEAR)).thenReturn("2024-01-01T00:00:00Z");
         when(esClient.deleteByQuery(any(DeleteByQueryRequest.class))).thenReturn(response);
 
-        Long deleted = schedulerService.removeOldActivityRecords();
+        Long deleted = schedulerService.removeOldUserVotes();
 
         Assertions.assertEquals(42L, deleted);
         ArgumentCaptor<DeleteByQueryRequest> requestCaptor = ArgumentCaptor.forClass(DeleteByQueryRequest.class);
@@ -43,7 +43,7 @@ class SchedulerServiceTest {
     }
 
     @Test
-    void testRemoveOldActivityRecordsShouldThrowWhenDeleteByQueryFails() throws IOException {
+    void testRemoveOldUserVotesShouldThrowWhenDeleteByQueryFails() throws IOException {
         SchedulerService schedulerService = new SchedulerService(esClient, dateService);
 
         when(dateService.getNDaysBeforeDate(Constants.YEAR)).thenReturn("2024-01-01T00:00:00Z");
@@ -51,7 +51,7 @@ class SchedulerServiceTest {
 
         IllegalStateException exception = Assertions.assertThrows(
                 IllegalStateException.class,
-                schedulerService::removeOldActivityRecords
+                schedulerService::removeOldUserVotes
         );
 
         Assertions.assertEquals("Failed to remove outdated user-votes records.", exception.getMessage());

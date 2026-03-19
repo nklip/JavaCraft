@@ -1,4 +1,4 @@
-package my.javacraft.elastic.service.activity;
+package my.javacraft.elastic.service;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.Result;
@@ -20,7 +20,6 @@ import my.javacraft.elastic.model.UserAction;
 import my.javacraft.elastic.model.UserVote;
 import my.javacraft.elastic.model.VoteRequest;
 import my.javacraft.elastic.model.VoteResponse;
-import my.javacraft.elastic.service.PostService;
 import org.springframework.stereotype.Service;
 
 /*

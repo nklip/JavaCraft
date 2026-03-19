@@ -30,7 +30,7 @@ import my.javacraft.elastic.cucumber.helper.generator.impl.*;
 import my.javacraft.elastic.cucumber.helper.generator.impl.TopVotesGenerator;
 import my.javacraft.elastic.model.Post;
 import my.javacraft.elastic.model.VoteRequest;
-import my.javacraft.elastic.service.activity.VoteService;
+import my.javacraft.elastic.service.VoteService;
 import org.apache.http.HttpHeaders;
 import org.junit.jupiter.api.Assertions;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -119,7 +119,7 @@ public class PostRankingControllerStepDefinitions {
         System.setProperty(CsvSupport.OUTPUT_DIRECTORY_PROPERTY, tmpCsvDir.toString());
         try {
             List<VoteGenerator> generators = List.of(
-                    new BestVoteGenerator(), new HotVotesGenerator(), new NewVotesGenerator(), new RisingVotesGenerator(), new TopVotesGenerator()
+                    new BestVotesGenerator(), new HotVotesGenerator(), new NewVotesGenerator(), new RisingVotesGenerator(), new TopVotesGenerator()
             );
             for (VoteGenerator generator : generators) {
                 generator.generatePostVotesInCsv();

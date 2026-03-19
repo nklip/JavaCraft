@@ -151,20 +151,20 @@ public class SearchService {
         Set<ContentCategoryMetadata> contentCategoryMetadataList = metadataService.getContentCategoryMetadata();
 
         // filter type we look
-        Set<ContentCategoryMetadata> ContentCategoryToUseInQuery = contentCategoryMetadataList
+        Set<ContentCategoryMetadata> contentCategoryToUseInQuery = contentCategoryMetadataList
                 .stream()
                 .filter(s -> s.getContentCategory().equals(ContentCategory.valueByName(contentSearchRequest.getType())))
                 .findFirst()
                 .map(Collections::singleton)
                 .orElse(Collections.emptySet());
 
-        if (ContentCategoryToUseInQuery.isEmpty() || ContentCategory.valueByName(contentSearchRequest.getType()) == ContentCategory.ALL) {
-            ContentCategoryToUseInQuery = contentCategoryMetadataList;
+        if (contentCategoryToUseInQuery.isEmpty() || ContentCategory.valueByName(contentSearchRequest.getType()) == ContentCategory.ALL) {
+            contentCategoryToUseInQuery = contentCategoryMetadataList;
         }
         
         // generate queries
-        for (ContentCategoryMetadata contentCategoryMetadata : ContentCategoryToUseInQuery) {
-            addToRequestItems(contentSearchRequest, contentCategoryMetadata, requestItems);
+        for (ContentCategoryMetadata ccMetadata : contentCategoryToUseInQuery) {
+            addToRequestItems(contentSearchRequest, ccMetadata, requestItems);
         }
 
         return requestItems;

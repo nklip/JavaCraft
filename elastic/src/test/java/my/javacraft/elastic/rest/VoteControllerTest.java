@@ -4,7 +4,7 @@ import java.io.IOException;
 import my.javacraft.elastic.model.VoteRequest;
 import my.javacraft.elastic.model.VoteResponse;
 import my.javacraft.elastic.service.DateService;
-import my.javacraft.elastic.service.activity.VoteService;
+import my.javacraft.elastic.service.VoteService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,7 +17,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-public class UserVoteControllerTest {
+public class VoteControllerTest {
 
     @Mock
     DateService dateService;

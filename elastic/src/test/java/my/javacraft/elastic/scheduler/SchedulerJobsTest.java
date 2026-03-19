@@ -7,18 +7,18 @@ import org.mockito.Mockito;
 public class SchedulerJobsTest {
 
     @Test
-    public void testCleanUpActivityTask() {
+    public void testCleanUpUserVotes() {
         SchedulerService schedulerService = Mockito.mock(SchedulerService.class);
         SchedulerJobs schedulerJobs = new SchedulerJobs(schedulerService);
 
-        Mockito.when(schedulerService.removeOldActivityRecords()).thenReturn(42L);
+        Mockito.when(schedulerService.removeOldUserVotes()).thenReturn(42L);
 
-        schedulerJobs.cleanUpActivityTask();
+        schedulerJobs.cleanUpUserVotes();
 
         Mockito.verify(
                 schedulerService,
                 Mockito.atLeast(1)
-        ).removeOldActivityRecords();
+        ).removeOldUserVotes();
 
     }
 }

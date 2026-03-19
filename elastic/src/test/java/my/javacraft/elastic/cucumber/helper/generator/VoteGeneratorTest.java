@@ -97,8 +97,8 @@ class VoteGeneratorTest {
 
     private static Stream<Arguments> generatorCases() {
         return Stream.of(
-                // BestVoteGenerator: 31-364 days old, 100 users/post → maxAgeDays=364
-                Arguments.of("votes-best.csv",   new BestVoteGenerator(),    1,  10, 364, 100),
+                // BestVotesGenerator: 31-364 days old, 100 users/post → maxAgeDays=364
+                Arguments.of("votes-best.csv",   new BestVotesGenerator(),    1,  10, 364, 100),
                 // HotVotesGenerator: all events within 60 min, 100 users/post → maxAgeDays=1
                 Arguments.of("votes-hot.csv",    new HotVotesGenerator(),    11,  20,   1, 100),
                 // NewVotesGenerator: 2-6 days old, 100 users/post → maxAgeDays=6
@@ -107,7 +107,7 @@ class VoteGeneratorTest {
                 Arguments.of("votes-rising.csv", new RisingVotesGenerator(), 31,  40,  29, 100),
                 // TopVotesGenerator: 366-730 days old, 500 users/post → maxAgeDays=731
                 // 500 users compensate for the lower 61-70% upvote ratio, pushing karma (110-200) above
-                // BestVoteGenerator's ceiling (80) so posts 41-50 still win Top ALL.
+                // BestVotesGenerator's ceiling (80) so posts 41-50 still win Top ALL.
                 Arguments.of("votes-top.csv",    new TopVotesGenerator(),    41,  50, 731, 500)
         );
     }

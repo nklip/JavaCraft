@@ -1,4 +1,4 @@
-package my.javacraft.elastic.service.post;
+package my.javacraft.elastic.service;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.ExistsRequest;

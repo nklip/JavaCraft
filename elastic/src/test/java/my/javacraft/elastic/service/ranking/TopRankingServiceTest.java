@@ -1,4 +1,4 @@
-package my.javacraft.elastic.service.activity;
+package my.javacraft.elastic.service.ranking;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.SearchRequest;

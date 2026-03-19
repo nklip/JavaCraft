@@ -13,7 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.model.VoteRequest;
 import my.javacraft.elastic.model.VoteResponse;
 import my.javacraft.elastic.service.DateService;
-import my.javacraft.elastic.service.activity.VoteService;
+import my.javacraft.elastic.service.VoteService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 @Slf4j
 @RestController
 @Validated
-@Tag(name = "2. User activity", description = "API(s) for hit count services")
+@Tag(name = "2. User activity", description = "API(s) for user votes")
 @RequestMapping(path = "/api/services/user-votes")
 @RequiredArgsConstructor
 public class VoteController {

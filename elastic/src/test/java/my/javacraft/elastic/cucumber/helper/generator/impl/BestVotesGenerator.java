@@ -37,7 +37,7 @@ import my.javacraft.elastic.cucumber.helper.generator.VoteGenerator;
  * TopVotesGenerator events are 366–730 days old and fall outside that window.
  * Within the YEAR window, posts 01-10 (karma 62-80) have the highest karma.
  */
-public class BestVoteGenerator implements VoteGenerator {
+public class BestVotesGenerator implements VoteGenerator {
     private static final String VOTES_BEST_FILE = "votes-best.csv";
     private static final String POSTS_BEST_FILE = "posts-best.csv";
 

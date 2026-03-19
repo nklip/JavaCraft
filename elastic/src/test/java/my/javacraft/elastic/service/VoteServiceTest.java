@@ -1,4 +1,4 @@
-package my.javacraft.elastic.service.activity;
+package my.javacraft.elastic.service;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.Result;
@@ -14,7 +14,6 @@ import my.javacraft.elastic.model.UserVote;
 import my.javacraft.elastic.model.VoteRequest;
 import my.javacraft.elastic.model.VoteRequestTest;
 import my.javacraft.elastic.model.VoteResponse;
-import my.javacraft.elastic.service.PostService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -53,7 +52,7 @@ import static org.mockito.Mockito.when;
  */
 @SuppressWarnings("unchecked")
 @ExtendWith(MockitoExtension.class)
-public class UserVoteServiceTest {
+public class VoteServiceTest {
 
     @Mock
     ElasticsearchClient esClient;

@@ -41,11 +41,11 @@ public class SchedulerJobs {
      * The * in the other positions represents any value, so it will run every hour regardless of the day of the month, month, day of the week, or year.
      */
     @Scheduled(cron = "0 0 * * * *") // Runs at the top of every hour
-    public void cleanUpActivityTask() {
-        log.info("executing clean up activity task...");
+    public void cleanUpUserVotes() {
+        log.info("cleaning up user votes..");
 
-        log.info("removed documents by clean up activity task = '{}'",
-                schedulerService.removeOldActivityRecords()
+        log.info("removed old user votes = '{}'",
+                schedulerService.removeOldUserVotes()
         );
     }
 }

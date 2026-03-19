@@ -18,7 +18,7 @@ public class SchedulerService {
     private final ElasticsearchClient esClient;
     private final DateService dateService;
 
-    public Long removeOldActivityRecords() {
+    public Long removeOldUserVotes() {
         try {
             RangeQuery rangeQuery = RangeQuery.of(r -> r
                     .date(d -> d

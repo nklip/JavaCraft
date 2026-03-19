@@ -1,6 +1,6 @@
 package my.javacraft.elastic.model;
 
-import my.javacraft.elastic.service.activity.VoteService;
+import my.javacraft.elastic.service.VoteService;
 
 /**
  * Enum of valid user interaction types for the 'user-votes' index.
