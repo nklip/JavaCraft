@@ -11,5 +11,8 @@ public final class Constants {
     public static final String POST_ID = "postId";
     public static final String ACTION = "action";
     public static final String KARMA = "karma";
+    public static final String UPVOTES = "upvotes";
     public static final String HOT_SCORE = "hotScore";
+    public static final String RISING_SCORE = "risingScore";
+    public static final String BEST_SCORE = "bestScore";
 }

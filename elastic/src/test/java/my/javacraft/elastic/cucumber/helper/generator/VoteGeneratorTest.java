@@ -34,7 +34,8 @@ class VoteGeneratorTest {
             VoteGenerator generator,
             int firstPost,
             int lastPost,
-            int maxAgeDays
+            int maxAgeDays,
+            int usersPerPost
     ) throws IOException {
         Instant beforeGeneration = Instant.now();
 
@@ -44,8 +45,12 @@ class VoteGeneratorTest {
         Path generatedCsv = outputDirectory.resolve("votes").resolve(fileName);
         Assertions.assertTrue(Files.exists(generatedCsv), "CSV file must be generated: " + fileName);
 
+        int postCount    = lastPost - firstPost + 1;
+        int expectedRows = usersPerPost * postCount;
+
         List<String> lines = Files.readAllLines(generatedCsv, StandardCharsets.UTF_8);
-        Assertions.assertEquals(1001, lines.size(), "Expected 1000 events + header");
+        Assertions.assertEquals(expectedRows + 1, lines.size(),
+                "Expected %d events + header".formatted(expectedRows));
         Assertions.assertEquals("userId,postId,action,date", lines.getFirst());
 
         Set<String> uniqueRows = new HashSet<>();
@@ -56,7 +61,7 @@ class VoteGeneratorTest {
             String[] values = line.split(",", -1);
             Assertions.assertEquals(4, values.length, "Invalid CSV row: " + line);
 
-            int userId = parseSuffix(values[0], "user-", 1, 100);
+            int userId = parseSuffix(values[0], "user-", 1, usersPerPost);
             int postId = parseSuffix(values[1], "post-", firstPost, lastPost);
             Assertions.assertTrue(values[2].equals("UPVOTE") || values[2].equals("DOWNVOTE"),
                     "Unexpected action: " + values[2]);
@@ -72,12 +77,13 @@ class VoteGeneratorTest {
             usersByPost.computeIfAbsent(postId, key -> new HashSet<>()).add(userId);
         }
 
-        Assertions.assertEquals(1000, uniqueRows.size(), "Each (user,post) pair must be unique");
-        Assertions.assertEquals(10, usersByPost.size(), "Expected 10 generated posts");
+        Assertions.assertEquals(expectedRows, uniqueRows.size(), "Each (user,post) pair must be unique");
+        Assertions.assertEquals(postCount, usersByPost.size(), "Expected %d generated posts".formatted(postCount));
         for (int postId = firstPost; postId <= lastPost; postId++) {
             Set<Integer> users = usersByPost.get(postId);
             Assertions.assertNotNull(users, "Missing generated post: post-%02d".formatted(postId));
-            Assertions.assertEquals(100, users.size(), "Each post must have 100 user events");
+            Assertions.assertEquals(usersPerPost, users.size(),
+                    "Each post must have %d user events".formatted(usersPerPost));
         }
     }
 
@@ -91,16 +97,18 @@ class VoteGeneratorTest {
 
     private static Stream<Arguments> generatorCases() {
         return Stream.of(
-                // BestVoteGenerator: 31-364 days old → maxAgeDays=364
-                Arguments.of("votes-best.csv",   new BestVoteGenerator(),    1,  10, 364),
-                // HotVotesGenerator: all events within 60 min → maxAgeDays=1 is a tight upper bound
-                Arguments.of("votes-hot.csv",    new HotVotesGenerator(),    11,  20,   1),
-                // NewVotesGenerator: 2-6 days old → maxAgeDays=6
-                Arguments.of("votes-new.csv",    new NewVotesGenerator(),    21,  30,   6),
-                // RisingVotesGenerator: 8-29 days old → maxAgeDays=29
-                Arguments.of("votes-rising.csv", new RisingVotesGenerator(), 31,  40,  29),
-                // TopVotesGenerator: 366-730 days old + up to 23h 59min → maxAgeDays=731
-                Arguments.of("votes-top.csv",    new TopVotesGenerator(),    41,  50, 731)
+                // BestVoteGenerator: 31-364 days old, 100 users/post → maxAgeDays=364
+                Arguments.of("votes-best.csv",   new BestVoteGenerator(),    1,  10, 364, 100),
+                // HotVotesGenerator: all events within 60 min, 100 users/post → maxAgeDays=1
+                Arguments.of("votes-hot.csv",    new HotVotesGenerator(),    11,  20,   1, 100),
+                // NewVotesGenerator: 2-6 days old, 100 users/post → maxAgeDays=6
+                Arguments.of("votes-new.csv",    new NewVotesGenerator(),    21,  30,   6, 100),
+                // RisingVotesGenerator: 8-29 days old, 100 users/post → maxAgeDays=29
+                Arguments.of("votes-rising.csv", new RisingVotesGenerator(), 31,  40,  29, 100),
+                // TopVotesGenerator: 366-730 days old, 500 users/post → maxAgeDays=731
+                // 500 users compensate for the lower 61-70% upvote ratio, pushing karma (110-200) above
+                // BestVoteGenerator's ceiling (80) so posts 41-50 still win Top ALL.
+                Arguments.of("votes-top.csv",    new TopVotesGenerator(),    41,  50, 731, 500)
         );
     }
 }

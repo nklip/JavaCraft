@@ -21,79 +21,101 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/*
+ * Unit tests for BestRankingService.
+ *
+ * ES returns documents pre-sorted by bestScore DESC (the field is denormalized by the
+ * Painless script on every vote). The service responsibility is:
+ *   1. Issue the correct search query (sort by bestScore DESC, postId ASC)
+ *   2. Preserve the order returned by ES
+ *   3. Enforce the client-requested size limit
+ *
+ * Wilson score reminder:
+ *   n = 2*upvotes - karma (total votes)
+ *   p^ = upvotes / n
+ *   bestScore = (p^ + z^2/2n - z*sqrt(p^(1-p^)/n + z^2/4n^2)) / (1 + z^2/n)
+ *
+ *   post with 95 upvotes / 5 downvotes (n=100, p^=0.95): bestScore ≈ 0.898
+ *   post with 10 upvotes / 0 downvotes (n=10,  p^=1.00): bestScore ≈ 0.722
+ *   post with 0  upvotes / 0 downvotes (n=0):             bestScore  = 0.0
+ */
 @SuppressWarnings("unchecked")
 @ExtendWith(MockitoExtension.class)
-public class HotRankingServiceTest {
+public class BestRankingServiceTest {
 
     @Mock
     ElasticsearchClient esClient;
 
     @Test
-    public void testRetrieveHotPostsOrdersByHotScore() throws IOException {
-        // ES returns hits sorted by hotScore DESC — service must preserve that order.
-        // postA has a lower karma but was submitted more recently, so its hotScore is higher.
+    public void testRetrieveBestPostsOrdersByBestScore() throws IOException {
+        // ES returns hits sorted by bestScore DESC — service must preserve that order.
+        // postA: 95 upvotes / 5 downvotes (n=100, p^=0.95) → bestScore ≈ 0.898
+        // postB: 10 upvotes / 0 downvotes (n=10,  p^=1.00) → bestScore ≈ 0.722
+        // Despite postB having a perfect ratio, the larger sample of postA wins.
         SearchResponse<Post> response = buildPostsResponse(List.of(
-                new Post("postA", "user-001", "2024-06-01T00:00:00Z",  5L, 0L, 20.5, 0.0, 0.0),  // higher hotScore
-                new Post("postB", "user-002", "2024-01-01T00:00:00Z", 50L, 0L, 18.3, 0.0, 0.0)   // lower hotScore
+                new Post("postA", "user-001", "2024-01-01T00:00:00Z",  90L, 95L, 0.0, 0.0, 0.898),
+                new Post("postB", "user-002", "2024-01-01T00:00:00Z",  10L, 10L, 0.0, 0.0, 0.722)
         ));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
         when(esClient.search(any(SearchRequest.class), eq(Post.class))).thenReturn(response);
 
-        List<Post> result = new HotRankingService(esClient).retrieveHotPosts(10);
+        List<Post> result = new BestRankingService(esClient).retrieveBestPosts(10);
 
         Assertions.assertNotNull(result);
         Assertions.assertEquals(2, result.size());
-        Assertions.assertEquals("postA", result.get(0).postId(), "higher hotScore must rank first");
+        Assertions.assertEquals("postA", result.get(0).postId(),
+                "larger reliable sample (95/100) must rank above perfect-but-small (10/10)");
         Assertions.assertEquals("postB", result.get(1).postId());
-        Assertions.assertEquals(5L, result.get(0).karma());
+        Assertions.assertTrue(result.get(0).bestScore() > result.get(1).bestScore(),
+                "bestScore must decrease down the ranking");
     }
 
     @Test
-    public void testRetrieveHotPostsNetNegativeStillRanked() throws IOException {
-        // Reddit's formula: downvoted post has negative order but positive time component.
-        // The post must still appear — it is NOT filtered out.
+    public void testRetrieveBestPostsZeroVotesHaveZeroBestScore() throws IOException {
+        // A post with no votes at all has bestScore = 0.0 (n=0 guard in Painless script).
         SearchResponse<Post> response = buildPostsResponse(List.of(
-                new Post("postA", "user-001", "2024-01-01T00:00:00Z", -9L, 0L, 0.046, 0.0, 0.0)
+                new Post("postA", "user-001", "2024-01-01T00:00:00Z", 0L, 0L, 0.0, 0.0, 0.0)
         ));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
         when(esClient.search(any(SearchRequest.class), eq(Post.class))).thenReturn(response);
 
-        List<Post> result = new HotRankingService(esClient).retrieveHotPosts(10);
+        List<Post> result = new BestRankingService(esClient).retrieveBestPosts(10);
 
         Assertions.assertNotNull(result);
-        Assertions.assertFalse(result.isEmpty(), "net-negative posts must still appear");
-        Assertions.assertEquals(-9L, result.getFirst().karma());
+        Assertions.assertEquals(1, result.size());
+        Assertions.assertEquals(0.0, result.getFirst().bestScore(),
+                "post with no votes must have bestScore=0.0");
     }
 
     @Test
-    public void testRetrieveHotPostsReturnsEmptyWhenNoActivity() throws IOException {
+    public void testRetrieveBestPostsReturnsEmptyWhenNoActivity() throws IOException {
         SearchResponse<Post> response = buildPostsResponse(List.of());
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
         when(esClient.search(any(SearchRequest.class), eq(Post.class))).thenReturn(response);
 
-        List<Post> result = new HotRankingService(esClient).retrieveHotPosts(10);
+        List<Post> result = new BestRankingService(esClient).retrieveBestPosts(10);
 
         Assertions.assertNotNull(result);
         Assertions.assertTrue(result.isEmpty());
     }
 
     @Test
-    public void testRetrieveHotPostsRespectsLimit() throws IOException {
+    public void testRetrieveBestPostsRespectsLimit() throws IOException {
         SearchResponse<Post> response = buildPostsResponse(List.of(
-                new Post("postA", "user-001", "2024-01-05T00:00:00Z", 10L, 0L, 5.0, 0.0, 0.0),
-                new Post("postB", "user-002", "2024-01-04T00:00:00Z", 10L, 0L, 4.8, 0.0, 0.0),
-                new Post("postC", "user-003", "2024-01-03T00:00:00Z", 10L, 0L, 4.6, 0.0, 0.0),
-                new Post("postD", "user-004", "2024-01-02T00:00:00Z", 10L, 0L, 4.4, 0.0, 0.0),
-                new Post("postE", "user-005", "2024-01-01T00:00:00Z", 10L, 0L, 4.2, 0.0, 0.0)
+                new Post("postA", "user-001", "2024-01-01T00:00:00Z", 90L, 95L, 0.0, 0.0, 0.898),
+                new Post("postB", "user-002", "2024-01-01T00:00:00Z", 10L, 10L, 0.0, 0.0, 0.722),
+                new Post("postC", "user-003", "2024-01-01T00:00:00Z",  8L,  8L, 0.0, 0.0, 0.631),
+                new Post("postD", "user-004", "2024-01-01T00:00:00Z",  4L,  5L, 0.0, 0.0, 0.380),
+                new Post("postE", "user-005", "2024-01-01T00:00:00Z",  0L,  0L, 0.0, 0.0, 0.000)
         ));
 
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
         when(esClient.search(any(SearchRequest.class), eq(Post.class))).thenReturn(response);
 
-        List<Post> result = new HotRankingService(esClient).retrieveHotPosts(3);
+        List<Post> result = new BestRankingService(esClient).retrieveBestPosts(3);
 
         Assertions.assertEquals(3, result.size(), "result must be capped at requested size");
         Assertions.assertEquals("postA", result.get(0).postId());

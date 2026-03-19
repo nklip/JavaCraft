@@ -37,24 +37,82 @@ public class PostService {
 
     /**
      * Painless script executed on every vote.
-     * Atomically updates {@code karma} and recomputes {@code hotScore}:
+     * Atomically updates {@code karma}, {@code upvotes}, and recomputes
+     * {@code hotScore}, {@code risingScore}, and {@code bestScore}.
+     *
+     * <p><b>hotScore</b> — Reddit's hot formula:
      * <pre>
-     *   karma    += delta
-     *   order     = log₁₀(max(|karma|, 1)) × sign(karma)
-     *   hotScore  = order + (createdAt_epoch − HOT_EPOCH_ANCHOR) / HOT_TIME_SCALE
+     *   order    = log₁₀(max(|karma|, 1)) × sign(karma)
+     *   hotScore = order + (createdAt_epoch − HOT_EPOCH_ANCHOR) / HOT_TIME_SCALE
      * </pre>
+     *
+     * <p><b>risingScore</b> — vote velocity:
+     * <pre>
+     *   risingScore = karma / max(now − createdAt_epoch, 1)   [seconds]
+     * </pre>
+     *
+     * <p><b>bestScore</b> — Wilson score lower bound (95 % confidence):
+     * <pre>
+     *   n         = totalVotes = 2×upvotes − karma
+     *   p̂         = upvotes / n
+     *   z         = 1.96
+     *   bestScore = (p̂ + z²/2n − z√(p̂(1−p̂)/n + z²/4n²)) / (1 + z²/n)
+     * </pre>
+     *
+     * <p>Key Painless type rule: {@code params.*} is statically typed {@code def}.
+     * Assigning to a named typed variable ({@code long nowSec = params.nowSec})
+     * triggers a runtime coercion — avoids the compile-time overload resolution
+     * problem that breaks {@code Math.max(def, long)}.
      */
     private static final String SCORES_SCRIPT =
+            // ── karma & hot score ────────────────────────────────────────────
             "ctx._source.karma += params.delta; " +
             "long k = ctx._source.karma; " +
             "double sign = k > 0 ? 1.0 : (k < 0 ? -1.0 : 0.0); " +
             "double order = Math.log10(Math.max((double) Math.abs(k), 1.0)) * sign; " +
             "long epochSec = Instant.parse(ctx._source.createdAt).getEpochSecond(); " +
             "ctx._source.hotScore = order + (epochSec - 1134028003L) / 45000.0; " +
+            // ── rising score ─────────────────────────────────────────────────
             "long nowSec = params.nowSec; " +
             "long ageSeconds = nowSec - epochSec; " +
             "if (ageSeconds < 1L) { ageSeconds = 1L; } " +
-            "ctx._source.risingScore = (double) k / (double) ageSeconds;";
+            "ctx._source.risingScore = (double) k / (double) ageSeconds; " +
+            // ── best score (Wilson lower bound) ───────────────────────────────
+            "long upvoteDelta = params.upvoteDelta; " +
+            "long up = ctx._source.upvotes + upvoteDelta; " +
+            "ctx._source.upvotes = up; " +
+            "long n = 2L * up - k; " +        // totalVotes = upvotes + downvotes = 2*up - karma
+            "if (n <= 0L) { " +
+            "  ctx._source.bestScore = 0.0; " +
+            "} else { " +
+            "  double phat = (double) up / (double) n; " +
+            "  double z2 = 3.8416; " +          // 1.96^2
+            "  double z2n = z2 / (double) n; " +
+            "  double under = phat * (1.0 - phat) / (double) n + z2 / (4.0 * (double) n * (double) n); " +
+            "  double num = phat + z2n / 2.0 - 1.96 * Math.sqrt(under); " +
+            "  ctx._source.bestScore = num / (1.0 + z2n); " +
+            "}";
+
+    /*
+     * Painless script approaches which didn't work out
+     * ┌────────────────────────────────────┬────────┬──────────────────────────────────────────────────────┐
+     * │ Approach                           │ Works? │ Why it failed                                        │
+     * ├────────────────────────────────────┼────────┼──────────────────────────────────────────────────────┤
+     * │ params.nowEpoch in Math.max(…, 1L) │  No    │ params.* is static type def;                         │
+     * │                                    │        │ no Math.max(def, long) overload                      │
+     * ├────────────────────────────────────┼────────┼──────────────────────────────────────────────────────┤
+     * │ System.currentTimeMillis()         │  No    │ Not in the Painless update-context whitelist         │
+     * ├────────────────────────────────────┼────────┼──────────────────────────────────────────────────────┤
+     * │ Instant.now()                      │  No    │ Non-deterministic;                                   │
+     * │                                    │        │ excluded from update-context whitelist               │
+     * ├────────────────────────────────────┼────────┼──────────────────────────────────────────────────────┤
+     * │ ctx._now                           │  No    │ Watcher-specific field;                              │
+     * │                                    │        │ null in standard update context                      │
+     * ├────────────────────────────────────┼────────┼──────────────────────────────────────────────────────┤
+     * │ long nowSec = params.nowSec;       │  Yes   │ Runtime coercion from JSON number → long;            │
+     * │                                    │        │ all subsequent ops are fully typed                   │
+     * └────────────────────────────────────┴────────┴──────────────────────────────────────────────────────┘
+     */
 
     private final ElasticsearchClient esClient;
     private final IdGenerator idGenerator;
@@ -63,8 +121,8 @@ public class PostService {
      * Indexes a new post document with a server-generated ID and timestamp.
      * Strict insert — calling it twice with the same author produces two independent posts,
      * exactly as Reddit handles duplicate submissions.
-     * Karma starts at zero; hotScore starts at the pure time-only component.
-     * Both are updated on every subsequent vote via {@link #updateScores}.
+     * Karma and upvotes start at zero; hotScore starts at the pure time-only component.
+     * All scores are updated on every subsequent vote via {@link #updateScores}.
      *
      * @param authorUserId userId of the person submitting the post
      * @return the fully-populated {@link Post} including the generated {@code postId} and {@code createdAt}
@@ -74,29 +132,8 @@ public class PostService {
         Instant created  = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         String createdAt = created.toString();
         double hotScore  = (created.getEpochSecond() - HOT_EPOCH_ANCHOR) / HOT_TIME_SCALE;
-        Post post = new Post(postId, authorUserId, createdAt, 0L, hotScore, 0.0);
+        Post post = new Post(postId, authorUserId, createdAt, 0L, 0L, hotScore, 0.0, 0.0);
 
-        /*
-         * Painless script approaches which didn't work out
-         * ┌────────────────────────────────────┬────────┬──────────────────────────────────────────────────────┐
-         * │ Approach                           │ Works? │ Why it failed                                        │
-         * ├────────────────────────────────────┼────────┼──────────────────────────────────────────────────────┤
-         * │ params.nowEpoch in Math.max(…, 1L) │  No    │ params.* is static type def;                         │
-         * │                                    │        │ no Math.max(def, long) overload                      │
-         * ├────────────────────────────────────┼────────┼──────────────────────────────────────────────────────┤
-         * │ System.currentTimeMillis()         │  No    │ Not in the Painless update-context whitelist         │
-         * ├────────────────────────────────────┼────────┼──────────────────────────────────────────────────────┤
-         * │ Instant.now()                      │ No     │ Non-deterministic;                                   │
-         * │                                    │        │ excluded from update-context whitelist               │
-         * ├────────────────────────────────────┼────────┼──────────────────────────────────────────────────────┤
-         * │ ctx._now                           │  No    │ Watcher-specific field;                              │
-         * │                                    │        │ null in standard update context                      │
-         * ├────────────────────────────────────┼────────┼──────────────────────────────────────────────────────┤
-         * │ long nowSec = params.nowSec;       │ Yes    │ Runtime coercion from JSON number -> long;           │
-         * │                                    │        │ all subsequent ops are fully typed                   │
-         * └────────────────────────────────────┴────────┴──────────────────────────────────────────────────────┘
-         *
-         */
         IndexRequest<Post> request = new IndexRequest.Builder<Post>()
                 .index(Constants.INDEX_POSTS)
                 .id(postId)
@@ -111,23 +148,27 @@ public class PostService {
     }
 
     /**
-     * Atomically updates {@code karma} and {@code hotScore} of an existing post document.
-     * Uses a single Painless script so both values change in one round-trip and are race-free
-     * under concurrent votes.
+     * Atomically updates {@code karma}, {@code upvotes}, {@code hotScore},
+     * {@code risingScore}, and {@code bestScore} of an existing post document.
+     * Uses a single Painless script so all values change in one round-trip and are
+     * race-free under concurrent votes.
      *
      * <p>If the post document does not exist (orphaned vote), the update is silently skipped
      * with a WARN log. Scores are best-effort for orphaned votes.
      *
-     * @param postId post to update
-     * @param delta  +1/−1 for new vote; +2/−2 for vote flip; never 0 (callers skip)
+     * @param postId      post to update
+     * @param delta       net karma change: +1/−1 for new vote; +2/−2 for vote flip
+     * @param upvoteDelta raw upvote counter change: +1 when an upvote is added,
+     *                    −1 when an upvote is removed; 0 when only a downvote changes
      */
-    public void updateScores(String postId, int delta) throws IOException {
+    public void updateScores(String postId, int delta, int upvoteDelta) throws IOException {
         long nowSec = Instant.now().getEpochSecond();
         Script script = Script.of(s -> s
                 .source(SCORES_SCRIPT)
                 .params(Map.of(
-                        "delta",  JsonData.of(delta),
-                        "nowSec", JsonData.of(nowSec)
+                        "delta",       JsonData.of(delta),
+                        "upvoteDelta", JsonData.of(upvoteDelta),
+                        "nowSec",      JsonData.of(nowSec)
                 ))
         );
 
@@ -141,7 +182,8 @@ public class PostService {
 
         try {
             var result = esClient.update(request, Post.class);
-            log.debug("scores updated (postId='{}', delta={}, result='{}')", postId, delta, result.result());
+            log.debug("scores updated (postId='{}', delta={}, upvoteDelta={}, result='{}')",
+                    postId, delta, upvoteDelta, result.result());
         } catch (ElasticsearchException ex) {
             if ("document_missing_exception".equals(ex.error().type())) {
                 log.warn("scores update skipped — post '{}' not found in '{}' index (orphaned vote)",

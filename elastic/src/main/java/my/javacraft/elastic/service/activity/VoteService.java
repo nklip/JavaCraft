@@ -113,13 +113,20 @@ public class VoteService {
 
         log.info("vote ingested (documentId='{}', result='{}')", updateResponse.id(), updateResponse.result());
 
+        boolean isUpvote = UserAction.UPVOTE.name().equals(userVote.getAction());
         int delta = switch (updateResponse.result()) {
-            case Created -> UserAction.UPVOTE.name().equals(userVote.getAction()) ?  1 : -1;
-            case Updated -> UserAction.UPVOTE.name().equals(userVote.getAction()) ?  2 : -2;
-            default      -> 0;  // NoOp: same vote repeated, karma unchanged
+            case Created -> isUpvote ?  1 : -1;   // new vote: karma ±1
+            case Updated -> isUpvote ?  2 : -2;   // flip: karma ±2
+            default      -> 0;                     // NoOp: same vote repeated
+        };
+        // upvoteDelta: +1 when an upvote is added, -1 when removed, 0 when only downvote changes
+        int upvoteDelta = switch (updateResponse.result()) {
+            case Created -> isUpvote ? 1 : 0;     // new upvote adds 1; new downvote adds 0
+            case Updated -> isUpvote ? 1 : -1;    // flip to upvote adds 1; flip to downvote removes 1
+            default      -> 0;
         };
         if (delta != 0) {
-            postService.updateScores(voteRequest.getPostId(), delta);
+            postService.updateScores(voteRequest.getPostId(), delta, upvoteDelta);
         }
 
         VoteResponse voteResponse = new VoteResponse();
@@ -150,8 +157,10 @@ public class VoteService {
         if (deleteResponse.result() == Result.Deleted && existing.found()) {
             UserVote oldVote = existing.source();   // @Nullable — null when _source is disabled
             if (oldVote != null) {
-                int delta = UserAction.UPVOTE.name().equals(oldVote.getAction()) ? -1 : 1;
-                postService.updateScores(postId, delta);
+                boolean wasUpvote = UserAction.UPVOTE.name().equals(oldVote.getAction());
+                int delta       = wasUpvote ? -1 : 1;  // removing upvote: karma −1; removing downvote: karma +1
+                int upvoteDelta = wasUpvote ? -1 : 0;  // removing upvote decrements raw upvote count
+                postService.updateScores(postId, delta, upvoteDelta);
             }
         }
 

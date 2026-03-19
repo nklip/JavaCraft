@@ -312,6 +312,18 @@ public class PostRankingControllerStepDefinitions {
         verifyRankedPosts(path, expectedSize, expectedPosts, "top/" + window);
     }
 
+    /**
+     * Verifies the Best endpoint returns {@code expectedSize} results whose karma values
+     * match the expected table in order. Best is sorted by Wilson score lower bound (95 %
+     * confidence interval on upvote ratio) — posts with a reliably high upvote percentage
+     * and a statistically significant sample size rank highest.
+     */
+    @Then("best posts endpoint returns {int} ranked results")
+    public void verifyBestPostsReturned(int expectedSize, DataTable expectedPosts) throws InterruptedException {
+        String path = "/best?size=" + expectedSize;
+        verifyRankedPosts(path, expectedSize, expectedPosts, "best");
+    }
+
     /*
      * Shared assertion logic for all three ranking endpoints.
      */
@@ -331,7 +343,11 @@ public class PostRankingControllerStepDefinitions {
             List<String> expectedRow = expectedPosts.row(i + 1);
 
             // karma is the 2nd column
-            Assertions.assertEquals(Long.parseLong(expectedRow.get(1)), actualPost.karma());
+            Assertions.assertEquals(
+                    Long.parseLong(expectedRow.get(1)),
+                    actualPost.karma(),
+                    "postId = " + actualPost.postId()
+            );
         }
     }
 
@@ -432,7 +448,7 @@ public class PostRankingControllerStepDefinitions {
                 String author    = values[2].trim();
                 long epochSec    = Instant.parse(createdAt).getEpochSecond();
                 double hotScore  = (epochSec - 1_134_028_003L) / 45_000.0;
-                Post post = new Post(postId, author, createdAt, 0L, hotScore, 0.0);
+                Post post = new Post(postId, author, createdAt, 0L, 0L, hotScore, 0.0, 0.0);
                 esClient.index(i -> i
                         .index(Constants.INDEX_POSTS)
                         .id(postId)

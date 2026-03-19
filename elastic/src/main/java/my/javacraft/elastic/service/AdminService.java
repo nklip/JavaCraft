@@ -50,8 +50,10 @@ public class AdminService {
         properties.put("author",    Property.of(p -> p.keyword(k -> k)));
         properties.put("createdAt", Property.of(p -> p.date(d -> d.format("strict_date_optional_time"))));
         properties.put("karma",        Property.of(p -> p.long_(l -> l)));
+        properties.put("upvotes",      Property.of(p -> p.long_(l -> l)));
         properties.put("hotScore",     Property.of(p -> p.double_(d -> d)));
         properties.put("risingScore",  Property.of(p -> p.double_(d -> d)));
+        properties.put("bestScore",    Property.of(p -> p.double_(d -> d)));
 
         return createIndex(Constants.INDEX_POSTS, properties);
     }

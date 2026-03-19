@@ -57,14 +57,18 @@ public class PostServiceTest {
         Assertions.assertEquals("abc123", doc.postId());
         Assertions.assertEquals("user-001", doc.author());
         Assertions.assertEquals(0L,  doc.karma(),       "initial karma must be zero");
+        Assertions.assertEquals(0L,  doc.upvotes(),      "initial upvotes must be zero");
         Assertions.assertEquals(0.0, doc.risingScore(), "initial risingScore must be zero — no votes yet");
+        Assertions.assertEquals(0.0, doc.bestScore(),   "initial bestScore must be zero — no votes yet");
         Assertions.assertNotNull(doc.createdAt(), "createdAt must be server-generated");
 
         // returned Post must reflect exactly what was indexed
         Assertions.assertEquals("abc123", returned.postId());
         Assertions.assertEquals("user-001", returned.author());
         Assertions.assertEquals(0L,  returned.karma());
+        Assertions.assertEquals(0L,  returned.upvotes());
         Assertions.assertEquals(0.0, returned.risingScore());
+        Assertions.assertEquals(0.0, returned.bestScore());
         Assertions.assertNotNull(returned.createdAt());
     }
 
@@ -75,7 +79,7 @@ public class PostServiceTest {
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
         when(esClient.update(any(UpdateRequest.class), any(Class.class))).thenReturn(updateResponse);
 
-        service().updateScores("post-1", 1);
+        service().updateScores("post-1", 1, 1);
 
         ArgumentCaptor<UpdateRequest<Post, Post>> captor = ArgumentCaptor.forClass(UpdateRequest.class);
         verify(esClient).update(captor.capture(), any(Class.class));
@@ -97,7 +101,7 @@ public class PostServiceTest {
         when(esClient.update(any(UpdateRequest.class), any(Class.class))).thenThrow(esException);
 
         Assertions.assertDoesNotThrow(
-                () -> service().updateScores("post-id-0", 1),
+                () -> service().updateScores("post-id-0", 1, 1),
                 "scores update for orphaned vote must be silently skipped, not thrown"
         );
     }
@@ -113,7 +117,7 @@ public class PostServiceTest {
 
         Assertions.assertThrows(
                 ElasticsearchException.class,
-                () -> service().updateScores("post-1", 1),
+                () -> service().updateScores("post-1", 1, 1),
                 "unexpected ES errors must not be silently swallowed"
         );
     }
@@ -125,9 +129,9 @@ public class PostServiceTest {
         when(esClient._jsonpMapper()).thenReturn(new JacksonJsonpMapper());
         when(esClient.update(any(UpdateRequest.class), any(Class.class))).thenReturn(updateResponse);
 
-        service().updateScores("post-1",  1);
-        service().updateScores("post-1", -1);
-        service().updateScores("post-1",  2);
+        service().updateScores("post-1",  1, 1);
+        service().updateScores("post-1", -1, -1);
+        service().updateScores("post-1",  2, 1);
 
         verify(esClient, times(3)).update(any(UpdateRequest.class), any(Class.class));
     }

@@ -20,58 +20,44 @@ import my.javacraft.elastic.cucumber.helper.generator.VoteGenerator;
 public class NewVotesGenerator implements VoteGenerator {
     private static final String VOTES_NEW_FILE = "votes-new.csv";
     private static final String POSTS_NEW_FILE = "posts-new.csv";
+    private static final int FIRST_POST_ID = 21;
+    private static final int LAST_POST_ID = 30;
+    private static final int MAX_USERS_PER_POST = 10;
+    private static final int MINUTES_WINDOW = 10;
 
     /*
-     * MUST HAVE: Top 10 for Top WEEK postIds MUST have postIds from 21 to 30
+     * MUST HAVE: Top 10 'New' postIds MUST have postIds from 21 to 30
      *
-     * The amount of users which would UPVOTE or DOWNVOTE - 100
+     * All generated timestamps are within the last 10 minutes from generation time.
      *
-     * Each postId has a unique upvote percentage so that karma is unique per post:
-     *
-     *   postId 21 → upvote% 61 → karma 22
-     *   postId 22 → upvote% 62 → karma 24
-     *   ...
-     *   postId 30 → upvote% 70 → karma 40
-     *
-     * karma = 2 × upvotePercent − 100  (exact because isUpvote() produces a full
-     * permutation of 0-99 over 100 users when gcd(31, 100) = 1).
-     *
-     * Date pattern: all events are 2–5 days old.
-     *   - 2-day floor guarantees no event falls inside the 24-h Top DAY window.
-     *   - Ceiling capped at 5 days so that even with 22 h file staleness + 23 h hoursAgo
-     *     the oldest event is at most 5d + 22h + 23h = 6d 21h, safely inside the 7-day WEEK window.
-     *   - max karma (40) > max HotVotesGenerator karma (20) → posts 21-30 win Top WEEK.
+     * Only up to 10 users can vote for a post.
+     * User participation is variable per post (not every eligible user has to vote).
      */
     @Override
     public void generatePostVotesInCsv() {
         Instant now = CsvSupport.now();
-        List<String> eventRows = new ArrayList<>(10 * CsvSupport.USERS_PER_POST);
+        List<String> eventRows = new ArrayList<>(10 * MAX_USERS_PER_POST);
         List<String> postRows  = new ArrayList<>(10);
 
         int postCount = 0;
-        for (int postId = 21; postId <= 30; postId++) {
-            int upvotePercent = 61 + (postId - 21);    // 61% → 70%, unique per post
-            int authorUserId = ++postCount;             // unique author per post: user-001 … user-010
+        for (int postId = FIRST_POST_ID; postId <= LAST_POST_ID; postId++) {
+            int upvotePercent = 55 + Math.floorMod(postId, 10); // deterministic 55..64%
+            int authorUserId = ++postCount;                     // user-001 … user-010
+            int votersForPost = 1 + Math.floorMod(postId * 7, MAX_USERS_PER_POST); // deterministic 1..10
 
-            /*
-             * createdAt = min(vote_timestamp) for this post — the oldest vote is the
-             * best proxy for when the post was first published.
-             * All votes are 2–5 days old, so createdAt lands in that same range.
-             * HotVotesGenerator createdAt is now 9–54 min ago, so posts 11-20 are
-             * MORE recent and win the 'New' feed sorted by createdAt DESC.
-             * Posts 21-30 still win Top WEEK (karma 22-40 beats Hot karma 2-20).
-             */
-            Instant createdAt = Instant.MAX;
-            for (int userId = 1; userId <= CsvSupport.USERS_PER_POST; userId++) {
+            // Keep all "new" posts strictly newer than HotVotesGenerator's minimum (9 minutes)
+            // to avoid createdAt ties in NewRankingService (secondary sort is postId ASC).
+            // post-30 -> 1s ago, post-21 -> 271s ago (4m31s), all inside 10-minute window.
+            long createdSecondsAgo = 1L + (LAST_POST_ID - postId) * 30L;
+            Instant createdAt = now.minus(createdSecondsAgo, ChronoUnit.SECONDS);
+
+            for (int userId = 1; userId <= votersForPost; userId++) {
                 boolean upvote = CsvSupport.isUpvote(userId, postId, upvotePercent);
-                long daysAgo  = 2 + Math.floorMod(postId * 43 + userId * 11, 4); // 2–5 days
-                long hoursAgo = Math.floorMod(postId * 7 + userId * 13, 24);
-                Instant eventTime = now.minus(daysAgo, ChronoUnit.DAYS)
-                        .minus(hoursAgo, ChronoUnit.HOURS);
+                long minutesAgo = Math.floorMod(postId * 5 + userId * 3, MINUTES_WINDOW);
+                long secondsAgo = Math.floorMod(postId * 11 + userId * 7, 60);
+                Instant eventTime = now.minus(minutesAgo, ChronoUnit.MINUTES)
+                        .minus(secondsAgo, ChronoUnit.SECONDS);
 
-                if (eventTime.isBefore(createdAt)) {
-                    createdAt = eventTime;
-                }
                 eventRows.add(CsvSupport.csvLine(userId, postId, upvote, eventTime));
             }
             postRows.add(CsvSupport.postCsvLine(postId, createdAt, authorUserId));

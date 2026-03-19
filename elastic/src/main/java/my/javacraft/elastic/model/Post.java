@@ -5,9 +5,10 @@ package my.javacraft.elastic.model;
  * Document ID is {@code postId} — one document per post.
  *
  * <p>{@code createdAt} drives the 'New' feed sort order.
- * {@code karma}, {@code hotScore}, and {@code risingScore} are denormalized from the
- * 'user-votes' index and updated atomically on every vote, so all four ranking feeds
- * (New, Hot, Top, Rising) can be served with a single query against this index.
+ * {@code karma}, {@code hotScore}, {@code risingScore}, and {@code bestScore} are
+ * denormalized from the 'user-votes' index and updated atomically on every vote,
+ * so all five ranking feeds (New, Hot, Top, Rising, Best) can be served with a
+ * single query against this index.
  *
  * <p>Hot score formula (Reddit open-source):
  * <pre>
@@ -21,8 +22,15 @@ package my.javacraft.elastic.model;
  *   risingScore  = karma / ageSeconds
  * </pre>
  * A higher {@code risingScore} means the post accumulated karma faster.
- * {@code RisingRankingService} filters candidates to posts younger than ~6 hours
- * and sorts by {@code risingScore DESC}.
+ *
+ * <p>Best score formula (Wilson score lower bound, Reddit's "Best" sort):
+ * <pre>
+ *   n         = totalVotes = 2 * upvotes - karma
+ *   p^        = upvotes / n
+ *   z         = 1.96                   (95 % confidence)
+ *   bestScore = (p^ + z^2/2n - z*sqrt(p^(1-p^)/n + z^2/4n^2)) / (1 + z^2/n)
+ * </pre>
+ * Penalises posts with few votes (high uncertainty); zero when no votes cast.
  */
 public record Post(
         String postId,
@@ -30,8 +38,10 @@ public record Post(
         String author,
         // ISO-8601 UTC timestamp of when the post was created.
         String createdAt,
-        // Denormalized net vote score: upvotes − downvotes. Updated on every vote.
+        // Denormalized net vote score: upvotes - downvotes. Updated on every vote.
         long karma,
+        // Raw upvote counter. Together with karma allows deriving totalVotes = 2*upvotes - karma.
+        long upvotes,
         /*
          * Denormalized Reddit hot score. Updated on every vote.
          * Combines karma (log-compressed) with post age so that recency and quality
@@ -39,11 +49,16 @@ public record Post(
          */
         double hotScore,
         /*
-         * Denormalized rising score: {@code karma / max(age_seconds, 1)}.
+         * Denormalized rising score: karma / max(age_seconds, 1).
          * Measures vote velocity — how fast the post is accumulating karma relative
-         * to how long it has existed. Updated on every vote using the vote timestamp
-         * as {@code now}, so it captures velocity up to the most recent vote.
-         * Zero at submission (karma = 0); negative if the post is net-downvoted.
+         * to how long it has existed. Updated on every vote. Zero at submission;
+         * negative if net-downvoted.
          */
-        double risingScore
+        double risingScore,
+        /*
+         * Denormalized Wilson score lower bound (95 % confidence interval).
+         * Rewards posts that are both highly upvoted AND have enough votes to be
+         * statistically reliable. Zero when no votes have been cast.
+         */
+        double bestScore
 ) {}

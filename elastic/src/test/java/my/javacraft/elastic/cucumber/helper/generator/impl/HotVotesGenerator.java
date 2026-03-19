@@ -33,6 +33,8 @@ public class HotVotesGenerator implements VoteGenerator {
 
     /*
      * MUST HAVE: Top 10 'Hot' postIds MUST have postIds from 11 to 20
+     *            Top 10 'Top DAY' postIds MUST have postIds from 11 to 20
+     *            Top 10 'Top WEEK' postIds MUST have postIds from 11 to 20
      *
      * The amount of users which would UPVOTE or DOWNVOTE - 100
      *
@@ -40,25 +42,34 @@ public class HotVotesGenerator implements VoteGenerator {
      *   hot_score = log₁₀(net) + (post.createdAt − anchor) / 45_000
      *   Time dominates: every 12.5 h of age costs ~1 hot_score point.
      *
-     * Strategy: post.createdAt is set to 9–54 minutes ago (post-20→9 min, post-11→54 min).
-     *   NewVotesGenerator createdAt is 2–5 days old → time gap ≥ 2.88 hot_score points,
-     *   which dwarfs any karma log₁₀ difference → posts 11-20 always win Hot.
+     * Strategy: post.createdAt = 9–54 minutes ago (post-20→9 min, post-11→54 min).
+     *   NewVotesGenerator createdAt is 1–10 seconds ago (more recent!), but NewVotesGenerator
+     *   karma is only 2–20, while Hot karma is 24–42.
+     *
+     * Why Hot still wins Hot sort despite New being more recent:
+     *   For the worst case — post-11 (54 min = 3 240 s, karma=24) vs post-30 (1 s, karma=20):
+     *     log₁₀(24/20) − (3 240−1)/45 000 = 0.0792 − 0.0720 = +0.0072 > 0
+     *   Hot wins by 0.0072 hot_score points. This margin is a fixed arithmetic property of
+     *   the chosen karma and time values, so it never degrades with file age.
      *
      * Each postId has a unique upvote percentage so that karma is unique per post:
      *
-     *   postId 11 → upvote% 51 → karma  2
-     *   postId 12 → upvote% 52 → karma  4
+     *   postId 11 → upvote% 62 → karma 24
+     *   postId 12 → upvote% 63 → karma 26
      *   ...
-     *   postId 20 → upvote% 60 → karma 20
+     *   postId 20 → upvote% 71 → karma 42
      *
      * karma = 2 × upvotePercent − 100  (exact because isUpvote() produces a full
      * permutation of 0-99 over 100 users when gcd(31, 100) = 1).
      *
-     * Top window: post.createdAt within the last 60 min → fully counted in Top DAY.
-     * max karma (20) < min NewVotesGenerator karma (22) → posts 11-20 win only Top DAY.
+     * RisingVotesGenerator starts at 72 % (karma 44) to avoid colliding with Hot's
+     * ceiling of 71 % (karma 42).
      *
-     * New feed: post.createdAt 9–54 min ago → more recent than NewVotesGenerator (2–5 days)
-     * → posts 11-20 also win the New feed, ordered post-20, post-19, ..., post-11 by createdAt DESC.
+     * Top DAY: post.createdAt within the last 60 min → inside 24-h window.
+     *   karma 24–42 > NewVotesGenerator karma 2–20 → posts 11-20 win Top DAY and Top WEEK.
+     *
+     * New feed: NewVotesGenerator createdAt (1–10 s ago) is MORE recent than Hot (9–54 min)
+     *   → posts 21-30 win the New feed. Hot still beats New in Hot sort (see margin above).
      */
     @Override
     public void generatePostVotesInCsv() {
@@ -68,7 +79,7 @@ public class HotVotesGenerator implements VoteGenerator {
 
         int postCount = 0;
         for (int postId = 11; postId <= 20; postId++) {
-            int upvotePercent = 51 + (postId - 11);    // 51% → 60%, unique per post
+            int upvotePercent = 62 + (postId - 11);    // 62% → 71%, unique per post
             int authorUserId = ++postCount;             // unique author per post: user-001 … user-010
 
             /*
@@ -76,10 +87,11 @@ public class HotVotesGenerator implements VoteGenerator {
              *   post-20 → 9 min, post-19 → 14 min, ..., post-11 → 54 min.
              * This is the actual submission time stored in the 'posts' index and used by
              * HotRankingService to compute hot_score (denormalized architecture).
-             * Being < 60 min old, all posts qualify for Top DAY and win the Hot feed
-             * because their createdAt is far more recent than NewVotesGenerator (2–5 days).
+             * Being < 60 min old, all posts qualify for Top DAY and win Top WEEK.
+             * NewVotesGenerator createdAt is 1–10 s ago (more recent), but Hot karma
+             * (24–42) is higher than New karma (2–20), so Hot wins DAY, WEEK, and Hot sort.
              * Descending order by createdAt matches descending order by postId, so the
-             * New feed returns post-20, post-19, …, post-11.
+             * Hot/DAY/WEEK feeds return post-20, post-19, …, post-11.
              */
             long createdMinutesAgo = 9L + (20 - postId) * 5L;  // post-20→9 min, ..., post-11→54 min
 

@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.config.Constants;
 import my.javacraft.elastic.model.Post;
+import my.javacraft.elastic.service.activity.BestRankingService;
 import my.javacraft.elastic.service.activity.HotRankingService;
 import my.javacraft.elastic.service.activity.NewRankingService;
 import my.javacraft.elastic.service.activity.TopRankingService;
@@ -31,6 +32,28 @@ public class PostRankingController {
     private final TopRankingService topRankingService;
     private final HotRankingService hotRankingService;
     private final NewRankingService newRankingService;
+    private final BestRankingService bestRankingService;
+
+    @Operation(
+            summary = "Best posts",
+            description = "Returns posts ranked by Wilson score lower bound (95 % confidence interval "
+                    + "on upvote ratio). Rewards posts that are reliably liked with a statistically "
+                    + "significant number of votes. Equivalent to Reddit's 'Best' comment sort."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successful"),
+            @ApiResponse(responseCode = "404", description = "Not found"),
+            @ApiResponse(responseCode = "406", description = "Resource unavailable")
+    })
+    @GetMapping(value = "/best", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<Post>> retrieveBestPosts(
+            @RequestParam(required = false, name = "size", defaultValue = "10")
+            @Min(1) @Max(Constants.MAX_VALUES) int size) throws IOException {
+
+        log.info("retrieving best posts (limit = '{}')...", size);
+
+        return ResponseEntity.ok().body(bestRankingService.retrieveBestPosts(size));
+    }
 
     @Operation(
             summary = "New posts",
