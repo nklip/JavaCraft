@@ -1,6 +1,6 @@
 Feature: test SearchController
 
-  Scenario: index creation
+  Background:
     Given index 'movies' exists
     Then ingest 'data/json/movies.json' json file with 250 entities in 'movies' index
 
