@@ -6,11 +6,12 @@ import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 import java.io.IOException;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.config.Constants;
 import my.javacraft.elastic.model.Post;
+import my.javacraft.elastic.model.PostRequest;
 import my.javacraft.elastic.model.UserVote;
 import my.javacraft.elastic.model.VoteRequest;
 import my.javacraft.elastic.model.VoteResponse;
@@ -34,10 +35,6 @@ import static io.cucumber.spring.CucumberTestContext.SCOPE_CUCUMBER_GLUE;
 @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 public class VoteControllerStepDefinitions {
 
-    /** Anchor constant from PostService — Dec 8, 2005 (Reddit launch epoch). */
-    private static final long HOT_EPOCH_ANCHOR = 1_134_028_003L;
-    private static final double HOT_TIME_SCALE = 45_000.0;
-
     @LocalServerPort
     int port;
 
@@ -48,17 +45,52 @@ public class VoteControllerStepDefinitions {
     private VoteResponse lastVoteResponse;
 
     /**
-     * Creates a post document directly in ES, bypassing the production API.
-     * Needed so that {@code PostService#updateScores} finds an existing document when votes arrive.
+     * Maps feature-file aliases (e.g. "post-01") to server-generated postIds returned by
+     * {@code PostController}. Required because {@code PostService#submitPost} generates IDs
+     * server-side via {@code IdGenerator}; the alias is used only within the scenario to
+     * correlate the creation step with subsequent vote and assertion steps.
+     */
+    private final Map<String, String> postIdAliases = new HashMap<>();
+
+    /**
+     * Resolves a feature-file alias to the actual server-generated postId.
+     * Falls back to the alias itself so the method is safe to call even when no
+     * alias was registered (e.g. direct postId values in other tests).
+     */
+    private String resolvePostId(String alias) {
+        return postIdAliases.getOrDefault(alias, alias);
+    }
+
+    /**
+     * Submits a new post via {@code POST /api/services/posts} and registers the
+     * server-generated {@code postId} under the given {@code postAlias} so that
+     * subsequent steps in the same scenario can reference it by alias.
+     * The {@code index} parameter is validated to be "posts" — {@code PostController}
+     * does not support other indices.
      */
     @Given("post {string} exists in {string} index with author {string}")
-    public void createPost(String postId, String index, String author) throws IOException {
-        String createdAt = Instant.now().truncatedTo(ChronoUnit.SECONDS).toString();
-        long epochSec = Instant.parse(createdAt).getEpochSecond();
-        double hotScore = (epochSec - HOT_EPOCH_ANCHOR) / HOT_TIME_SCALE;
-        Post post = new Post(postId, author, createdAt, 0L, hotScore);
-        esClient.index(i -> i.index(index).id(postId).document(post));
-        log.info("created post '{}' in index '{}' for author '{}'", postId, index, author);
+    public void createPost(String postAlias, String index, String author) {
+        Assertions.assertEquals("posts", index,
+                "PostController only supports the 'posts' index, got: " + index);
+
+        PostRequest request = new PostRequest();
+        request.setAuthorUserId(author);
+
+        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+        headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+        HttpEntity<PostRequest> entity = new HttpEntity<>(request, headers);
+
+        String url = "http://localhost:%d/api/services/posts".formatted(port);
+        ResponseEntity<Post> response = new RestTemplate().exchange(
+                url, HttpMethod.POST, entity, Post.class
+        );
+        Post post = response.getBody();
+        Assertions.assertNotNull(post, "PostController returned null body for alias '%s'".formatted(postAlias));
+        Assertions.assertNotNull(post.postId(), "PostController returned a post with null postId");
+
+        postIdAliases.put(postAlias, post.postId());
+        log.info("created post alias='{}' → postId='{}' in index '{}' for author '{}'",
+                postAlias, post.postId(), index, author);
     }
 
     /**
@@ -67,7 +99,8 @@ public class VoteControllerStepDefinitions {
      * setup step (Given/And) or the main action under test (When).
      */
     @When("user {string} sends {word} on post {string}")
-    public void sendVote(String userId, String action, String postId) {
+    public void sendVote(String userId, String action, String postAlias) {
+        String postId = resolvePostId(postAlias);
         VoteRequest request = new VoteRequest();
         request.setUserId(userId);
         request.setPostId(postId);
@@ -82,8 +115,8 @@ public class VoteControllerStepDefinitions {
                 url, HttpMethod.POST, entity, VoteResponse.class
         );
         lastVoteResponse = response.getBody();
-        log.info("sent {} by '{}' on '{}' → result: {}",
-                action, userId, postId, lastVoteResponse != null ? lastVoteResponse.getResult() : null);
+        log.info("sent {} by '{}' on alias='{}' (postId='{}') → result: {}",
+                action, userId, postAlias, postId, lastVoteResponse != null ? lastVoteResponse.getResult() : null);
     }
 
     /**
@@ -104,8 +137,8 @@ public class VoteControllerStepDefinitions {
      * Document ID: {@code userId_postId}.
      */
     @And("a vote exists for user {string} on post {string} with action {string}")
-    public void checkVoteExists(String userId, String postId, String expectedAction) throws IOException {
-        String docId = userId + "_" + postId;
+    public void checkVoteExists(String userId, String postAlias, String expectedAction) throws IOException {
+        String docId = userId + "_" + resolvePostId(postAlias);
         var response = esClient.get(g -> g.index(Constants.INDEX_USER_VOTES).id(docId), UserVote.class);
         Assertions.assertTrue(response.found(), "Expected vote document '%s' to exist".formatted(docId));
         Assertions.assertNotNull(response.source(), "Vote document '%s' has no source".formatted(docId));
@@ -118,8 +151,8 @@ public class VoteControllerStepDefinitions {
      * for the given (userId, postId) pair — used after NOVOTE (Deleted) and NotFound transitions.
      */
     @And("no vote exists for user {string} on post {string}")
-    public void checkVoteNotExists(String userId, String postId) throws IOException {
-        String docId = userId + "_" + postId;
+    public void checkVoteNotExists(String userId, String postAlias) throws IOException {
+        String docId = userId + "_" + resolvePostId(postAlias);
         var response = esClient.get(g -> g.index(Constants.INDEX_USER_VOTES).id(docId), UserVote.class);
         Assertions.assertFalse(response.found(),
                 "Expected vote document '%s' to be absent, but it was found".formatted(docId));
@@ -131,7 +164,8 @@ public class VoteControllerStepDefinitions {
      * bypassing the refresh cycle — no explicit refresh needed.
      */
     @And("post {string} karma is {long}")
-    public void checkPostKarma(String postId, long expectedKarma) throws IOException {
+    public void checkPostKarma(String postAlias, long expectedKarma) throws IOException {
+        String postId = resolvePostId(postAlias);
         var response = esClient.get(g -> g.index(Constants.INDEX_POSTS).id(postId), Post.class);
         Assertions.assertTrue(response.found(), "Post document '%s' not found".formatted(postId));
         Assertions.assertNotNull(response.source(), "Post document '%s' has no source".formatted(postId));

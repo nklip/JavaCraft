@@ -1,4 +1,4 @@
-Feature: test VoteController — user vote state machine
+Feature: test VoteController
 
   # Exercises all 9 transitions via POST /api/services/user-votes.
   # Verification reads ES directly (user-votes and posts indices) — no service layer.
