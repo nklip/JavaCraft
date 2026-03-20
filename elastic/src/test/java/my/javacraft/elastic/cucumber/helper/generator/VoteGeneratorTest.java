@@ -101,10 +101,10 @@ class VoteGeneratorTest {
                 Arguments.of("votes-best.csv",   new BestVotesGenerator(),    1,  10, 364, 100),
                 // HotVotesGenerator: all events within 60 min, 100 users/post → maxAgeDays=1
                 Arguments.of("votes-hot.csv",    new HotVotesGenerator(),    11,  20,   1, 100),
-                // NewVotesGenerator: 2-6 days old, 100 users/post → maxAgeDays=6
-                Arguments.of("votes-new.csv",    new NewVotesGenerator(),    21,  30,   6, 100),
-                // RisingVotesGenerator: 8-29 days old, 100 users/post → maxAgeDays=29
-                Arguments.of("votes-rising.csv", new RisingVotesGenerator(), 31,  40,  29, 100),
+                // NewVotesGenerator: ~1-2 minutes old, up to 10 users/post → maxAgeDays=1
+                Arguments.of("votes-new.csv",    new NewVotesGenerator(),    21,  30,   1,  10),
+                // RisingVotesGenerator: ~2 minutes old, 30 users/post → maxAgeDays=1
+                Arguments.of("votes-rising.csv", new RisingVotesGenerator(), 31,  40,   1,  30),
                 // TopVotesGenerator: 366-730 days old, 500 users/post → maxAgeDays=731
                 // 500 users compensate for the lower 61-70% upvote ratio, pushing karma (110-200) above
                 // BestVotesGenerator's ceiling (80) so posts 41-50 still win Top ALL.

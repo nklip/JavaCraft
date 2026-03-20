@@ -23,11 +23,11 @@ Feature: test PostRankingController
   # │ events-hot.csv       │ post-11…20│     100     │  62–71%  │ post.createdAt = 9–54 min ago                │
   # │                      │           │             │          │ → wins Hot + Top DAY + Top WEEK              │
   # ├──────────────────────┼───────────┼─────────────┼──────────┼──────────────────────────────────────────────┤
-  # │ events-new.csv       │ post-21…30│     100     │  51–60%  │ post.createdAt = 1–10 s ago (explicit)       │
+  # │ events-new.csv       │ post-21…30│   <= 10     │ 55–64%   │ post.createdAt = 33–96 s ago (explicit)      │
   # │                      │           │             │          │ → most recent createdAt → wins New feed      │
   # ├──────────────────────┼───────────┼─────────────┼──────────┼──────────────────────────────────────────────┤
-  # │ events-rising.csv    │ post-31…40│     100     │  72–81%  │ All events 8–29 days ago                     │
-  # │                      │           │             │          │ → inside MONTH, outside WEEK → Top MONTH     │
+  # │ events-rising.csv    │ post-31…40│      30     │ 70–83%   │ post.createdAt = ~2 min ago (103-130s)       │
+  # │                      │           │             │          │ → wins Rising top-10, still not New/Hot win  │
   # ├──────────────────────┼───────────┼─────────────┼──────────┼──────────────────────────────────────────────┤
   # │ events-best.csv      │ post-01…10│     100     │  83–92%  │ All events 31–364 days ago                   │
   # │                      │           │             │          │ → inside YEAR, outside MONTH → Top YEAR      │
@@ -40,7 +40,7 @@ Feature: test PostRankingController
   # │                      │           │             │          │ → Wilson 0.567–0.658, loses Best ⭐          │
   # └──────────────────────┴───────────┴─────────────┴──────────┴──────────────────────────────────────────────┘
   #
-  # ── KARMA IS UNIQUE PER POST ─────────────────────────────────────────────────────────────────────
+  # ── KARMA PROFILES BY GENERATOR ───────────────────────────────────────────────────────────────────
   #
   # isUpvote() uses a deterministic hash: bucket = floorMod(userId*31 + postId*17, 100); gcd(31,100)=1
   # → for userId 1-100 the buckets are a full permutation of 0-99
@@ -51,9 +51,9 @@ Feature: test PostRankingController
   #   n=100: karma = 2 × upvotePercent − 100
   #   n=500: karma = 500 × (2 × upvotePercent/100 − 1) = 10 × (2 × upvotePercent − 100)
   #
-  #   posts 21-30  karma   2,   4, …   20  (NewEvents,    51–60%, n=100)  → New feed
+  #   posts 21-30  karma   1,2,3,2,1,2,1,2,1,2 (NewEvents)                   → New feed
   #   posts 11-20  karma  24,  26, …   42  (HotEvents,    62–71%, n=100)  → Hot + Top DAY + Top WEEK
-  #   posts 31-40  karma  44,  46, …   62  (RisingEvents, 72–81%, n=100)  → Top MONTH
+  #   posts 31-40  karma  12, 14, … 20 (RisingEvents, 21..25 up of 30)       → Rising top-10
   #   posts 01-10  karma  66,  68, …   84  (BestEvents,   83–92%, n=100)  → Top YEAR + Best ⭐
   #   posts 41-50  karma 110, 120, …  200  (TopEvents,    61–70%, n=500)  → Top ALL
   #
@@ -63,8 +63,8 @@ Feature: test PostRankingController
   #   Time dominates — every 12.5 h of age costs ~1 hot_score point.
   #   posts 11-20: createdAt ≈  9–54 min, karma   24–  42  → wins Hot (9–54 min fresher than NewEvents,
   #                                                           karma advantage ensures margin > 0)
-  #   posts 21-30: createdAt ≈ 1–10 s,   karma    2–  20  → 2nd (newer but lower karma)
-  #   posts 31-40: createdAt ≈ 8–29 d,   karma   44–  62  → 3rd place
+  #   posts 21-30: createdAt ≈ 33–96 s,  karma    1..3    → 2nd (newer but lower karma)
+  #   posts 31-40: createdAt ≈ 103-130s, karma   12..20   → below Hot winners
   #   posts  1-10: createdAt ≈ 364 d,    karma   66–  84  → 4th place
   #   posts 41-50: createdAt ≈ 730 d,    karma 110– 200   → last (time penalty too large)
   #
@@ -72,11 +72,10 @@ Feature: test PostRankingController
   #
   #   Window │ Winner        │ Why
   #   ───────┼───────────────┼───────────────────────────────────────────────────────────────
-  #   DAY    │ posts 11-20   │ createdAt 9-54 min ago; karma 24-42 > NewEvents karma 2-20
-  #   WEEK   │ posts 11-20   │ createdAt 9-54 min ago; karma 24-42 > NewEvents karma 2-20;
-  #          │               │ RisingEvents createdAt 8-29 d → outside 7-day window
-  #   MONTH  │ posts 31-40   │ 8-29 d old → in MONTH, not in WEEK; karma 44-62 > 42
-  #   YEAR   │ posts 01-10   │ 31-364 d old → in YEAR, not in MONTH; karma 66-84 > 62
+  #   DAY    │ posts 11-20   │ createdAt 9-54 min ago; karma 24-42 > NewEvents karma 1..3
+  #   WEEK   │ posts 11-20   │ createdAt 9-54 min ago; karma 24-42 > NewEvents 1..3 and RisingEvents 12..20
+  #   MONTH  │ posts 11-20   │ same winner: RisingEvents 12..20 stay below HotEvents 24-42
+  #   YEAR   │ posts 01-10   │ 31-364 d old → in YEAR, not in MONTH; karma 66-84 > 42
   #   ALL    │ posts 41-50   │ 366-730 d old → only visible in ALL; karma 110-200 > 84
   #
   # Best ⭐ (Wilson score lower bound, 95 % confidence, no time filter)
@@ -126,7 +125,7 @@ Feature: test PostRankingController
       | post-01 | 66    |
 
   # Hot ranking: Reddit's hot_score = log₁₀(karma) + (post.createdAt − anchor) / 45 000.
-  # Time dominates, but karma advantage compensates the small gap vs. NewEvents (1–10 s old).
+  # Time dominates, but karma advantage compensates the small gap vs. NewEvents (33–96 s old).
   # Worst-case margin: log₁₀(24/20) − 3239/45000 = +0.0072 > 0 → posts 11-20 always win Hot.
   # karma per post: postId 11→24, 12→26, ..., 20→42  (upvote% = 62 + (postId−11))
   Scenario: Hot posts
@@ -145,16 +144,15 @@ Feature: test PostRankingController
       | post-11 | 24    |
 
   # New ranking: sorted by post.createdAt DESC from the 'posts' index (actual submission time).
-  # NewEvents (posts 21-30): createdAt is within the last 10 minutes
+  # NewEvents (posts 21-30): createdAt is within the last 96 seconds
   # (post-30 is newest, post-21 is oldest in this generator).
   # HotEvents (posts 11-20): createdAt = 9–54 minutes ago — older than NewEvents ordering for post-30..21.
   #
-  # Why Hot posts still win the Hot feed: Hot karma (24–42) >> New karma (1–3).
+  # Why Hot posts still win the Hot feed: Hot karma (24–42) >> New karma (1..3).
   #
-  # Order within NewEvents: each post has a distinct createdAt timestamp in the last 10 minutes.
+  # Order within NewEvents: each post has a distinct createdAt timestamp in the last 91 seconds.
   # Descending by createdAt equals descending by postId: post-30, post-29, …, post-21.
-  # karma per post (with <=10 voters/post): postId 30→1, 29→2, 28→3, 27→2, 26→1,
-  #                                         25→2, 24→1, 23→2, 22→1, 21→2
+  # karma per post: postId 30→1, 29→2, 28→3, 27→2, 26→1, 25→2, 24→1, 23→2, 22→1, 21→2
   Scenario: New posts
     Given data folder 'data/csv' was ingested
     Then new posts endpoint returns 10 ranked results
@@ -169,6 +167,23 @@ Feature: test PostRankingController
       | post-23 | 2     |
       | post-22 | 1     |
       | post-21 | 2     |
+
+  # Rising ranking: candidates are younger than 6 hours, sorted by risingScore DESC.
+  # Rising fixtures (31-40) are intentionally generated to be the top-10 winners.
+  Scenario: Rising posts
+    Given data folder 'data/csv' was ingested
+    Then rising posts endpoint returns 10 ranked results
+      | postId  | karma |
+      | post-40 | 20    |
+      | post-39 | 20    |
+      | post-38 | 18    |
+      | post-37 | 18    |
+      | post-36 | 16    |
+      | post-35 | 16    |
+      | post-34 | 14    |
+      | post-33 | 14    |
+      | post-32 | 12    |
+      | post-31 | 12    |
 
   # Top ranking: top_score = upvotes − downvotes, all-time, no time window.
   # Posts 41-50: 61–70% upvote rate, 500 voters each → karma 110-200/post, highest across all generators.
@@ -210,29 +225,27 @@ Feature: test PostRankingController
       | post-01 | 66    |
 
   # Top/MONTH: 30-day window.
-  # RisingEvents events are 8-29 days old → all inside the MONTH window.
-  # NewEvents createdAt 1–10 s ago → also in MONTH, but karma max=20 < 44.
-  # HotEvents createdAt 9–54 min ago → also in MONTH, but karma max=42 < 44.
-  # karma per post: postId 31→44, 32→46, ..., 40→62  (upvote% = 72 + (postId−31))
+  # HotEvents (posts 11-20) still win with karma 24-42.
+  # RisingEvents now use karma 12..20, which stays below Hot.
   Scenario: Top posts for MONTH
     Given data folder 'data/csv' was ingested
     Then top posts for MONTH returns 10 ranked results
       | postId  | karma |
-      | post-40 | 62    |
-      | post-39 | 60    |
-      | post-38 | 58    |
-      | post-37 | 56    |
-      | post-36 | 54    |
-      | post-35 | 52    |
-      | post-34 | 50    |
-      | post-33 | 48    |
-      | post-32 | 46    |
-      | post-31 | 44    |
+      | post-20 | 42    |
+      | post-19 | 40    |
+      | post-18 | 38    |
+      | post-17 | 36    |
+      | post-16 | 34    |
+      | post-15 | 32    |
+      | post-14 | 30    |
+      | post-13 | 28    |
+      | post-12 | 26    |
+      | post-11 | 24    |
 
   # Top/WEEK: 7-day window.
   # HotEvents createdAt 9–54 min ago → inside WEEK, karma 24-42 (highest in window).
-  # NewEvents createdAt 1–10 s ago → also in WEEK, but karma max=20 < 24.
-  # RisingEvents createdAt 8-29 days old → outside WEEK, so they don't compete here.
+  # NewEvents createdAt 33–96 s ago → also in WEEK, but karma max=3 < 24.
+  # RisingEvents createdAt ~2 minutes ago, but karma max=20 so they don't compete with Hot.
   # karma per post: postId 11→24, 12→26, ..., 20→42  (upvote% = 62 + (postId−11))
   Scenario: Top posts for WEEK
     Given data folder 'data/csv' was ingested
@@ -251,7 +264,7 @@ Feature: test PostRankingController
 
   # Top/DAY: 24-hour window.
   # HotEvents createdAt 9–54 min ago → fully inside the DAY window, karma 24-42.
-  # NewEvents createdAt 1–10 s ago → also in DAY window, but karma max=20 < 24.
+  # NewEvents createdAt 33–96 s ago → also in DAY window, but karma max=3 < 24.
   # karma per post: postId 11→24, 12→26, ..., 20→42  (upvote% = 62 + (postId−11))
   Scenario: Top posts for DAY
     Given data folder 'data/csv' was ingested

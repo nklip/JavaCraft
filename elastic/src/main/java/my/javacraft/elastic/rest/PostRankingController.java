@@ -15,6 +15,7 @@ import my.javacraft.elastic.model.Post;
 import my.javacraft.elastic.service.ranking.BestRankingService;
 import my.javacraft.elastic.service.ranking.HotRankingService;
 import my.javacraft.elastic.service.ranking.NewRankingService;
+import my.javacraft.elastic.service.ranking.RisingRankingService;
 import my.javacraft.elastic.service.ranking.TopRankingService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -32,6 +33,7 @@ public class PostRankingController {
     private final TopRankingService topRankingService;
     private final HotRankingService hotRankingService;
     private final NewRankingService newRankingService;
+    private final RisingRankingService risingRankingService;
     private final BestRankingService bestRankingService;
 
     @Operation(
@@ -91,6 +93,26 @@ public class PostRankingController {
         log.info("retrieving hot posts (limit = '{}')...", size);
 
         return ResponseEntity.ok().body(hotRankingService.retrieveHotPosts(size));
+    }
+
+    @Operation(
+            summary = "Rising posts",
+            description = "Returns posts younger than 6 hours, ranked by net vote velocity "
+                    + "(karma per unit time). Designed to surface momentum before posts become hot."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successful"),
+            @ApiResponse(responseCode = "404", description = "Not found"),
+            @ApiResponse(responseCode = "406", description = "Resource unavailable")
+    })
+    @GetMapping(value = "/rising", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<Post>> retrieveRisingPosts(
+            @RequestParam(required = false, name = "size", defaultValue = "10")
+            @Min(1) @Max(Constants.MAX_VALUES) int size) throws IOException {
+
+        log.info("retrieving rising posts (limit = '{}')...", size);
+
+        return ResponseEntity.ok().body(risingRankingService.retrieveRisingPosts(size));
     }
 
     @Operation(

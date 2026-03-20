@@ -45,10 +45,10 @@ public class NewVotesGenerator implements VoteGenerator {
             int authorUserId = ++postCount;                     // user-001 … user-010
             int votersForPost = 1 + Math.floorMod(postId * 7, MAX_USERS_PER_POST); // deterministic 1..10
 
-            // Keep all "new" posts strictly newer than HotVotesGenerator's minimum (9 minutes)
-            // to avoid createdAt ties in NewRankingService (secondary sort is postId ASC).
-            // post-30 -> 1s ago, post-21 -> 271s ago (4m31s), all inside 10-minute window.
-            long createdSecondsAgo = 1L + (LAST_POST_ID - postId) * 30L;
+            // Keep all "new" posts in a very recent band so they stay ahead of Rising fixtures
+            // in the New feed (secondary sort is postId ASC when timestamps tie).
+            // post-30 -> 33s ago, post-21 -> 96s ago.
+            long createdSecondsAgo = 33L + (LAST_POST_ID - postId) * 7L;
             Instant createdAt = now.minus(createdSecondsAgo, ChronoUnit.SECONDS);
 
             for (int userId = 1; userId <= votersForPost; userId++) {
@@ -57,7 +57,6 @@ public class NewVotesGenerator implements VoteGenerator {
                 long secondsAgo = Math.floorMod(postId * 11 + userId * 7, 60);
                 Instant eventTime = now.minus(minutesAgo, ChronoUnit.MINUTES)
                         .minus(secondsAgo, ChronoUnit.SECONDS);
-
                 eventRows.add(CsvSupport.csvLine(userId, postId, upvote, eventTime));
             }
             postRows.add(CsvSupport.postCsvLine(postId, createdAt, authorUserId));

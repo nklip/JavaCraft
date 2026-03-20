@@ -83,9 +83,9 @@ public class TopVotesGenerator implements VoteGenerator {
      *
      * All karma groups across all generators form a non-overlapping sequence:
      *
-     *   posts 21-30  karma   2–  20  (NewVotesGenerator,    51-60%, n=100)  → New feed
+     *   posts 21-30  karma   1-3     (NewVotesGenerator,   55-64%, n<=10)    → New feed
      *   posts 11-20  karma  24–  42  (HotVotesGenerator,    62-71%, n=100)  → Hot + Top DAY + Top WEEK
-     *   posts 31-40  karma  44–  62  (RisingVotesGenerator, 72-81%, n=100)  → Top MONTH
+     *   posts 31-40  karma  12-20    (RisingVotesGenerator, 70-83%, n=30)    → Rising top-10
      *   posts 01-10  karma  66–  84  (BestVotesGenerator,    83-92%, n=100)  → Top YEAR + Best ⭐
      *   posts 41-50  karma 110– 200  (TopVotesGenerator,    61-70%, n=500)  → Top ALL
      *

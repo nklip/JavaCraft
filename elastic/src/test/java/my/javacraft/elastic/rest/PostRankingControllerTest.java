@@ -13,6 +13,7 @@ import my.javacraft.elastic.model.Post;
 import my.javacraft.elastic.service.ranking.BestRankingService;
 import my.javacraft.elastic.service.ranking.HotRankingService;
 import my.javacraft.elastic.service.ranking.NewRankingService;
+import my.javacraft.elastic.service.ranking.RisingRankingService;
 import my.javacraft.elastic.service.ranking.TopRankingService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -34,10 +35,18 @@ public class PostRankingControllerTest {
     @Mock
     NewRankingService newRankingService;
     @Mock
+    RisingRankingService risingRankingService;
+    @Mock
     BestRankingService bestRankingService;
 
     private PostRankingController controller() {
-        return new PostRankingController(topRankingService, hotRankingService, newRankingService, bestRankingService);
+        return new PostRankingController(
+                topRankingService,
+                hotRankingService,
+                newRankingService,
+                risingRankingService,
+                bestRankingService
+        );
     }
 
     @Test
@@ -91,6 +100,17 @@ public class PostRankingControllerTest {
         when(hotRankingService.retrieveHotPosts(anyInt())).thenReturn(posts);
 
         ResponseEntity<List<Post>> response = controller().retrieveHotPosts(10);
+
+        Assertions.assertNotNull(response);
+        Assertions.assertNotNull(response.getBody());
+    }
+
+    @Test
+    public void testRisingPosts() throws IOException {
+        List<Post> posts = new ArrayList<>();
+        when(risingRankingService.retrieveRisingPosts(anyInt())).thenReturn(posts);
+
+        ResponseEntity<List<Post>> response = controller().retrieveRisingPosts(10);
 
         Assertions.assertNotNull(response);
         Assertions.assertNotNull(response.getBody());

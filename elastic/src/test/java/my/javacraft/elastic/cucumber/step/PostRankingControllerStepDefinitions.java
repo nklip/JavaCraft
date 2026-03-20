@@ -17,6 +17,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -59,6 +60,9 @@ public class PostRankingControllerStepDefinitions {
 
     /** Number of CSV files expected in the generated data folder (5 events + 5 posts, one pair per VoteGenerator). */
     private static final int EXPECTED_CSV_FILES = 10;
+
+    /** Candidate age limit for the Rising feed. */
+    private static final int RISING_WINDOW_HOURS = 6;
 
     /**
      * Maximum age of cached CSV files before they must be regenerated.
@@ -290,6 +294,46 @@ public class PostRankingControllerStepDefinitions {
     }
 
     /**
+     * Verifies the Rising endpoint returns {@code expectedSize} posts from the last 6 hours
+     * and that results are sorted by risingScore DESC (postId ASC tie-break).
+     */
+    @Then("rising posts endpoint returns {int} ranked results")
+    public void verifyRisingPostsReturned(int expectedSize, DataTable expectedPosts) throws InterruptedException {
+        String path = "/rising?size=" + expectedSize;
+
+        verifyRankedPosts(path, expectedSize, expectedPosts, "rising");
+    }
+
+    /**
+     * Verifies the Rising endpoint contains specific postIds.
+     * Intended for checking that low-traffic Rising fixtures are still included
+     * when requesting a wide enough result set.
+     */
+    @Then("rising posts endpoint with size {int} includes post ids")
+    public void verifyRisingPostsContainsIds(int size, DataTable expectedPosts) throws InterruptedException {
+        String path = "/rising?size=" + size;
+        Assertions.assertTrue(
+                CucumberSpringConfiguration.assertWithWait(size, () -> fetchRankedPostsCount(path)),
+                "Timed out waiting for %d rising posts at %s".formatted(size, path)
+        );
+
+        Set<String> actualPostIds = fetchRankedPosts(path).stream()
+                .map(Post::postId)
+                .collect(java.util.stream.Collectors.toSet());
+
+        List<String> expectedPostIds = expectedPosts.asList().stream()
+                .filter(value -> !"postId".equalsIgnoreCase(value))
+                .toList();
+
+        for (String expectedPostId : expectedPostIds) {
+            Assertions.assertTrue(
+                    actualPostIds.contains(expectedPostId),
+                    "Rising endpoint does not contain expected postId: " + expectedPostId
+            );
+        }
+    }
+
+    /**
      * Verifies the Top endpoint returns {@code expectedSize} results whose
      * postIds and karma values exactly match the expected table (order-independent).
      * Top ranking is pure upvote count; ties within one archetype are
@@ -325,7 +369,7 @@ public class PostRankingControllerStepDefinitions {
     }
 
     /*
-     * Shared assertion logic for all three ranking endpoints.
+     * Shared assertion logic for table-driven ranking endpoints.
      */
     private void verifyRankedPosts(String path, int expectedSize, DataTable expectedPosts, String label)
             throws InterruptedException {
@@ -342,9 +386,15 @@ public class PostRankingControllerStepDefinitions {
             // first row is column names
             List<String> expectedRow = expectedPosts.row(i + 1);
 
+            Assertions.assertEquals(
+                    expectedRow.get(0).trim(),
+                    actualPost.postId(),
+                    "unexpected postId at position " + i
+            );
+
             // karma is the 2nd column
             Assertions.assertEquals(
-                    Long.parseLong(expectedRow.get(1)),
+                    Long.parseLong(expectedRow.get(1).trim()),
                     actualPost.karma(),
                     "postId = " + actualPost.postId()
             );

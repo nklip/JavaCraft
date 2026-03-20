@@ -35,7 +35,7 @@ import my.javacraft.elastic.cucumber.helper.generator.VoteGenerator;
  *
  * Top YEAR filters to posts whose createdAt is within the last 365 days.
  * TopVotesGenerator events are 366–730 days old and fall outside that window.
- * Within the YEAR window, posts 01-10 (karma 62-80) have the highest karma.
+ * Within the YEAR window, posts 01-10 (karma 66-84) have the highest karma.
  */
 public class BestVotesGenerator implements VoteGenerator {
     private static final String VOTES_BEST_FILE = "votes-best.csv";
@@ -57,15 +57,15 @@ public class BestVotesGenerator implements VoteGenerator {
      * karma = 2 × upvotePercent − 100  (exact because isUpvote() produces a full
      * permutation of 0-99 over 100 users when gcd(31, 100) = 1).
      *
-     * Starts at 83 % (not 81 %) so karma values (66–84) do not collide with
-     * RisingVotesGenerator's ceiling of 81 % (karma 62).
+     * Starts at 83 % so karma values (66-84) stay far above
+     * RisingVotesGenerator's current range (12-20).
      *
      * Date pattern: all events are 31–364 days old.
      *   - 31-day floor keeps every event outside the 30-day Top MONTH window.
      *   - Ceiling capped at 362 days so that even with 22 h file staleness + 23 h hoursAgo
      *     + 59 min minutesAgo the oldest event is at most 362d + 45h 59min = 363d 21h 59min,
      *     safely inside the 365-day Top YEAR window.
-     *   - max karma (84) > max RisingVotesGenerator karma (62) → posts 01-10 win Top YEAR.
+     *   - max karma (84) > RisingVotesGenerator max karma (20) → posts 01-10 win Top YEAR.
      *   - first_seen ≈ 364 days old → large time penalty in Hot, so Hot is NOT won.
      *   - Wilson 0.745–0.850 > TopVotesGenerator 0.567–0.658 → posts 01-10 WIN Best sort.
      */

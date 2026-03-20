@@ -75,11 +75,11 @@ public class PostService {
             "long nowSec = params.nowSec; " +
             "long ageSeconds = nowSec - epochSec; " +
             "if (ageSeconds < 1L) { ageSeconds = 1L; } " +
-            "ctx._source.risingScore = (double) k / (double) ageSeconds; " +
-            // ── best score (Wilson lower bound) ───────────────────────────────
             "long upvoteDelta = params.upvoteDelta; " +
             "long up = ctx._source.upvotes + upvoteDelta; " +
             "ctx._source.upvotes = up; " +
+            "ctx._source.risingScore = (double) k / (double) ageSeconds; " +
+            // ── best score (Wilson lower bound) ───────────────────────────────
             "long n = 2L * up - k; " +        // totalVotes = upvotes + downvotes = 2*up - karma
             "if (n <= 0L) { " +
             "  ctx._source.bestScore = 0.0; " +
