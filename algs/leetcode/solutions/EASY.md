@@ -346,3 +346,46 @@ public class ReverseLinkedListExample {
 ```
 
 ---
+
+# 6. Cyclic Sort
+<sub>[Back to solutions](../README.md#solutions)</sub>
+
+## 6.1. Idea
+
+Suppose there is an array arr which has n <b>distinct</b> elements. Given an element A, we can find its index by counting the number of elements smaller than A.
+
+1. If the element is at its correct position, simply leave it as it is.
+2. Otherwise, we have to find the correct position of A by counting the number of elements that are smaller. Another element B is replaced to be moved to its correct position. This process continues until we get an element at the original position of A.
+
+## 6.2. Illustration
+
+![Cyclic Sort](images/easy/6_cyclic_sort_1.webp)
+
+## 6.3. Complexity
+
+Time: O(n)<br/>
+Although we are not incrementing the index i when swapping the numbers, this will result in more than n iterations of the loop, but in the worst-case scenario, the while loop will swap a total of n-1 numbers and once a number is at its correct index, we will move on to the next number by incrementing i. So overall, our algorithm will take O(n) + O(n-1) which is asymptotically equivalent to O(n).<br/>
+Space: O(1)<br/>
+
+Cycle Sort isn’t a stable sorting algorithm
+
+## 6.4. How to detect it should be used
+
+Use cyclic sort when:
+1. Array size is n.
+2. Values are supposed to belong to a tight index-like range: 1..n or 0..n-1.
+3. Task is about placement-based facts, not full sorting:
+   * missing number(s)
+   * duplicate(s)
+   * corrupt pair
+   * first missing positive (variant)
+4. Constraints ask for O(n) time and O(1) extra space.
+
+## 6.5. LeetCode problems
+
+* https://leetcode.com/problems/missing-number/
+* https://leetcode.com/problems/find-all-numbers-disappeared-in-an-array/
+* https://leetcode.com/problems/find-the-duplicate-number/
+* https://leetcode.com/problems/find-all-duplicates-in-an-array/
+
+---
