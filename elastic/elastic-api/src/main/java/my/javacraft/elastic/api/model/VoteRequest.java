@@ -1,0 +1,21 @@
+package my.javacraft.elastic.api.model;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import lombok.Data;
+import lombok.ToString;
+import my.javacraft.elastic.api.validation.ValueOfEnum;
+
+// Represents the incoming event for VoteService
+@Data
+@ToString
+public class VoteRequest {
+
+    @NotEmpty
+    String userId;
+    @NotBlank
+    String postId;
+    @NotBlank
+    @ValueOfEnum(enumClass = UserAction.class)
+    String action;
+}
