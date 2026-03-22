@@ -1,9 +1,10 @@
 package my.javacraft.elastic.api.model;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.ToString;
+import my.javacraft.elastic.api.config.ApiLimits;
 import my.javacraft.elastic.api.validation.ValueOfEnum;
 
 // Represents the incoming event for VoteService
@@ -11,11 +12,14 @@ import my.javacraft.elastic.api.validation.ValueOfEnum;
 @ToString
 public class VoteRequest {
 
-    @NotEmpty
-    String userId;
     @NotBlank
-    String postId;
+    @Size(max = ApiLimits.MAX_USER_ID_LENGTH)
+    private String userId;
     @NotBlank
+    @Size(max = ApiLimits.MAX_POST_ID_LENGTH)
+    private String postId;
+    @NotBlank
+    @Size(max = ApiLimits.MAX_ENUM_INPUT_LENGTH)
     @ValueOfEnum(enumClass = UserAction.class)
-    String action;
+    private String action;
 }

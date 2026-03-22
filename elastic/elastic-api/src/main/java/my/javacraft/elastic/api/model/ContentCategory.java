@@ -9,6 +9,9 @@ public enum ContentCategory {
     MOVIES,
     PEOPLE;
 
+    /*
+     * Current behavior intentionally defaults to ALL for unknown values.
+     */
     public static ContentCategory valueByName(String name) {
         ContentCategory[] values = values();
         for (ContentCategory contentCategory : values) {

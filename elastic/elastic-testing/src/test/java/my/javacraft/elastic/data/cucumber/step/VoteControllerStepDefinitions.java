@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
-import my.javacraft.elastic.api.config.Constants;
+import my.javacraft.elastic.app.config.ElasticsearchConstants;
 import my.javacraft.elastic.api.model.*;
 import org.apache.http.HttpHeaders;
 import org.junit.jupiter.api.Assertions;
@@ -128,14 +128,14 @@ public class VoteControllerStepDefinitions {
     }
 
     /**
-     * Asserts that a vote document exists in the {@value Constants#INDEX_USER_VOTES} index
+     * Asserts that a vote document exists in the {@value ElasticsearchConstants#INDEX_USER_VOTES} index
      * for the given (userId, postId) pair with the expected action.
      * Document ID: {@code userId_postId}.
      */
     @And("a vote exists for user {string} on post {string} with action {string}")
     public void checkVoteExists(String userId, String postAlias, String expectedAction) throws IOException {
         String docId = userId + "_" + resolvePostId(postAlias);
-        var response = esClient.get(g -> g.index(Constants.INDEX_USER_VOTES).id(docId), UserVote.class);
+        var response = esClient.get(g -> g.index(ElasticsearchConstants.INDEX_USER_VOTES).id(docId), UserVote.class);
         Assertions.assertTrue(response.found(), "Expected vote document '%s' to exist".formatted(docId));
         Assertions.assertNotNull(response.source(), "Vote document '%s' has no source".formatted(docId));
         Assertions.assertEquals(expectedAction, response.source().getAction(),
@@ -143,26 +143,26 @@ public class VoteControllerStepDefinitions {
     }
 
     /**
-     * Asserts that NO vote document exists in the {@value Constants#INDEX_USER_VOTES} index
+     * Asserts that NO vote document exists in the {@value ElasticsearchConstants#INDEX_USER_VOTES} index
      * for the given (userId, postId) pair — used after NOVOTE (Deleted) and NotFound transitions.
      */
     @And("no vote exists for user {string} on post {string}")
     public void checkVoteNotExists(String userId, String postAlias) throws IOException {
         String docId = userId + "_" + resolvePostId(postAlias);
-        var response = esClient.get(g -> g.index(Constants.INDEX_USER_VOTES).id(docId), UserVote.class);
+        var response = esClient.get(g -> g.index(ElasticsearchConstants.INDEX_USER_VOTES).id(docId), UserVote.class);
         Assertions.assertFalse(response.found(),
                 "Expected vote document '%s' to be absent, but it was found".formatted(docId));
     }
 
     /**
-     * Asserts the current karma of a post in the {@value Constants#INDEX_POSTS} index.
+     * Asserts the current karma of a post in the {@value ElasticsearchConstants#INDEX_POSTS} index.
      * Uses the real-time Get API which reads from the primary shard directly,
      * bypassing the refresh cycle — no explicit refresh needed.
      */
     @And("post {string} karma is {long}")
     public void checkPostKarma(String postAlias, long expectedKarma) throws IOException {
         String postId = resolvePostId(postAlias);
-        var response = esClient.get(g -> g.index(Constants.INDEX_POSTS).id(postId), Post.class);
+        var response = esClient.get(g -> g.index(ElasticsearchConstants.INDEX_POSTS).id(postId), Post.class);
         Assertions.assertTrue(response.found(), "Post document '%s' not found".formatted(postId));
         Assertions.assertNotNull(response.source(), "Post document '%s' has no source".formatted(postId));
         Assertions.assertEquals(expectedKarma, response.source().karma(),

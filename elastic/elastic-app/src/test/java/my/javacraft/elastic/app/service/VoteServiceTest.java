@@ -12,6 +12,7 @@ import co.elastic.clients.json.jackson.JacksonJsonpMapper;
 import java.io.IOException;
 import my.javacraft.elastic.api.model.UserVote;
 import my.javacraft.elastic.api.model.VoteRequest;
+import my.javacraft.elastic.api.model.VoteResult;
 import my.javacraft.elastic.api.model.VoteResponse;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -107,7 +108,7 @@ public class VoteServiceTest {
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:00:00Z");
 
         Assertions.assertEquals(expectedId, response.getDocumentId());
-        Assertions.assertEquals(Result.Created, response.getResult());
+        Assertions.assertEquals(VoteResult.Created, response.getResult());
         verify(postService).updateScores(voteRequest.getPostId(), 1, 1);
     }
 
@@ -120,7 +121,7 @@ public class VoteServiceTest {
 
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:00:00Z");
 
-        Assertions.assertEquals(Result.Created, response.getResult());
+        Assertions.assertEquals(VoteResult.Created, response.getResult());
         verify(postService).updateScores(voteRequest.getPostId(), -1, 0);  // downvote: karma-1, upvotes unchanged
     }
 
@@ -132,7 +133,7 @@ public class VoteServiceTest {
 
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:05:00Z");
 
-        Assertions.assertEquals(Result.NoOp, response.getResult());
+        Assertions.assertEquals(VoteResult.NoOp, response.getResult());
         verify(postService, never()).updateScores(anyString(), anyInt(), anyInt());
     }
 
@@ -145,7 +146,7 @@ public class VoteServiceTest {
 
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:10:00Z");
 
-        Assertions.assertEquals(Result.Updated, response.getResult());
+        Assertions.assertEquals(VoteResult.Updated, response.getResult());
         verify(postService).updateScores(voteRequest.getPostId(), -2, -1);
     }
 
@@ -158,7 +159,7 @@ public class VoteServiceTest {
 
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:10:00Z");
 
-        Assertions.assertEquals(Result.Updated, response.getResult());
+        Assertions.assertEquals(VoteResult.Updated, response.getResult());
         verify(postService).updateScores(voteRequest.getPostId(), 2, 1);
     }
 
@@ -172,7 +173,7 @@ public class VoteServiceTest {
 
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:20:00Z");
 
-        Assertions.assertEquals(Result.Deleted, response.getResult());
+        Assertions.assertEquals(VoteResult.Deleted, response.getResult());
         verify(postService).updateScores(voteRequest.getPostId(), -1, -1);
     }
 
@@ -186,7 +187,7 @@ public class VoteServiceTest {
 
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:20:00Z");
 
-        Assertions.assertEquals(Result.Deleted, response.getResult());
+        Assertions.assertEquals(VoteResult.Deleted, response.getResult());
         verify(postService).updateScores(voteRequest.getPostId(), 1, 0);  // removing downvote: karma+1, upvotes unchanged
     }
 
@@ -202,7 +203,7 @@ public class VoteServiceTest {
 
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:20:00Z");
 
-        Assertions.assertEquals(Result.NotFound, response.getResult());
+        Assertions.assertEquals(VoteResult.NotFound, response.getResult());
         verify(postService, never()).updateScores(anyString(), anyInt(), anyInt());
     }
 
@@ -221,7 +222,7 @@ public class VoteServiceTest {
 
         VoteResponse response = service().processVoteRequest(voteRequest, "2024-01-15T10:20:00Z");
 
-        Assertions.assertEquals(Result.Deleted, response.getResult());
+        Assertions.assertEquals(VoteResult.Deleted, response.getResult());
         verify(postService, never()).updateScores(anyString(), anyInt(), anyInt());
     }
 }

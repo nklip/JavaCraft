@@ -15,10 +15,11 @@ import java.io.IOException;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import my.javacraft.elastic.api.config.Constants;
+import my.javacraft.elastic.app.config.ElasticsearchConstants;
 import my.javacraft.elastic.api.model.UserAction;
 import my.javacraft.elastic.api.model.UserVote;
 import my.javacraft.elastic.api.model.VoteRequest;
+import my.javacraft.elastic.api.model.VoteResult;
 import my.javacraft.elastic.api.model.VoteResponse;
 import org.springframework.stereotype.Service;
 
@@ -92,14 +93,14 @@ public class VoteService {
         Script script = Script.of(s -> s
                 .source(VOTE_SCRIPT)
                 .params(Map.of(
-                        Constants.ACTION,    JsonData.of(userVote.getAction()),
-                        Constants.TIMESTAMP, JsonData.of(timestamp)
+                        ElasticsearchConstants.ACTION,    JsonData.of(userVote.getAction()),
+                        ElasticsearchConstants.TIMESTAMP, JsonData.of(timestamp)
                 ))
         );
 
         UpdateRequest<UserVote, UserVote> updateRequest =
                 new UpdateRequest.Builder<UserVote, UserVote>()
-                        .index(Constants.INDEX_USER_VOTES)
+                        .index(ElasticsearchConstants.INDEX_USER_VOTES)
                         .id(documentId)
                         .script(script)
                         .upsert(userVote)
@@ -130,7 +131,7 @@ public class VoteService {
 
         VoteResponse voteResponse = new VoteResponse();
         voteResponse.setDocumentId(updateResponse.id());
-        voteResponse.setResult(updateResponse.result());
+        voteResponse.setResult(toVoteResult(updateResponse.result()));
         return voteResponse;
     }
 
@@ -140,12 +141,12 @@ public class VoteService {
      */
     private VoteResponse removeVote(String postId, String documentId) throws IOException {
         GetResponse<UserVote> existing = esClient.get(
-                GetRequest.of(g -> g.index(Constants.INDEX_USER_VOTES).id(documentId)),
+                GetRequest.of(g -> g.index(ElasticsearchConstants.INDEX_USER_VOTES).id(documentId)),
                 UserVote.class
         );
 
         DeleteRequest deleteRequest = new DeleteRequest.Builder()
-                .index(Constants.INDEX_USER_VOTES)
+                .index(ElasticsearchConstants.INDEX_USER_VOTES)
                 .id(documentId)
                 .build();
 
@@ -165,7 +166,18 @@ public class VoteService {
 
         VoteResponse voteResponse = new VoteResponse();
         voteResponse.setDocumentId(deleteResponse.id());
-        voteResponse.setResult(deleteResponse.result());
+        voteResponse.setResult(toVoteResult(deleteResponse.result()));
         return voteResponse;
+    }
+
+    private static VoteResult toVoteResult(Result result) {
+        return switch (result) {
+            case Created -> VoteResult.Created;
+            case Updated -> VoteResult.Updated;
+            case NoOp -> VoteResult.NoOp;
+            case Deleted -> VoteResult.Deleted;
+            case NotFound -> VoteResult.NotFound;
+            default -> throw new IllegalStateException("Unsupported Elasticsearch result: " + result);
+        };
     }
 }

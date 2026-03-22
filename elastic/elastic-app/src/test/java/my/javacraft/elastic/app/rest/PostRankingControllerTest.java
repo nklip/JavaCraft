@@ -8,7 +8,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import my.javacraft.elastic.api.config.Constants;
+import my.javacraft.elastic.api.config.ApiLimits;
 import my.javacraft.elastic.api.model.Post;
 import my.javacraft.elastic.app.service.ranking.BestRankingService;
 import my.javacraft.elastic.app.service.ranking.HotRankingService;
@@ -157,11 +157,11 @@ public class PostRankingControllerTest {
         Set<ConstraintViolation<PostRankingController>> violations;
         try (ValidatorFactory validatorFactory = Validation.buildDefaultValidatorFactory()) {
             violations = validatorFactory.getValidator().forExecutables()
-                    .validateParameters(c, method, new Object[]{Constants.MAX_VALUES + 1});
+                    .validateParameters(c, method, new Object[]{ApiLimits.MAX_ES_LIMIT + 1});
         }
 
         Assertions.assertTrue(violations.stream()
-                .anyMatch(v -> v.getMessage().contains("less than or equal to " + Constants.MAX_VALUES)));
+                .anyMatch(v -> v.getMessage().contains("less than or equal to " + ApiLimits.MAX_ES_LIMIT)));
     }
 
     @Test

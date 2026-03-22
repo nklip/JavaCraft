@@ -2,18 +2,19 @@ package my.javacraft.elastic.api.validation;
 
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
-import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class ValueOfEnumValidator implements ConstraintValidator<ValueOfEnum, CharSequence> {
-    private List<String> acceptedValues;
+    private Set<String> acceptedValues;
 
     @Override
     public void initialize(ValueOfEnum annotation) {
         acceptedValues = Stream.of(annotation.enumClass().getEnumConstants())
                 .map(Enum::name)
-                .collect(Collectors.toList());
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     @Override
@@ -22,6 +23,6 @@ public class ValueOfEnumValidator implements ConstraintValidator<ValueOfEnum, Ch
             return false;
         }
 
-        return acceptedValues.contains(value.toString().toUpperCase());
+        return acceptedValues.contains(value.toString().toUpperCase(Locale.ROOT));
     }
 }

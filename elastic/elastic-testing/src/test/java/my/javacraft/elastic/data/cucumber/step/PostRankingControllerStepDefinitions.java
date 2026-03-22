@@ -17,13 +17,12 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import lombok.extern.slf4j.Slf4j;
-import my.javacraft.elastic.api.config.Constants;
+import my.javacraft.elastic.app.config.ElasticsearchConstants;
 import my.javacraft.elastic.data.csv.CsvSupport;
 import my.javacraft.elastic.data.csv.VoteGenerator;
 import my.javacraft.elastic.data.csv.impl.*;
@@ -60,9 +59,6 @@ public class PostRankingControllerStepDefinitions {
 
     /** Number of CSV files expected in the generated data folder (5 events + 5 posts, one pair per VoteGenerator). */
     private static final int EXPECTED_CSV_FILES = 10;
-
-    /** Candidate age limit for the Rising feed. */
-    private static final int RISING_WINDOW_HOURS = 6;
 
     /**
      * Maximum age of cached CSV files before they must be regenerated.
@@ -201,7 +197,7 @@ public class PostRankingControllerStepDefinitions {
         // votes ingestion are immediately visible in subsequent search queries.
         // Without this, ES may still serve the pre-update karma=0 values from its
         // segment cache until the automatic 1-second refresh cycle kicks in.
-        esClient.indices().refresh(r -> r.index(Constants.INDEX_POSTS));
+        esClient.indices().refresh(r -> r.index(ElasticsearchConstants.INDEX_POSTS));
         log.info("posts index refreshed after vote ingestion");
 
         Assertions.assertTrue(totalRows > 0, "CSV folder has no ingestible rows: " + folderPath);
@@ -242,34 +238,34 @@ public class PostRankingControllerStepDefinitions {
                 CucumberSpringConfiguration.assertWithWait(true, () -> countVoteDocuments() >= MIN_CSV_DOCUMENTS),
                 ("ES index '%s' does not contain the expected minimum of %d documents after ingesting '%s'. " +
                         "Actual count: %d. Ensure 'Scenario: prepare data' ran first.")
-                        .formatted(Constants.INDEX_USER_VOTES, MIN_CSV_DOCUMENTS, folderPath, countVoteDocuments())
+                        .formatted(ElasticsearchConstants.INDEX_USER_VOTES, MIN_CSV_DOCUMENTS, folderPath, countVoteDocuments())
         );
         Assertions.assertTrue(
                 CucumberSpringConfiguration.assertWithWait(true, () -> countPostDocuments() >= MIN_POSTS_DOCUMENTS),
                 ("ES index '%s' does not contain the expected minimum of %d documents after ingesting '%s'. " +
                         "Actual count: %d. Ensure 'Scenario: prepare data' ran first.")
-                        .formatted(Constants.INDEX_POSTS, MIN_POSTS_DOCUMENTS, folderPath, countPostDocuments())
+                        .formatted(ElasticsearchConstants.INDEX_POSTS, MIN_POSTS_DOCUMENTS, folderPath, countPostDocuments())
         );
         log.info("ES confirmed: '{}' ≥{} docs, '{}' ≥{} docs — folder '{}' is ready",
-                Constants.INDEX_USER_VOTES, MIN_CSV_DOCUMENTS,
-                Constants.INDEX_POSTS, MIN_POSTS_DOCUMENTS,
+                ElasticsearchConstants.INDEX_USER_VOTES, MIN_CSV_DOCUMENTS,
+                ElasticsearchConstants.INDEX_POSTS, MIN_POSTS_DOCUMENTS,
                 folderPath);
     }
 
     private long countVoteDocuments() {
         try {
-            return esClient.count(r -> r.index(Constants.INDEX_USER_VOTES)).count();
+            return esClient.count(r -> r.index(ElasticsearchConstants.INDEX_USER_VOTES)).count();
         } catch (IOException e) {
-            log.warn("Failed to count documents in index '{}': {}", Constants.INDEX_USER_VOTES, e.getMessage());
+            log.warn("Failed to count documents in index '{}': {}", ElasticsearchConstants.INDEX_USER_VOTES, e.getMessage());
             return 0L;
         }
     }
 
     private long countPostDocuments() {
         try {
-            return esClient.count(r -> r.index(Constants.INDEX_POSTS)).count();
+            return esClient.count(r -> r.index(ElasticsearchConstants.INDEX_POSTS)).count();
         } catch (IOException e) {
-            log.warn("Failed to count documents in index '{}': {}", Constants.INDEX_POSTS, e.getMessage());
+            log.warn("Failed to count documents in index '{}': {}", ElasticsearchConstants.INDEX_POSTS, e.getMessage());
             return 0L;
         }
     }
@@ -306,35 +302,6 @@ public class PostRankingControllerStepDefinitions {
         String path = "/rising?size=" + expectedSize;
 
         verifyRankedPosts(path, expectedSize, expectedPosts, "rising");
-    }
-
-    /**
-     * Verifies the Rising endpoint contains specific postIds.
-     * Intended for checking that low-traffic Rising fixtures are still included
-     * when requesting a wide enough result set.
-     */
-    @Then("rising posts endpoint with size {int} includes post ids")
-    public void verifyRisingPostsContainsIds(int size, DataTable expectedPosts) throws InterruptedException {
-        String path = "/rising?size=" + size;
-        Assertions.assertTrue(
-                CucumberSpringConfiguration.assertWithWait(size, () -> fetchRankedPostsCount(path)),
-                "Timed out waiting for %d rising posts at %s".formatted(size, path)
-        );
-
-        Set<String> actualPostIds = fetchRankedPosts(path).stream()
-                .map(Post::postId)
-                .collect(java.util.stream.Collectors.toSet());
-
-        List<String> expectedPostIds = expectedPosts.asList().stream()
-                .filter(value -> !"postId".equalsIgnoreCase(value))
-                .toList();
-
-        for (String expectedPostId : expectedPostIds) {
-            Assertions.assertTrue(
-                    actualPostIds.contains(expectedPostId),
-                    "Rising endpoint does not contain expected postId: " + expectedPostId
-            );
-        }
     }
 
     /**
@@ -504,7 +471,7 @@ public class PostRankingControllerStepDefinitions {
                 double hotScore  = (epochSec - 1_134_028_003L) / 45_000.0;
                 Post post = new Post(postId, author, createdAt, 0L, 0L, hotScore, 0.0, 0.0);
                 esClient.index(i -> i
-                        .index(Constants.INDEX_POSTS)
+                        .index(ElasticsearchConstants.INDEX_POSTS)
                         .id(postId)
                         .document(post)
                 );

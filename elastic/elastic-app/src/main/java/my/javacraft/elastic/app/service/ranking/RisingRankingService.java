@@ -9,7 +9,8 @@ import java.util.List;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import my.javacraft.elastic.api.config.Constants;
+import my.javacraft.elastic.api.config.ApiLimits;
+import my.javacraft.elastic.app.config.ElasticsearchConstants;
 import my.javacraft.elastic.api.model.Post;
 import my.javacraft.elastic.app.service.DateService;
 import org.springframework.stereotype.Service;
@@ -36,18 +37,18 @@ public class RisingRankingService {
     private final DateService dateService;
 
     public List<Post> retrieveRisingPosts(int size) throws IOException {
-        int querySize = Math.min(size * 10, Constants.MAX_VALUES);
+        int querySize = Math.min(size * 10, ApiLimits.MAX_ES_LIMIT);
         String since = dateService.getNHoursBeforeDate(RISING_CANDIDATE_WINDOW_HOURS);
 
         SearchRequest request = new SearchRequest.Builder()
-                .index(Constants.INDEX_POSTS)
+                .index(ElasticsearchConstants.INDEX_POSTS)
                 .size(querySize)
                 .query(q -> q.range(r -> r.date(d -> d
-                        .field(Constants.CREATED_AT)
+                        .field(ElasticsearchConstants.CREATED_AT)
                         .gte(since)
                 )))
-                .sort(s -> s.field(f -> f.field(Constants.RISING_SCORE).order(SortOrder.Desc)))
-                .sort(s -> s.field(f -> f.field(Constants.POST_ID).order(SortOrder.Asc)))
+                .sort(s -> s.field(f -> f.field(ElasticsearchConstants.RISING_SCORE).order(SortOrder.Desc)))
+                .sort(s -> s.field(f -> f.field(ElasticsearchConstants.POST_ID).order(SortOrder.Asc)))
                 .build();
 
         log.debug("rising posts query: {}", JsonpUtils.toJsonString(request, esClient._jsonpMapper()));

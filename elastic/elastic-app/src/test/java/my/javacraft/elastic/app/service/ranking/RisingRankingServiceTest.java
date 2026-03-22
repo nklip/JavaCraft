@@ -9,7 +9,7 @@ import co.elastic.clients.elasticsearch.core.search.HitsMetadata;
 import co.elastic.clients.json.jackson.JacksonJsonpMapper;
 import java.io.IOException;
 import java.util.List;
-import my.javacraft.elastic.api.config.Constants;
+import my.javacraft.elastic.app.config.ElasticsearchConstants;
 import my.javacraft.elastic.api.model.Post;
 import my.javacraft.elastic.app.service.DateService;
 import org.junit.jupiter.api.Assertions;
@@ -57,11 +57,11 @@ public class RisingRankingServiceTest {
 
         Assertions.assertEquals(100, request.size(), "query fan-out should overfetch and trim");
         Assertions.assertNotNull(request.query());
-        Assertions.assertEquals(Constants.CREATED_AT, request.query().range().date().field());
+        Assertions.assertEquals(ElasticsearchConstants.CREATED_AT, request.query().range().date().field());
         Assertions.assertEquals(since, request.query().range().date().gte());
-        Assertions.assertEquals(Constants.RISING_SCORE, request.sort().get(0).field().field());
+        Assertions.assertEquals(ElasticsearchConstants.RISING_SCORE, request.sort().get(0).field().field());
         Assertions.assertEquals(SortOrder.Desc, request.sort().get(0).field().order());
-        Assertions.assertEquals(Constants.POST_ID, request.sort().get(1).field().field());
+        Assertions.assertEquals(ElasticsearchConstants.POST_ID, request.sort().get(1).field().field());
         Assertions.assertEquals(SortOrder.Asc, request.sort().get(1).field().order());
 
         Assertions.assertEquals(2, result.size());

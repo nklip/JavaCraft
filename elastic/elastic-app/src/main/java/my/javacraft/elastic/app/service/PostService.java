@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import my.javacraft.elastic.api.config.Constants;
+import my.javacraft.elastic.app.config.ElasticsearchConstants;
 import my.javacraft.elastic.api.model.Post;
 import org.springframework.stereotype.Service;
 
@@ -134,7 +134,7 @@ public class PostService {
         Post post = new Post(postId, authorUserId, createdAt, 0L, 0L, hotScore, 0.0, 0.0);
 
         IndexRequest<Post> request = new IndexRequest.Builder<Post>()
-                .index(Constants.INDEX_POSTS)
+                .index(ElasticsearchConstants.INDEX_POSTS)
                 .id(postId)
                 .document(post)
                 .build();
@@ -172,7 +172,7 @@ public class PostService {
         );
 
         var request = new UpdateRequest.Builder<Post, Post>()
-                .index(Constants.INDEX_POSTS)
+                .index(ElasticsearchConstants.INDEX_POSTS)
                 .id(postId)
                 .script(script)
                 .build();
@@ -186,7 +186,7 @@ public class PostService {
         } catch (ElasticsearchException ex) {
             if ("document_missing_exception".equals(ex.error().type())) {
                 log.warn("scores update skipped — post '{}' not found in '{}' index (orphaned vote)",
-                        postId, Constants.INDEX_POSTS);
+                        postId, ElasticsearchConstants.INDEX_POSTS);
                 return;
             }
             ErrorCause errorCause = ex.error();

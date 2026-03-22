@@ -9,7 +9,8 @@ import java.util.List;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import my.javacraft.elastic.api.config.Constants;
+import my.javacraft.elastic.api.config.ApiLimits;
+import my.javacraft.elastic.app.config.ElasticsearchConstants;
 import my.javacraft.elastic.api.model.Post;
 import org.springframework.stereotype.Service;
 
@@ -52,13 +53,13 @@ public class HotRankingService {
     private final ElasticsearchClient esClient;
 
     public List<Post> retrieveHotPosts(int size) throws IOException {
-        int querySize = Math.min(size * 10, Constants.MAX_VALUES);
+        int querySize = Math.min(size * 10, ApiLimits.MAX_ES_LIMIT);
 
         SearchRequest request = new SearchRequest.Builder()
-                .index(Constants.INDEX_POSTS)
+                .index(ElasticsearchConstants.INDEX_POSTS)
                 .size(querySize)
-                .sort(s -> s.field(f -> f.field(Constants.HOT_SCORE).order(SortOrder.Desc)))
-                .sort(s -> s.field(f -> f.field(Constants.POST_ID).order(SortOrder.Asc)))
+                .sort(s -> s.field(f -> f.field(ElasticsearchConstants.HOT_SCORE).order(SortOrder.Desc)))
+                .sort(s -> s.field(f -> f.field(ElasticsearchConstants.POST_ID).order(SortOrder.Asc)))
                 .build();
 
         log.debug("hot posts query: {}", JsonpUtils.toJsonString(request, esClient._jsonpMapper()));

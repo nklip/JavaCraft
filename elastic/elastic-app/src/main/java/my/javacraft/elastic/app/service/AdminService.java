@@ -12,7 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import my.javacraft.elastic.api.config.Constants;
+import my.javacraft.elastic.app.config.ElasticsearchConstants;
 import org.springframework.stereotype.Service;
 
 /**
@@ -43,7 +43,7 @@ public class AdminService {
      * </ul>
      */
     public IndexCreationResult createPostsIndex() throws IOException {
-        log.info("creating index '{}'...", Constants.INDEX_POSTS);
+        log.info("creating index '{}'...", ElasticsearchConstants.INDEX_POSTS);
 
         Map<String, Property> properties = new LinkedHashMap<>();
         properties.put("postId",    Property.of(p -> p.keyword(k -> k)));
@@ -55,7 +55,7 @@ public class AdminService {
         properties.put("risingScore",  Property.of(p -> p.double_(d -> d)));
         properties.put("bestScore",    Property.of(p -> p.double_(d -> d)));
 
-        return createIndex(Constants.INDEX_POSTS, properties);
+        return createIndex(ElasticsearchConstants.INDEX_POSTS, properties);
     }
 
     private final ElasticsearchClient esClient;
@@ -75,7 +75,7 @@ public class AdminService {
      * </ul>
      */
     public IndexCreationResult createUserVoteIndex() throws IOException {
-        log.info("creating index '{}'...", Constants.INDEX_USER_VOTES);
+        log.info("creating index '{}'...", ElasticsearchConstants.INDEX_USER_VOTES);
 
         Map<String, Property> properties = new LinkedHashMap<>();
         properties.put("timestamp", Property.of(p -> p.date(d -> d.format("strict_date_optional_time"))));
@@ -83,7 +83,7 @@ public class AdminService {
         properties.put("postId", Property.of(p -> p.keyword(k -> k)));
         properties.put("action", Property.of(p -> p.keyword(k -> k)));
 
-        return createIndex(Constants.INDEX_USER_VOTES, properties);
+        return createIndex(ElasticsearchConstants.INDEX_USER_VOTES, properties);
     }
 
     /**

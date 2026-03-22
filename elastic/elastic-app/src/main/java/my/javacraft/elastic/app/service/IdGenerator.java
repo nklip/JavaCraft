@@ -6,7 +6,7 @@ import java.io.IOException;
 import java.util.concurrent.ThreadLocalRandom;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import my.javacraft.elastic.api.config.Constants;
+import my.javacraft.elastic.app.config.ElasticsearchConstants;
 import org.springframework.stereotype.Component;
 
 /**
@@ -39,7 +39,7 @@ public class IdGenerator {
             String candidate = randomId();
 
             ExistsRequest existsRequest = new ExistsRequest.Builder()
-                    .index(Constants.INDEX_POSTS)
+                    .index(ElasticsearchConstants.INDEX_POSTS)
                     .id(candidate)
                     .build();
             boolean taken = esClient.exists(existsRequest).value();

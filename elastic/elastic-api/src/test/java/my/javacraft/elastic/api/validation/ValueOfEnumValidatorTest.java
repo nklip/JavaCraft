@@ -1,18 +1,20 @@
 package my.javacraft.elastic.api.validation;
 
-import jakarta.validation.Payload;
 import my.javacraft.elastic.api.model.ClientType;
+import java.util.Locale;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 public class ValueOfEnumValidatorTest {
 
     @Test
     public void testValidOfEnumValidator() {
-        TestValuesOfValueOfEnum testValues = new TestValuesOfValueOfEnum();
+        ValueOfEnum valueOfEnum = Mockito.mock(ValueOfEnum.class);
+        Mockito.when(valueOfEnum.enumClass()).thenAnswer(invocation -> ClientType.class);
 
-        my.javacraft.elastic.api.validation.ValueOfEnumValidator validator = new my.javacraft.elastic.api.validation.ValueOfEnumValidator();
-        validator.initialize(testValues);
+        ValueOfEnumValidator validator = new ValueOfEnumValidator();
+        validator.initialize(valueOfEnum);
 
         Assertions.assertTrue(validator.isValid(ClientType.MOBILE.toString().toUpperCase(), null));
         Assertions.assertTrue(validator.isValid(ClientType.WEB.toString().toLowerCase(), null));
@@ -20,30 +22,20 @@ public class ValueOfEnumValidatorTest {
         Assertions.assertFalse(validator.isValid(null, null));
     }
 
-    private static class TestValuesOfValueOfEnum implements ValueOfEnum {
-        @Override
-        public String message() {
-            return "Test Message";
-        }
+    @Test
+    public void testValidOfEnumValidatorShouldBeLocaleIndependent() {
+        ValueOfEnum valueOfEnum = Mockito.mock(ValueOfEnum.class);
+        Mockito.when(valueOfEnum.enumClass()).thenAnswer(invocation -> ClientType.class);
 
-        @Override
-        public Class<?>[] groups() {
-            return new Class[]{};
-        }
+        ValueOfEnumValidator validator = new ValueOfEnumValidator();
+        validator.initialize(valueOfEnum);
 
-        @Override
-        public Class<? extends Payload>[] payload() {
-            return new Class[]{};
-        }
-
-        @Override
-        public Class<? extends ValueOfEnum> annotationType() {
-            return ValueOfEnum.class;
-        }
-
-        @Override
-        public Class<? extends Enum<?>> enumClass() {
-            return ClientType.class;
+        Locale previousDefaultLocale = Locale.getDefault();
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+        try {
+            Assertions.assertTrue(validator.isValid("mobile", null));
+        } finally {
+            Locale.setDefault(previousDefaultLocale);
         }
     }
 }

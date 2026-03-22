@@ -1,6 +1,7 @@
 package my.javacraft.elastic.app.service;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import my.javacraft.elastic.api.model.ContentCategory;
@@ -19,7 +20,7 @@ class MetadataServiceTest {
         Assertions.assertEquals(3, metadata.size());
 
         Set<ContentCategory> contentCategories = metadata.stream()
-                .map(ContentCategoryMetadata::getContentCategory)
+                .map(ContentCategoryMetadata::contentCategory)
                 .collect(Collectors.toSet());
         Assertions.assertTrue(contentCategories.contains(ContentCategory.BOOKS));
         Assertions.assertTrue(contentCategories.contains(ContentCategory.MOVIES));
@@ -33,7 +34,7 @@ class MetadataServiceTest {
         Set<ContentCategoryMetadata> set = metadataService.getContentCategoryMetadata();
 
         try {
-            set.add(new ContentCategoryMetadata());
+            set.add(new ContentCategoryMetadata(ContentCategory.BOOKS, List.of("name")));
             Assertions.fail();
         } catch (UnsupportedOperationException uoe) {
             Assertions.assertNotNull(uoe);

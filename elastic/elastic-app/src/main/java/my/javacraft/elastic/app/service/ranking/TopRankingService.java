@@ -10,7 +10,8 @@ import java.util.Objects;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import my.javacraft.elastic.api.config.Constants;
+import my.javacraft.elastic.api.config.ApiLimits;
+import my.javacraft.elastic.app.config.ElasticsearchConstants;
 import my.javacraft.elastic.api.model.Post;
 import my.javacraft.elastic.app.service.DateService;
 import org.springframework.stereotype.Service;
@@ -81,14 +82,14 @@ public class TopRankingService {
 
     private List<Post> queryTopPosts(int size, String since) throws IOException {
         SearchRequest.Builder builder = new SearchRequest.Builder()
-                .index(Constants.INDEX_POSTS)
-                .size(Math.min(size, Constants.MAX_VALUES))
-                .sort(s -> s.field(f -> f.field(Constants.KARMA).order(SortOrder.Desc)))
-                .sort(s -> s.field(f -> f.field(Constants.POST_ID).order(SortOrder.Asc)));
+                .index(ElasticsearchConstants.INDEX_POSTS)
+                .size(Math.min(size, ApiLimits.MAX_ES_LIMIT))
+                .sort(s -> s.field(f -> f.field(ElasticsearchConstants.KARMA).order(SortOrder.Desc)))
+                .sort(s -> s.field(f -> f.field(ElasticsearchConstants.POST_ID).order(SortOrder.Asc)));
 
         if (since != null) {
             builder.query(q -> q.range(r -> r.date(d -> d
-                    .field(Constants.CREATED_AT)
+                    .field(ElasticsearchConstants.CREATED_AT)
                     .gte(since)
             )));
         }

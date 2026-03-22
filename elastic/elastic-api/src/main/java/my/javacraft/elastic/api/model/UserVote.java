@@ -1,9 +1,13 @@
 package my.javacraft.elastic.api.model;
 
-import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import java.util.Locale;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
+import my.javacraft.elastic.api.config.ApiLimits;
 
 /**
  * Vote document stored in the 'user-votes' index.
@@ -13,11 +17,11 @@ import lombok.ToString;
  * Vote-processing service logic enforces
  * the following state machine:
  * <ul>
- *   <li>First vote → document created ({@code Result.Created})</li>
- *   <li>Same action repeated → no write ({@code Result.NoOp})</li>
- *   <li>Opposite action → action and timestamp updated ({@code Result.Updated})</li>
+ *   <li>First vote → document created ({@code VoteResult.Created})</li>
+ *   <li>Same action repeated → no write ({@code VoteResult.NoOp})</li>
+ *   <li>Opposite action → action and timestamp updated ({@code VoteResult.Updated})</li>
  *   <li>{@code NOVOTE} → document deleted, no {@code UserVote} is created
- *       ({@code Result.Deleted} or {@code Result.NotFound})</li>
+ *       ({@code VoteResult.Deleted} or {@code VoteResult.NotFound})</li>
  * </ul>
  *
  * <p>The {@code action} field is always stored in uppercase (e.g. {@code UPVOTE}, {@code DOWNVOTE})
@@ -28,23 +32,31 @@ import lombok.ToString;
 @NoArgsConstructor
 public class UserVote {
 
-    @NotEmpty
-    String postId;
-    @NotEmpty
-    String userId;
-    @NotEmpty
-    String action;
+    @NotBlank
+    @Size(max = ApiLimits.MAX_POST_ID_LENGTH)
+    private String postId;
+    @NotBlank
+    @Size(max = ApiLimits.MAX_USER_ID_LENGTH)
+    private String userId;
+    @NotBlank
+    @Size(max = ApiLimits.MAX_ENUM_INPUT_LENGTH)
+    private String action;
     /**
      * ISO-8601 UTC timestamp of the click event.
      * Must be mapped as 'date' type in the ES index mapping.
      */
-    @NotEmpty
-    String timestamp;
+    @NotBlank
+    @Size(max = ApiLimits.MAX_TIMESTAMP_LENGTH)
+    @Pattern(
+            regexp = "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?Z$",
+            message = "must be ISO-8601 UTC timestamp"
+    )
+    private String timestamp;
 
     public UserVote(VoteRequest voteRequest, String timestamp) {
         this.postId = voteRequest.getPostId();
         this.userId = voteRequest.getUserId();
-        this.action = voteRequest.getAction().toUpperCase();
+        this.action = voteRequest.getAction().toUpperCase(Locale.ROOT);
         this.timestamp = timestamp;
     }
 }

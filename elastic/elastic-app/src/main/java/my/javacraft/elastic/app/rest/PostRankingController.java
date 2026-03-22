@@ -10,7 +10,7 @@ import java.io.IOException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import my.javacraft.elastic.api.config.Constants;
+import my.javacraft.elastic.api.config.ApiLimits;
 import my.javacraft.elastic.api.model.Post;
 import my.javacraft.elastic.app.service.ranking.BestRankingService;
 import my.javacraft.elastic.app.service.ranking.HotRankingService;
@@ -50,7 +50,7 @@ public class PostRankingController {
     @GetMapping(value = "/best", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<Post>> retrieveBestPosts(
             @RequestParam(required = false, name = "size", defaultValue = "10")
-            @Min(1) @Max(Constants.MAX_VALUES) int size) throws IOException {
+            @Min(1) @Max(ApiLimits.MAX_ES_LIMIT) int size) throws IOException {
 
         log.info("retrieving best posts (limit = '{}')...", size);
 
@@ -69,7 +69,7 @@ public class PostRankingController {
     @GetMapping(value = "/new", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<Post>> retrieveNewPosts(
             @RequestParam(required = false, name = "size", defaultValue = "10")
-            @Min(1) @Max(Constants.MAX_VALUES) int size) throws IOException {
+            @Min(1) @Max(ApiLimits.MAX_ES_LIMIT) int size) throws IOException {
 
         log.info("retrieving new posts (limit = '{}')...", size);
 
@@ -88,7 +88,7 @@ public class PostRankingController {
     @GetMapping(value = "/hot", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<Post>> retrieveHotPosts(
             @RequestParam(required = false, name = "size", defaultValue = "10")
-            @Min(1) @Max(Constants.MAX_VALUES) int size) throws IOException {
+            @Min(1) @Max(ApiLimits.MAX_ES_LIMIT) int size) throws IOException {
 
         log.info("retrieving hot posts (limit = '{}')...", size);
 
@@ -108,7 +108,7 @@ public class PostRankingController {
     @GetMapping(value = "/rising", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<Post>> retrieveRisingPosts(
             @RequestParam(required = false, name = "size", defaultValue = "10")
-            @Min(1) @Max(Constants.MAX_VALUES) int size) throws IOException {
+            @Min(1) @Max(ApiLimits.MAX_ES_LIMIT) int size) throws IOException {
 
         log.info("retrieving rising posts (limit = '{}')...", size);
 
@@ -127,7 +127,7 @@ public class PostRankingController {
     @GetMapping(value = "/top", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<Post>> retrieveTopPosts(
             @RequestParam(required = false, name = "size", defaultValue = "10")
-            @Min(1) @Max(Constants.MAX_VALUES) int size) throws IOException {
+            @Min(1) @Max(ApiLimits.MAX_ES_LIMIT) int size) throws IOException {
 
         log.info("retrieving top posts all-time (limit = '{}')...", size);
 
@@ -148,7 +148,7 @@ public class PostRankingController {
     public ResponseEntity<List<Post>> retrieveTopPostsByWindow(
             @PathVariable("window") String window,
             @RequestParam(required = false, name = "size", defaultValue = "10")
-            @Min(1) @Max(Constants.MAX_VALUES) int size) throws IOException {
+            @Min(1) @Max(ApiLimits.MAX_ES_LIMIT) int size) throws IOException {
 
         TopRankingService.TopWindow tw;
         try {

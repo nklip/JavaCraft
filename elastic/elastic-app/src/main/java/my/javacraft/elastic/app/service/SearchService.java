@@ -153,7 +153,7 @@ public class SearchService {
         // filter type we look
         Set<ContentCategoryMetadata> contentCategoryToUseInQuery = contentCategoryMetadataList
                 .stream()
-                .filter(s -> s.getContentCategory().equals(ContentCategory.valueByName(contentSearchRequest.getType())))
+                .filter(s -> s.contentCategory().equals(ContentCategory.valueByName(contentSearchRequest.getType())))
                 .findFirst()
                 .map(Collections::singleton)
                 .orElse(Collections.emptySet());
@@ -172,7 +172,7 @@ public class SearchService {
 
     private void addToRequestItems(ContentSearchRequest contentSearchRequest, ContentCategoryMetadata contentCategoryMetadata, List<RequestItem> requestItems) {
         List<BoolQuery> boolTypeQueries = new ArrayList<>();
-        List<String> searchFields = contentCategoryMetadata.getSearchFields();
+        List<String> searchFields = contentCategoryMetadata.searchFields();
         // N fields -> N wildcard queries
         searchFields.forEach(field -> {
             Query query = wildcardFactory.createQuery(field, contentSearchRequest.getPattern());
@@ -189,7 +189,7 @@ public class SearchService {
             requestItems.add(
                     new RequestItem.Builder()
                             .header(new MultisearchHeader.Builder()
-                                    .index(contentCategoryMetadata.getContentCategory().toString().toLowerCase())
+                                    .index(contentCategoryMetadata.contentCategory().toString().toLowerCase())
                                     .build()
                             )
                             .body(new MultisearchBody.Builder()

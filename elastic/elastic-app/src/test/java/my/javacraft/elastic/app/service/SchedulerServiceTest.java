@@ -4,7 +4,8 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.DeleteByQueryRequest;
 import co.elastic.clients.elasticsearch.core.DeleteByQueryResponse;
 import java.io.IOException;
-import my.javacraft.elastic.api.config.Constants;
+import my.javacraft.elastic.app.config.ElasticsearchConstants;
+import my.javacraft.elastic.app.config.SchedulerDefaults;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,7 +30,7 @@ class SchedulerServiceTest {
         SchedulerService schedulerService = new SchedulerService(esClient, dateService);
         DeleteByQueryResponse response = new DeleteByQueryResponse.Builder().deleted(42L).build();
 
-        when(dateService.getNDaysBeforeDate(Constants.YEAR)).thenReturn("2024-01-01T00:00:00Z");
+        when(dateService.getNDaysBeforeDate(SchedulerDefaults.RETENTION_DAYS)).thenReturn("2024-01-01T00:00:00Z");
         when(esClient.deleteByQuery(any(DeleteByQueryRequest.class))).thenReturn(response);
 
         Long deleted = schedulerService.removeOldUserVotes();
@@ -38,7 +39,7 @@ class SchedulerServiceTest {
         ArgumentCaptor<DeleteByQueryRequest> requestCaptor = ArgumentCaptor.forClass(DeleteByQueryRequest.class);
         verify(esClient).deleteByQuery(requestCaptor.capture());
         Assertions.assertNotNull(requestCaptor.getValue());
-        Assertions.assertEquals(Constants.INDEX_USER_VOTES, requestCaptor.getValue().index().getFirst());
+        Assertions.assertEquals(ElasticsearchConstants.INDEX_USER_VOTES, requestCaptor.getValue().index().getFirst());
         Assertions.assertNotNull(requestCaptor.getValue().query());
     }
 
@@ -46,7 +47,7 @@ class SchedulerServiceTest {
     void testRemoveOldUserVotesShouldThrowWhenDeleteByQueryFails() throws IOException {
         SchedulerService schedulerService = new SchedulerService(esClient, dateService);
 
-        when(dateService.getNDaysBeforeDate(Constants.YEAR)).thenReturn("2024-01-01T00:00:00Z");
+        when(dateService.getNDaysBeforeDate(SchedulerDefaults.RETENTION_DAYS)).thenReturn("2024-01-01T00:00:00Z");
         when(esClient.deleteByQuery(any(DeleteByQueryRequest.class))).thenThrow(new IOException("cluster unavailable"));
 
         IllegalStateException exception = Assertions.assertThrows(
