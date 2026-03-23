@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 public class TwoSumTest {
 
     @Test
-    void testSimpleCase1() {
+    void testCase1() {
         TwoSum solution = new TwoSum();
 
         int []nums = {2,7,11,15};
@@ -19,7 +19,7 @@ public class TwoSumTest {
     }
 
     @Test
-    void testSimpleCase2() {
+    void testCase2() {
         TwoSum solution = new TwoSum();
 
         int []nums = {3,2,4};
@@ -32,7 +32,7 @@ public class TwoSumTest {
     }
 
     @Test
-    void testSimpleCase3() {
+    void testCase3() {
         TwoSum solution = new TwoSum();
 
         int []nums = {3,3};
@@ -45,7 +45,7 @@ public class TwoSumTest {
     }
 
     @Test
-    void testSimpleCase4() {
+    void testCase4() {
         TwoSum solution = new TwoSum();
 
         int []nums = {0,4,3,0};
@@ -58,7 +58,7 @@ public class TwoSumTest {
     }
 
     @Test
-    void testSimpleCase5() {
+    void testCase5() {
         TwoSum solution = new TwoSum();
 
         int []nums = {-3,4,3,90};
@@ -71,7 +71,7 @@ public class TwoSumTest {
     }
 
     @Test
-    void testSimpleCase6() {
+    void testCase6() {
         TwoSum solution = new TwoSum();
 
         int []nums = {-3,4,3,90};

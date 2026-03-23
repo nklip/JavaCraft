@@ -5,15 +5,19 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 
-/**
+/*
  * 1. Two Sum
- * <p>
- * Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.
- * <p>
+ *
+ * LeetCode: https://leetcode.com/problems/two-sum
+ *
+ * Given an array of integers nums and an integer target,
+ * return indices of the two numbers such that they add up to target.
+ *
  * You may assume that each input would have exactly one solution, and you may not use the same element twice.
- * <p>
+ *
  * You can return the answer in any order.
  */
+@SuppressWarnings("Duplicates")
 public class TwoSum {
 
     public int[] twoSum(int[] nums, int target) {
@@ -23,16 +27,14 @@ public class TwoSum {
         for (int i = 0; i < nums.length; i++) {
             int currNum = nums[i];
 
+            List<Integer> list = new ArrayList<>();
             if (temp.containsKey(currNum)) {
-                List<Integer> existedPos = temp.get(currNum);
-                existedPos.add(i);
-                temp.put(currNum, existedPos);
-            } else {
-                List<Integer> list = new ArrayList<>();
-                list.add(i);
-                temp.put(currNum, list);
+                list = temp.get(currNum);
             }
+            list.add(i);
+            temp.put(currNum, list);
         }
+
         for (int firstValue : temp.keySet()) {
             List<Integer> firstPos = temp.get(firstValue);
 
