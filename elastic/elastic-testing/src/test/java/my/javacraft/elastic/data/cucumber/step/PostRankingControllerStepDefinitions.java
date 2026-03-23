@@ -23,9 +23,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.app.config.ElasticsearchConstants;
-import my.javacraft.elastic.data.csv.CsvSupport;
-import my.javacraft.elastic.data.csv.VoteGenerator;
-import my.javacraft.elastic.data.csv.impl.*;
+import my.javacraft.elastic.data.csv.VoteGeneratorApplication;
 import my.javacraft.elastic.data.cucumber.conf.CucumberSpringConfiguration;
 
 import my.javacraft.elastic.api.model.Post;
@@ -99,9 +97,8 @@ public class PostRankingControllerStepDefinitions {
      * Files older than that are regenerated because time-windowed scenarios (e.g. {@code Top posts
      * for DAY}) depend on HotVotesGenerator timestamps being inside the last-24-hours window.
      * <p>
-     * The generators are pointed at the temp dir via the
-     * {@value CsvSupport#OUTPUT_DIRECTORY_PROPERTY} system property, which is cleared
-     * immediately after generation so it does not bleed into other tests.
+     * CSV generation is delegated to {@link VoteGeneratorApplication} with the temporary directory
+     * passed explicitly as a method parameter.
      */
     @Given("data folder {string} created in tmp directory")
     public void createDataFolderInTmpDirectory(String relPath) throws IOException {
@@ -116,22 +113,8 @@ public class PostRankingControllerStepDefinitions {
         }
         log.info("CSV files missing or stale in '{}', regenerating", tmpCsvDir);
 
-        System.setProperty(CsvSupport.OUTPUT_DIRECTORY_PROPERTY, tmpCsvDir.toString());
-        try {
-            List<VoteGenerator> generators = List.of(
-                    new BestVotesGenerator(),
-                    new HotVotesGenerator(),
-                    new NewVotesGenerator(),
-                    new RisingVotesGenerator(),
-                    new TopVotesGenerator()
-            );
-            for (VoteGenerator generator : generators) {
-                generator.generatePostVotesInCsv();
-            }
-            log.info("Generated {} CSV files in '{}'", generators.size(), tmpCsvDir);
-        } finally {
-            System.clearProperty(CsvSupport.OUTPUT_DIRECTORY_PROPERTY);
-        }
+        VoteGeneratorApplication.generate(tmpCsvDir);
+        log.info("Generated CSV files in '{}'", tmpCsvDir);
     }
 
     /**

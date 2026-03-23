@@ -1,4 +1,4 @@
-package my.javacraft.elastic.data.crawler;
+package my.javacraft.elastic.data.json;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,9 +24,13 @@ import java.util.List;
 import java.util.Map;
 
 @Slf4j
-public class ImdbMoviesExporter {
+public class MoviesDownloader {
 
-    public void exportImdbTop250Movies() throws IOException {
+    public static void main(String[] args) throws IOException {
+        exportImdbTop250Movies();
+    }
+
+    public static void exportImdbTop250Movies() throws IOException {
         MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
         headers.set(HttpHeaders.ACCEPT_ENCODING, "gzip, deflate, br, zstd");
         headers.set(HttpHeaders.ACCEPT, "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7");
@@ -44,9 +48,11 @@ public class ImdbMoviesExporter {
             assert httpResponse.getBody() != null;
             out.write(httpResponse.getBody());
         }
+
+        transformCsvIntoJson();
     }
 
-    public void transformCsvIntoJson() throws IOException {
+    public static void transformCsvIntoJson() throws IOException {
         ObjectMapper objectMapper = new ObjectMapper();
 
         List<String> csvLines = Files.readAllLines(new File("movies.csv").toPath());

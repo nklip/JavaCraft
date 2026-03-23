@@ -1,5 +1,7 @@
 package my.javacraft.elastic.data.csv;
 
+import java.nio.file.Path;
+
 /*
  * Every posts-*.csv file should contain CSV columns - postId,createdAt,author
  * Every votes-*.csv file should contain CSV columns - userId,postId,action,date
@@ -12,5 +14,6 @@ package my.javacraft.elastic.data.csv;
  * Should have next implementations: Best / Hot / New / Rising / Top (day, week, month, year, all)
  */
 public interface VoteGenerator {
-    void generatePostVotesInCsv();
+    void generatePostVotesInCsv(Path outputDirectory);
+
 }

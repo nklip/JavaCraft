@@ -8,6 +8,22 @@
     ]
   },
   {
+    "contentCategory": "COMPANIES",
+    "searchFields": [
+      "rank",
+      "name",
+      "country",
+      "headquarters",
+      "industry",
+      "sector",
+      "ceo",
+      "employees",
+      "founded",
+      "website",
+      "description"
+    ]
+  },
+  {
     "contentCategory": "MOVIES",
     "searchFields": [
       "name",

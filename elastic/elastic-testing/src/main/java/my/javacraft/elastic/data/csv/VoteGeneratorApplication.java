@@ -25,6 +25,8 @@ import my.javacraft.elastic.data.csv.impl.*;
 public final class VoteGeneratorApplication {
     private static final String VOTES_HEADER = "userId,postId,action,date";
     private static final String POSTS_HEADER = "postId,createdAt,author";
+    private static final Path DEFAULT_MAIN_OUTPUT_DIRECTORY =
+            Path.of("elastic", "elastic-testing", "src", "test", "resources", "data", "csv");
 
     private static final Map<String, GeneratorCase> GENERATORS = new LinkedHashMap<>();
 
@@ -40,8 +42,18 @@ public final class VoteGeneratorApplication {
     }
 
     public static void main(String[] args) throws IOException {
+        generate(DEFAULT_MAIN_OUTPUT_DIRECTORY, args);
+    }
+
+    public static void generate(Path outputDirectory) throws IOException {
+        generate(outputDirectory, new String[0]);
+    }
+
+    public static void generate(Path outputDirectory, String... args) throws IOException {
         Set<String> selectedGenerators = normalizeArgs(args);
-        Path outputDirectory = resolveOutputDirectory();
+        Path targetOutputDirectory = outputDirectory == null
+                ? CsvSupport.defaultOutputDirectory()
+                : outputDirectory;
 
         for (Map.Entry<String, GeneratorCase> entry : GENERATORS.entrySet()) {
             if (!selectedGenerators.isEmpty() && !selectedGenerators.contains(entry.getKey())) {
@@ -49,10 +61,10 @@ public final class VoteGeneratorApplication {
             }
 
             GeneratorCase generatorCase = entry.getValue();
-            generatorCase.generator().generatePostVotesInCsv();
+            generatorCase.generator().generatePostVotesInCsv(targetOutputDirectory);
 
-            Path votesFile = outputDirectory.resolve("votes").resolve(generatorCase.votesFileName());
-            Path postsFile = outputDirectory.resolve("posts").resolve(generatorCase.postsFileName());
+            Path votesFile = targetOutputDirectory.resolve("votes").resolve(generatorCase.votesFileName());
+            Path postsFile = targetOutputDirectory.resolve("posts").resolve(generatorCase.postsFileName());
             verifyCsv(votesFile, VOTES_HEADER);
             verifyCsv(postsFile, POSTS_HEADER);
 
@@ -94,25 +106,6 @@ public final class VoteGeneratorApplication {
                     "Unexpected CSV header in " + filePath + ". Expected: '" + expectedHeader + "', actual: '" + lines.getFirst() + "'"
             );
         }
-    }
-
-    private static Path resolveOutputDirectory() {
-        String configuredDirectory = System.getProperty(CsvSupport.OUTPUT_DIRECTORY_PROPERTY);
-        if (configuredDirectory != null && !configuredDirectory.isBlank()) {
-            return Path.of(configuredDirectory);
-        }
-
-        Path moduleDirectory = Path.of("src", "test", "resources", "data", "csv");
-        if (Files.isDirectory(moduleDirectory.getParent())) {
-            return moduleDirectory;
-        }
-
-        Path rootDirectory = Path.of("elastic", "src", "test", "resources", "data", "csv");
-        if (Files.isDirectory(rootDirectory.getParent())) {
-            return rootDirectory;
-        }
-
-        return Path.of("data", "csv");
     }
 
     private record GeneratorCase(VoteGenerator generator, String votesFileName, String postsFileName) {

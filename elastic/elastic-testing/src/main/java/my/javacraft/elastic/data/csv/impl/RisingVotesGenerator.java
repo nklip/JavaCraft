@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.nio.file.Path;
 import my.javacraft.elastic.data.csv.CsvSupport;
 import my.javacraft.elastic.data.csv.VoteGenerator;
 
@@ -49,7 +50,7 @@ public class RisingVotesGenerator implements VoteGenerator {
      *   - does not dominate Best (avoids near-100% tiny-sample Wilson scores)
      */
     @Override
-    public void generatePostVotesInCsv() {
+    public void generatePostVotesInCsv(Path outputDirectory) {
         Instant now = CsvSupport.now();
         List<String> eventRows = new ArrayList<>((LAST_POST_ID - FIRST_POST_ID + 1) * VOTERS_PER_POST);
         List<String> postRows  = new ArrayList<>(10);
@@ -67,7 +68,7 @@ public class RisingVotesGenerator implements VoteGenerator {
             postRows.add(CsvSupport.postCsvLine(postId, createdAt, authorUserId));
         }
 
-        CsvSupport.writeVotesCsv(VOTES_RISING_FILE, eventRows);
-        CsvSupport.writePostsCsv(POSTS_RISING_FILE, postRows);
+        CsvSupport.writeVotesCsv(VOTES_RISING_FILE, eventRows, outputDirectory);
+        CsvSupport.writePostsCsv(POSTS_RISING_FILE, postRows, outputDirectory);
     }
 }

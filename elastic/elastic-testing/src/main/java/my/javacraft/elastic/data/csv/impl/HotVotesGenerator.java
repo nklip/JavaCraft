@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.nio.file.Path;
 import my.javacraft.elastic.data.csv.CsvSupport;
 import my.javacraft.elastic.data.csv.VoteGenerator;
 
@@ -70,7 +71,7 @@ public class HotVotesGenerator implements VoteGenerator {
      *   → posts 21-30 win the New feed. Hot still beats New in Hot sort (see margin above).
      */
     @Override
-    public void generatePostVotesInCsv() {
+    public void generatePostVotesInCsv(Path outputDirectory) {
         Instant now = CsvSupport.now();
         List<String> eventRows = new ArrayList<>(10 * CsvSupport.USERS_PER_POST);
         List<String> postRows  = new ArrayList<>(10);
@@ -106,7 +107,7 @@ public class HotVotesGenerator implements VoteGenerator {
             postRows.add(CsvSupport.postCsvLine(postId, now.minus(createdMinutesAgo, ChronoUnit.MINUTES), authorUserId));
         }
 
-        CsvSupport.writeVotesCsv(VOTES_HOT_FILE, eventRows);
-        CsvSupport.writePostsCsv(POSTS_HOT_FILE, postRows);
+        CsvSupport.writeVotesCsv(VOTES_HOT_FILE, eventRows, outputDirectory);
+        CsvSupport.writePostsCsv(POSTS_HOT_FILE, postRows, outputDirectory);
     }
 }

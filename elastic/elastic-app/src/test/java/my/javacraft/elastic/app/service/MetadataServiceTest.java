@@ -17,12 +17,13 @@ class MetadataServiceTest {
 
         Set<ContentCategoryMetadata> metadata = metadataService.getContentCategoryMetadata();
         Assertions.assertNotNull(metadata);
-        Assertions.assertEquals(3, metadata.size());
+        Assertions.assertEquals(4, metadata.size());
 
         Set<ContentCategory> contentCategories = metadata.stream()
                 .map(ContentCategoryMetadata::contentCategory)
                 .collect(Collectors.toSet());
         Assertions.assertTrue(contentCategories.contains(ContentCategory.BOOKS));
+        Assertions.assertTrue(contentCategories.contains(ContentCategory.COMPANIES));
         Assertions.assertTrue(contentCategories.contains(ContentCategory.MOVIES));
         Assertions.assertTrue(contentCategories.contains(ContentCategory.MUSIC));
     }

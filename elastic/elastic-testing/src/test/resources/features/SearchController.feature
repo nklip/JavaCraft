@@ -1,8 +1,7 @@
 Feature: test SearchController
 
   Background:
-    Given index 'movies' exists
-    Then ingest 'data/json/movies.json' json file with 250 entities in 'movies' index
+    Given search dataset is prepared once
 
   Scenario: wildcard search
     Then wildcard search for 'Scottish' in 'movies'

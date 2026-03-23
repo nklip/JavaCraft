@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.nio.file.Path;
 import my.javacraft.elastic.data.csv.CsvSupport;
 import my.javacraft.elastic.data.csv.VoteGenerator;
 
@@ -95,7 +96,7 @@ public class TopVotesGenerator implements VoteGenerator {
      *   - first_seen > 365 days old → massive time penalty in Hot, so Hot is NOT won.
      */
     @Override
-    public void generatePostVotesInCsv() {
+    public void generatePostVotesInCsv(Path outputDirectory) {
         Instant now = CsvSupport.now();
         List<String> eventRows = new ArrayList<>(10 * USERS_PER_POST);
         List<String> postRows  = new ArrayList<>(10);
@@ -123,7 +124,7 @@ public class TopVotesGenerator implements VoteGenerator {
             postRows.add(CsvSupport.postCsvLine(postId, createdAt, authorUserId));
         }
 
-        CsvSupport.writeVotesCsv(VOTES_TOP_FILE, eventRows);
-        CsvSupport.writePostsCsv(POSTS_TOP_FILE, postRows);
+        CsvSupport.writeVotesCsv(VOTES_TOP_FILE, eventRows, outputDirectory);
+        CsvSupport.writePostsCsv(POSTS_TOP_FILE, postRows, outputDirectory);
     }
 }

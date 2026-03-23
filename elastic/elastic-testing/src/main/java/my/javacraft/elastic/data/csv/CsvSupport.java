@@ -17,7 +17,6 @@ public final class CsvSupport {
     private static final String CSV_HEADER = "userId,postId,action,date";
     private static final String POSTS_CSV_HEADER = "postId,createdAt,author";
     private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ISO_INSTANT;
-    public static final String OUTPUT_DIRECTORY_PROPERTY = "elastic.events.csv.output";
 
     private CsvSupport() {
     }
@@ -47,17 +46,22 @@ public final class CsvSupport {
     }
 
     /** Writes vote rows to {@code {outputDir}/votes/{fileName}}. */
-    public static void writeVotesCsv(String fileName, List<String> lines) {
-        writeFile("votes", fileName, CSV_HEADER, lines);
+    public static void writeVotesCsv(String fileName, List<String> lines, Path outputDir) {
+        writeFile(outputDir, "votes", fileName, CSV_HEADER, lines);
     }
 
     /** Writes post-metadata rows to {@code {outputDir}/posts/{fileName}}. */
-    public static void writePostsCsv(String fileName, List<String> lines) {
-        writeFile("posts", fileName, POSTS_CSV_HEADER, lines);
+    public static void writePostsCsv(String fileName, List<String> lines, Path outputDir) {
+        writeFile(outputDir, "posts", fileName, POSTS_CSV_HEADER, lines);
     }
 
-    private static void writeFile(String subDir, String fileName, String header, List<String> lines) {
-        Path outputDirectory = resolveOutputDirectory().resolve(subDir);
+    /** Returns the default output directory used by generators when no explicit directory is passed. */
+    public static Path defaultOutputDirectory() {
+        return resolveOutputDirectory();
+    }
+
+    private static void writeFile(Path outputDir, String subDir, String fileName, String header, List<String> lines) {
+        Path outputDirectory = outputDir.resolve(subDir);
         Path outputFile = outputDirectory.resolve(fileName);
 
         try {
@@ -76,11 +80,6 @@ public final class CsvSupport {
     }
 
     private static Path resolveOutputDirectory() {
-        String configuredDirectory = System.getProperty(OUTPUT_DIRECTORY_PROPERTY);
-        if (configuredDirectory != null && !configuredDirectory.isBlank()) {
-            return Path.of(configuredDirectory);
-        }
-
         Path moduleDirectory = Path.of("src", "test", "resources", "data", "csv");
         if (Files.isDirectory(moduleDirectory.getParent())) {
             return moduleDirectory;
