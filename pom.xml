@@ -46,6 +46,7 @@
         <opencsv.version>5.12.0</opencsv.version>
         <protobuf.version>4.34.0</protobuf.version>
         <guava.version>33.1.0-jre</guava.version>
+        <commons-compress.version>1.28.0</commons-compress.version>
 
         <junit.platform.suite.version>1.14.3</junit.platform.suite.version>
         <junit5.version>5.14.3</junit5.version>

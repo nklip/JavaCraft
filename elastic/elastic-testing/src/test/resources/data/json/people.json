@@ -1,0 +1,801 @@
+[ {
+  "age" : 62,
+  "date_of_birth" : "570",
+  "date_of_death" : "0632-06-08",
+  "name" : "Muhammad",
+  "ranking" : 1,
+  "reasons_for_being_famous" : "Religious figure born in Mecca, Saudi Arabia.",
+  "surname" : ""
+}, {
+  "age" : 114,
+  "date_of_birth" : "-0566-04-08",
+  "date_of_death" : "-452",
+  "name" : "Gautama",
+  "ranking" : 2,
+  "reasons_for_being_famous" : "Philosopher born in Lumbini, Nepal.",
+  "surname" : "Buddha"
+}, {
+  "age" : 84,
+  "date_of_birth" : "1643-01-04",
+  "date_of_death" : "1727-03-31",
+  "name" : "Isaac",
+  "ranking" : 3,
+  "reasons_for_being_famous" : "Physicist born in Woolsthorpe-by-Colsterworth, United Kingdom.",
+  "surname" : "Newton"
+}, {
+  "age" : 79,
+  "date_of_birth" : "1946-06-14",
+  "date_of_death" : "",
+  "name" : "Donald",
+  "ranking" : 4,
+  "reasons_for_being_famous" : "Politician born in Queens, United States.",
+  "surname" : "Trump"
+}, {
+  "age" : 65,
+  "date_of_birth" : "1162-05-31",
+  "date_of_death" : "1227-08-18",
+  "name" : "Genghis",
+  "ranking" : 5,
+  "reasons_for_being_famous" : "Military personnel born in Khentii Mountains, Mongolia.",
+  "surname" : "Khan"
+}, {
+  "age" : 39,
+  "date_of_birth" : "-0069-01-13",
+  "date_of_death" : "-0030-08-12",
+  "name" : "Cleopatra",
+  "ranking" : 6,
+  "reasons_for_being_famous" : "Politician born in Alexandria, Egypt.",
+  "surname" : ""
+}, {
+  "age" : 78,
+  "date_of_birth" : "1869-10-02",
+  "date_of_death" : "1948-01-30",
+  "name" : "Mahatma",
+  "ranking" : 7,
+  "reasons_for_being_famous" : "Social activist born in Porbandar, India.",
+  "surname" : "Gandhi"
+}, {
+  "age" : 88,
+  "date_of_birth" : "1936-12-17",
+  "date_of_death" : "2025-04-21",
+  "name" : "Pope",
+  "ranking" : 8,
+  "reasons_for_being_famous" : "Religious figure born in Buenos Aires, Argentina.",
+  "surname" : "Francis"
+}, {
+  "age" : 200,
+  "date_of_birth" : "-100",
+  "date_of_death" : "100",
+  "name" : "Mary, mother of",
+  "ranking" : 9,
+  "reasons_for_being_famous" : "Religious figure born in Herodian kingdom, Israel.",
+  "surname" : "Jesus"
+}, {
+  "age" : 56,
+  "date_of_birth" : "1770-12-16",
+  "date_of_death" : "1827-03-26",
+  "name" : "Ludwig van",
+  "ranking" : 10,
+  "reasons_for_being_famous" : "Composer born in Bonn, Germany.",
+  "surname" : "Beethoven"
+}, {
+  "age" : 67,
+  "date_of_birth" : "1452-04-15",
+  "date_of_death" : "1519-05-02",
+  "name" : "Leonardo da",
+  "ranking" : 11,
+  "reasons_for_being_famous" : "Inventor born in Anchiano, Italy.",
+  "surname" : "Vinci"
+}, {
+  "age" : 63,
+  "date_of_birth" : "-384",
+  "date_of_death" : "-321",
+  "name" : "Aristotle",
+  "ranking" : 12,
+  "reasons_for_being_famous" : "Philosopher born in Stagira (ancient city), Greece.",
+  "surname" : ""
+}, {
+  "age" : 69,
+  "date_of_birth" : "1254-09-15",
+  "date_of_death" : "1324-01-08",
+  "name" : "Marco",
+  "ranking" : 13,
+  "reasons_for_being_famous" : "Explorer born in Venice, Italy.",
+  "surname" : "Polo"
+}, {
+  "age" : 69,
+  "date_of_birth" : "1533-09-07",
+  "date_of_death" : "1603-03-24",
+  "name" : "Elizabeth I of",
+  "ranking" : 14,
+  "reasons_for_being_famous" : "Politician born in Palace of Placentia, United Kingdom.",
+  "surname" : "England"
+}, {
+  "age" : 80,
+  "date_of_birth" : "-0427-05-07",
+  "date_of_death" : "-347",
+  "name" : "Plato",
+  "ranking" : 15,
+  "reasons_for_being_famous" : "Philosopher born in Classical Athens, Greece.",
+  "surname" : ""
+}, {
+  "age" : 32,
+  "date_of_birth" : "-0356-07-20",
+  "date_of_death" : "-0323-06-10",
+  "name" : "Alexander the",
+  "ranking" : 16,
+  "reasons_for_being_famous" : "Military personnel born in Pella, Greece.",
+  "surname" : "Great"
+}, {
+  "age" : 68,
+  "date_of_birth" : "-0001-01-01",
+  "date_of_death" : "67",
+  "name" : "Saint",
+  "ranking" : 17,
+  "reasons_for_being_famous" : "Religious figure.",
+  "surname" : "Peter"
+}, {
+  "age" : 50,
+  "date_of_birth" : "-800",
+  "date_of_death" : "-750",
+  "name" : "Homer",
+  "ranking" : 18,
+  "reasons_for_being_famous" : "Writer born in Chios, Greece.",
+  "surname" : ""
+}, {
+  "age" : 35,
+  "date_of_birth" : "1756-01-27",
+  "date_of_death" : "1791-12-05",
+  "name" : "Wolfgang Amadeus",
+  "ranking" : 19,
+  "reasons_for_being_famous" : "Composer born in Mozart's birthplace, Austria.",
+  "surname" : "Mozart"
+}, {
+  "age" : 51,
+  "date_of_birth" : "1769-08-15",
+  "date_of_death" : "1821-05-05",
+  "name" : "Napoleon",
+  "ranking" : 20,
+  "reasons_for_being_famous" : "Politician born in Ajaccio, France.",
+  "surname" : ""
+}, {
+  "age" : 77,
+  "date_of_birth" : "1564-02-15",
+  "date_of_death" : "1642-01-08",
+  "name" : "Galileo",
+  "ranking" : 21,
+  "reasons_for_being_famous" : "Astronomer born in Pisa, Italy.",
+  "surname" : "Galilei"
+}, {
+  "age" : 56,
+  "date_of_birth" : "1889-04-20",
+  "date_of_death" : "1945-04-30",
+  "name" : "Adolf",
+  "ranking" : 22,
+  "reasons_for_being_famous" : "Politician born in Braunau am Inn, Austria.",
+  "surname" : "Hitler"
+}, {
+  "age" : 55,
+  "date_of_birth" : "1451",
+  "date_of_death" : "1506-05-20",
+  "name" : "Christopher",
+  "ranking" : 23,
+  "reasons_for_being_famous" : "Explorer born in Genoa, Italy.",
+  "surname" : "Columbus"
+}, {
+  "age" : 71,
+  "date_of_birth" : "-470",
+  "date_of_death" : "-0399-02-15",
+  "name" : "Socrates",
+  "ranking" : 24,
+  "reasons_for_being_famous" : "Philosopher born in Alopece, Greece.",
+  "surname" : ""
+}, {
+  "age" : 76,
+  "date_of_birth" : "1879-03-14",
+  "date_of_death" : "1955-04-18",
+  "name" : "Albert",
+  "ranking" : 25,
+  "reasons_for_being_famous" : "Physicist born in Ulm, Germany.",
+  "surname" : "Einstein"
+}, {
+  "age" : 55,
+  "date_of_birth" : "1491-06-28",
+  "date_of_death" : "1547-01-28",
+  "name" : "Henry VIII of",
+  "ranking" : 26,
+  "reasons_for_being_famous" : "Nobleman born in Palace of Placentia, United Kingdom.",
+  "surname" : "England"
+}, {
+  "age" : 66,
+  "date_of_birth" : "1867-11-07",
+  "date_of_death" : "1934-07-04",
+  "name" : "Marie",
+  "ranking" : 27,
+  "reasons_for_being_famous" : "Physicist born in Warsaw, Poland.",
+  "surname" : "Curie"
+}, {
+  "age" : 34,
+  "date_of_birth" : "-4",
+  "date_of_death" : "0030-04-07",
+  "name" : "Jesus",
+  "ranking" : 28,
+  "reasons_for_being_famous" : "Religious figure born in Herodian kingdom, Israel.",
+  "surname" : ""
+}, {
+  "age" : 100,
+  "date_of_birth" : "1924-10-01",
+  "date_of_death" : "2024-12-29",
+  "name" : "Jimmy",
+  "ranking" : 29,
+  "reasons_for_being_famous" : "Politician born in Plains, Georgia, United States.",
+  "surname" : "Carter"
+}, {
+  "age" : 95,
+  "date_of_birth" : "1927-04-16",
+  "date_of_death" : "2022-12-31",
+  "name" : "Pope Benedict",
+  "ranking" : 30,
+  "reasons_for_being_famous" : "Religious figure born in Marktl, Germany.",
+  "surname" : "XVI"
+}, {
+  "age" : 70,
+  "date_of_birth" : "1473-02-19",
+  "date_of_death" : "1543-05-24",
+  "name" : "Nicolaus",
+  "ranking" : 31,
+  "reasons_for_being_famous" : "Astronomer born in Toruń, Poland.",
+  "surname" : "Copernicus"
+}, {
+  "age" : 55,
+  "date_of_birth" : "-0100-07-01",
+  "date_of_death" : "-0044-03-15",
+  "name" : "Julius",
+  "ranking" : 32,
+  "reasons_for_being_famous" : "Politician born in Rome, Italy.",
+  "surname" : "Caesar"
+}, {
+  "age" : 72,
+  "date_of_birth" : "-0552-10-09",
+  "date_of_death" : "-0479-03-09",
+  "name" : "Confucius",
+  "ranking" : 33,
+  "reasons_for_being_famous" : "Philosopher born in Qufu, China.",
+  "surname" : ""
+}, {
+  "age" : 88,
+  "date_of_birth" : "1475-03-06",
+  "date_of_death" : "1564-02-18",
+  "name" : "Michelangelo",
+  "ranking" : 34,
+  "reasons_for_being_famous" : "Painter born in Arezzo, Italy.",
+  "surname" : ""
+}, {
+  "age" : 75,
+  "date_of_birth" : "-287",
+  "date_of_death" : "-0212-01-01",
+  "name" : "Archimedes",
+  "ranking" : 35,
+  "reasons_for_being_famous" : "Mathematician born in Syracuse, Sicily, Italy.",
+  "surname" : ""
+}, {
+  "age" : 75,
+  "date_of_birth" : "-570",
+  "date_of_death" : "-495",
+  "name" : "Pythagoras",
+  "ranking" : 36,
+  "reasons_for_being_famous" : "Philosopher born in Samos, Greece.",
+  "surname" : ""
+}, {
+  "age" : 37,
+  "date_of_birth" : "1853-03-30",
+  "date_of_death" : "1890-07-29",
+  "name" : "Vincent van",
+  "ranking" : 37,
+  "reasons_for_being_famous" : "Painter born in Zundert, Netherlands.",
+  "surname" : "Gogh"
+}, {
+  "age" : 120,
+  "date_of_birth" : "-1393",
+  "date_of_death" : "-1273",
+  "name" : "Moses",
+  "ranking" : 38,
+  "reasons_for_being_famous" : "Religious figure born in Land of Goshen, Egypt.",
+  "surname" : ""
+}, {
+  "age" : 59,
+  "date_of_birth" : "1821-11-11",
+  "date_of_death" : "1881-02-09",
+  "name" : "Fyodor",
+  "ranking" : 39,
+  "reasons_for_being_famous" : "Writer born in Moscow, Russia.",
+  "surname" : "Dostoevsky"
+}, {
+  "age" : 83,
+  "date_of_birth" : "1743-04-13",
+  "date_of_death" : "1826-07-04",
+  "name" : "Thomas",
+  "ranking" : 40,
+  "reasons_for_being_famous" : "Politician born in Shadwell, Virginia, United States.",
+  "surname" : "Jefferson"
+}, {
+  "age" : 39,
+  "date_of_birth" : "1928-06-14",
+  "date_of_death" : "1967-10-09",
+  "name" : "Che",
+  "ranking" : 41,
+  "reasons_for_being_famous" : "Social activist born in Rosario, Argentina.",
+  "surname" : "Guevara"
+}, {
+  "age" : 76,
+  "date_of_birth" : "1638-09-05",
+  "date_of_death" : "1715-09-01",
+  "name" : "Louis XIV of",
+  "ranking" : 42,
+  "reasons_for_being_famous" : "Politician born in Château de Saint-Germain-en-Laye, France.",
+  "surname" : "France"
+}, {
+  "age" : 67,
+  "date_of_birth" : "1723-06-05",
+  "date_of_death" : "1790-07-17",
+  "name" : "Adam",
+  "ranking" : 43,
+  "reasons_for_being_famous" : "Economist born in Kirkcaldy, United Kingdom.",
+  "surname" : "Smith"
+}, {
+  "age" : 87,
+  "date_of_birth" : "1910-08-26",
+  "date_of_death" : "1997-09-05",
+  "name" : "Mother",
+  "ranking" : 44,
+  "reasons_for_being_famous" : "Social activist born in Skopje, North Macedonia.",
+  "surname" : "Teresa"
+}, {
+  "age" : 65,
+  "date_of_birth" : "1685-03-21",
+  "date_of_death" : "1750-07-28",
+  "name" : "Johann Sebastian",
+  "ranking" : 45,
+  "reasons_for_being_famous" : "Composer born in Eisenach, Germany.",
+  "surname" : "Bach"
+}, {
+  "age" : 62,
+  "date_of_birth" : "1483-11-10",
+  "date_of_death" : "1546-02-18",
+  "name" : "Martin",
+  "ranking" : 46,
+  "reasons_for_being_famous" : "Religious figure born in Eisleben, Germany.",
+  "surname" : "Luther"
+}, {
+  "age" : 40,
+  "date_of_birth" : "1480-10-17",
+  "date_of_death" : "1521-04-27",
+  "name" : "Ferdinand",
+  "ranking" : 47,
+  "reasons_for_being_famous" : "Explorer born in Kingdom of Portugal, Portugal.",
+  "surname" : "Magellan"
+}, {
+  "age" : 52,
+  "date_of_birth" : "1564-04-23",
+  "date_of_death" : "1616-04-23",
+  "name" : "William",
+  "ranking" : 48,
+  "reasons_for_being_famous" : "Writer born in Stratford-upon-Avon, United Kingdom.",
+  "surname" : "Shakespeare"
+}, {
+  "age" : 84,
+  "date_of_birth" : "1920-05-18",
+  "date_of_death" : "2005-04-02",
+  "name" : "Pope John Paul",
+  "ranking" : 49,
+  "reasons_for_being_famous" : "Religious figure born in Wadowice, Poland.",
+  "surname" : "II"
+}, {
+  "age" : 39,
+  "date_of_birth" : "1929-01-15",
+  "date_of_death" : "1968-04-04",
+  "name" : "Martin Luther King",
+  "ranking" : 50,
+  "reasons_for_being_famous" : "Social activist born in Atlanta, United States.",
+  "surname" : "Jr."
+}, {
+  "age" : 39,
+  "date_of_birth" : "1810-02-22",
+  "date_of_death" : "1849-10-17",
+  "name" : "Frédéric",
+  "ranking" : 51,
+  "reasons_for_being_famous" : "Composer born in Żelazowa Wola, Poland.",
+  "surname" : "Chopin"
+}, {
+  "age" : 79,
+  "date_of_birth" : "1724-04-22",
+  "date_of_death" : "1804-02-12",
+  "name" : "Immanuel",
+  "ranking" : 52,
+  "reasons_for_being_famous" : "Philosopher born in Königsberg, Russia.",
+  "surname" : "Kant"
+}, {
+  "age" : 64,
+  "date_of_birth" : "1818-05-05",
+  "date_of_death" : "1883-03-14",
+  "name" : "Karl",
+  "ranking" : 53,
+  "reasons_for_being_famous" : "Economist born in Trier, Germany.",
+  "surname" : "Marx"
+}, {
+  "age" : 73,
+  "date_of_birth" : "1879-12-09",
+  "date_of_death" : "1953-03-05",
+  "name" : "Joseph",
+  "ranking" : 54,
+  "reasons_for_being_famous" : "Politician born in Gori, Georgia, Georgia.",
+  "surname" : "Stalin"
+}, {
+  "age" : 63,
+  "date_of_birth" : "1542-10-15",
+  "date_of_death" : "1605-10-27",
+  "name" : "Akbar",
+  "ranking" : 55,
+  "reasons_for_being_famous" : "Politician born in Umerkot, Pakistan.",
+  "surname" : ""
+}, {
+  "age" : 56,
+  "date_of_birth" : "1265-05-30",
+  "date_of_death" : "1321-09-14",
+  "name" : "Dante",
+  "ranking" : 56,
+  "reasons_for_being_famous" : "Writer born in Florence, Italy.",
+  "surname" : "Alighieri"
+}, {
+  "age" : 53,
+  "date_of_birth" : "1596-03-31",
+  "date_of_death" : "1650-02-11",
+  "name" : "René",
+  "ranking" : 57,
+  "reasons_for_being_famous" : "Philosopher born in Descartes, Indre-et-Loire, France.",
+  "surname" : "Descartes"
+}, {
+  "age" : 56,
+  "date_of_birth" : "0980-08-22",
+  "date_of_death" : "1037-06-21",
+  "name" : "Avicenna",
+  "ranking" : 58,
+  "reasons_for_being_famous" : "Philosopher born in Bukhara Region, Uzbekistan.",
+  "surname" : ""
+}, {
+  "age" : 77,
+  "date_of_birth" : "-63",
+  "date_of_death" : "0014-08-19",
+  "name" : "Augustus",
+  "ranking" : 59,
+  "reasons_for_being_famous" : "Politician born in Rome, Italy.",
+  "surname" : ""
+}, {
+  "age" : 70,
+  "date_of_birth" : "1646-07-01",
+  "date_of_death" : "1716-11-14",
+  "name" : "Gottfried Wilhelm",
+  "ranking" : 60,
+  "reasons_for_being_famous" : "Mathematician born in Leipzig, Germany.",
+  "surname" : "Leibniz"
+}, {
+  "age" : 86,
+  "date_of_birth" : "1856-07-10",
+  "date_of_death" : "1943-01-07",
+  "name" : "Nikola",
+  "ranking" : 61,
+  "reasons_for_being_famous" : "Inventor born in Smiljan, Croatia, Croatia.",
+  "surname" : "Tesla"
+}, {
+  "age" : 4,
+  "date_of_birth" : "-0604-01-01",
+  "date_of_death" : "-0600-01-01",
+  "name" : "Laozi",
+  "ranking" : 62,
+  "reasons_for_being_famous" : "Philosopher born in Luyi County, China.",
+  "surname" : ""
+}, {
+  "age" : 77,
+  "date_of_birth" : "1948-11-14",
+  "date_of_death" : "",
+  "name" : "Charles, Prince of",
+  "ranking" : 63,
+  "reasons_for_being_famous" : "Nobleman born in Buckingham Palace, United Kingdom.",
+  "surname" : "Wales"
+}, {
+  "age" : 91,
+  "date_of_birth" : "1881-10-25",
+  "date_of_death" : "1973-04-08",
+  "name" : "Pablo",
+  "ranking" : 64,
+  "reasons_for_being_famous" : "Painter born in Málaga, Spain.",
+  "surname" : "Picasso"
+}, {
+  "age" : 84,
+  "date_of_birth" : "1847-02-11",
+  "date_of_death" : "1931-10-18",
+  "name" : "Thomas",
+  "ranking" : 65,
+  "reasons_for_being_famous" : "Inventor born in Milan, Ohio, United States.",
+  "surname" : "Edison"
+}, {
+  "age" : 71,
+  "date_of_birth" : "1494-11-06",
+  "date_of_death" : "1566-09-06",
+  "name" : "Suleiman the",
+  "ranking" : 66,
+  "reasons_for_being_famous" : "Politician born in Trabzon, Türkiye.",
+  "surname" : "Magnificent"
+}, {
+  "age" : 66,
+  "date_of_birth" : "1917-11-19",
+  "date_of_death" : "1984-10-31",
+  "name" : "Indira",
+  "ranking" : 67,
+  "reasons_for_being_famous" : "Politician born in Prayagraj, India.",
+  "surname" : "Gandhi"
+}, {
+  "age" : 53,
+  "date_of_birth" : "1870-04-22",
+  "date_of_death" : "1924-01-21",
+  "name" : "Vladimir",
+  "ranking" : 68,
+  "reasons_for_being_famous" : "Politician born in Ulyanovsk, Russia.",
+  "surname" : "Lenin"
+}, {
+  "age" : 73,
+  "date_of_birth" : "1809-02-12",
+  "date_of_death" : "1882-04-19",
+  "name" : "Charles",
+  "ranking" : 69,
+  "reasons_for_being_famous" : "Biologist born in Shrewsbury, United Kingdom.",
+  "surname" : "Darwin"
+}, {
+  "age" : 77,
+  "date_of_birth" : "1777-04-30",
+  "date_of_death" : "1855-02-23",
+  "name" : "Carl Friedrich",
+  "ranking" : 70,
+  "reasons_for_being_famous" : "Mathematician born in Braunschweig, Germany.",
+  "surname" : "Gauss"
+}, {
+  "age" : 55,
+  "date_of_birth" : "1138",
+  "date_of_death" : "1193",
+  "name" : "Saladin",
+  "ranking" : 71,
+  "reasons_for_being_famous" : "Politician born in Tikrit, Iraq.",
+  "surname" : ""
+}, {
+  "age" : 61,
+  "date_of_birth" : "5",
+  "date_of_death" : "66",
+  "name" : "Paul the",
+  "ranking" : 72,
+  "reasons_for_being_famous" : "Religious figure born in Tarsus, Mersin, Türkiye.",
+  "surname" : "Apostle"
+}, {
+  "age" : 66,
+  "date_of_birth" : "1712-06-28",
+  "date_of_death" : "1778-07-02",
+  "name" : "Jean-Jacques",
+  "ranking" : 73,
+  "reasons_for_being_famous" : "Philosopher born in Geneva, Switzerland.",
+  "surname" : "Rousseau"
+}, {
+  "age" : 57,
+  "date_of_birth" : "1881",
+  "date_of_death" : "1938-11-10",
+  "name" : "Mustafa Kemal",
+  "ranking" : 74,
+  "reasons_for_being_famous" : "Politician born in Thessaloniki, Greece.",
+  "surname" : "Atatürk"
+}, {
+  "age" : 78,
+  "date_of_birth" : "1215-09-23",
+  "date_of_death" : "1294-02-18",
+  "name" : "Kublai",
+  "ranking" : 75,
+  "reasons_for_being_famous" : "Politician from China.",
+  "surname" : "Khan"
+}, {
+  "age" : 83,
+  "date_of_birth" : "1856-05-06",
+  "date_of_death" : "1939-09-23",
+  "name" : "Sigmund",
+  "ranking" : 76,
+  "reasons_for_being_famous" : "Psychologist born in Příbor, Czechia.",
+  "surname" : "Freud"
+}, {
+  "age" : 64,
+  "date_of_birth" : "1460",
+  "date_of_death" : "1524-12-24",
+  "name" : "Vasco da",
+  "ranking" : 77,
+  "reasons_for_being_famous" : "Explorer born in Sines, Portugal.",
+  "surname" : "Gama"
+}, {
+  "age" : 39,
+  "date_of_birth" : "1623-06-19",
+  "date_of_death" : "1662-08-19",
+  "name" : "Blaise",
+  "ranking" : 78,
+  "reasons_for_being_famous" : "Mathematician born in Clermont-Ferrand, France.",
+  "surname" : "Pascal"
+}, {
+  "age" : 19,
+  "date_of_birth" : "1412",
+  "date_of_death" : "1431-05-30",
+  "name" : "Joan of",
+  "ranking" : 79,
+  "reasons_for_being_famous" : "Military personnel born in Domrémy-la-Pucelle, France.",
+  "surname" : "Arc"
+}, {
+  "age" : 63,
+  "date_of_birth" : "1678-03-04",
+  "date_of_death" : "1741-07-28",
+  "name" : "Antonio",
+  "ranking" : 80,
+  "reasons_for_being_famous" : "Composer born in Venice, Italy.",
+  "surname" : "Vivaldi"
+}, {
+  "age" : 37,
+  "date_of_birth" : "1483-04-06",
+  "date_of_death" : "1520-04-06",
+  "name" : "Raphael",
+  "ranking" : 81,
+  "reasons_for_being_famous" : "Painter born in Urbino, Italy.",
+  "surname" : ""
+}, {
+  "age" : 48,
+  "date_of_birth" : "-0258-01-27",
+  "date_of_death" : "-0210-09-10",
+  "name" : "Qin Shi",
+  "ranking" : 82,
+  "reasons_for_being_famous" : "Politician born in Handan, China.",
+  "surname" : "Huang"
+}, {
+  "age" : 82,
+  "date_of_birth" : "1749-08-28",
+  "date_of_death" : "1832-03-22",
+  "name" : "Johann Wolfgang von",
+  "ranking" : 83,
+  "reasons_for_being_famous" : "Writer born in Free City of Frankfurt, Germany.",
+  "surname" : "Goethe"
+}, {
+  "age" : 62,
+  "date_of_birth" : "1904-04-22",
+  "date_of_death" : "1967-02-18",
+  "name" : "J. Robert",
+  "ranking" : 84,
+  "reasons_for_being_famous" : "Physicist born in New York City, United States.",
+  "surname" : "Oppenheimer"
+}, {
+  "age" : 200,
+  "date_of_birth" : "-0100-01-01",
+  "date_of_death" : "100",
+  "name" : "Saint",
+  "ranking" : 85,
+  "reasons_for_being_famous" : "Religious figure born in Nazareth, Israel.",
+  "surname" : "Joseph"
+}, {
+  "age" : 68,
+  "date_of_birth" : "1336-04-09",
+  "date_of_death" : "1405-02-19",
+  "name" : "Timur",
+  "ranking" : 86,
+  "reasons_for_being_famous" : "Military personnel born in Shahrisabz, Uzbekistan.",
+  "surname" : ""
+}, {
+  "age" : 74,
+  "date_of_birth" : "1942-01-17",
+  "date_of_death" : "2016-06-03",
+  "name" : "Muhammad",
+  "ranking" : 87,
+  "reasons_for_being_famous" : "Boxer born in Louisville, Kentucky, United States.",
+  "surname" : "Ali"
+}, {
+  "age" : 56,
+  "date_of_birth" : "1895-12-14",
+  "date_of_death" : "1952-02-06",
+  "name" : "George",
+  "ranking" : 88,
+  "reasons_for_being_famous" : "Politician born in York Cottage, United Kingdom.",
+  "surname" : "VI"
+}, {
+  "age" : 81,
+  "date_of_birth" : "1892-01-03",
+  "date_of_death" : "1973-09-02",
+  "name" : "J. R. R.",
+  "ranking" : 89,
+  "reasons_for_being_famous" : "Writer born in Bloemfontein, South Africa.",
+  "surname" : "Tolkien"
+}, {
+  "age" : 86,
+  "date_of_birth" : "1830-08-18",
+  "date_of_death" : "1916-11-21",
+  "name" : "Franz Joseph I of",
+  "ranking" : 90,
+  "reasons_for_being_famous" : "Politician born in Schönbrunn Palace, Austria.",
+  "surname" : "Austria"
+}, {
+  "age" : 44,
+  "date_of_birth" : "1632-11-24",
+  "date_of_death" : "1677-02-21",
+  "name" : "Baruch",
+  "ranking" : 91,
+  "reasons_for_being_famous" : "Philosopher born in Amsterdam, Netherlands.",
+  "surname" : "Spinoza"
+}, {
+  "age" : 70,
+  "date_of_birth" : "780",
+  "date_of_death" : "850",
+  "name" : "Muhammad ibn Musa",
+  "ranking" : 92,
+  "reasons_for_being_famous" : "Mathematician born in Khwarazm, Turkmenistan.",
+  "surname" : "al-Khwarizmi"
+}, {
+  "age" : 63,
+  "date_of_birth" : "1606-07-15",
+  "date_of_death" : "1669-10-04",
+  "name" : "Rembrandt",
+  "ranking" : 93,
+  "reasons_for_being_famous" : "Painter born in Leiden, Netherlands.",
+  "surname" : ""
+}, {
+  "age" : 74,
+  "date_of_birth" : "1394",
+  "date_of_death" : "1468-02-03",
+  "name" : "Johannes",
+  "ranking" : 94,
+  "reasons_for_being_famous" : "Inventor born in Mainz, Germany.",
+  "surname" : "Gutenberg"
+}, {
+  "age" : 38,
+  "date_of_birth" : "1754-08-23",
+  "date_of_death" : "1793-01-21",
+  "name" : "Louis XVI of",
+  "ranking" : 95,
+  "reasons_for_being_famous" : "Politician born in Palace of Versailles, France.",
+  "surname" : "France"
+}, {
+  "age" : 95,
+  "date_of_birth" : "1918-07-18",
+  "date_of_death" : "2013-12-05",
+  "name" : "Nelson",
+  "ranking" : 96,
+  "reasons_for_being_famous" : "Social activist born in Mvezo, South Africa.",
+  "surname" : "Mandela"
+}, {
+  "age" : 58,
+  "date_of_birth" : "1469-05-03",
+  "date_of_death" : "1527-06-21",
+  "name" : "Niccolò",
+  "ranking" : 97,
+  "reasons_for_being_famous" : "Philosopher born in Florence, Italy.",
+  "surname" : "Machiavelli"
+}, {
+  "age" : 78,
+  "date_of_birth" : "1767-03-15",
+  "date_of_death" : "1845-06-08",
+  "name" : "Andrew",
+  "ranking" : 98,
+  "reasons_for_being_famous" : "Politician born in Waxhaws, United States.",
+  "surname" : "Jackson"
+}, {
+  "age" : 75,
+  "date_of_birth" : "0354-11-13",
+  "date_of_death" : "0430-08-28",
+  "name" : "Augustine of",
+  "ranking" : 99,
+  "reasons_for_being_famous" : "Philosopher from Algeria.",
+  "surname" : "Hippo"
+}, {
+  "age" : 40,
+  "date_of_birth" : "1809-01-19",
+  "date_of_death" : "1849-10-07",
+  "name" : "Edgar Allan",
+  "ranking" : 100,
+  "reasons_for_being_famous" : "Writer born in Boston, United States.",
+  "surname" : "Poe"
+} ]

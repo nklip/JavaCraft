@@ -2,90 +2,84 @@ package my.javacraft.elastic.data.json;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.zip.GZIPInputStream;
-import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
 @Slf4j
-public final class MusicDownloader {
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+@SuppressWarnings("SameParameterValue")
+public final class MusicDownloader implements JsonDownloader<MusicDownloader.MusicRecord> {
+
     private static final RestTemplate REST_TEMPLATE = new RestTemplate();
     private static final List<String> TARGET_BANDS = List.of("ABBA", "Powerwolf", "Sabaton");
     private static final int TRACKS_PER_BAND = 80;
     private static final String ITUNES_SEARCH_URL =
             "https://itunes.apple.com/search?term=%s&entity=song&limit=200";
     private static final String LYRICS_OVH_URL = "https://api.lyrics.ovh/v1/%s/%s";
-    private static final Path DEFAULT_OUTPUT_FILE =  Path.of(
+    private static final Path DEFAULT_OUTPUT_FILE = Path.of(
             "elastic", "elastic-testing",
-                    "src", "test", "resources", "data", "json", "music.json"
+            "src", "test", "resources", "data", "json", "music.json"
     );
 
     private MusicDownloader() {
     }
 
     public static void main(String[] args) throws IOException {
-        Path outputFile = resolveOutputFile(args);
-        exportMusic(outputFile);
+        log.info("Starting MusicDownloader...");
+        new MusicDownloader().run(args);
     }
 
-    private static Path resolveOutputFile(String[] args) {
-        return Optional.ofNullable(args)
-                .filter(a -> a.length > 0)
-                .filter(a -> a[0] != null)
-                .filter(a -> !a[0].isBlank())
-                .map(a -> Path.of(a[0].trim()))
-                .orElse(DEFAULT_OUTPUT_FILE);
+    @Override
+    public String datasetName() {
+        return "music records";
     }
 
-    public static void exportMusic(Path outputFile) throws IOException {
-        exportMusic(TARGET_BANDS, TRACKS_PER_BAND, outputFile);
+    @Override
+    public Path defaultOutputFile() {
+        return DEFAULT_OUTPUT_FILE;
     }
 
-    public static void exportMusic(List<String> bands, int tracksPerBand, Path outputFile) throws IOException {
-        if (bands == null || bands.isEmpty()) {
-            throw new IllegalArgumentException("Bands list must not be empty");
-        }
-        if (tracksPerBand <= 0) {
-            throw new IllegalArgumentException("tracksPerBand must be positive");
-        }
+    @Override
+    public List<MusicRecord> downloadRecords() throws IOException {
+        log.info("Fetching music records...");
+        return downloadMusicRecords(TARGET_BANDS, TRACKS_PER_BAND);
+    }
 
+    private static List<MusicRecord> downloadMusicRecords(List<String> bands, int tracksPerBand) throws IOException {
         List<MusicRecord> records = new ArrayList<>();
-        for (String band : bands) {
-            records.addAll(fetchMusicForBand(band, tracksPerBand));
+        for (int i = 0; i < bands.size(); i++) {
+            String band = bands.get(i);
+            int bandIndex = i + 1;
+            records.addAll(fetchMusicForBand(band, bandIndex, bands.size(), tracksPerBand));
         }
-
-        Path parent = outputFile.getParent();
-        if (parent != null) {
-            Files.createDirectories(parent);
-        }
-        String json = OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(records);
-        Files.writeString(outputFile, json, StandardCharsets.UTF_8);
-        log.info("Exported {} records to '{}'", records.size(), outputFile.toAbsolutePath());
+        return records;
     }
 
-    private static List<MusicRecord> fetchMusicForBand(String band, int tracksPerBand) throws IOException {
+    private static List<MusicRecord> fetchMusicForBand(
+            String band, int bandIndex, int bandSize, int tracksPerBand) throws IOException {
         String normalizedBand = band == null ? "" : band.trim();
         if (normalizedBand.isEmpty()) {
             return List.of();
         }
 
-        String url = ITUNES_SEARCH_URL.formatted(encodeQuery(normalizedBand));
+        String url = ITUNES_SEARCH_URL.formatted(encode(normalizedBand));
         ResponseEntity<byte[]> response = REST_TEMPLATE.exchange(
                 url,
                 HttpMethod.GET,
@@ -99,45 +93,50 @@ public final class MusicDownloader {
             return List.of();
         }
 
-        ItunesSearchResponse searchResponse = OBJECT_MAPPER.readValue(body, ItunesSearchResponse.class);
+        ItunesSearchResponse searchResponse = SHARED_OBJECT_MAPPER.readValue(body, ItunesSearchResponse.class);
         Map<String, ItunesSong> uniqueSongs = new LinkedHashMap<>();
-        searchResponse.getResults().stream()
-                .filter(song -> song.getArtistName() != null)
-                .filter(song -> normalizedBand.equalsIgnoreCase(song.getArtistName()))
-                .filter(song -> song.getCollectionName() != null && !song.getCollectionName().isBlank())
-                .filter(song -> song.getTrackName() != null && !song.getTrackName().isBlank())
+        safeList(searchResponse.results()).stream()
+                .filter(song -> song.artistName() != null)
+                .filter(song -> normalizedBand.equalsIgnoreCase(song.artistName()))
+                .filter(song -> song.collectionName() != null && !song.collectionName().isBlank())
+                .filter(song -> song.trackName() != null && !song.trackName().isBlank())
                 .sorted(Comparator
-                        .comparing(ItunesSong::getCollectionName, String.CASE_INSENSITIVE_ORDER)
-                        .thenComparing(song -> safeTrackNumber(song.getTrackNumber()))
-                        .thenComparing(ItunesSong::getTrackName, String.CASE_INSENSITIVE_ORDER))
-                .forEach(song -> uniqueSongs.putIfAbsent(
-                        deduplicationKey(song),
-                        song
-                ));
+                        .comparing(ItunesSong::collectionName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(song -> safeTrackNumber(song.trackNumber()))
+                        .thenComparing(ItunesSong::trackName, String.CASE_INSENSITIVE_ORDER))
+                .forEach(song -> uniqueSongs.putIfAbsent(deduplicationKey(song), song));
 
         List<MusicRecord> records = new ArrayList<>();
-        int count = 0;
+        int processedSongs = 0;
         for (ItunesSong song : uniqueSongs.values()) {
-            if (count >= tracksPerBand) {
+            if (records.size() >= tracksPerBand) {
                 break;
             }
-            MusicRecord record = new MusicRecord();
-            record.setBand(normalizedBand);
-            record.setAlbum(song.getCollectionName());
-            record.setTrackNumber(safeTrackNumber(song.getTrackNumber()));
-            record.setName(song.getTrackName());
-            record.setReleaseYear(extractReleaseYear(song.getReleaseDate()));
-            record.setLyrics(fetchLyrics(song.getArtistName(), song.getTrackName()));
-            records.add(record);
-            log.info(
-                    "Downloaded track: band='{}', album='{}', track_number={}, name='{}', release_year={}",
-                    record.getBand(),
-                    record.getAlbum(),
-                    record.getTrackNumber(),
-                    record.getName(),
-                    record.getReleaseYear()
+            processedSongs++;
+            MusicRecord record = new MusicRecord(
+                    song.collectionName(),
+                    normalizedBand,
+                    fetchLyrics(song.artistName(), song.trackName()),
+                    song.trackName(),
+                    extractReleaseYear(song.releaseDate()),
+                    safeTrackNumber(song.trackNumber())
             );
-            count++;
+            records.add(record);
+
+            // for example, bandIndex - 1, bandSize - 3, tracksPerBand - 80
+            // processedTracks = 0..80; totalProcessedTracks = 240
+            int processedTracks = ((bandIndex - 1) * tracksPerBand) + processedSongs;
+            int totalProcessedTracks = bandSize * tracksPerBand;
+            log.info(
+                    "Downloaded track {}/{}: band='{}', album='{}', track_number={}, name='{}', release_year={}",
+                    processedTracks,
+                    totalProcessedTracks,
+                    record.band(),
+                    record.album(),
+                    record.trackNumber(),
+                    record.name(),
+                    record.releaseYear()
+            );
         }
 
         log.info("Collected {} tracks for '{}'", records.size(), normalizedBand);
@@ -146,22 +145,22 @@ public final class MusicDownloader {
 
     private static String fetchLyrics(String artist, String trackName) {
         try {
-            String url = LYRICS_OVH_URL.formatted(encodePath(artist), encodePath(trackName));
+            String url = LYRICS_OVH_URL.formatted(encode(artist), encode(trackName));
             ResponseEntity<byte[]> response = REST_TEMPLATE.getForEntity(url, byte[].class);
             String body = decodeResponseBody(response.getBody());
             if (!response.getStatusCode().is2xxSuccessful() || body.isBlank()) {
                 return "";
             }
-            LyricsResponse lyricsResponse = OBJECT_MAPPER.readValue(body, LyricsResponse.class);
-            return lyricsResponse.getLyrics() == null ? "" : lyricsResponse.getLyrics();
+            LyricsResponse lyricsResponse = SHARED_OBJECT_MAPPER.readValue(body, LyricsResponse.class);
+            return Objects.requireNonNullElse(lyricsResponse.lyrics(), "");
         } catch (Exception ex) {
             log.debug("No lyrics for '{} - {}': {}", artist, trackName, ex.getMessage());
             return "";
         }
     }
 
-    private static MultiValueMap<String, String> defaultHeaders() {
-        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+    private static HttpHeaders defaultHeaders() {
+        HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.ACCEPT, "application/json");
         return headers;
     }
@@ -185,11 +184,7 @@ public final class MusicDownloader {
                 && (bytes[1] == (byte) 0x8b);
     }
 
-    private static String encodeQuery(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8);
-    }
-
-    private static String encodePath(String value) {
+    private static String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
@@ -197,9 +192,8 @@ public final class MusicDownloader {
         if (releaseDate == null || releaseDate.length() < 4) {
             return 0;
         }
-        String firstFourChars = releaseDate.substring(0, 4);
         try {
-            return Integer.parseInt(firstFourChars);
+            return Integer.parseInt(releaseDate.substring(0, 4));
         } catch (NumberFormatException ex) {
             return 0;
         }
@@ -211,43 +205,39 @@ public final class MusicDownloader {
 
     private static String deduplicationKey(ItunesSong song) {
         return "%s|%d|%s".formatted(
-                song.getCollectionName().toLowerCase(Locale.ROOT),
-                safeTrackNumber(song.getTrackNumber()),
-                song.getTrackName().toLowerCase(Locale.ROOT)
+                song.collectionName().toLowerCase(Locale.ROOT),
+                safeTrackNumber(song.trackNumber()),
+                song.trackName().toLowerCase(Locale.ROOT)
         );
     }
 
-    @Data
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class ItunesSearchResponse {
-        private List<ItunesSong> results = List.of();
+    private static <T> List<T> safeList(List<T> values) {
+        return values == null ? List.of() : values;
     }
 
-    @Data
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class ItunesSong {
-        private String artistName;
-        private String collectionName;
-        private Integer trackNumber;
-        private String trackName;
-        private String releaseDate;
-    }
+    record ItunesSearchResponse(List<ItunesSong> results) {}
 
-    @Data
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class LyricsResponse {
-        private String lyrics;
-    }
+    record ItunesSong(
+            String artistName,
+            String collectionName,
+            Integer trackNumber,
+            String trackName,
+            String releaseDate
+    ) {}
 
-    @Data
-    public static class MusicRecord {
-        private String band;
-        private String album;
-        @JsonProperty("track_number")
-        private Integer trackNumber;
-        private String name;
-        @JsonProperty("release_year")
-        private Integer releaseYear;
-        private String lyrics;
-    }
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record LyricsResponse(String lyrics) {}
+
+    public record MusicRecord(
+            String album,
+            String band,
+            String lyrics,
+            String name,
+            @JsonProperty("release_year")
+            Integer releaseYear,
+            @JsonProperty("track_number")
+            Integer trackNumber
+    ) {}
 }

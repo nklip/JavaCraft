@@ -1,25 +1,23 @@
 package my.javacraft.elastic.data.json;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
-import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public final class CompaniesDownloaded {
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+@SuppressWarnings("SameParameterValue")
+public final class CompaniesDownloader implements JsonDownloader<CompaniesDownloader.CompanyRecord> {
+
     private static final String WIKIDATA_SPARQL_ENDPOINT = "https://query.wikidata.org/sparql";
     private static final int TARGET_COMPANIES_COUNT = 100;
     private static final int DETAIL_PROGRESS_LOG_EVERY = 10;
@@ -30,6 +28,7 @@ public final class CompaniesDownloaded {
     private static final int CURL_INITIAL_BACKOFF_MILLIS = 1_000;
     private static final int CURL_MAX_BACKOFF_MILLIS = 30_000;
     private static final Pattern RETRYABLE_HTTP_STATUS_PATTERN = Pattern.compile("\\b(429|503|504)\\b");
+    private static final Set<Integer> RETRYABLE_CURL_EXIT_CODES = Set.of(7, 28, 52, 56);
 
     /**
      * Step 1: fetch ranked top companies by market capitalization in USD.
@@ -117,35 +116,28 @@ public final class CompaniesDownloaded {
             "src", "test", "resources", "data", "json", "companies.json"
     );
 
-    private CompaniesDownloaded() {
+    private CompaniesDownloader() {
     }
 
     public static void main(String[] args) throws IOException {
-        Path outputFile = resolveOutputFile(args);
-        exportTopCompanies(outputFile);
+        log.info("Starting CompaniesDownloader...");
+        new CompaniesDownloader().run(args);
     }
 
-    public static void exportTopCompanies(Path outputFile) throws IOException {
-        exportTopCompanies(TARGET_COMPANIES_COUNT, outputFile);
+    @Override
+    public String datasetName() {
+        return "companies";
     }
 
-    public static void exportTopCompanies(int targetCompaniesCount, Path outputFile) throws IOException {
-        if (targetCompaniesCount <= 0) {
-            throw new IllegalArgumentException("targetCompaniesCount must be positive");
-        }
-        if (outputFile == null) {
-            throw new IllegalArgumentException("outputFile must not be null");
-        }
+    @Override
+    public Path defaultOutputFile() {
+        return DEFAULT_OUTPUT_FILE;
+    }
 
-        List<CompanyRecord> records = fetchTopCompanies(targetCompaniesCount);
-        Path parent = outputFile.getParent();
-        if (parent != null) {
-            Files.createDirectories(parent);
-        }
-
-        String json = OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(records);
-        Files.writeString(outputFile, json, StandardCharsets.UTF_8);
-        log.info("Exported {} companies to '{}'", records.size(), outputFile.toAbsolutePath());
+    @Override
+    public List<CompanyRecord> downloadRecords() throws IOException {
+        log.info("Fetching companies...");
+        return fetchTopCompanies(TARGET_COMPANIES_COUNT);
     }
 
     private static List<CompanyRecord> fetchTopCompanies(int targetCompaniesCount) throws IOException {
@@ -156,32 +148,36 @@ public final class CompaniesDownloaded {
         for (int index = 0; index < topCompanies.size(); index++) {
             TopCompany topCompany = topCompanies.get(index);
             CompanyDetails details = detailsByCompanyUri.getOrDefault(topCompany.companyUri(), CompanyDetails.empty());
-
-            CompanyRecord record = new CompanyRecord();
-            record.setRank(index + 1);
-            record.setName(topCompany.companyName());
-            record.setCountry(details.country());
-            record.setHeadquarters(details.headquarters());
-            record.setIndustry(details.industry());
-            record.setSector(resolveSector(details.sector(), details.industry()));
-            record.setCeo(details.ceo());
-            record.setEmployees(details.employees());
-            record.setFounded(details.foundedYear());
-            record.setWebsite(details.website());
-            record.setDescription(details.description());
-
+            CompanyRecord record = toCompanyRecord(index + 1, topCompany, details);
             records.add(record);
             log.info(
                     "Downloaded company {}/{}: '{}' (country='{}', ceo='{}')",
-                    record.getRank(),
+                    record.rank(),
                     topCompanies.size(),
-                    record.getName(),
-                    record.getCountry(),
-                    record.getCeo()
+                    record.name(),
+                    record.country(),
+                    record.ceo()
             );
         }
 
         return records;
+    }
+
+    private static CompanyRecord toCompanyRecord(int rank, TopCompany topCompany, CompanyDetails details) {
+        return new CompanyRecord(
+                topCompany.marketCap(),
+                details.ceo(),
+                details.country(),
+                details.description(),
+                details.employees(),
+                details.foundedYear(),
+                details.headquarters(),
+                details.industry(),
+                topCompany.companyName(),
+                rank,
+                resolveSector(details.sector(), details.industry()),
+                details.website()
+        );
     }
 
     private static List<TopCompany> fetchTopCompanyCandidates(int targetCompaniesCount) throws IOException {
@@ -193,7 +189,7 @@ public final class CompaniesDownloaded {
             if (companyUri.isBlank() || companyName.isBlank()) {
                 continue;
             }
-            companies.add(new TopCompany(companyUri, companyName));
+            companies.add(new TopCompany(companyUri, companyName, parseLong(value(binding, "marketCap"))));
         }
 
         if (companies.isEmpty()) {
@@ -207,27 +203,24 @@ public final class CompaniesDownloaded {
 
         for (int index = 0; index < topCompanies.size(); index++) {
             TopCompany company = topCompanies.get(index);
-            fetchCompanyDetailsForSingleCompany(company).ifPresent(details ->
+            fetchCompanyDetailsForSingleCompany(company)
+                    .ifPresent(details ->
                     detailsByCompanyUri.put(company.companyUri(), details)
             );
 
             int processed = index + 1;
             if (processed % DETAIL_PROGRESS_LOG_EVERY == 0 || processed == topCompanies.size()) {
-                log.info(
-                        "Downloaded details for {}/{} companies",
-                        processed,
-                        topCompanies.size()
-                );
+                log.info("Downloaded details for {}/{} companies", processed, topCompanies.size());
             }
             if (processed < topCompanies.size()) {
-                pauseBetweenDetailRequests();
+                sleepMillis(DETAIL_REQUEST_PAUSE_MILLIS);
             }
         }
 
         return detailsByCompanyUri;
     }
 
-    private static Optional<CompanyDetails> fetchCompanyDetailsForSingleCompany(TopCompany company) throws IOException {
+    private static Optional<CompanyDetails> fetchCompanyDetailsForSingleCompany(TopCompany company) {
         String valuesClause = "<%s>".formatted(company.companyUri());
         try {
             JsonNode bindings = executeSparql(COMPANY_DETAILS_QUERY_TEMPLATE.formatted(valuesClause));
@@ -263,13 +256,7 @@ public final class CompaniesDownloaded {
     }
 
     private static JsonNode executeSparql(String sparqlQuery) throws IOException {
-        return executeSparqlWithCurl(sparqlQuery);
-    }
-
-    private static JsonNode executeSparqlWithCurl(String sparqlQuery) throws IOException {
-        IOException lastFailure = null;
-
-        for (int attempt = 1; attempt <= CURL_MAX_ATTEMPTS; attempt++) {
+        for (int attempt = 1; ; attempt++) {
             CurlResult result = executeCurlOnce(sparqlQuery);
             if (result.exitCode() == 0) {
                 return parseBindings(result.output());
@@ -277,12 +264,12 @@ public final class CompaniesDownloaded {
 
             String output = sanitize(result.output());
             boolean retryable = isRetryableCurlFailure(result.exitCode(), output);
-            lastFailure = new IOException(
+            IOException failure = new IOException(
                     "curl transport failed (exit=%d, attempt=%d/%d): %s"
                             .formatted(result.exitCode(), attempt, CURL_MAX_ATTEMPTS, output)
             );
-            if (!retryable || attempt == CURL_MAX_ATTEMPTS) {
-                throw lastFailure;
+            if (!retryable || attempt >= CURL_MAX_ATTEMPTS) {
+                throw failure;
             }
 
             int delayMillis = Math.min(
@@ -298,11 +285,6 @@ public final class CompaniesDownloaded {
             );
             sleepMillis(delayMillis);
         }
-
-        if (lastFailure != null) {
-            throw lastFailure;
-        }
-        throw new IOException("curl transport failed with unknown error");
     }
 
     private static CurlResult executeCurlOnce(String sparqlQuery) throws IOException {
@@ -333,19 +315,15 @@ public final class CompaniesDownloaded {
     }
 
     private static boolean isRetryableCurlFailure(int exitCode, String output) {
-        String normalizedOutput = sanitize(output).toLowerCase();
-        if (exitCode == 28 || exitCode == 7 || exitCode == 52 || exitCode == 56) {
+        if (RETRYABLE_CURL_EXIT_CODES.contains(exitCode)) {
             return true;
         }
+        String normalizedOutput = sanitize(output).toLowerCase();
         return exitCode == 22
                 && (RETRYABLE_HTTP_STATUS_PATTERN.matcher(normalizedOutput).find()
                     || normalizedOutput.contains("too many requests")
                     || normalizedOutput.contains("operation timed out")
                     || normalizedOutput.contains("temporarily unavailable"));
-    }
-
-    private static void pauseBetweenDetailRequests() throws IOException {
-        sleepMillis(DETAIL_REQUEST_PAUSE_MILLIS);
     }
 
     private static void sleepMillis(int millis) throws IOException {
@@ -362,7 +340,10 @@ public final class CompaniesDownloaded {
             throw new IOException("Received empty response while downloading companies");
         }
 
-        JsonNode bindings = OBJECT_MAPPER.readTree(responseBody).path("results").path("bindings");
+        JsonNode bindings = SHARED_OBJECT_MAPPER
+                .readTree(responseBody)
+                .path("results")
+                .path("bindings");
         if (!bindings.isArray()) {
             throw new IOException("Unexpected SPARQL response format for companies");
         }
@@ -420,20 +401,9 @@ public final class CompaniesDownloaded {
         return value.replaceAll("\\s+", " ").trim();
     }
 
-    private static Path resolveOutputFile(String[] args) {
-        return Optional.ofNullable(args)
-                .filter(values -> values.length > 0)
-                .filter(values -> values[0] != null)
-                .filter(values -> !values[0].isBlank())
-                .map(values -> Path.of(values[0].trim()))
-                .orElse(DEFAULT_OUTPUT_FILE);
-    }
+    private record CurlResult(int exitCode, String output) {}
 
-    private record CurlResult(int exitCode, String output) {
-    }
-
-    private record TopCompany(String companyUri, String companyName) {
-    }
+    private record TopCompany(String companyUri, String companyName, Long marketCap) {}
 
     private record CompanyDetails(
             String country,
@@ -451,18 +421,18 @@ public final class CompaniesDownloaded {
         }
     }
 
-    @Data
-    public static class CompanyRecord {
-        private Integer rank;
-        private String name;
-        private String country;
-        private String headquarters;
-        private String industry;
-        private String sector;
-        private String ceo;
-        private Long employees;
-        private Integer founded;
-        private String website;
-        private String description;
-    }
+    public record CompanyRecord(
+            Long capitalization,
+            String ceo,
+            String country,
+            String description,
+            Long employees,
+            Integer founded,
+            String headquarters,
+            String industry,
+            String name,
+            Integer rank,
+            String sector,
+            String website
+    ) {}
 }
