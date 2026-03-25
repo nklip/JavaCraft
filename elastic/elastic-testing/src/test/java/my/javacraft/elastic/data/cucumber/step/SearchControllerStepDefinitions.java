@@ -14,6 +14,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.api.model.ClientType;
@@ -65,12 +66,16 @@ public class SearchControllerStepDefinitions {
 
             AdminControllerStepDefinitions adminSteps = new AdminControllerStepDefinitions(port, esClient);
             adminSteps.recreateIndex("books");
+            adminSteps.recreateIndex("companies");
             adminSteps.recreateIndex("movies");
             adminSteps.recreateIndex("music");
+            adminSteps.recreateIndex("people");
 
-            ingestJson("data/json/books.json", "books");
-            ingestJson("data/json/movies.json", "movies");
-            ingestJson("data/json/music.json", "music");
+            ingestJson("data/json/books.json",     "books");
+            ingestJson("data/json/companies.json", "companies");
+            ingestJson("data/json/movies.json",    "movies");
+            ingestJson("data/json/music.json",     "music");
+            ingestJson("data/json/people.json",    "people");
 
             SEARCH_DATASET_PREPARED.set(true);
             log.info("search dataset setup completed once for SearchController scenarios");
@@ -134,6 +139,12 @@ public class SearchControllerStepDefinitions {
         assertSearchResponseEventually("/api/services/search/span", jsonBody, dataTable);
     }
 
+    @When("interval search for {string} in {string}")
+    public void testInterval(String pattern, String type, DataTable dataTable) throws IOException, InterruptedException {
+        String jsonBody = jsonBody(pattern, type);
+        assertSearchResponseEventually("/api/services/search/interval", jsonBody, dataTable);
+    }
+
     @When("search for {string} in {string}")
     public void testSearch(String pattern, String type, DataTable dataTable) throws IOException, InterruptedException {
         String jsonBody = jsonBody(pattern, type);
@@ -141,6 +152,20 @@ public class SearchControllerStepDefinitions {
     }
 
     private void assertSearchResponseEventually(String path, String jsonBody, DataTable dataTable) throws InterruptedException {
+        int expectedRows = dataTable.height();
+
+        Assertions.assertTrue(CucumberSpringConfiguration.assertWithWait(expectedRows,
+                () -> Optional.of(postSearch(path, jsonBody))
+                        .map(HttpEntity::getBody)
+                        .map(List::size)
+                        .orElse(0)
+        ), "Expecting " + expectedRows + " rows in actual search response");
+
+        ResponseEntity<List<LinkedHashMap<String, Object>>> httpResponse = postSearch(path, jsonBody);
+        compareHttpResponseToDataTable(httpResponse, dataTable);
+    }
+
+    private ResponseEntity<List<LinkedHashMap<String, Object>>> postSearch(String path, String jsonBody) {
         MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
         headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
 
@@ -148,28 +173,10 @@ public class SearchControllerStepDefinitions {
 
         RestTemplate restTemplate = new RestTemplate();
         String url = "http://localhost:%s%s".formatted(port, path);
-        int expectedRows = dataTable.height();
 
-        Assertions.assertTrue(CucumberSpringConfiguration.assertWithWait(expectedRows, () -> {
-            ResponseEntity<List<LinkedHashMap<String, Object>>> currentResponse = restTemplate.exchange(
-                    url,
-                    HttpMethod.POST,
-                    entity,
-                    new ParameterizedTypeReference<>() {
-                    }
-            );
-            List<LinkedHashMap<String, Object>> currentBody = currentResponse.getBody();
-            return currentBody == null ? 0 : currentBody.size();
-        }));
-
-        ResponseEntity<List<LinkedHashMap<String, Object>>> httpResponse = restTemplate.exchange(
-                url,
-                HttpMethod.POST,
-                entity,
-                new ParameterizedTypeReference<>() {
-                }
+        return restTemplate.exchange(
+                url, HttpMethod.POST, entity, new ParameterizedTypeReference<>() {}
         );
-        compareHttpResponseToDataTable(httpResponse, dataTable);
     }
 
     private void compareHttpResponseToDataTable(

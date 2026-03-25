@@ -89,6 +89,25 @@ public class AdminController {
     }
 
     @Operation(
+            summary = "Create companies index",
+            description = "Creates the 'companies' index. "
+                    + "Text fields (full-text search): ceo, country, description, headquarters, industry, name, sector, website. "
+                    + "Numeric fields (range/aggregation only): capitalization(long), employees(long), founded(integer), rank(integer). "
+                    + "Required by SearchController for full-text search queries."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Index created successfully"),
+            @ApiResponse(responseCode = "201", description = "Index already exists; no changes were made"),
+            @ApiResponse(responseCode = "500", description = "Elasticsearch error")
+    })
+    @PutMapping(value = "/indexes/companies", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<CreateIndexResponse> createCompaniesIndex() throws IOException {
+        log.info("request to create companies index");
+        AdminService.IndexCreationResult result = adminService.createCompaniesIndex();
+        return buildResponse(result);
+    }
+
+    @Operation(
             summary = "Create movies index",
             description = "Creates the 'movies' index with text fields: name, director, synopsis. "
                     + "Required by SearchController for full-text search queries."
@@ -119,6 +138,25 @@ public class AdminController {
     public ResponseEntity<CreateIndexResponse> createMusicIndex() throws IOException {
         log.info("request to create music index");
         AdminService.IndexCreationResult result = adminService.createMusicIndex();
+        return buildResponse(result);
+    }
+
+    @Operation(
+            summary = "Create people index",
+            description = "Creates the 'people' index. "
+                    + "Text fields (full-text search): name, reasons_for_being_famous, surname, date_of_birth, date_of_death. "
+                    + "Numeric fields (range/aggregation only): age(integer), ranking(integer). "
+                    + "Required by SearchController for full-text search queries."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Index created successfully"),
+            @ApiResponse(responseCode = "201", description = "Index already exists; no changes were made"),
+            @ApiResponse(responseCode = "500", description = "Elasticsearch error")
+    })
+    @PutMapping(value = "/indexes/people", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<CreateIndexResponse> createPeopleIndex() throws IOException {
+        log.info("request to create people index");
+        AdminService.IndexCreationResult result = adminService.createPeopleIndex();
         return buildResponse(result);
     }
 

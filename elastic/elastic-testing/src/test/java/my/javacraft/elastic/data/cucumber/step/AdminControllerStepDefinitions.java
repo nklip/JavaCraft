@@ -3,19 +3,14 @@ package my.javacraft.elastic.data.cucumber.step;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.*;
 import co.elastic.clients.elasticsearch.indices.ExistsRequest;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.cucumber.java.en.Given;
-import io.cucumber.java.en.Then;
 import java.io.*;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Scope;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
@@ -27,7 +22,7 @@ import static io.cucumber.spring.CucumberTestContext.SCOPE_CUCUMBER_GLUE;
 @Scope(SCOPE_CUCUMBER_GLUE)
 public class AdminControllerStepDefinitions {
 
-    private static final Set<String> SUPPORTED_INDEXES = Set.of("books", "movies", "music", "user-votes", "posts");
+    private static final Set<String> SUPPORTED_INDEXES = Set.of("books", "companies", "movies", "music", "people", "posts", "user-votes");
 
     int port;
     ElasticsearchClient esClient;

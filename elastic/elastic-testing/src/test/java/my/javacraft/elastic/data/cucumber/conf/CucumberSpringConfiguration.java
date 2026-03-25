@@ -2,6 +2,7 @@ package my.javacraft.elastic.data.cucumber.conf;
 
 import io.cucumber.spring.CucumberContextConfiguration;
 import java.util.function.Supplier;
+import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.app.Application;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
@@ -11,6 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
         classes = Application.class,
         webEnvironment = WebEnvironment.RANDOM_PORT
 )
+@Slf4j
 public class CucumberSpringConfiguration {
 
     private static final int POLL_INTERVAL_MILLIS = 200;
@@ -30,6 +32,9 @@ public class CucumberSpringConfiguration {
             Thread.sleep(POLL_INTERVAL_MILLIS);
 
             elapsedMillis += POLL_INTERVAL_MILLIS;
+        }
+        if (!confirmed) {
+            log.info("Size = {}", supplier.get());
         }
         return confirmed;
     }

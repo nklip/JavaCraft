@@ -49,19 +49,32 @@ public class SearchService {
     /**
      * The wildcard query is an expensive query due to the nature of how it was implemented.
      * Few other expensive queries are the range, prefix, fuzzy, regex, and join queries as well as others.
+     * <p>
+     * Search fields are resolved from {@code metadata.json} for the requested category.
+     * Falls back to {@code synopsis} when the category has no metadata entry.
      */
     public List<Object> wildcardSearch(ContentSearchRequest contentSearchRequest) throws IOException, ElasticsearchException {
-        Query wildcardQuery = wildcardFactory.createQuery(SYNOPSIS, contentSearchRequest.getPattern());
+        List<String> fields = resolveSearchFields(ContentCategory.valueByName(contentSearchRequest.getType()));
+
+        BoolQuery.Builder boolBuilder = new BoolQuery.Builder().minimumShouldMatch("1");
+        fields.forEach(field -> boolBuilder.should(wildcardFactory.createQuery(field, contentSearchRequest.getPattern())));
 
         SearchRequest searchRequest = new SearchRequest.Builder()
                 .index(contentSearchRequest.getType())
-                .query(wildcardQuery)
+                .query(q -> q.bool(boolBuilder.build()))
                 .build();
-        //SearchRequest searchRequest = SearchRequest.of(r -> r.query(q -> q.bool(b -> b.must(wildcardQuery))));
 
         SearchResponse<Object> searchResponse = esClient.search(searchRequest, Object.class);
-
         return searchResponse.hits().hits().stream().map(Hit::source).collect(Collectors.toList());
+    }
+
+    private List<String> resolveSearchFields(ContentCategory category) {
+        return metadataService.getContentCategoryMetadata()
+                .stream()
+                .filter(m -> m.contentCategory() == category)
+                .findFirst()
+                .map(ContentCategoryMetadata::searchFields)
+                .orElse(List.of(SYNOPSIS));
     }
 
     /**
@@ -72,6 +85,7 @@ public class SearchService {
         Query fuzzyQuery = fuzzyFactory.createQuery(SYNOPSIS, contentSearchRequest.getPattern());
 
         SearchRequest searchRequest = SearchRequest.of(r -> r
+                .index(contentSearchRequest.getType())
                 .query(q -> q
                         .bool(b -> b
                                 .must(fuzzyQuery)
@@ -101,6 +115,7 @@ public class SearchService {
         Query spanQuery = spanFactory.createQuery(SYNOPSIS, contentSearchRequest.getPattern());
 
         SearchRequest searchRequest = SearchRequest.of(r -> r
+                .index(contentSearchRequest.getType())
                 .query(q -> q
                         .bool(b -> b
                                 .must(spanQuery)

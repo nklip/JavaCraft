@@ -2,42 +2,47 @@
   {
     "contentCategory": "BOOKS",
     "searchFields": [
-      "name",
       "author",
+      "name",
       "synopsis"
     ]
   },
   {
     "contentCategory": "COMPANIES",
     "searchFields": [
-      "rank",
-      "name",
+      "ceo",
       "country",
+      "description",
       "headquarters",
       "industry",
+      "name",
       "sector",
-      "ceo",
-      "employees",
-      "founded",
-      "website",
-      "description"
+      "website"
     ]
   },
   {
     "contentCategory": "MOVIES",
     "searchFields": [
-      "name",
       "director",
+      "name",
       "synopsis"
     ]
   },
   {
     "contentCategory": "MUSIC",
     "searchFields": [
-      "band",
       "album",
+      "band",
+      "lyrics",
+      "name"
+    ]
+  },
+  {
+    "contentCategory": "PEOPLE",
+    "searchFields": [
       "name",
-      "lyrics"
+      "reasons_for_being_famous",
+      "surname"
     ]
   }
 ]

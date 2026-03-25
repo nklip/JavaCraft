@@ -17,7 +17,7 @@ class MetadataServiceTest {
 
         Set<ContentCategoryMetadata> metadata = metadataService.getContentCategoryMetadata();
         Assertions.assertNotNull(metadata);
-        Assertions.assertEquals(4, metadata.size());
+        Assertions.assertEquals(5, metadata.size());
 
         Set<ContentCategory> contentCategories = metadata.stream()
                 .map(ContentCategoryMetadata::contentCategory)
@@ -26,6 +26,7 @@ class MetadataServiceTest {
         Assertions.assertTrue(contentCategories.contains(ContentCategory.COMPANIES));
         Assertions.assertTrue(contentCategories.contains(ContentCategory.MOVIES));
         Assertions.assertTrue(contentCategories.contains(ContentCategory.MUSIC));
+        Assertions.assertTrue(contentCategories.contains(ContentCategory.PEOPLE));
     }
 
     @Test

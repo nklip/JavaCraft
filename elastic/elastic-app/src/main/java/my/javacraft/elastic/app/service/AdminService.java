@@ -31,9 +31,11 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class AdminService {
 
-    static final String INDEX_BOOKS = "books";
-    static final String INDEX_MOVIES = "movies";
-    static final String INDEX_MUSIC = "music";
+    static final String INDEX_BOOKS     = "books";
+    static final String INDEX_COMPANIES = "companies";
+    static final String INDEX_MOVIES    = "movies";
+    static final String INDEX_MUSIC     = "music";
+    static final String INDEX_PEOPLE    = "people";
 
     /**
      * Creates the {@code posts} index with typed field mappings.
@@ -111,6 +113,64 @@ public class AdminService {
      */
     public IndexCreationResult createMusicIndex() throws IOException {
         return createSearchIndex(INDEX_MUSIC, "band", "album", "name", "lyrics");
+    }
+
+    /**
+     * Creates the {@code companies} index with mixed field mappings.
+     * <p>
+     * Text fields (full-text search, match {@code metadata.json}):
+     * {@code ceo}, {@code country}, {@code description}, {@code headquarters},
+     * {@code industry}, {@code name}, {@code sector}, {@code website}.
+     * <p>
+     * Numeric fields (range/aggregation only, excluded from search):
+     * {@code capitalization}(long), {@code employees}(long),
+     * {@code founded}(integer), {@code rank}(integer).
+     */
+    public IndexCreationResult createCompaniesIndex() throws IOException {
+        log.info("creating search index '{}'...", INDEX_COMPANIES);
+
+        Map<String, Property> properties = new LinkedHashMap<>();
+        properties.put("capitalization", Property.of(p -> p.long_(l -> l)));
+        properties.put("ceo",            Property.of(p -> p.text(t -> t)));
+        properties.put("country",        Property.of(p -> p.text(t -> t)));
+        properties.put("description",    Property.of(p -> p.text(t -> t)));
+        properties.put("employees",      Property.of(p -> p.long_(l -> l)));
+        properties.put("founded",        Property.of(p -> p.integer(i -> i)));
+        properties.put("headquarters",   Property.of(p -> p.text(t -> t)));
+        properties.put("industry",       Property.of(p -> p.text(t -> t)));
+        properties.put("name",           Property.of(p -> p.text(t -> t)));
+        properties.put("rank",           Property.of(p -> p.integer(i -> i)));
+        properties.put("sector",         Property.of(p -> p.text(t -> t)));
+        properties.put("website",        Property.of(p -> p.text(t -> t)));
+
+        return createIndex(INDEX_COMPANIES, properties);
+    }
+
+    /**
+     * Creates the {@code people} index with mixed field mappings.
+     * <p>
+     * Text fields (full-text search, match {@code metadata.json}):
+     * {@code name}, {@code reasons_for_being_famous}, {@code surname}.
+     * <p>
+     * Numeric fields (range/aggregation only, excluded from search):
+     * {@code age}(integer), {@code ranking}(integer).
+     * <p>
+     * Date-like string fields (stored as text due to non-uniform formats):
+     * {@code date_of_birth}, {@code date_of_death}.
+     */
+    public IndexCreationResult createPeopleIndex() throws IOException {
+        log.info("creating search index '{}'...", INDEX_PEOPLE);
+
+        Map<String, Property> properties = new LinkedHashMap<>();
+        properties.put("age",                    Property.of(p -> p.integer(i -> i)));
+        properties.put("date_of_birth",          Property.of(p -> p.text(t -> t)));
+        properties.put("date_of_death",          Property.of(p -> p.text(t -> t)));
+        properties.put("name",                   Property.of(p -> p.text(t -> t)));
+        properties.put("ranking",                Property.of(p -> p.integer(i -> i)));
+        properties.put("reasons_for_being_famous", Property.of(p -> p.text(t -> t)));
+        properties.put("surname",                Property.of(p -> p.text(t -> t)));
+
+        return createIndex(INDEX_PEOPLE, properties);
     }
 
     // -------------------------------------------------------------------------
