@@ -1,2987 +1,1751 @@
-[
-  {
-    "name": "The Shawshank Redemption",
-    "director": "Frank Darabont",
-    "ranking": 1,
-    "release_year": 1994,
-    "genres": [
-      "Drama"
-    ],
-    "synopsis": "Over the course of several years, two convicts form a friendship, seeking consolation and, eventually, redemption through basic compassion."
-  },
-  {
-    "name": "The Godfather",
-    "director": "Francis Ford Coppola",
-    "ranking": 2,
-    "release_year": 1972,
-    "genres": [
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "The aging patriarch of an organized crime dynasty transfers control of his clandestine empire to his reluctant son."
-  },
-  {
-    "name": "The Dark Knight",
-    "director": "Christopher Nolan",
-    "ranking": 3,
-    "release_year": 2008,
-    "genres": [
-      "Action",
-      "Crime",
-      "Drama",
-      "Thriller"
-    ],
-    "synopsis": "When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest psychological and physical tests of his ability to fight injustice."
-  },
-  {
-    "name": "The Godfather Part II",
-    "director": "Francis Ford Coppola",
-    "ranking": 4,
-    "release_year": 1974,
-    "genres": [
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "The early life and career of Vito Corleone in 1920s New York City is portrayed, while his son, Michael, expands and tightens his grip on the family crime syndicate."
-  },
-  {
-    "name": "Pulp Fiction",
-    "director": "Quentin Tarantino",
-    "ranking": 5,
-    "release_year": 1994,
-    "genres": [
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "The lives of two mob hitmen, a boxer, a gangster and his wife, and a pair of diner bandits intertwine in four tales of violence and redemption."
-  },
-  {
-    "name": "Schindler's List",
-    "director": "Steven Spielberg",
-    "ranking": 6,
-    "release_year": 1993,
-    "genres": [
-      "Biography",
-      "Drama",
-      "History"
-    ],
-    "synopsis": "In German-occupied Poland during World War II, industrialist Oskar Schindler gradually becomes concerned for his Jewish workforce after witnessing their persecution by the Nazis."
-  },
-  {
-    "name": "The Lord of the Rings: The Return of the King",
-    "director": "Peter Jackson",
-    "ranking": 7,
-    "release_year": 2003,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Drama",
-      "Fantasy"
-    ],
-    "synopsis": "Gandalf and Aragorn lead the World of Men against Sauron's army to draw his gaze from Frodo and Sam as they approach Mount Doom with the One Ring."
-  },
-  {
-    "name": "12 Angry Men",
-    "director": "Sidney Lumet",
-    "ranking": 8,
-    "release_year": 1957,
-    "genres": [
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "The jury in a New York City murder trial is frustrated by a single member whose skeptical caution forces them to more carefully consider the evidence before jumping to a hasty verdict."
-  },
-  {
-    "name": "Il buono, il brutto, il cattivo",
-    "director": "Sergio Leone",
-    "ranking": 9,
-    "release_year": 1966,
-    "genres": [
-      "Adventure",
-      "Western"
-    ],
-    "synopsis": "A bounty hunting scam joins two men in an uneasy alliance against a third in a race to find a fortune in gold buried in a remote cemetery."
-  },
-  {
-    "name": "Forrest Gump",
-    "director": "Robert Zemeckis",
-    "ranking": 10,
-    "release_year": 1994,
-    "genres": [
-      "Drama",
-      "Romance"
-    ],
-    "synopsis": "The history of the United States from the 1950s to the '70s unfolds from the perspective of an Alabama man with an IQ of 75, who yearns to be reunited with his childhood sweetheart."
-  },
-  {
-    "name": "Inception",
-    "director": "Christopher Nolan",
-    "ranking": 11,
-    "release_year": 2010,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Sci-Fi",
-      "Thriller"
-    ],
-    "synopsis": "A thief who steals corporate secrets through the use of dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O., but his tragic past may doom the project and his team to disaster."
-  },
-  {
-    "name": "The Lord of the Rings: The Fellowship of the Ring",
-    "director": "Peter Jackson",
-    "ranking": 12,
-    "release_year": 2001,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Drama",
-      "Fantasy"
-    ],
-    "synopsis": "A meek Hobbit from the Shire and eight companions set out on a journey to destroy the powerful One Ring and save Middle-earth from the Dark Lord Sauron."
-  },
-  {
-    "name": "Fight Club",
-    "director": "David Fincher",
-    "ranking": 13,
-    "release_year": 1999,
-    "genres": [
-      "Drama"
-    ],
-    "synopsis": "An insomniac office worker and a devil-may-care soap maker form an underground fight club that evolves into much more."
-  },
-  {
-    "name": "Dangal",
-    "director": "Nitesh Tiwari",
-    "ranking": 14,
-    "release_year": 2016,
-    "genres": [
-      "Action",
-      "Biography",
-      "Drama",
-      "Sport"
-    ],
-    "synopsis": "Former wrestler Mahavir Singh Phogat and his two wrestler daughters struggle towards glory at the Commonwealth Games in the face of societal oppression."
-  },
-  {
-    "name": "Star Wars: Episode V - The Empire Strikes Back",
-    "director": "Irvin Kershner",
-    "ranking": 15,
-    "release_year": 1980,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Fantasy",
-      "Sci-Fi"
-    ],
-    "synopsis": "After the Rebels are overpowered by the Empire, Luke Skywalker begins his Jedi training with Yoda, while his friends are pursued across the galaxy by Darth Vader and bounty hunter Boba Fett."
-  },
-  {
-    "name": "Star Wars",
-    "director": "George Lucas",
-    "ranking": 16,
-    "release_year": 1977,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Fantasy",
-      "Sci-Fi"
-    ],
-    "synopsis": "Luke Skywalker joins forces with a Jedi Knight, a cocky pilot, a Wookiee and two droids to save the galaxy from the Empire's world-destroying battle station, while also attempting to rescue Princess Leia from the mysterious Darth ..."
-  },
-  {
-    "name": "The Matrix",
-    "director": "Lilly Wachowski, Lana Wachowski",
-    "ranking": 17,
-    "release_year": 1999,
-    "genres": [
-      "Action",
-      "Sci-Fi"
-    ],
-    "synopsis": "When a beautiful stranger leads computer hacker Neo to a forbidding underworld, he discovers the shocking truth--the life he knows is the elaborate deception of an evil cyber-intelligence."
-  },
-  {
-    "name": "Goodfellas",
-    "director": "Martin Scorsese",
-    "ranking": 18,
-    "release_year": 1990,
-    "genres": [
-      "Biography",
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "The story of Henry Hill and his life in the mafia, covering his relationship with his wife Karen and his mob partners Jimmy Conway and Tommy DeVito."
-  },
-  {
-    "name": "One Flew Over the Cuckoo's Nest",
-    "director": "Milos Forman",
-    "ranking": 19,
-    "release_year": 1975,
-    "genres": [
-      "Drama"
-    ],
-    "synopsis": "In the Fall of 1963, a Korean War veteran and criminal pleads insanity and is admitted to a mental institution, where he rallies up the scared patients against the tyrannical nurse."
-  },
-  {
-    "name": "Cidade de Deus",
-    "director": "Kátia Lund, Fernando Meirelles",
-    "ranking": 20,
-    "release_year": 2002,
-    "genres": [
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "In the slums of Rio, two kids' paths diverge as one struggles to become a photographer and the other a kingpin."
-  },
-  {
-    "name": "The Lord of the Rings: The Two Towers",
-    "director": "Peter Jackson",
-    "ranking": 21,
-    "release_year": 2002,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Drama",
-      "Fantasy"
-    ],
-    "synopsis": "While Frodo and Sam edge closer to Mordor with the help of the shifty Gollum, the divided fellowship makes a stand against Sauron's new ally, Saruman, and his hordes of Isengard."
-  },
-  {
-    "name": "Shichinin no samurai",
-    "director": "Akira Kurosawa",
-    "ranking": 22,
-    "release_year": 1954,
-    "genres": [
-      "Action",
-      "Drama"
-    ],
-    "synopsis": "Farmers from a village exploited by bandits hire a veteran samurai for protection, who gathers six other samurai to join him."
-  },
-  {
-    "name": "Interstellar",
-    "director": "Christopher Nolan",
-    "ranking": 23,
-    "release_year": 2014,
-    "genres": [
-      "Adventure",
-      "Drama",
-      "Sci-Fi"
-    ],
-    "synopsis": "When Earth becomes uninhabitable in the future, a farmer and ex-NASA pilot, Joseph Cooper, is tasked to pilot a spacecraft, along with a team of researchers, to find a new planet for humans."
-  },
-  {
-    "name": "Kimi no na wa.",
-    "director": "Makoto Shinkai",
-    "ranking": 24,
-    "release_year": 2016,
-    "genres": [
-      "Animation",
-      "Drama",
-      "Fantasy",
-      "Romance"
-    ],
-    "synopsis": "Two teenagers share a profound, magical connection upon discovering they are swapping bodies. Things manage to become even more complicated when the boy and girl decide to meet in person."
-  },
-  {
-    "name": "The Silence of the Lambs",
-    "director": "Jonathan Demme",
-    "ranking": 25,
-    "release_year": 1991,
-    "genres": [
-      "Crime",
-      "Drama",
-      "Thriller"
-    ],
-    "synopsis": "A young F.B.I. cadet must receive the help of an incarcerated and manipulative cannibal killer to help catch another serial killer, a madman who skins his victims."
-  },
-  {
-    "name": "Léon",
-    "director": "Luc Besson",
-    "ranking": 26,
-    "release_year": 1994,
-    "genres": [
-      "Action",
-      "Crime",
-      "Drama",
-      "Thriller"
-    ],
-    "synopsis": "12-year-old Mathilda is reluctantly taken in by Léon, a professional assassin, after her family is murdered. An unusual relationship forms as she becomes his protégée and learns the assassin's trade."
-  },
-  {
-    "name": "Se7en",
-    "director": "David Fincher",
-    "ranking": 27,
-    "release_year": 1995,
-    "genres": [
-      "Crime",
-      "Drama",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "Two detectives, a rookie and a veteran, hunt a serial killer who uses the seven deadly sins as his motives."
-  },
-  {
-    "name": "Saving Private Ryan",
-    "director": "Steven Spielberg",
-    "ranking": 28,
-    "release_year": 1998,
-    "genres": [
-      "Drama",
-      "War"
-    ],
-    "synopsis": "Following the Normandy Landings, a group of U.S. soldiers go behind enemy lines to retrieve a paratrooper whose brothers have been killed in action."
-  },
-  {
-    "name": "The Usual Suspects",
-    "director": "Bryan Singer",
-    "ranking": 29,
-    "release_year": 1995,
-    "genres": [
-      "Crime",
-      "Drama",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "The sole survivor of a pier shoot-out tells the story of how a notorious criminal influenced the events that began with five criminals meeting in a seemingly random police lineup."
-  },
-  {
-    "name": "Sen to Chihiro no kamikakushi",
-    "director": "Hayao Miyazaki",
-    "ranking": 30,
-    "release_year": 2001,
-    "genres": [
-      "Animation",
-      "Adventure",
-      "Family",
-      "Fantasy",
-      "Mystery"
-    ],
-    "synopsis": "During her family's move to the suburbs, a sullen 10-year-old girl wanders into a world ruled by gods, witches and spirits, a world where humans are changed into beasts."
-  },
-  {
-    "name": "La vita è bella",
-    "director": "Roberto Benigni",
-    "ranking": 31,
-    "release_year": 1997,
-    "genres": [
-      "Comedy",
-      "Drama",
-      "Romance",
-      "War"
-    ],
-    "synopsis": "When an open-minded Jewish waiter and his son become victims of the Holocaust, he uses a perfect mixture of will, humor and imagination to protect his son from the dangers around their camp."
-  },
-  {
-    "name": "Intouchables",
-    "director": "Olivier Nakache, Éric Toledano",
-    "ranking": 32,
-    "release_year": 2011,
-    "genres": [
-      "Comedy",
-      "Drama"
-    ],
-    "synopsis": "After he becomes a quadriplegic from a paragliding accident, an aristocrat hires a young man from the projects to be his caregiver."
-  },
-  {
-    "name": "C'era una volta il West",
-    "director": "Sergio Leone",
-    "ranking": 33,
-    "release_year": 1968,
-    "genres": [
-      "Western"
-    ],
-    "synopsis": "A mysterious stranger with a harmonica joins forces with a notorious desperado to protect a beautiful widow from a ruthless assassin working for the railroad."
-  },
-  {
-    "name": "It's a Wonderful Life",
-    "director": "Frank Capra",
-    "ranking": 34,
-    "release_year": 1946,
-    "genres": [
-      "Drama",
-      "Family",
-      "Fantasy",
-      "Romance"
-    ],
-    "synopsis": "An angel is sent from Heaven to help a desperately frustrated businessman by showing him what life would have been like if he had never existed."
-  },
-  {
-    "name": "City Lights",
-    "director": "Charles Chaplin",
-    "ranking": 35,
-    "release_year": 1931,
-    "genres": [
-      "Comedy",
-      "Drama",
-      "Romance"
-    ],
-    "synopsis": "With the aid of a wealthy erratic tippler, a dewy-eyed tramp who has fallen in love with a sightless flower girl accumulates money to be able to help her medically."
-  },
-  {
-    "name": "Babam ve Oglum",
-    "director": "Çagan Irmak",
-    "ranking": 36,
-    "release_year": 2005,
-    "genres": [
-      "Drama",
-      "Family"
-    ],
-    "synopsis": "The family of a left-wing journalist is torn apart after the military coup of Turkey in 1980."
-  },
-  {
-    "name": "Alien",
-    "director": "Ridley Scott",
-    "ranking": 37,
-    "release_year": 1979,
-    "genres": [
-      "Horror",
-      "Sci-Fi"
-    ],
-    "synopsis": "The crew of a commercial spacecraft encounters a deadly lifeform after investigating a mysterious transmission of unknown origin."
-  },
-  {
-    "name": "The Prestige",
-    "director": "Christopher Nolan",
-    "ranking": 38,
-    "release_year": 2006,
-    "genres": [
-      "Drama",
-      "Mystery",
-      "Sci-Fi",
-      "Thriller"
-    ],
-    "synopsis": "After a tragic accident, two stage magicians in 1890s London engage in a battle to create the ultimate illusion while sacrificing everything they have to outwit each other."
-  },
-  {
-    "name": "Gladiator",
-    "director": "Ridley Scott",
-    "ranking": 39,
-    "release_year": 2000,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Drama"
-    ],
-    "synopsis": "A former Roman General sets out to exact vengeance against the corrupt emperor who murdered his family and sent him into slavery."
-  },
-  {
-    "name": "The Dark Knight Rises",
-    "director": "Christopher Nolan",
-    "ranking": 40,
-    "release_year": 2012,
-    "genres": [
-      "Action",
-      "Drama",
-      "Thriller"
-    ],
-    "synopsis": "Eight years after the Joker's reign of chaos, Batman is coerced out of exile with the assistance of the mysterious Selina Kyle in order to defend Gotham City from the vicious guerrilla terrorist Bane."
-  },
-  {
-    "name": "Whiplash",
-    "director": "Damien Chazelle",
-    "ranking": 41,
-    "release_year": 2014,
-    "genres": [
-      "Drama",
-      "Music"
-    ],
-    "synopsis": "A promising young drummer enrolls at a cut-throat music conservatory where his dreams of greatness are mentored by an instructor who will stop at nothing to realize a student's potential."
-  },
-  {
-    "name": "Memento",
-    "director": "Christopher Nolan",
-    "ranking": 42,
-    "release_year": 2000,
-    "genres": [
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "A man with short-term memory loss attempts to track down his wife's murderer."
-  },
-  {
-    "name": "The Green Mile",
-    "director": "Frank Darabont",
-    "ranking": 43,
-    "release_year": 1999,
-    "genres": [
-      "Crime",
-      "Drama",
-      "Fantasy",
-      "Mystery"
-    ],
-    "synopsis": "A tale set on death row, where gentle giant John Coffey possesses the mysterious power to heal people's ailments. When the lead guard, Paul Edgecombe, recognizes John's gift, he tries to help stave off the condemned man's execution."
-  },
-  {
-    "name": "Apocalypse Now",
-    "director": "Francis Ford Coppola",
-    "ranking": 44,
-    "release_year": 1979,
-    "genres": [
-      "Drama",
-      "Mystery",
-      "War"
-    ],
-    "synopsis": "A U.S. Army officer serving in Vietnam is tasked with assassinating a renegade Special Forces Colonel who sees himself as a god."
-  },
-  {
-    "name": "Psycho",
-    "director": "Alfred Hitchcock",
-    "ranking": 45,
-    "release_year": 1960,
-    "genres": [
-      "Horror",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "A Phoenix secretary embezzles $40,000 from her employer's client, goes on the run and checks into a remote motel run by a young man under the domination of his mother."
-  },
-  {
-    "name": "Raiders of the Lost Ark",
-    "director": "Steven Spielberg",
-    "ranking": 46,
-    "release_year": 1981,
-    "genres": [
-      "Action",
-      "Adventure"
-    ],
-    "synopsis": "In 1936, archaeologist and adventurer Indiana Jones is hired by the U.S. government to find the Ark of the Covenant before the Nazis can obtain its awesome powers."
-  },
-  {
-    "name": "Terminator 2: Judgment Day",
-    "director": "James Cameron",
-    "ranking": 47,
-    "release_year": 1991,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Sci-Fi"
-    ],
-    "synopsis": "A cyborg, identical to the one who failed to kill Sarah Connor, must now protect her ten year old son John from an even more advanced and powerful cyborg."
-  },
-  {
-    "name": "The Pianist",
-    "director": "Roman Polanski",
-    "ranking": 48,
-    "release_year": 2002,
-    "genres": [
-      "Biography",
-      "Drama",
-      "Music",
-      "War"
-    ],
-    "synopsis": "During WWII, acclaimed Polish musician Wladyslaw faces various struggles as he loses contact with his family. As the situation worsens, he hides in the ruins of Warsaw in order to survive."
-  },
-  {
-    "name": "Das Leben der Anderen",
-    "director": "Florian Henckel von Donnersmarck",
-    "ranking": 49,
-    "release_year": 2006,
-    "genres": [
-      "Drama",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "In 1984 East Berlin, an agent of the secret police, conducting surveillance on a writer and his lover, finds himself becoming increasingly absorbed by their lives."
-  },
-  {
-    "name": "Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb",
-    "director": "Stanley Kubrick",
-    "ranking": 50,
-    "release_year": 1964,
-    "genres": [
-      "Comedy",
-      "War"
-    ],
-    "synopsis": "An insane American general orders a bombing attack on the Soviet Union, triggering a path to nuclear holocaust that a war room full of politicians and generals frantically tries to stop."
-  },
-  {
-    "name": "American History X",
-    "director": "Tony Kaye",
-    "ranking": 51,
-    "release_year": 1998,
-    "genres": [
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "Living a life marked by violence, neo-Nazi Derek finally goes to prison after killing two black youths. Upon his release, Derek vows to change; he hopes to prevent his brother, Danny, who idolizes Derek, from following in his foot..."
-  },
-  {
-    "name": "Back to the Future",
-    "director": "Robert Zemeckis",
-    "ranking": 52,
-    "release_year": 1985,
-    "genres": [
-      "Adventure",
-      "Comedy",
-      "Sci-Fi"
-    ],
-    "synopsis": "Marty McFly, a 17-year-old high school student, is accidentally sent 30 years into the past in a time-traveling DeLorean invented by his close friend, the maverick scientist Doc Brown."
-  },
-  {
-    "name": "Casino",
-    "director": "Martin Scorsese",
-    "ranking": 53,
-    "release_year": 1995,
-    "genres": [
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "In Las Vegas, two best friends - a casino executive and a mafia enforcer - compete for a gambling empire and a fast-living, fast-loving socialite."
-  },
-  {
-    "name": "Die Hard",
-    "director": "John McTiernan",
-    "ranking": 54,
-    "release_year": 1988,
-    "genres": [
-      "Action",
-      "Thriller"
-    ],
-    "synopsis": "A New York City police officer tries to save his estranged wife and several others taken hostage by terrorists during a Christmas party at the Nakatomi Plaza in Los Angeles."
-  },
-  {
-    "name": "The Elephant Man",
-    "director": "David Lynch",
-    "ranking": 55,
-    "release_year": 1980,
-    "genres": [
-      "Biography",
-      "Drama"
-    ],
-    "synopsis": "A Victorian surgeon rescues a heavily disfigured man who is mistreated while scraping a living as a side-show freak. Behind his monstrous façade, there is revealed a person of kindness, intelligence and sophistication."
-  },
-  {
-    "name": "Finding Nemo",
-    "director": "Andrew Stanton, Lee Unkrich",
-    "ranking": 56,
-    "release_year": 2003,
-    "genres": [
-      "Animation",
-      "Adventure",
-      "Comedy",
-      "Family"
-    ],
-    "synopsis": "After his son is captured in the Great Barrier Reef and taken to Sydney, a timid clownfish sets out on a journey to bring him home."
-  },
-  {
-    "name": "Gran Torino",
-    "director": "Clint Eastwood",
-    "ranking": 57,
-    "release_year": 2008,
-    "genres": [
-      "Drama"
-    ],
-    "synopsis": "After a Hmong teenager tries to steal his prized 1972 Gran Torino, a disgruntled, prejudiced Korean War veteran seeks to redeem both the boy and himself."
-  },
-  {
-    "name": "Harry Potter and the Sorcerer's Stone",
-    "director": "Chris Columbus",
-    "ranking": 58,
-    "release_year": 2001,
-    "genres": [
-      "Adventure",
-      "Family",
-      "Fantasy"
-    ],
-    "synopsis": "An orphaned boy enrolls in a school of wizardry, where he learns the truth about himself, his family and the terrible evil that haunts the magical world."
-  },
-  {
-    "name": "Indiana Jones and the Temple of Doom",
-    "director": "Steven Spielberg",
-    "ranking": 59,
-    "release_year": 1984,
-    "genres": [
-      "Action",
-      "Adventure"
-    ],
-    "synopsis": "In 1935, Indiana Jones is tasked by Indian villagers with reclaiming a rock stolen from them by a secret cult beneath the catacombs of an ancient palace."
-  },
-  {
-    "name": "Jurassic Park",
-    "director": "Steven Spielberg",
-    "ranking": 60,
-    "release_year": 1993,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Sci-Fi",
-      "Thriller"
-    ],
-    "synopsis": "A pragmatic paleontologist touring an almost complete theme park on an island in Central America is tasked with protecting a couple of kids after a power failure causes the park's cloned dinosaurs to run loose."
-  },
-  {
-    "name": "Kill Bill: Vol. 1",
-    "director": "Quentin Tarantino",
-    "ranking": 61,
-    "release_year": 2003,
-    "genres": [
-      "Action",
-      "Crime",
-      "Thriller"
-    ],
-    "synopsis": "After awakening from a four-year coma, a former assassin wreaks vengeance on the team of assassins who betrayed her."
-  },
-  {
-    "name": "Logan",
-    "director": "James Mangold",
-    "ranking": 62,
-    "release_year": 2017,
-    "genres": [
-      "Action",
-      "Drama",
-      "Sci-Fi",
-      "Thriller"
-    ],
-    "synopsis": "In a future where mutants are nearly extinct, an elderly and weary Logan leads a quiet life. But when Laura, a mutant child pursued by scientists, comes to him for help, he must get her to safety."
-  },
-  {
-    "name": "Monsters, Inc.",
-    "director": "David Silverman, Pete Docter, Lee Unkrich",
-    "ranking": 63,
-    "release_year": 2001,
-    "genres": [
-      "Animation",
-      "Adventure",
-      "Comedy",
-      "Family",
-      "Fantasy"
-    ],
-    "synopsis": "In order to power the city, monsters have to scare children so that they scream. However, the children are toxic to the monsters, and after a child gets through, two monsters realize things may not be what they think."
-  },
-  {
-    "name": "Night of the Living Dead",
-    "director": "George A. Romero",
-    "ranking": 64,
-    "release_year": 1968,
-    "genres": [
-      "Horror",
-      "Thriller"
-    ],
-    "synopsis": "A ragtag group of Pennsylvanians barricade themselves in an old farmhouse to remain safe from a horde of flesh-eating ghouls that are ravaging the Northeast of the United States."
-  },
-  {
-    "name": "Ocean's Eleven",
-    "director": "Steven Soderbergh",
-    "ranking": 65,
-    "release_year": 2001,
-    "genres": [
-      "Crime",
-      "Thriller"
-    ],
-    "synopsis": "Danny Ocean and his ten accomplices plan to rob three Las Vegas casinos simultaneously."
-  },
-  {
-    "name": "Pirates of the Caribbean: The Curse of the Black Pearl",
-    "director": "Gore Verbinski",
-    "ranking": 66,
-    "release_year": 2003,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Fantasy"
-    ],
-    "synopsis": "Blacksmith Will Turner teams up with eccentric pirate \"Captain\" Jack Sparrow to save his love, the governor's daughter, from Jack's former pirate allies, who are now undead."
-  },
-  {
-    "name": "Quantum of Solace",
-    "director": "Marc Forster",
-    "ranking": 67,
-    "release_year": 2008,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "James Bond descends into mystery as he tries to stop a mysterious organisation from eliminating a country's most valuable resource."
-  },
-  {
-    "name": "Rocky",
-    "director": "John G. Avildsen",
-    "ranking": 68,
-    "release_year": 1976,
-    "genres": [
-      "Drama",
-      "Sport"
-    ],
-    "synopsis": "A small-time Philadelphia boxer gets a supremely rare chance to fight the world heavyweight champion in a bout in which he strives to go the distance for his self-respect."
-  },
-  {
-    "name": "Shrek",
-    "director": "Vicky Jenson, Andrew Adamson",
-    "ranking": 69,
-    "release_year": 2001,
-    "genres": [
-      "Animation",
-      "Adventure",
-      "Comedy",
-      "Family",
-      "Fantasy",
-      "Romance"
-    ],
-    "synopsis": "A mean lord exiles fairytale creatures to the swamp of a grumpy ogre, who must go on a quest and rescue a princess for the lord in order to get his land back."
-  },
-  {
-    "name": "Taken",
-    "director": "Pierre Morel",
-    "ranking": 70,
-    "release_year": 2008,
-    "genres": [
-      "Action",
-      "Crime",
-      "Thriller"
-    ],
-    "synopsis": "A retired CIA agent travels across Europe and relies on his old skills to save his estranged daughter, who has been kidnapped while on a trip to Paris."
-  },
-  {
-    "name": "Up",
-    "director": "Pete Docter, Bob Peterson",
-    "ranking": 71,
-    "release_year": 2009,
-    "genres": [
-      "Animation",
-      "Adventure",
-      "Comedy",
-      "Drama",
-      "Family"
-    ],
-    "synopsis": "78-year-old Carl Fredricksen travels to Paradise Falls in his house equipped with balloons, inadvertently taking a young stowaway."
-  },
-  {
-    "name": "V for Vendetta",
-    "director": "James McTeigue",
-    "ranking": 72,
-    "release_year": 2005,
-    "genres": [
-      "Action",
-      "Drama",
-      "Sci-Fi",
-      "Thriller"
-    ],
-    "synopsis": "In a future British dystopian society, a shadowy freedom fighter, known only by the alias of \"V\", plots to overthrow the tyrannical government - with the help of a young woman."
-  },
-  {
-    "name": "WALL·E",
-    "director": "Andrew Stanton",
-    "ranking": 73,
-    "release_year": 2008,
-    "genres": [
-      "Animation",
-      "Adventure",
-      "Family",
-      "Sci-Fi"
-    ],
-    "synopsis": "In the distant future, a small waste-collecting robot inadvertently embarks on a space journey that will ultimately decide the fate of mankind."
-  },
-  {
-    "name": "X-Men",
-    "director": "Bryan Singer",
-    "ranking": 74,
-    "release_year": 2000,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Sci-Fi"
-    ],
-    "synopsis": "In a world where mutants (evolved super-powered humans) exist and are discriminated against, two groups form for an inevitable clash: the supremacist Brotherhood, and the pacifist X-Men."
-  },
-  {
-    "name": "Young Frankenstein",
-    "director": "Mel Brooks",
-    "ranking": 75,
-    "release_year": 1974,
-    "genres": [
-      "Comedy"
-    ],
-    "synopsis": "An American grandson of the infamous scientist, struggling to prove that his grandfather was not as insane as people believe, is invited to Transylvania, where he discovers the process that reanimates a dead body."
-  },
-  {
-    "name": "Zulu",
-    "director": "Cy Endfield",
-    "ranking": 76,
-    "release_year": 1964,
-    "genres": [
-      "Drama",
-      "History",
-      "War"
-    ],
-    "synopsis": "Outnumbered British soldiers do battle with Zulu warriors at Rorke's Drift."
-  },
-  {
-    "name": "Casablanca",
-    "director": "Michael Curtiz",
-    "ranking": 77,
-    "release_year": 1942,
-    "genres": [
-      "Drama",
-      "Romance",
-      "War"
-    ],
-    "synopsis": "A cynical expatriate American cafe owner struggles to decide whether or not to help his former lover and her fugitive husband escape the Nazis in French Morocco."
-  },
-  {
-    "name": "Rear Window",
-    "director": "Alfred Hitchcock",
-    "ranking": 78,
-    "release_year": 1954,
-    "genres": [
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "A photographer in a wheelchair spies on his neighbors from his Greenwich Village courtyard apartment window, and becomes convinced one of them has committed murder, despite the skepticism of his fashion-model girlfriend."
-  },
-  {
-    "name": "Sunset Boulevard",
-    "director": "Billy Wilder",
-    "ranking": 79,
-    "release_year": 1950,
-    "genres": [
-      "Drama",
-      "Film-Noir"
-    ],
-    "synopsis": "A screenwriter develops a dangerous relationship with a faded film star determined to make a triumphant return."
-  },
-  {
-    "name": "Hotaru no haka",
-    "director": "Isao Takahata",
-    "ranking": 80,
-    "release_year": 1988,
-    "genres": [
-      "Animation",
-      "Drama",
-      "War"
-    ],
-    "synopsis": "A young boy and his little sister struggle to survive in Japan during World War II."
-  },
-  {
-    "name": "Nuovo Cinema Paradiso",
-    "director": "Giuseppe Tornatore",
-    "ranking": 81,
-    "release_year": 1988,
-    "genres": [
-      "Drama",
-      "Romance"
-    ],
-    "synopsis": "A filmmaker recalls his childhood when falling in love with the pictures at the cinema of his home village and forms a deep friendship with the cinema's projectionist."
-  },
-  {
-    "name": "The Great Dictator",
-    "director": "Charles Chaplin",
-    "ranking": 82,
-    "release_year": 1940,
-    "genres": [
-      "Comedy",
-      "Drama",
-      "War"
-    ],
-    "synopsis": "Dictator Adenoid Hynkel tries to expand his empire while a poor Jewish barber tries to avoid persecution from Hynkel's regime."
-  },
-  {
-    "name": "Modern Times",
-    "director": "Charles Chaplin",
-    "ranking": 83,
-    "release_year": 1936,
-    "genres": [
-      "Comedy",
-      "Drama",
-      "Romance"
-    ],
-    "synopsis": "The Tramp struggles to live in modern industrial society with the help of a young homeless woman."
-  },
-  {
-    "name": "Paths of Glory",
-    "director": "Stanley Kubrick",
-    "ranking": 84,
-    "release_year": 1957,
-    "genres": [
-      "Drama",
-      "War"
-    ],
-    "synopsis": "After a failed attack on a German position, a general orders three soldiers, chosen at random, court-martialed for cowardice and their commanding officer must defend them."
-  },
-  {
-    "name": "Taare Zameen Par",
-    "director": "Aamir Khan, Amole Gupte",
-    "ranking": 85,
-    "release_year": 2007,
-    "genres": [
-      "Drama",
-      "Family"
-    ],
-    "synopsis": "An eight-year-old boy is thought to be a lazy trouble-maker, until the new art teacher has the patience and compassion to discover the real problem behind his struggles in school."
-  },
-  {
-    "name": "Aliens",
-    "director": "James Cameron",
-    "ranking": 86,
-    "release_year": 1986,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Sci-Fi",
-      "Thriller"
-    ],
-    "synopsis": "Decades after surviving the Nostromo incident, Ellen Ripley is sent out to re-establish contact with a terraforming colony but finds herself battling the Alien Queen and her offspring."
-  },
-  {
-    "name": "Django Unchained",
-    "director": "Quentin Tarantino",
-    "ranking": 87,
-    "release_year": 2012,
-    "genres": [
-      "Drama",
-      "Western"
-    ],
-    "synopsis": "With the help of a German bounty-hunter, a freed slave sets out to rescue his wife from a brutal plantation owner in Mississippi."
-  },
-  {
-    "name": "American Beauty",
-    "director": "Sam Mendes",
-    "ranking": 88,
-    "release_year": 1999,
-    "genres": [
-      "Drama"
-    ],
-    "synopsis": "A sexually frustrated suburban father has a mid-life crisis after becoming infatuated with his daughter's best friend."
-  },
-  {
-    "name": "The Shining",
-    "director": "Stanley Kubrick",
-    "ranking": 89,
-    "release_year": 1980,
-    "genres": [
-      "Drama",
-      "Horror"
-    ],
-    "synopsis": "A family heads to an isolated hotel for the winter where a sinister presence influences the father into violence, while his psychic son sees horrific forebodings from both past and future."
-  },
-  {
-    "name": "Requiem for a Dream",
-    "director": "Darren Aronofsky",
-    "ranking": 90,
-    "release_year": 2000,
-    "genres": [
-      "Drama"
-    ],
-    "synopsis": "The drug-induced utopias of four Coney Island people are shattered when their addictions run deep."
-  },
-  {
-    "name": "Braveheart",
-    "director": "Mel Gibson",
-    "ranking": 91,
-    "release_year": 1995,
-    "genres": [
-      "Biography",
-      "Drama",
-      "War"
-    ],
-    "synopsis": "Scottish warrior William Wallace leads his countrymen in a rebellion to free his homeland from the tyranny of King Edward I of England."
-  },
-  {
-    "name": "Oldeuboi",
-    "director": "Park Chan-wook",
-    "ranking": 92,
-    "release_year": 2003,
-    "genres": [
-      "Action",
-      "Drama",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "After being kidnapped and imprisoned for fifteen years, Oh Dae-Su is released, only to find that he must find his captor in five days."
-  },
-  {
-    "name": "Star Wars: Episode VI - Return of the Jedi",
-    "director": "Richard Marquand",
-    "ranking": 93,
-    "release_year": 1983,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Fantasy",
-      "Sci-Fi"
-    ],
-    "synopsis": "After rescuing Han Solo from Jabba the Hutt, the Rebels attempt to destroy the second Death Star, while Luke struggles to help Darth Vader back from the dark side."
-  },
-  {
-    "name": "North by Northwest",
-    "director": "Alfred Hitchcock",
-    "ranking": 94,
-    "release_year": 1959,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "A New York City advertising executive goes on the run after being mistaken for a government agent by a group of foreign spies, and falls for a woman whose loyalties he begins to doubt."
-  },
-  {
-    "name": "Le fabuleux destin d'Amélie Poulain",
-    "director": "Jean-Pierre Jeunet",
-    "ranking": 95,
-    "release_year": 2001,
-    "genres": [
-      "Comedy",
-      "Romance"
-    ],
-    "synopsis": "Despite being caught in her imaginative world, Amelie, a young waitress, decides to help people find happiness. Her quest to spread joy leads her on a journey where she finds true love."
-  },
-  {
-    "name": "Once Upon a Time in America",
-    "director": "Sergio Leone",
-    "ranking": 96,
-    "release_year": 1984,
-    "genres": [
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "A former Prohibition-era Jewish gangster returns to the Lower East Side of Manhattan 35 years later, where he must once again confront the ghosts and regrets of his old life."
-  },
-  {
-    "name": "3 Idiots",
-    "director": "Rajkumar Hirani",
-    "ranking": 97,
-    "release_year": 2009,
-    "genres": [
-      "Comedy",
-      "Drama"
-    ],
-    "synopsis": "Two friends are searching for their long lost companion. They revisit their college days and recall the memories of their friend who inspired them to think differently, even as the rest of the world called them \"idiots\"."
-  },
-  {
-    "name": "Mononoke-hime",
-    "director": "Hayao Miyazaki",
-    "ranking": 98,
-    "release_year": 1997,
-    "genres": [
-      "Animation",
-      "Action",
-      "Adventure",
-      "Fantasy"
-    ],
-    "synopsis": "On a journey to find the cure for a Tatarigami's curse, Ashitaka finds himself in the middle of a war between the forest gods and Tatara, a mining colony. In this quest he also meets San, the Mononoke Hime."
-  },
-  {
-    "name": "Vertigo",
-    "director": "Alfred Hitchcock",
-    "ranking": 99,
-    "release_year": 1958,
-    "genres": [
-      "Mystery",
-      "Romance",
-      "Thriller"
-    ],
-    "synopsis": "A former San Francisco police detective juggles wrestling with his personal demons and becoming obsessed with the hauntingly beautiful woman he has been hired to trail, who may be deeply disturbed."
-  },
-  {
-    "name": "Citizen Kane",
-    "director": "Orson Welles",
-    "ranking": 100,
-    "release_year": 1941,
-    "genres": [
-      "Drama",
-      "Mystery"
-    ],
-    "synopsis": "Following the death of publishing tycoon Charles Foster Kane, reporters scramble to uncover the meaning of his final utterance: 'Rosebud.'"
-  },
-  {
-    "name": "Das Boot",
-    "director": "Wolfgang Petersen",
-    "ranking": 101,
-    "release_year": 1981,
-    "genres": [
-      "Drama",
-      "War"
-    ],
-    "synopsis": "A German U-boat stalks the frigid waters of the North Atlantic as its young crew experience the sheer terror and claustrophobic life of a submariner in World War II."
-  },
-  {
-    "name": "M - Eine Stadt sucht einen Mörder",
-    "director": "Fritz Lang",
-    "ranking": 102,
-    "release_year": 1931,
-    "genres": [
-      "Crime",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "When the police in a German city are unable to catch a child-murderer, other criminals join in the manhunt."
-  },
-  {
-    "name": "Jodaeiye Nader az Simin",
-    "director": "Asghar Farhadi",
-    "ranking": 103,
-    "release_year": 2011,
-    "genres": [
-      "Drama"
-    ],
-    "synopsis": "A married couple are faced with a difficult decision - to improve the life of their child by moving to another country or to stay in Iran and look after a deteriorating parent who has Alzheimer's disease."
-  },
-  {
-    "name": "Bacheha-Ye aseman",
-    "director": "Majid Majidi",
-    "ranking": 104,
-    "release_year": 1997,
-    "genres": [
-      "Drama",
-      "Family",
-      "Sport"
-    ],
-    "synopsis": "After a boy loses his sister's pair of shoes, he goes on a series of adventures in order to find them. When he can't, he tries a new way to \"win\" a new pair."
-  },
-  {
-    "name": "Witness for the Prosecution",
-    "director": "Billy Wilder",
-    "ranking": 105,
-    "release_year": 1957,
-    "genres": [
-      "Crime",
-      "Drama",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "A veteran British barrister must defend his client in a murder trial that has surprise after surprise."
-  },
-  {
-    "name": "Drishyam",
-    "director": "Nishikant Kamat",
-    "ranking": 106,
-    "release_year": 2015,
-    "genres": [
-      "Crime",
-      "Drama",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "Desperate measures are taken by a man who tries to save his family from the dark side of the law, after they commit an unexpected crime."
-  },
-  {
-    "name": "Eskiya",
-    "director": "Yavuz Turgul",
-    "ranking": 107,
-    "release_year": 1996,
-    "genres": [
-      "Crime",
-      "Drama",
-      "Thriller"
-    ],
-    "synopsis": "Baran the Bandit, released from prison after 35 years, searches for vengeance and his lover."
-  },
-  {
-    "name": "La La Land",
-    "director": "Damien Chazelle",
-    "ranking": 108,
-    "release_year": 2016,
-    "genres": [
-      "Comedy",
-      "Drama",
-      "Music",
-      "Musical",
-      "Romance"
-    ],
-    "synopsis": "While navigating their careers in Los Angeles, a pianist and an actress fall in love while attempting to reconcile their aspirations for the future."
-  },
-  {
-    "name": "Inglourious Basterds",
-    "director": "Quentin Tarantino",
-    "ranking": 109,
-    "release_year": 2009,
-    "genres": [
-      "Adventure",
-      "Drama",
-      "War"
-    ],
-    "synopsis": "In Nazi-occupied France during World War II, a plan to assassinate Nazi leaders by a group of Jewish U.S. soldiers coincides with a theatre owner's vengeful plans for the same."
-  },
-  {
-    "name": "Good Will Hunting",
-    "director": "Gus Van Sant",
-    "ranking": 110,
-    "release_year": 1997,
-    "genres": [
-      "Drama",
-      "Romance"
-    ],
-    "synopsis": "Will Hunting, a janitor at M.I.T., has a gift for mathematics, but needs help from a psychologist to find direction in his life."
-  },
-  {
-    "name": "Snatch",
-    "director": "Guy Ritchie",
-    "ranking": 111,
-    "release_year": 2000,
-    "genres": [
-      "Comedy",
-      "Crime"
-    ],
-    "synopsis": "Unscrupulous boxing promoters, violent bookmakers, a Russian gangster, incompetent amateur robbers and supposedly Jewish jewelers fight to track down a priceless stolen diamond."
-  },
-  {
-    "name": "Batman Begins",
-    "director": "Christopher Nolan",
-    "ranking": 112,
-    "release_year": 2005,
-    "genres": [
-      "Action",
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "After witnessing his parents' death, Bruce learns the art of fighting to confront injustice. When he returns to Gotham as Batman, he must stop a secret society that intends to destroy the city."
-  },
-  {
-    "name": "Taxi Driver",
-    "director": "Martin Scorsese",
-    "ranking": 113,
-    "release_year": 1976,
-    "genres": [
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "A mentally unstable veteran works as a nighttime taxi driver in New York City, where the perceived decadence and sleaze fuels his urge for violent action."
-  },
-  {
-    "name": "Eternal Sunshine of the Spotless Mind",
-    "director": "Michel Gondry",
-    "ranking": 114,
-    "release_year": 2004,
-    "genres": [
-      "Drama",
-      "Romance",
-      "Sci-Fi"
-    ],
-    "synopsis": "When their relationship turns sour, a couple undergoes a medical procedure to have each other erased from their memories for ever."
-  },
-  {
-    "name": "A Clockwork Orange",
-    "director": "Stanley Kubrick",
-    "ranking": 115,
-    "release_year": 1971,
-    "genres": [
-      "Crime",
-      "Sci-Fi"
-    ],
-    "synopsis": "In the future, a sadistic gang leader is imprisoned and volunteers for a conduct-aversion experiment, but it doesn't go as planned."
-  },
-  {
-    "name": "Reservoir Dogs",
-    "director": "Quentin Tarantino",
-    "ranking": 116,
-    "release_year": 1992,
-    "genres": [
-      "Crime",
-      "Thriller"
-    ],
-    "synopsis": "When a simple jewelry heist goes horribly wrong, the surviving criminals begin to suspect that one of them is a police informant."
-  },
-  {
-    "name": "Full Metal Jacket",
-    "director": "Stanley Kubrick",
-    "ranking": 117,
-    "release_year": 1987,
-    "genres": [
-      "Drama",
-      "War"
-    ],
-    "synopsis": "A pragmatic U.S. Marine observes the dehumanizing effects the Vietnam War has on his fellow recruits from their brutal boot camp training to the bloody street fighting in Hue."
-  },
-  {
-    "name": "2001: A Space Odyssey",
-    "director": "Stanley Kubrick",
-    "ranking": 118,
-    "release_year": 1968,
-    "genres": [
-      "Adventure",
-      "Sci-Fi"
-    ],
-    "synopsis": "After uncovering a mysterious artifact buried beneath the Lunar surface, a spacecraft is sent to Jupiter to find its origins: a spacecraft manned by two men and the supercomputer HAL 9000."
-  },
-  {
-    "name": "Der Untergang",
-    "director": "Oliver Hirschbiegel",
-    "ranking": 119,
-    "release_year": 2004,
-    "genres": [
-      "Biography",
-      "Drama",
-      "History",
-      "War"
-    ],
-    "synopsis": "Traudl Junge, the final secretary for Adolf Hitler, tells of the Nazi dictator's final days in his Berlin bunker at the end of WWII."
-  },
-  {
-    "name": "Jagten",
-    "director": "Thomas Vinterberg",
-    "ranking": 120,
-    "release_year": 2012,
-    "genres": [
-      "Drama"
-    ],
-    "synopsis": "A teacher lives a lonely life, all the while struggling over his son's custody. His life slowly gets better as he finds love and receives good news from his son, but his new luck is about to be brutally shattered by an innocent li..."
-  },
-  {
-    "name": "L.A. Confidential",
-    "director": "Curtis Hanson",
-    "ranking": 121,
-    "release_year": 1997,
-    "genres": [
-      "Crime",
-      "Drama",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "As corruption grows in 1950s Los Angeles, three policemen - one strait-laced, one brutal, and one sleazy - investigate a series of murders with their own brand of justice."
-  },
-  {
-    "name": "American Psycho",
-    "director": "Mary Harron",
-    "ranking": 122,
-    "release_year": 2000,
-    "genres": [
-      "Crime",
-      "Drama",
-      "Horror"
-    ],
-    "synopsis": "A wealthy New York City investment banking executive, Patrick Bateman, hides his alternate psychopathic ego from his co-workers and friends as he delves deeper into his violent, hedonistic fantasies."
-  },
-  {
-    "name": "Beauty and the Beast",
-    "director": "Gary Trousdale, Kirk Wise",
-    "ranking": 123,
-    "release_year": 1991,
-    "genres": [
-      "Animation",
-      "Family",
-      "Fantasy",
-      "Musical",
-      "Romance"
-    ],
-    "synopsis": "A prince cursed to spend his days as a hideous monster sets out to regain his humanity by earning a young woman's love."
-  },
-  {
-    "name": "The Departed",
-    "director": "Martin Scorsese",
-    "ranking": 124,
-    "release_year": 2006,
-    "genres": [
-      "Crime",
-      "Drama",
-      "Thriller"
-    ],
-    "synopsis": "An undercover cop and a mole in the police attempt to identify each other while infiltrating an Irish gang in South Boston."
-  },
-  {
-    "name": "Fargo",
-    "director": "Ethan Coen, Joel Coen",
-    "ranking": 125,
-    "release_year": 1996,
-    "genres": [
-      "Crime",
-      "Thriller"
-    ],
-    "synopsis": "Minnesota car salesman Jerry Lundegaard's inept crime falls apart due to his and his henchmen's bungling and the persistent police work of the quite pregnant Marge Gunderson."
-  },
-  {
-    "name": "The Jungle Book",
-    "director": "Jon Favreau",
-    "ranking": 126,
-    "release_year": 2016,
-    "genres": [
-      "Animation",
-      "Action",
-      "Adventure",
-      "Drama",
-      "Family",
-      "Fantasy",
-      "Musical"
-    ],
-    "synopsis": "After a threat from the tiger Shere Khan forces him to flee the jungle, a man-cub named Mowgli embarks on a journey of self discovery with the help of panther Bagheera and free-spirited bear Baloo."
-  },
-  {
-    "name": "The Lion King",
-    "director": "Rob Minkoff, Roger Allers",
-    "ranking": 127,
-    "release_year": 1994,
-    "genres": [
-      "Animation",
-      "Adventure",
-      "Drama",
-      "Family",
-      "Musical"
-    ],
-    "synopsis": "Lion prince Simba and his father are targeted by his bitter uncle, who wants to ascend the throne himself."
-  },
-  {
-    "name": "Mary Poppins",
-    "director": "Robert Stevenson",
-    "ranking": 128,
-    "release_year": 1964,
-    "genres": [
-      "Comedy",
-      "Family",
-      "Fantasy",
-      "Musical"
-    ],
-    "synopsis": "In turn of the century London, a magical nanny employs music and adventure to help two neglected children become closer to their father."
-  },
-  {
-    "name": "Planet of the Apes",
-    "director": "Franklin J. Schaffner",
-    "ranking": 129,
-    "release_year": 1968,
-    "genres": [
-      "Adventure",
-      "Sci-Fi"
-    ],
-    "synopsis": "An astronaut crew crash-lands on a planet where highly intelligent non-human ape species are dominant and humans are enslaved."
-  },
-  {
-    "name": "Scarface",
-    "director": "Brian De Palma",
-    "ranking": 130,
-    "release_year": 1983,
-    "genres": [
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "In 1980 Miami, a determined Cuban immigrant takes over a drug cartel and succumbs to greed."
-  },
-  {
-    "name": "The Wolf of Wall Street",
-    "director": "Martin Scorsese",
-    "ranking": 131,
-    "release_year": 2013,
-    "genres": [
-      "Biography",
-      "Comedy",
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "Based on the true story of Jordan Belfort, from his rise to a wealthy stock-broker living the high life to his fall involving crime, corruption and the federal government."
-  },
-  {
-    "name": "Toy Story",
-    "director": "John Lasseter",
-    "ranking": 132,
-    "release_year": 1995,
-    "genres": [
-      "Animation",
-      "Adventure",
-      "Comedy",
-      "Family",
-      "Fantasy"
-    ],
-    "synopsis": "A cowboy doll is profoundly threatened and jealous when a new spaceman action figure supplants him as top toy in a boy's bedroom."
-  },
-  {
-    "name": "Amadeus",
-    "director": "Milos Forman",
-    "ranking": 133,
-    "release_year": 1984,
-    "genres": [
-      "Biography",
-      "Drama",
-      "Music"
-    ],
-    "synopsis": "The life, success and troubles of Wolfgang Amadeus Mozart, as told by Antonio Salieri, the contemporaneous composer who was deeply jealous of Mozart's talent and claimed to have murdered him."
-  },
-  {
-    "name": "To Kill a Mockingbird",
-    "director": "Robert Mulligan",
-    "ranking": 134,
-    "release_year": 1962,
-    "genres": [
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "Atticus Finch, a widowed lawyer in Depression-era Alabama, defends a Black man against an undeserved rape charge, and tries to educate his young children against prejudice."
-  },
-  {
-    "name": "Monty Python and the Holy Grail",
-    "director": "Terry Jones, Terry Gilliam",
-    "ranking": 135,
-    "release_year": 1975,
-    "genres": [
-      "Adventure",
-      "Comedy",
-      "Fantasy"
-    ],
-    "synopsis": "King Arthur and his Knights of the Round Table embark on a surreal, low-budget search for the Holy Grail, encountering many, very silly obstacles."
-  },
-  {
-    "name": "Lawrence of Arabia",
-    "director": "David Lean",
-    "ranking": 136,
-    "release_year": 1962,
-    "genres": [
-      "Adventure",
-      "Biography",
-      "Drama",
-      "War"
-    ],
-    "synopsis": "The story of T.E. Lawrence, the English officer who successfully united and led the diverse, often warring, Arab tribes during World War I in order to fight the Turks."
-  },
-  {
-    "name": "Toy Story 3",
-    "director": "Lee Unkrich",
-    "ranking": 137,
-    "release_year": 2010,
-    "genres": [
-      "Animation",
-      "Adventure",
-      "Comedy",
-      "Family",
-      "Fantasy"
-    ],
-    "synopsis": "The toys are mistakenly delivered to a day-care center instead of the attic right before Andy leaves for college, and it's up to Woody to convince the other toys that they weren't abandoned and to return home."
-  },
-  {
-    "name": "Some Like It Hot",
-    "director": "Billy Wilder",
-    "ranking": 138,
-    "release_year": 1959,
-    "genres": [
-      "Comedy",
-      "Music",
-      "Romance"
-    ],
-    "synopsis": "After two male musicians witness a mob hit, they flee the state in an all-female band disguised as women, but further complications set in."
-  },
-  {
-    "name": "Singin' in the Rain",
-    "director": "Gene Kelly, Stanley Donen",
-    "ranking": 139,
-    "release_year": 1952,
-    "genres": [
-      "Comedy",
-      "Musical",
-      "Romance"
-    ],
-    "synopsis": "A silent film star falls for a chorus girl just as he and his delusionally jealous screen partner are trying to make the difficult transition to talking pictures in 1920s Hollywood."
-  },
-  {
-    "name": "Idi i smotri",
-    "director": "Elem Klimov",
-    "ranking": 140,
-    "release_year": 1985,
-    "genres": [
-      "Drama",
-      "Thriller",
-      "War"
-    ],
-    "synopsis": "After finding an old rifle, a young boy joins the Soviet resistance movement against ruthless German forces and experiences the horrors of World War II."
-  },
-  {
-    "name": "Metropolis",
-    "director": "Fritz Lang",
-    "ranking": 141,
-    "release_year": 1927,
-    "genres": [
-      "Drama",
-      "Sci-Fi"
-    ],
-    "synopsis": "In a futuristic city sharply divided between the working class and the city planners, the son of the city's mastermind falls in love with a working-class prophet who predicts the coming of a savior to mediate their differences."
-  },
-  {
-    "name": "The Sting",
-    "director": "George Roy Hill",
-    "ranking": 142,
-    "release_year": 1973,
-    "genres": [
-      "Comedy",
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "Two grifters team up to pull off the ultimate con."
-  },
-  {
-    "name": "The Third Man",
-    "director": "Carol Reed",
-    "ranking": 143,
-    "release_year": 1949,
-    "genres": [
-      "Film-Noir",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "Pulp novelist Holly Martins travels to shadowy, postwar Vienna, only to find himself investigating the mysterious death of an old friend, Harry Lime."
-  },
-  {
-    "name": "Per qualche dollaro in più",
-    "director": "Sergio Leone",
-    "ranking": 144,
-    "release_year": 1965,
-    "genres": [
-      "Drama",
-      "Western"
-    ],
-    "synopsis": "Two bounty hunters with the same intentions team up to track down a gang of outlaws led by a psychotic Mexican bandit, who is plotting an audacious bank robbery."
-  },
-  {
-    "name": "The Apartment",
-    "director": "Billy Wilder",
-    "ranking": 145,
-    "release_year": 1960,
-    "genres": [
-      "Comedy",
-      "Drama",
-      "Romance"
-    ],
-    "synopsis": "A Manhattan insurance clerk tries to rise in his company by letting its executives use his apartment for trysts, but complications and a romance of his own ensue."
-  },
-  {
-    "name": "Judgment at Nuremberg",
-    "director": "Stanley Kramer",
-    "ranking": 146,
-    "release_year": 1961,
-    "genres": [
-      "Drama",
-      "War"
-    ],
-    "synopsis": "In 1948, an American court in occupied Germany tries four Nazis judged for war crimes."
-  },
-  {
-    "name": "All About Eve",
-    "director": "Joseph L. Mankiewicz",
-    "ranking": 147,
-    "release_year": 1950,
-    "genres": [
-      "Drama"
-    ],
-    "synopsis": "A seemingly timid but secretly ruthless ingénue insinuates herself into the lives of an aging Broadway star and her circle of theater friends."
-  },
-  {
-    "name": "Rang De Basanti",
-    "director": "Rakeysh Omprakash Mehra",
-    "ranking": 148,
-    "release_year": 2006,
-    "genres": [
-      "Comedy",
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "The story of six young Indians who assist an English woman to film a documentary on the freedom fighters from their past, and the events that lead them to relive the long-forgotten saga of freedom."
-  },
-  {
-    "name": "Double Indemnity",
-    "director": "Billy Wilder",
-    "ranking": 149,
-    "release_year": 1944,
-    "genres": [
-      "Crime",
-      "Drama",
-      "Film-Noir",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "A Los Angeles insurance representative lets an alluring housewife seduce him into a scheme of insurance fraud and murder that arouses the suspicion of his colleague, an insurance investigator."
-  },
-  {
-    "name": "Rashômon",
-    "director": "Akira Kurosawa",
-    "ranking": 150,
-    "release_year": 1950,
-    "genres": [
-      "Crime",
-      "Drama",
-      "Mystery"
-    ],
-    "synopsis": "The rape of a bride and the murder of her samurai husband are recalled from the perspectives of a bandit, the bride, the samurai's ghost and a woodcutter."
-  },
-  {
-    "name": "Ladri di biciclette",
-    "director": "Vittorio De Sica",
-    "ranking": 151,
-    "release_year": 1948,
-    "genres": [
-      "Drama"
-    ],
-    "synopsis": "In post-war Italy, a working-class man's bicycle is stolen, endangering his efforts to find work. He and his son set out to find it."
-  },
-  {
-    "name": "Andrey Rublyov",
-    "director": "Andrei Tarkovsky",
-    "ranking": 152,
-    "release_year": 1966,
-    "genres": [
-      "Biography",
-      "Drama",
-      "History"
-    ],
-    "synopsis": "The life, times and afflictions of the fifteenth-century Russian iconographer St. Andrei Rublev."
-  },
-  {
-    "name": "Yôjinbô",
-    "director": "Akira Kurosawa",
-    "ranking": 153,
-    "release_year": 1961,
-    "genres": [
-      "Action",
-      "Drama",
-      "Thriller"
-    ],
-    "synopsis": "A crafty ronin comes to a town divided by two criminal gangs and decides to play them against each other to free the town."
-  },
-  {
-    "name": "Gangs of Wasseypur",
-    "director": "Anurag Kashyap",
-    "ranking": 154,
-    "release_year": 2012,
-    "genres": [
-      "Action",
-      "Comedy",
-      "Crime",
-      "Drama",
-      "Thriller"
-    ],
-    "synopsis": "A clash between Sultan and Shahid Khan leads to the expulsion of Khan from Wasseypur, and ignites a deadly blood feud spanning three generations."
-  },
-  {
-    "name": "The Treasure of the Sierra Madre",
-    "director": "John Huston",
-    "ranking": 155,
-    "release_year": 1948,
-    "genres": [
-      "Adventure",
-      "Drama",
-      "Western"
-    ],
-    "synopsis": "Two down-on-their-luck Americans searching for work in 1920s Mexico convince an old prospector to help them mine for gold in the Sierra Madre Mountains."
-  },
-  {
-    "name": "The Kid",
-    "director": "Charles Chaplin",
-    "ranking": 156,
-    "release_year": 1921,
-    "genres": [
-      "Comedy",
-      "Drama",
-      "Family"
-    ],
-    "synopsis": "The Tramp cares for an abandoned child, but events put their relationship in jeopardy."
-  },
-  {
-    "name": "Ikiru",
-    "director": "Akira Kurosawa",
-    "ranking": 157,
-    "release_year": 1952,
-    "genres": [
-      "Drama"
-    ],
-    "synopsis": "A bureaucrat tries to find meaning in his life after he discovers he has terminal cancer."
-  },
-  {
-    "name": "A Wednesday",
-    "director": "Neeraj Pandey",
-    "ranking": 158,
-    "release_year": 2008,
-    "genres": [
-      "Action",
-      "Crime",
-      "Drama",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "A retiring police officer reminisces about the most astounding day of his career. About a case that was never filed but continues to haunt him in his memories - the case of a man and a Wednesday."
-  },
-  {
-    "name": "Sunrise: A Song of Two Humans",
-    "director": "F.W. Murnau",
-    "ranking": 159,
-    "release_year": 1927,
-    "genres": [
-      "Drama",
-      "Romance"
-    ],
-    "synopsis": "A sophisticated city woman seduces a farmer and convinces him to murder his wife and join her in the city, but he ends up rekindling his romance with his wife when he changes his mind at the last moment."
-  },
-  {
-    "name": "La passion de Jeanne d'Arc",
-    "director": "Carl Theodor Dreyer",
-    "ranking": 160,
-    "release_year": 1928,
-    "genres": [
-      "Biography",
-      "Drama",
-      "History"
-    ],
-    "synopsis": "In 1431, Jeanne d'Arc is placed on trial on charges of heresy. The ecclesiastical jurists attempt to force Jeanne to recant her claims of holy visions."
-  },
-  {
-    "name": "Sholay",
-    "director": "Ramesh Sippy",
-    "ranking": 161,
-    "release_year": 1975,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Comedy",
-      "Drama",
-      "Musical",
-      "Thriller",
-      "Western"
-    ],
-    "synopsis": "After his family is murdered by a notorious and ruthless bandit, a former police officer enlists the services of two outlaws to capture the bandit."
-  },
-  {
-    "name": "Munna Bhai M.B.B.S.",
-    "director": "Rajkumar Hirani",
-    "ranking": 162,
-    "release_year": 2003,
-    "genres": [
-      "Comedy",
-      "Drama"
-    ],
-    "synopsis": "A gangster sets out to fulfill his father's dream of becoming a doctor."
-  },
-  {
-    "name": "Andaz Apna Apna",
-    "director": "Rajkumar Santoshi",
-    "ranking": 163,
-    "release_year": 1994,
-    "genres": [
-      "Action",
-      "Comedy",
-      "Romance"
-    ],
-    "synopsis": "Two slackers competing for the affections of an heiress inadvertently become her protectors from an evil criminal."
-  },
-  {
-    "name": "Hera Pheri",
-    "director": "Priyadarshan",
-    "ranking": 164,
-    "release_year": 2000,
-    "genres": [
-      "Action",
-      "Comedy",
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "Three unemployed men look for answers to all their money problems - but when their opportunity arrives, will they know what to do with it?"
-  },
-  {
-    "name": "Hacksaw Ridge",
-    "director": "Mel Gibson",
-    "ranking": 165,
-    "release_year": 2016,
-    "genres": [
-      "Biography",
-      "Drama",
-      "History",
-      "War"
-    ],
-    "synopsis": "World War II American Army Medic Desmond T. Doss, serving during the Battle of Okinawa, refuses to kill people and becomes the first man in American history to receive the Medal of Honor without firing a shot."
-  },
-  {
-    "name": "Trainspotting",
-    "director": "Danny Boyle",
-    "ranking": 166,
-    "release_year": 1996,
-    "genres": [
-      "Drama"
-    ],
-    "synopsis": "Renton, deeply immersed in the Edinburgh drug scene, tries to clean up and get out despite the allure of drugs and the influence of friends."
-  },
-  {
-    "name": "Blade Runner",
-    "director": "Ridley Scott",
-    "ranking": 167,
-    "release_year": 1982,
-    "genres": [
-      "Action",
-      "Drama",
-      "Sci-Fi",
-      "Thriller"
-    ],
-    "synopsis": "A blade runner must pursue and terminate four replicants who stole a ship in space and have returned to Earth to find their creator."
-  },
-  {
-    "name": "Room",
-    "director": "Lenny Abrahamson",
-    "ranking": 168,
-    "release_year": 2015,
-    "genres": [
-      "Drama",
-      "Thriller"
-    ],
-    "synopsis": "A little boy is held captive in a room with his mother since his birth, so he has never known the world outside."
-  },
-  {
-    "name": "Gone with the Wind",
-    "director": "Sam Wood, George Cukor, Victor Fleming",
-    "ranking": 169,
-    "release_year": 1939,
-    "genres": [
-      "Drama",
-      "Romance",
-      "War"
-    ],
-    "synopsis": "A sheltered and manipulative Southern belle and a roguish profiteer face off in a turbulent romance as the society around them crumbles with the end of slavery and is rebuilt during the Civil War and Reconstruction periods."
-  },
-  {
-    "name": "Heat",
-    "director": "Michael Mann",
-    "ranking": 170,
-    "release_year": 1995,
-    "genres": [
-      "Action",
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "A group of high-end professional thieves start to feel the heat from the LAPD when they unknowingly leave a verbal clue at their latest heist."
-  },
-  {
-    "name": "The Big Lebowski",
-    "director": "Ethan Coen, Joel Coen",
-    "ranking": 171,
-    "release_year": 1998,
-    "genres": [
-      "Comedy",
-      "Crime"
-    ],
-    "synopsis": "Jeff \"The Dude\" Lebowski, mistaken for a millionaire of the same name, seeks restitution for his ruined rug and enlists his bowling buddies to help get it."
-  },
-  {
-    "name": "Warrior",
-    "director": "Gavin O'Connor",
-    "ranking": 172,
-    "release_year": 2011,
-    "genres": [
-      "Action",
-      "Drama",
-      "Sport"
-    ],
-    "synopsis": "The youngest son of an alcoholic former boxer returns home, where he's trained by his father for competition in a mixed martial arts tournament - a path that puts the fighter on a collision course with his estranged, older brother."
-  },
-  {
-    "name": "Unforgiven",
-    "director": "Clint Eastwood",
-    "ranking": 173,
-    "release_year": 1992,
-    "genres": [
-      "Drama",
-      "Western"
-    ],
-    "synopsis": "Retired Old West gunslinger William Munny reluctantly takes on one last job, with the help of his old partner Ned Logan and a young man, The \"Schofield Kid.\""
-  },
-  {
-    "name": "El laberinto del fauno",
-    "director": "Guillermo del Toro",
-    "ranking": 174,
-    "release_year": 2006,
-    "genres": [
-      "Drama",
-      "Fantasy",
-      "War"
-    ],
-    "synopsis": "In the Falangist Spain of 1944, the bookish young stepdaughter of a sadistic army officer escapes into an eerie but captivating fantasy world."
-  },
-  {
-    "name": "Inside Out",
-    "director": "Pete Docter, Ronnie Del Carmen",
-    "ranking": 175,
-    "release_year": 2015,
-    "genres": [
-      "Animation",
-      "Adventure",
-      "Comedy",
-      "Drama",
-      "Family",
-      "Fantasy"
-    ],
-    "synopsis": "After young Riley is uprooted from her Midwest life and moved to San Francisco, her emotions - Joy, Fear, Anger, Disgust and Sadness - conflict on how best to navigate a new city, house, and school."
-  },
-  {
-    "name": "A Beautiful Mind",
-    "director": "Ron Howard",
-    "ranking": 176,
-    "release_year": 2001,
-    "genres": [
-      "Biography",
-      "Drama",
-      "Mystery"
-    ],
-    "synopsis": "A mathematical genius, John Nash made an astonishing discovery early in his career and stood on the brink of international acclaim. But the handsome and arrogant Nash soon found himself on a harrowing journey of self-discovery."
-  },
-  {
-    "name": "The Deer Hunter",
-    "director": "Michael Cimino",
-    "ranking": 177,
-    "release_year": 1978,
-    "genres": [
-      "Drama",
-      "War"
-    ],
-    "synopsis": "An in-depth examination of the ways in which the Vietnam War impacts and disrupts the lives of several friends in a small steel mill town in Pennsylvania."
-  },
-  {
-    "name": "The Thing",
-    "director": "John Carpenter",
-    "ranking": 178,
-    "release_year": 1982,
-    "genres": [
-      "Horror",
-      "Mystery",
-      "Sci-Fi"
-    ],
-    "synopsis": "A research team in Antarctica is hunted by a shape-shifting alien that assumes the appearance of its victims."
-  },
-  {
-    "name": "Lock, Stock and Two Smoking Barrels",
-    "director": "Guy Ritchie",
-    "ranking": 179,
-    "release_year": 1998,
-    "genres": [
-      "Action",
-      "Comedy",
-      "Crime"
-    ],
-    "synopsis": "Eddy persuades his three pals to pool money for a vital poker game against a powerful local mobster, Hatchet Harry. Eddy loses, after which Harry gives him a week to pay back 500,000 pounds."
-  },
-  {
-    "name": "Cool Hand Luke",
-    "director": "Stuart Rosenberg",
-    "ranking": 180,
-    "release_year": 1967,
-    "genres": [
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "A laid-back Southern man is sentenced to two years in a rural prison, but refuses to conform."
-  },
-  {
-    "name": "Raging Bull",
-    "director": "Martin Scorsese",
-    "ranking": 181,
-    "release_year": 1980,
-    "genres": [
-      "Biography",
-      "Drama",
-      "Sport"
-    ],
-    "synopsis": "The life of boxer Jake LaMotta, whose violence and temper that led him to the top in the ring destroyed his life outside of it."
-  },
-  {
-    "name": "Hauru no ugoku shiro",
-    "director": "Hayao Miyazaki",
-    "ranking": 182,
-    "release_year": 2004,
-    "genres": [
-      "Animation",
-      "Adventure",
-      "Family",
-      "Fantasy"
-    ],
-    "synopsis": "When an unconfident young woman is cursed with an old body by a spiteful witch, her only chance of breaking the spell lies with a self-indulgent yet insecure young wizard and his companions in his legged, walking castle."
-  },
-  {
-    "name": "El secreto de sus ojos",
-    "director": "Juan José Campanella",
-    "ranking": 183,
-    "release_year": 2009,
-    "genres": [
-      "Drama",
-      "Mystery",
-      "Romance",
-      "Thriller"
-    ],
-    "synopsis": "A retired legal counselor writes a novel hoping to find closure for one of his past unresolved homicide cases and for his unreciprocated love with his superior - both of which still haunt him decades later."
-  },
-  {
-    "name": "Incendies",
-    "director": "Denis Villeneuve",
-    "ranking": 184,
-    "release_year": 2010,
-    "genres": [
-      "Drama",
-      "Mystery",
-      "War"
-    ],
-    "synopsis": "Twins journey to the Middle East to discover their family history and fulfill their mother's last wishes."
-  },
-  {
-    "name": "Chinatown",
-    "director": "Roman Polanski",
-    "ranking": 185,
-    "release_year": 1974,
-    "genres": [
-      "Drama",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "A private detective hired to expose an adulterer in 1930s Los Angeles finds himself caught up in a web of deceit, corruption, and murder."
-  },
-  {
-    "name": "The Great Escape",
-    "director": "John Sturges",
-    "ranking": 186,
-    "release_year": 1963,
-    "genres": [
-      "Adventure",
-      "Drama",
-      "Thriller",
-      "War"
-    ],
-    "synopsis": "Allied prisoners of war plan for several hundred of their number to escape from a German camp during World War II."
-  },
-  {
-    "name": "Tonari no Totoro",
-    "director": "Hayao Miyazaki",
-    "ranking": 187,
-    "release_year": 1988,
-    "genres": [
-      "Animation",
-      "Comedy",
-      "Family",
-      "Fantasy"
-    ],
-    "synopsis": "When two girls move to the country to be near their ailing mother, they have adventures with the wondrous forest spirits who live nearby."
-  },
-  {
-    "name": "Det sjunde inseglet",
-    "director": "Ingmar Bergman",
-    "ranking": 188,
-    "release_year": 1957,
-    "genres": [
-      "Drama",
-      "Fantasy"
-    ],
-    "synopsis": "A knight returning to Sweden after the Crusades seeks answers about life, death, and the existence of God as he plays chess against the Grim Reaper during the Black Plague."
-  },
-  {
-    "name": "On the Waterfront",
-    "director": "Elia Kazan",
-    "ranking": 189,
-    "release_year": 1954,
-    "genres": [
-      "Crime",
-      "Drama",
-      "Thriller"
-    ],
-    "synopsis": "An ex-prize fighter turned New Jersey longshoreman struggles to stand up to his corrupt union bosses, including his older brother, as he starts to connect with the grieving sister of one of the syndicate's victims."
-  },
-  {
-    "name": "The Bridge on the River Kwai",
-    "director": "David Lean",
-    "ranking": 190,
-    "release_year": 1957,
-    "genres": [
-      "Adventure",
-      "Drama",
-      "War"
-    ],
-    "synopsis": "British POWs are forced to build a railway bridge across the river Kwai for their Japanese captors in occupied Burma, not knowing that the allied forces are planning a daring commando raid through the jungle to destroy it."
-  },
-  {
-    "name": "Ran",
-    "director": "Akira Kurosawa",
-    "ranking": 191,
-    "release_year": 1985,
-    "genres": [
-      "Action",
-      "Drama",
-      "War"
-    ],
-    "synopsis": "In Medieval Japan, an elderly warlord retires, handing over his empire to his three sons. However, he vastly underestimates how the new-found power will corrupt them and cause them to turn on each other...and him."
-  },
-  {
-    "name": "Rebecca",
-    "director": "Alfred Hitchcock",
-    "ranking": 192,
-    "release_year": 1940,
-    "genres": [
-      "Drama",
-      "Mystery",
-      "Romance",
-      "Thriller"
-    ],
-    "synopsis": "A self-conscious woman juggles adjusting to her new role as an aristocrat's wife and avoiding being intimidated by his first wife's spectral presence."
-  },
-  {
-    "name": "Mary and Max.",
-    "director": "Adam Elliot",
-    "ranking": 193,
-    "release_year": 2009,
-    "genres": [
-      "Animation",
-      "Comedy",
-      "Drama"
-    ],
-    "synopsis": "In 1976 Melbourne, a lonely 8-year-old girl strikes up a correspondence with an unlikely pen pal: a severely obese 44-year-old New Yorker with Asperger's syndrome."
-  },
-  {
-    "name": "Dial M for Murder",
-    "director": "Alfred Hitchcock",
-    "ranking": 194,
-    "release_year": 1954,
-    "genres": [
-      "Crime",
-      "Thriller"
-    ],
-    "synopsis": "A former tennis star arranges the murder of his adulterous wife."
-  },
-  {
-    "name": "Mr. Smith Goes to Washington",
-    "director": "Frank Capra",
-    "ranking": 195,
-    "release_year": 1939,
-    "genres": [
-      "Comedy",
-      "Drama"
-    ],
-    "synopsis": "A naive youth leader is appointed to fill a vacancy in the U.S. Senate. His idealistic plans promptly collide with corruption at home and subterfuge from his hero in Washington, but he tries to forge ahead despite attacks on his c..."
-  },
-  {
-    "name": "It Happened One Night",
-    "director": "Frank Capra",
-    "ranking": 196,
-    "release_year": 1934,
-    "genres": [
-      "Comedy",
-      "Romance"
-    ],
-    "synopsis": "A renegade reporter trailing a young runaway heiress for a big story joins her on a bus heading from Florida to New York, and they end up stuck with each other when the bus leaves them behind at one of the stops."
-  },
-  {
-    "name": "Smultronstället",
-    "director": "Ingmar Bergman",
-    "ranking": 197,
-    "release_year": 1957,
-    "genres": [
-      "Drama",
-      "Romance"
-    ],
-    "synopsis": "After living a life marked by coldness, an aging professor is forced to confront the emptiness of his existence."
-  },
-  {
-    "name": "Le salaire de la peur",
-    "director": "Henri-Georges Clouzot",
-    "ranking": 198,
-    "release_year": 1953,
-    "genres": [
-      "Adventure",
-      "Drama",
-      "Thriller"
-    ],
-    "synopsis": "In a decrepit South American village, four men are hired to transport an urgent nitroglycerine shipment without the equipment that would make it safe."
-  },
-  {
-    "name": "The Gold Rush",
-    "director": "Charles Chaplin",
-    "ranking": 199,
-    "release_year": 1925,
-    "genres": [
-      "Adventure",
-      "Comedy",
-      "Drama",
-      "Romance",
-      "Western"
-    ],
-    "synopsis": "A prospector goes to the Klondike during the 1890s gold rush in hopes of making his fortune, and is smitten with a girl he sees in a dance hall."
-  },
-  {
-    "name": "The General",
-    "director": "Buster Keaton, Clyde Bruckman",
-    "ranking": 200,
-    "release_year": 1926,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Comedy",
-      "Drama",
-      "War"
-    ],
-    "synopsis": "After being rejected by the Confederate military, not realizing it was due to his crucial civilian role, an engineer must single-handedly recapture his beloved locomotive after it is seized by Union spies and return it through ene..."
-  },
-  {
-    "name": "Le notti di Cabiria",
-    "director": "Federico Fellini",
-    "ranking": 201,
-    "release_year": 1957,
-    "genres": [
-      "Drama"
-    ],
-    "synopsis": "A waifish prostitute wanders the streets of Rome looking for true love but finds only heartbreak."
-  },
-  {
-    "name": "Guardians of the Galaxy Vol. 2",
-    "director": "James Gunn",
-    "ranking": 202,
-    "release_year": 2017,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Comedy",
-      "Sci-Fi"
-    ],
-    "synopsis": "The Guardians struggle to keep together as a team while dealing with their personal family issues, notably Star-Lord's encounter with his father, the ambitious celestial being Ego."
-  },
-  {
-    "name": "Star Wars: Episode VII - The Force Awakens",
-    "director": "J.J. Abrams",
-    "ranking": 203,
-    "release_year": 2015,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Sci-Fi"
-    ],
-    "synopsis": "As a new threat to the galaxy rises, Rey, a desert scavenger, and Finn, an ex-stormtrooper, must join Han Solo and Chewbacca to search for the one hope of restoring peace."
-  },
-  {
-    "name": "Mad Max: Fury Road",
-    "director": "George Miller",
-    "ranking": 204,
-    "release_year": 2015,
-    "genres": [
-      "Action",
-      "Adventure",
-      "Sci-Fi",
-      "Thriller"
-    ],
-    "synopsis": "In a post-apocalyptic wasteland, a woman rebels against a tyrannical ruler in search for her homeland with the aid of a group of female prisoners, a psychotic worshiper and a drifter named Max."
-  },
-  {
-    "name": "No Country for Old Men",
-    "director": "Ethan Coen, Joel Coen",
-    "ranking": 205,
-    "release_year": 2007,
-    "genres": [
-      "Crime",
-      "Drama",
-      "Thriller"
-    ],
-    "synopsis": "Violence and mayhem ensue after a hunter stumbles upon the aftermath of a drug deal gone wrong and over two million dollars in cash near the Rio Grande."
-  },
-  {
-    "name": "Gone Girl",
-    "director": "David Fincher",
-    "ranking": 206,
-    "release_year": 2014,
-    "genres": [
-      "Drama",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "With his wife's disappearance having become the focus of an intense media circus, a man sees the spotlight turned on him when it's suspected that he may not be innocent."
-  },
-  {
-    "name": "Prisoners",
-    "director": "Denis Villeneuve",
-    "ranking": 207,
-    "release_year": 2013,
-    "genres": [
-      "Crime",
-      "Drama",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "When Keller Dover's daughter and her friend go missing, he takes matters into his own hands as the police pursue multiple leads and the pressure mounts."
-  },
-  {
-    "name": "What Ever Happened to Baby Jane?",
-    "director": "Robert Aldrich",
-    "ranking": 208,
-    "release_year": 1962,
-    "genres": [
-      "Drama",
-      "Horror",
-      "Thriller"
-    ],
-    "synopsis": "A former child star torments her paraplegic sister in their decaying Hollywood mansion."
-  },
-  {
-    "name": "Spotlight",
-    "director": "Tom McCarthy",
-    "ranking": 209,
-    "release_year": 2015,
-    "genres": [
-      "Biography",
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "The true story of how the Boston Globe uncovered the massive scandal of child molestation and cover-up within the local Catholic Archdiocese, shaking the entire Catholic Church to its core."
-  },
-  {
-    "name": "The Princess Bride",
-    "director": "Rob Reiner",
-    "ranking": 210,
-    "release_year": 1987,
-    "genres": [
-      "Adventure",
-      "Comedy",
-      "Family",
-      "Fantasy",
-      "Romance"
-    ],
-    "synopsis": "A bedridden boy's grandfather reads him the story of a farmboy-turned-pirate who encounters numerous obstacles, enemies and allies in his quest to be reunited with his true love."
-  },
-  {
-    "name": "Donnie Darko",
-    "director": "Richard Kelly",
-    "ranking": 211,
-    "release_year": 2001,
-    "genres": [
-      "Drama",
-      "Mystery",
-      "Sci-Fi",
-      "Thriller"
-    ],
-    "synopsis": "After narrowly escaping a bizarre accident, a troubled teenager is plagued by visions of a man in a large rabbit suit who manipulates him to commit a series of crimes."
-  },
-  {
-    "name": "Stand by Me",
-    "director": "Rob Reiner",
-    "ranking": 212,
-    "release_year": 1986,
-    "genres": [
-      "Adventure",
-      "Comedy",
-      "Drama"
-    ],
-    "synopsis": "A writer recounts a childhood journey with his friends to find the body of a missing boy."
-  },
-  {
-    "name": "Into the Wild",
-    "director": "Sean Penn",
-    "ranking": 213,
-    "release_year": 2007,
-    "genres": [
-      "Adventure",
-      "Biography",
-      "Drama"
-    ],
-    "synopsis": "After graduating from Emory University, top student and athlete Christopher McCandless abandons his possessions, gives his entire $24,000 savings account to charity and hitchhikes to Alaska to live in the wilderness. Along the way..."
-  },
-  {
-    "name": "The Sixth Sense",
-    "director": "M. Night Shyamalan",
-    "ranking": 214,
-    "release_year": 1999,
-    "genres": [
-      "Drama",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "Malcolm Crowe, a child psychologist, starts treating a young boy, Cole, who encounters dead people and convinces him to help them. In turn, Cole helps Malcolm reconcile with his estranged wife."
-  },
-  {
-    "name": "Shutter Island",
-    "director": "Martin Scorsese",
-    "ranking": 215,
-    "release_year": 2010,
-    "genres": [
-      "Drama",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "Teddy Daniels and Chuck Aule, two US marshals, are sent to an asylum on a remote island in order to investigate the disappearance of a patient, where Teddy uncovers a shocking truth about the place."
-  },
-  {
-    "name": "The Grand Budapest Hotel",
-    "director": "Wes Anderson",
-    "ranking": 216,
-    "release_year": 2014,
-    "genres": [
-      "Adventure",
-      "Comedy",
-      "Crime"
-    ],
-    "synopsis": "A writer encounters the owner of an aging high-class hotel, who tells him of his early years serving as a lobby boy in the hotel's glorious years under an exceptional concierge."
-  },
-  {
-    "name": "The Help",
-    "director": "Tate Taylor",
-    "ranking": 217,
-    "release_year": 2011,
-    "genres": [
-      "Drama"
-    ],
-    "synopsis": "An aspiring author during the civil rights movement of the 1960s decides to write a book detailing the African American maids' point of view on the white families for which they work, and the hardships they go through on a daily b..."
-  },
-  {
-    "name": "There Will Be Blood",
-    "director": "Paul Thomas Anderson",
-    "ranking": 218,
-    "release_year": 2007,
-    "genres": [
-      "Drama"
-    ],
-    "synopsis": "A story of family, religion, hatred, oil and madness, focusing on a turn-of-the-century prospector in the early days of the business."
-  },
-  {
-    "name": "Catch Me If You Can",
-    "director": "Steven Spielberg",
-    "ranking": 219,
-    "release_year": 2002,
-    "genres": [
-      "Biography",
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "Barely 17 yet, Frank is a skilled forger who has passed as a doctor, lawyer and pilot. FBI agent Carl becomes obsessed with tracking down the con man, who only revels in the pursuit."
-  },
-  {
-    "name": "12 Years a Slave",
-    "director": "Steve McQueen",
-    "ranking": 220,
-    "release_year": 2013,
-    "genres": [
-      "Biography",
-      "Drama",
-      "History"
-    ],
-    "synopsis": "In the antebellum United States, Solomon Northup, a free Black man from upstate New York, is abducted and sold into slavery."
-  },
-  {
-    "name": "The Wizard of Oz",
-    "director": "King Vidor, Victor Fleming",
-    "ranking": 221,
-    "release_year": 1939,
-    "genres": [
-      "Adventure",
-      "Family",
-      "Fantasy",
-      "Musical"
-    ],
-    "synopsis": "Young Dorothy Gale and her dog Toto are swept away by a tornado from their Kansas farm to the magical Land of Oz, and embark on a quest with three new friends to see the Wizard, who can return her to her home and fulfill the other..."
-  },
-  {
-    "name": "Rush",
-    "director": "Ron Howard",
-    "ranking": 222,
-    "release_year": 2013,
-    "genres": [
-      "Action",
-      "Biography",
-      "Drama",
-      "Sport"
-    ],
-    "synopsis": "The merciless 1970s rivalry between Formula One rivals James Hunt and Niki Lauda."
-  },
-  {
-    "name": "The Truman Show",
-    "director": "Peter Weir",
-    "ranking": 223,
-    "release_year": 1998,
-    "genres": [
-      "Comedy",
-      "Drama"
-    ],
-    "synopsis": "An insurance salesman discovers his whole life is actually a reality TV show."
-  },
-  {
-    "name": "Platoon",
-    "director": "Oliver Stone",
-    "ranking": 224,
-    "release_year": 1986,
-    "genres": [
-      "Drama",
-      "War"
-    ],
-    "synopsis": "Chris Taylor, a neophyte recruit in Vietnam, finds himself caught in a battle of wills between two sergeants, one good and the other evil. A shrewd examination of the brutality of war and the duality of man in conflict."
-  },
-  {
-    "name": "Million Dollar Baby",
-    "director": "Clint Eastwood",
-    "ranking": 225,
-    "release_year": 2004,
-    "genres": [
-      "Drama",
-      "Sport"
-    ],
-    "synopsis": "Frankie, an ill-tempered old coach, reluctantly agrees to train aspiring boxer Maggie. Impressed with her determination and talent, he helps her become the best and the two soon form a close bond."
-  },
-  {
-    "name": "The Bourne Ultimatum",
-    "director": "Paul Greengrass",
-    "ranking": 226,
-    "release_year": 2007,
-    "genres": [
-      "Action",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "Jason Bourne dodges a ruthless C.I.A. official and his Agents from a new assassination program while searching for the origins of his life as a trained killer."
-  },
-  {
-    "name": "Stalker",
-    "director": "Andrei Tarkovsky",
-    "ranking": 227,
-    "release_year": 1979,
-    "genres": [
-      "Drama",
-      "Sci-Fi"
-    ],
-    "synopsis": "A guide leads two men through an area known as the Zone to find a room that grants wishes."
-  },
-  {
-    "name": "Relatos salvajes",
-    "director": "Damián Szifron",
-    "ranking": 228,
-    "release_year": 2014,
-    "genres": [
-      "Comedy",
-      "Drama",
-      "Thriller"
-    ],
-    "synopsis": "Six short stories that explore the extremities of human behavior involving people in distress."
-  },
-  {
-    "name": "Hachi: A Dog's Tale",
-    "director": "Lasse Hallström",
-    "ranking": 229,
-    "release_year": 2009,
-    "genres": [
-      "Biography",
-      "Drama",
-      "Family"
-    ],
-    "synopsis": "Professor Wilson discovers a lost Akita puppy on his way home. Despite objections from his wife, Hachi endears himself to the family and grows to be Parker's loyal companion. As their bond grows deeper, a beautiful relationship un..."
-  },
-  {
-    "name": "How to Train Your Dragon",
-    "director": "Dean DeBlois, Chris Sanders",
-    "ranking": 230,
-    "release_year": 2010,
-    "genres": [
-      "Animation",
-      "Action",
-      "Adventure",
-      "Family",
-      "Fantasy"
-    ],
-    "synopsis": "A hapless young Viking who aspires to hunt dragons becomes the unlikely friend of a young dragon himself, and learns there may be more to the creatures than he assumed."
-  },
-  {
-    "name": "Annie Hall",
-    "director": "Woody Allen",
-    "ranking": 231,
-    "release_year": 1977,
-    "genres": [
-      "Comedy",
-      "Romance"
-    ],
-    "synopsis": "Alvy Singer, a divorced Jewish comedian, reflects on his relationship with ex-lover Annie Hall, an aspiring nightclub singer, which ended abruptly just like his previous marriages."
-  },
-  {
-    "name": "Ben-Hur",
-    "director": "William Wyler",
-    "ranking": 232,
-    "release_year": 1959,
-    "genres": [
-      "Adventure",
-      "Drama"
-    ],
-    "synopsis": "After a Jewish prince is betrayed and sent into slavery by a Roman friend in 1st-century Jerusalem, he regains his freedom and comes back for revenge."
-  },
-  {
-    "name": "Before Sunrise",
-    "director": "Richard Linklater",
-    "ranking": 233,
-    "release_year": 1995,
-    "genres": [
-      "Drama",
-      "Romance"
-    ],
-    "synopsis": "A young man and woman meet on a train in Europe, and wind up spending one evening together in Vienna. Unfortunately, both know that this will probably be their only night together."
-  },
-  {
-    "name": "Fa yeung nin wah",
-    "director": "Kar-Wai Wong",
-    "ranking": 234,
-    "release_year": 2000,
-    "genres": [
-      "Drama",
-      "Romance"
-    ],
-    "synopsis": "Two neighbors form a strong bond after both suspect extramarital activities of their spouses. However, they agree to keep their bond platonic so as not to commit similar wrongs."
-  },
-  {
-    "name": "Hotel Rwanda",
-    "director": "Terry George",
-    "ranking": 235,
-    "release_year": 2004,
-    "genres": [
-      "Biography",
-      "Drama",
-      "History",
-      "War"
-    ],
-    "synopsis": "Paul Rusesabagina, a hotel manager, houses over a thousand Tutsi refugees during their struggle against the Hutu militia in Rwanda, Africa."
-  },
-  {
-    "name": "Butch Cassidy and the Sundance Kid",
-    "director": "George Roy Hill",
-    "ranking": 236,
-    "release_year": 1969,
-    "genres": [
-      "Biography",
-      "Crime",
-      "Drama",
-      "Western"
-    ],
-    "synopsis": "In 1890s Wyoming, Butch Cassidy and The Sundance Kid lead a band of outlaws. When a train robbery goes wrong, they find themselves on the run with a posse hard on their heels. After considering their options, they escape to South ..."
-  },
-  {
-    "name": "Gandhi",
-    "director": "Richard Attenborough",
-    "ranking": 237,
-    "release_year": 1982,
-    "genres": [
-      "Biography",
-      "Drama",
-      "History"
-    ],
-    "synopsis": "The life of the lawyer who became the famed leader of the Indian revolts against the British rule through his philosophy of nonviolent protest."
-  },
-  {
-    "name": "Barry Lyndon",
-    "director": "Stanley Kubrick",
-    "ranking": 238,
-    "release_year": 1975,
-    "genres": [
-      "Adventure",
-      "Drama",
-      "War"
-    ],
-    "synopsis": "An Irish rogue wins the heart of a rich widow and assumes her dead husband's aristocratic position in 18th-century England."
-  },
-  {
-    "name": "Salinui chueok",
-    "director": "Bong Joon Ho",
-    "ranking": 239,
-    "release_year": 2003,
-    "genres": [
-      "Crime",
-      "Drama",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "In a small Korean province in 1986, two detectives struggle with the case of multiple young women being found raped and murdered by an unknown culprit."
-  },
-  {
-    "name": "Life of Brian",
-    "director": "Terry Jones",
-    "ranking": 240,
-    "release_year": 1979,
-    "genres": [
-      "Comedy"
-    ],
-    "synopsis": "Born on the original Christmas in the stable next door to Jesus Christ, Brian of Nazareth spends his life being mistaken for a messiah."
-  },
-  {
-    "name": "Mou gaan dou",
-    "director": "Alan Mak, Andrew Lau",
-    "ranking": 241,
-    "release_year": 2002,
-    "genres": [
-      "Action",
-      "Crime",
-      "Drama",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "A story between a mole in the police department and an undercover cop. Their objectives are the same: to find out who is the mole, and who is the cop."
-  },
-  {
-    "name": "La haine",
-    "director": "Mathieu Kassovitz",
-    "ranking": 242,
-    "release_year": 1995,
-    "genres": [
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "24 hours in the lives of three young men in the French suburbs the day after a violent riot."
-  },
-  {
-    "name": "In the Name of the Father",
-    "director": "Jim Sheridan",
-    "ranking": 243,
-    "release_year": 1993,
-    "genres": [
-      "Biography",
-      "Crime",
-      "Drama"
-    ],
-    "synopsis": "An Irish man's coerced confession to an I.R.A. bombing he did not commit results in the imprisonment of his father as well. Meanwhile, a British lawyer fights to clear their names and free them."
-  },
-  {
-    "name": "Amores perros",
-    "director": "Alejandro G. Iñárritu",
-    "ranking": 244,
-    "release_year": 2000,
-    "genres": [
-      "Drama",
-      "Thriller"
-    ],
-    "synopsis": "An amateur dog fighter, a supermodel, and a derelict assassin, all separately struggling to find love, find their lives transformed by a devastating car wreck in Mexico City."
-  },
-  {
-    "name": "Network",
-    "director": "Sidney Lumet",
-    "ranking": 245,
-    "release_year": 1976,
-    "genres": [
-      "Drama"
-    ],
-    "synopsis": "A television network cynically exploits a deranged former anchor's ravings and revelations about the news media for its own profit, but finds that his message may be difficult to control."
-  },
-  {
-    "name": "Kaze no tani no Naushika",
-    "director": "Hayao Miyazaki",
-    "ranking": 246,
-    "release_year": 1984,
-    "genres": [
-      "Animation",
-      "Adventure",
-      "Sci-Fi"
-    ],
-    "synopsis": "Warrior and pacifist Princess Nausicaä desperately struggles to prevent two warring nations from destroying themselves and their dying planet."
-  },
-  {
-    "name": "The Maltese Falcon",
-    "director": "John Huston",
-    "ranking": 247,
-    "release_year": 1941,
-    "genres": [
-      "Crime",
-      "Film-Noir",
-      "Mystery",
-      "Romance"
-    ],
-    "synopsis": "San Francisco private detective Sam Spade takes on a case that involves him with three eccentric criminals, a gorgeous liar and their quest for a priceless statuette, with the stakes rising after his partner is murdered."
-  },
-  {
-    "name": "Persona",
-    "director": "Ingmar Bergman",
-    "ranking": 248,
-    "release_year": 1966,
-    "genres": [
-      "Drama",
-      "Thriller"
-    ],
-    "synopsis": "A nurse is put in charge of a mute actress and finds that their personae are melding together."
-  },
-  {
-    "name": "The Grapes of Wrath",
-    "director": "John Ford",
-    "ranking": 249,
-    "release_year": 1940,
-    "genres": [
-      "Drama"
-    ],
-    "synopsis": "An Oklahoma family, driven off their farm by the poverty and hopelessness of the Dust Bowl, joins the westward migration to California, suffering the misfortunes of the homeless in the Great Depression."
-  },
-  {
-    "name": "Jaws",
-    "director": "Steven Spielberg",
-    "ranking": 250,
-    "release_year": 1975,
-    "genres": [
-      "Adventure",
-      "Mystery",
-      "Thriller"
-    ],
-    "synopsis": "When a killer shark unleashes chaos on a beach community off Cape Cod, it's up to a local sheriff, a marine biologist, and an old seafarer to hunt the beast down."
-  }
-]
+[ {
+  "director" : "Frank Darabont",
+  "genres" : [ "Drama" ],
+  "name" : "The Shawshank Redemption",
+  "ranking" : 1,
+  "release_year" : 1994,
+  "synopsis" : "A banker convicted of uxoricide forms a friendship over a quarter century with a hardened convict, while maintaining his innocence and trying to remain hopeful through simple compassion."
+}, {
+  "director" : "Christopher Nolan",
+  "genres" : [ "Action", "Crime", "Drama" ],
+  "name" : "The Dark Knight",
+  "ranking" : 2,
+  "release_year" : 2008,
+  "synopsis" : "When a menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman, James Gordon and Harvey Dent must work together to put an end to the madness."
+}, {
+  "director" : "Christopher Nolan",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Inception",
+  "ranking" : 3,
+  "release_year" : 2010,
+  "synopsis" : "A thief who steals corporate secrets through the use of dream-sharing technology is given the inverse task of planting an idea into the mind of a CEO, but his tragic past may doom the project and his team to disaster."
+}, {
+  "director" : "David Fincher",
+  "genres" : [ "Crime", "Drama", "Thriller" ],
+  "name" : "Fight Club",
+  "ranking" : 4,
+  "release_year" : 1999,
+  "synopsis" : "An insomniac office worker and a devil-may-care soap maker form an underground fight club that evolves into much more."
+}, {
+  "director" : "Christopher Nolan",
+  "genres" : [ "Adventure", "Drama", "Sci-Fi" ],
+  "name" : "Interstellar",
+  "ranking" : 5,
+  "release_year" : 2014,
+  "synopsis" : "When Earth becomes uninhabitable in the future, a farmer and ex-NASA pilot, Joseph Cooper, is tasked to pilot a spacecraft, along with a team of researchers, to find a new planet for humans."
+}, {
+  "director" : "Robert Zemeckis",
+  "genres" : [ "Drama", "Romance" ],
+  "name" : "Forrest Gump",
+  "ranking" : 6,
+  "release_year" : 1994,
+  "synopsis" : "The history of the United States from the 1950s to the '70s unfolds from the perspective of an Alabama man with an IQ of 75, who yearns to be reunited with his childhood sweetheart."
+}, {
+  "director" : "Quentin Tarantino",
+  "genres" : [ "Crime", "Drama" ],
+  "name" : "Pulp Fiction",
+  "ranking" : 7,
+  "release_year" : 1994,
+  "synopsis" : "The lives of two mob hitmen, a boxer, a gangster and his wife, and a pair of diner bandits intertwine in four tales of violence and redemption."
+}, {
+  "director" : "Lana Wachowski",
+  "genres" : [ "Action", "Sci-Fi" ],
+  "name" : "The Matrix",
+  "ranking" : 8,
+  "release_year" : 1999,
+  "synopsis" : "When a beautiful stranger leads computer hacker Neo to a forbidding underworld, he discovers the shocking truth--the life he knows is the elaborate deception of an evil cyber-intelligence."
+}, {
+  "director" : "Francis Ford Coppola",
+  "genres" : [ "Crime", "Drama" ],
+  "name" : "The Godfather",
+  "ranking" : 9,
+  "release_year" : 1972,
+  "synopsis" : "The aging patriarch of an organized crime dynasty transfers control of his clandestine empire to his reluctant son."
+}, {
+  "director" : "Peter Jackson",
+  "genres" : [ "Adventure", "Drama", "Fantasy" ],
+  "name" : "The Lord of the Rings: The Fellowship of the Ring",
+  "ranking" : 10,
+  "release_year" : 2001,
+  "synopsis" : "A meek Hobbit from the Shire and eight companions set out on a journey to destroy the powerful One Ring and save Middle-earth from the Dark Lord Sauron."
+}, {
+  "director" : "Peter Jackson",
+  "genres" : [ "Adventure", "Drama", "Fantasy" ],
+  "name" : "The Lord of the Rings: The Return of the King",
+  "ranking" : 11,
+  "release_year" : 2003,
+  "synopsis" : "Gandalf and Aragorn lead the World of Men against Sauron's army to draw his gaze from Frodo and Sam as they approach Mount Doom with the One Ring."
+}, {
+  "director" : "David Fincher",
+  "genres" : [ "Crime", "Drama", "Mystery" ],
+  "name" : "Seven",
+  "ranking" : 12,
+  "release_year" : 1995,
+  "synopsis" : "Two detectives, a rookie and a veteran, hunt a serial killer who uses the seven deadly sins as his motives."
+}, {
+  "director" : "Christopher Nolan",
+  "genres" : [ "Action", "Crime", "Drama" ],
+  "name" : "The Dark Knight Rises",
+  "ranking" : 13,
+  "release_year" : 2012,
+  "synopsis" : "Bane, an imposing terrorist, attacks Gotham City and disrupts its eight-year-long period of peace. This forces Bruce Wayne to come out of hiding and don the cape and cowl of Batman again."
+}, {
+  "director" : "Peter Jackson",
+  "genres" : [ "Adventure", "Drama", "Fantasy" ],
+  "name" : "The Lord of the Rings: The Two Towers",
+  "ranking" : 14,
+  "release_year" : 2002,
+  "synopsis" : "While Frodo and Sam edge closer to Mordor with the help of the shifty Gollum, the divided fellowship makes a stand against Sauron's new ally, Saruman, and his hordes of Isengard."
+}, {
+  "director" : "Quentin Tarantino",
+  "genres" : [ "Drama", "Western" ],
+  "name" : "Django Unchained",
+  "ranking" : 15,
+  "release_year" : 2012,
+  "synopsis" : "With the help of a German bounty-hunter, a freed slave sets out to rescue his wife from a brutal plantation owner in Mississippi."
+}, {
+  "director" : "Ridley Scott",
+  "genres" : [ "Action", "Adventure", "Drama" ],
+  "name" : "Gladiator",
+  "ranking" : 16,
+  "release_year" : 2000,
+  "synopsis" : "A former Roman General sets out to exact vengeance against the corrupt emperor who murdered his family and sent him into slavery."
+}, {
+  "director" : "Martin Scorsese",
+  "genres" : [ "Biography", "Comedy", "Crime" ],
+  "name" : "The Wolf of Wall Street",
+  "ranking" : 17,
+  "release_year" : 2013,
+  "synopsis" : "Based on the true story of Jordan Belfort, from his rise to a wealthy stock-broker living the high life to his fall involving crime, corruption and the federal government."
+}, {
+  "director" : "Quentin Tarantino",
+  "genres" : [ "Adventure", "Drama", "War" ],
+  "name" : "Inglourious Basterds",
+  "ranking" : 18,
+  "release_year" : 2009,
+  "synopsis" : "In Nazi-occupied France during World War II, a plan to assassinate Nazi leaders by a group of Jewish U.S. soldiers coincides with a theatre owner's vengeful plans for the same."
+}, {
+  "director" : "Jonathan Demme",
+  "genres" : [ "Crime", "Drama", "Horror" ],
+  "name" : "The Silence of the Lambs",
+  "ranking" : 19,
+  "release_year" : 1991,
+  "synopsis" : "A young F.B.I. cadet must receive the help of an incarcerated and manipulative cannibal killer to help catch another serial killer, a madman who skins his victims."
+}, {
+  "director" : "Christopher Nolan",
+  "genres" : [ "Action", "Crime", "Drama" ],
+  "name" : "Batman Begins",
+  "ranking" : 20,
+  "release_year" : 2005,
+  "synopsis" : "After witnessing his parents' death, billionaire Bruce Wayne learns the art of fighting to confront injustice. When he returns to Gotham as Batman, he must stop a secret society that intends to destroy the city."
+}, {
+  "director" : "Todd Phillips",
+  "genres" : [ "Crime", "Drama", "Thriller" ],
+  "name" : "Joker",
+  "ranking" : 21,
+  "release_year" : 2019,
+  "synopsis" : "Arthur Fleck, a party clown and a failed stand-up comedian, leads an impoverished life with his ailing mother. However, when society shuns him and brands him as a freak, he decides to embrace the life of chaos in Gotham City."
+}, {
+  "director" : "Martin Scorsese",
+  "genres" : [ "Drama", "Mystery", "Thriller" ],
+  "name" : "Shutter Island",
+  "ranking" : 22,
+  "release_year" : 2010,
+  "synopsis" : "Two US marshals are sent to a mental institution on an inhospitable island in order to investigate the disappearance of a patient."
+}, {
+  "director" : "Steven Spielberg",
+  "genres" : [ "Drama", "War" ],
+  "name" : "Saving Private Ryan",
+  "ranking" : 23,
+  "release_year" : 1998,
+  "synopsis" : "Following the Normandy Landings, a group of U.S. soldiers go behind enemy lines to retrieve a paratrooper whose comrades have been killed in action."
+}, {
+  "director" : "Steven Spielberg",
+  "genres" : [ "Biography", "Drama", "History" ],
+  "name" : "Schindler's List",
+  "ranking" : 24,
+  "release_year" : 1993,
+  "synopsis" : "In German-occupied Poland during World War II, industrialist Oskar Schindler gradually becomes concerned for his Jewish workforce after witnessing their persecution by the Nazis."
+}, {
+  "director" : "Christopher Nolan",
+  "genres" : [ "Drama", "Mystery", "Sci-Fi" ],
+  "name" : "The Prestige",
+  "ranking" : 25,
+  "release_year" : 2006,
+  "synopsis" : "Two friends and fellow magicians become bitter enemies after a sudden tragedy. As they devote themselves to this rivalry, they make sacrifices that bring them fame but, with terrible consequences."
+}, {
+  "director" : "George Lucas",
+  "genres" : [ "Action", "Adventure", "Fantasy" ],
+  "name" : "Star Wars: Episode IV - A New Hope",
+  "ranking" : 26,
+  "release_year" : 1977,
+  "synopsis" : "Luke Skywalker joins forces with a Jedi Knight, a cocky pilot, a Wookiee and two droids to save the galaxy from the Empire's world-destroying battle station, while also attempting to rescue Princess Leia from the mysterious Darth ..."
+}, {
+  "director" : "Frank Darabont",
+  "genres" : [ "Crime", "Drama", "Fantasy" ],
+  "name" : "The Green Mile",
+  "ranking" : 27,
+  "release_year" : 1999,
+  "synopsis" : "A death row guard learns that a gentle giant in his charge possesses a mysterious gift."
+}, {
+  "director" : "Joss Whedon",
+  "genres" : [ "Action", "Sci-Fi" ],
+  "name" : "The Avengers",
+  "ranking" : 28,
+  "release_year" : 2012,
+  "synopsis" : "Earth's mightiest heroes must come together and learn to fight as a team if they are going to stop the mischievous Loki and his alien army from enslaving humanity."
+}, {
+  "director" : "Martin Scorsese",
+  "genres" : [ "Crime", "Drama", "Thriller" ],
+  "name" : "The Departed",
+  "ranking" : 29,
+  "release_year" : 2006,
+  "synopsis" : "An undercover cop and a mole in the police attempt to identify each other while infiltrating an Irish gang in South Boston."
+}, {
+  "director" : "Irvin Kershner",
+  "genres" : [ "Action", "Adventure", "Fantasy" ],
+  "name" : "Star Wars: Episode V - The Empire Strikes Back",
+  "ranking" : 30,
+  "release_year" : 1980,
+  "synopsis" : "After the Empire overpowers the Rebel Alliance, Luke Skywalker begins training with Jedi Master Yoda, while Darth Vader and bounty hunter Boba Fett pursue his friends across the galaxy."
+}, {
+  "director" : "James Cameron",
+  "genres" : [ "Action", "Adventure", "Fantasy" ],
+  "name" : "Avatar",
+  "ranking" : 31,
+  "release_year" : 2009,
+  "synopsis" : "A paraplegic Marine dispatched to the moon Pandora on a unique mission becomes torn between following his orders and protecting the world he feels is his home."
+}, {
+  "director" : "Francis Ford Coppola",
+  "genres" : [ "Crime", "Drama" ],
+  "name" : "The Godfather Part II",
+  "ranking" : 32,
+  "release_year" : 1974,
+  "synopsis" : "The early life and career of Vito Corleone in 1920s New York City is portrayed, while his son, Michael, expands and tightens his grip on the family crime syndicate."
+}, {
+  "director" : "Robert Zemeckis",
+  "genres" : [ "Adventure", "Comedy", "Sci-Fi" ],
+  "name" : "Back to the Future",
+  "ranking" : 33,
+  "release_year" : 1985,
+  "synopsis" : "Marty McFly, a 17-year-old high school student, is accidentally sent 30 years into the past in a time-traveling DeLorean invented by his close friend, the maverick scientist Doc Brown."
+}, {
+  "director" : "Anthony Russo",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Avengers: Endgame",
+  "ranking" : 34,
+  "release_year" : 2019,
+  "synopsis" : "After the devastating events of Avengers: Infinity War (2018), the universe is in ruins. With the help of remaining allies, the Avengers assemble once more in order to reverse Thanos' actions and restore balance to the universe."
+}, {
+  "director" : "Christopher Nolan",
+  "genres" : [ "Drama", "Mystery", "Thriller" ],
+  "name" : "Memento",
+  "ranking" : 35,
+  "release_year" : 2000,
+  "synopsis" : "A former insurance investigator who now suffers from anterograde amnesia uses notes and tattoos to hunt down his wife's murderer."
+}, {
+  "director" : "James Cameron",
+  "genres" : [ "Drama", "Romance" ],
+  "name" : "Titanic",
+  "ranking" : 36,
+  "release_year" : 1997,
+  "synopsis" : "A seventeen-year-old aristocrat falls in love with a kind but poor artist aboard the luxurious, ill-fated R.M.S. Titanic."
+}, {
+  "director" : "Martin Scorsese",
+  "genres" : [ "Biography", "Crime", "Drama" ],
+  "name" : "GoodFellas",
+  "ranking" : 37,
+  "release_year" : 1990,
+  "synopsis" : "The story of Henry Hill and his life in the mafia, covering his relationship with his wife Karen and his mob partners Jimmy Conway and Tommy DeVito."
+}, {
+  "director" : "Peter Weir",
+  "genres" : [ "Comedy", "Drama" ],
+  "name" : "The Truman Show",
+  "ranking" : 38,
+  "release_year" : 1998,
+  "synopsis" : "An insurance salesman begins to suspect that his whole life is actually some sort of reality TV show."
+}, {
+  "director" : "Anthony Russo",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Avengers: Infinity War",
+  "ranking" : 39,
+  "release_year" : 2018,
+  "synopsis" : "The Avengers and their allies must be willing to sacrifice all in an attempt to defeat the powerful Thanos before his blitz of devastation and ruin puts an end to the universe."
+}, {
+  "director" : "James Gunn",
+  "genres" : [ "Action", "Adventure", "Comedy" ],
+  "name" : "Guardians of the Galaxy",
+  "ranking" : 40,
+  "release_year" : 2014,
+  "synopsis" : "A group of intergalactic criminals must pull together to stop a fanatical warrior with plans to purge the universe."
+}, {
+  "director" : "Luc Besson",
+  "genres" : [ "Action", "Crime", "Drama" ],
+  "name" : "Léon: The Professional",
+  "ranking" : 41,
+  "release_year" : 1994,
+  "synopsis" : "When her family is murdered by a group of corrupt officers led by the tyrannical Norman Stansfield, a young 12-year-old girl enlists the help of an Italian-American hitman to seek revenge."
+}, {
+  "director" : "Gore Verbinski",
+  "genres" : [ "Action", "Adventure", "Fantasy" ],
+  "name" : "Pirates of the Caribbean: The Curse of the Black Pearl",
+  "ranking" : 42,
+  "release_year" : 2003,
+  "synopsis" : "Blacksmith Will Turner teams up with eccentric pirate \"Captain\" Jack Sparrow to save Elizabeth Swann, the governor's daughter and his love, from Jack's former pirate allies, who are now undead."
+}, {
+  "director" : "Andrew Stanton",
+  "genres" : [ "Adventure", "Animation", "Family" ],
+  "name" : "WALL·E",
+  "ranking" : 43,
+  "release_year" : 2008,
+  "synopsis" : "A robot who is responsible for cleaning a waste-covered Earth meets another robot and falls in love with her. Together, they set out on a journey that will alter the fate of mankind."
+}, {
+  "director" : "Quentin Tarantino",
+  "genres" : [ "Action", "Crime", "Thriller" ],
+  "name" : "Kill Bill: Vol. 1",
+  "ranking" : 44,
+  "release_year" : 2003,
+  "synopsis" : "After waking from a four-year coma, a former assassin wreaks vengeance on the team of assassins who betrayed her."
+}, {
+  "director" : "James Cameron",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Terminator 2: Judgment Day",
+  "ranking" : 45,
+  "release_year" : 1991,
+  "synopsis" : "A cyborg from the future, identical to the one who failed to kill Sarah Connor, must now protect her ten-year-old son John from an even more advanced and powerful cyborg."
+}, {
+  "director" : "Sam Mendes",
+  "genres" : [ "Drama" ],
+  "name" : "American Beauty",
+  "ranking" : 46,
+  "release_year" : 1999,
+  "synopsis" : "A sexually frustrated suburban father has a mid-life crisis after becoming infatuated with his daughter's best friend."
+}, {
+  "director" : "Tony Kaye",
+  "genres" : [ "Crime", "Drama" ],
+  "name" : "American History X",
+  "ranking" : 47,
+  "release_year" : 1998,
+  "synopsis" : "A white supremacist is released from prison a changed man and hopes to prevent his younger brother from following in his footsteps."
+}, {
+  "director" : "Roger Allers",
+  "genres" : [ "Adventure", "Animation", "Drama" ],
+  "name" : "The Lion King",
+  "ranking" : 48,
+  "release_year" : 1994,
+  "synopsis" : "Lion prince Simba and his father are targeted by his bitter uncle, who wants to ascend the throne himself."
+}, {
+  "director" : "Tim Miller",
+  "genres" : [ "Action", "Comedy", "Sci-Fi" ],
+  "name" : "Deadpool",
+  "ranking" : 49,
+  "release_year" : 2016,
+  "synopsis" : "A wisecracking mercenary gets experimented on and becomes immortal yet hideously scarred, and sets out to track down the man who ruined his looks."
+}, {
+  "director" : "James McTeigue",
+  "genres" : [ "Action", "Drama", "Sci-Fi" ],
+  "name" : "V for Vendetta",
+  "ranking" : 50,
+  "release_year" : 2005,
+  "synopsis" : "In a future British dystopian society, a shadowy freedom fighter, known only by the alias of \"V\", plots to overthrow the tyrannical government - with the help of a young woman."
+}, {
+  "director" : "Bryan Singer",
+  "genres" : [ "Crime", "Drama", "Mystery" ],
+  "name" : "The Usual Suspects",
+  "ranking" : 51,
+  "release_year" : 1995,
+  "synopsis" : "The sole survivor of a pier shoot-out tells the story of how a notorious criminal influenced the events that began with five criminals meeting in a seemingly random police lineup."
+}, {
+  "director" : "Pete Docter",
+  "genres" : [ "Adventure", "Animation", "Comedy" ],
+  "name" : "Up",
+  "ranking" : 52,
+  "release_year" : 2009,
+  "synopsis" : "78-year-old Carl Fredricksen travels to South America in his house equipped with balloons, inadvertently taking a young stowaway."
+}, {
+  "director" : "Steven Spielberg",
+  "genres" : [ "Biography", "Crime", "Drama" ],
+  "name" : "Catch Me If You Can",
+  "ranking" : 53,
+  "release_year" : 2002,
+  "synopsis" : "Barely 17 yet, Frank is a skilled forger who has passed as a doctor, lawyer and pilot. FBI agent Carl becomes obsessed with tracking down the con man, who only revels in the pursuit."
+}, {
+  "director" : "Stanley Kubrick",
+  "genres" : [ "Drama", "Horror" ],
+  "name" : "The Shining",
+  "ranking" : 54,
+  "release_year" : 1980,
+  "synopsis" : "A family heads to an isolated hotel for the winter, where a sinister presence influences the father into violence. At the same time, his psychic son sees horrifying forebodings from both the past and the future."
+}, {
+  "director" : "Jon Favreau",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Iron Man",
+  "ranking" : 55,
+  "release_year" : 2008,
+  "synopsis" : "After being held captive in an Afghan cave, billionaire engineer Tony Stark creates a unique weaponized suit of armor to fight evil."
+}, {
+  "director" : "Gus Van Sant",
+  "genres" : [ "Drama", "Romance" ],
+  "name" : "Good Will Hunting",
+  "ranking" : 56,
+  "release_year" : 1997,
+  "synopsis" : "A therapist counsels Will Hunting, a janitor with a genius IQ."
+}, {
+  "director" : "Richard Marquand",
+  "genres" : [ "Action", "Adventure", "Fantasy" ],
+  "name" : "Star Wars: Episode VI - Return of the Jedi",
+  "ranking" : 57,
+  "release_year" : 1983,
+  "synopsis" : "After rescuing Han Solo from Jabba the Hutt, the Rebel Alliance attempts to destroy the second Death Star while Luke struggles to help Darth Vader back from the dark side."
+}, {
+  "director" : "Andrew Stanton",
+  "genres" : [ "Adventure", "Animation", "Comedy" ],
+  "name" : "Finding Nemo",
+  "ranking" : 58,
+  "release_year" : 2003,
+  "synopsis" : "After his son is captured in the Great Barrier Reef and taken to Sydney, a timid clownfish sets out on a journey to bring him home."
+}, {
+  "director" : "George Miller",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Mad Max: Fury Road",
+  "ranking" : 59,
+  "release_year" : 2015,
+  "synopsis" : "In a post-apocalyptic wasteland, a woman rebels against a tyrannical ruler in search for her homeland with the aid of a group of female prisoners, a psychotic worshipper and a drifter named Max."
+}, {
+  "director" : "Ethan Coen",
+  "genres" : [ "Crime", "Drama", "Thriller" ],
+  "name" : "No Country for Old Men",
+  "ranking" : 60,
+  "release_year" : 2007,
+  "synopsis" : "Violence and mayhem ensue after a hunter stumbles upon the aftermath of a drug deal gone wrong and over two million dollars in cash near the Rio Grande."
+}, {
+  "director" : "Michel Gondry",
+  "genres" : [ "Drama", "Romance", "Sci-Fi" ],
+  "name" : "Eternal Sunshine of the Spotless Mind",
+  "ranking" : 61,
+  "release_year" : 2004,
+  "synopsis" : "When their relationship turns sour, a couple undergoes a medical procedure to have each other erased from their memories forever."
+}, {
+  "director" : "Steven Spielberg",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Jurassic Park",
+  "ranking" : 62,
+  "release_year" : 1993,
+  "synopsis" : "An industrialist invites some experts to visit his theme park of cloned dinosaurs. After a power failure, the creatures run loose, putting everyone's lives, including his grandchildren's, in danger."
+}, {
+  "director" : "John Lasseter",
+  "genres" : [ "Adventure", "Animation", "Comedy" ],
+  "name" : "Toy Story",
+  "ranking" : 63,
+  "release_year" : 1995,
+  "synopsis" : "A cowboy doll is profoundly jealous when a new spaceman action figure supplants him as the top toy in a boy's bedroom. When circumstances separate them from their owner, the duo have to put aside their differences to return to him."
+}, {
+  "director" : "Quentin Tarantino",
+  "genres" : [ "Crime", "Thriller" ],
+  "name" : "Reservoir Dogs",
+  "ranking" : 64,
+  "release_year" : 1992,
+  "synopsis" : "When a simple jewelry heist goes horribly wrong, the surviving criminals begin to suspect that one of them is a police informant."
+}, {
+  "director" : "David Fincher",
+  "genres" : [ "Drama", "Mystery", "Thriller" ],
+  "name" : "Gone Girl",
+  "ranking" : 65,
+  "release_year" : 2014,
+  "synopsis" : "The husband of a missing woman becomes the main suspect in her disappearance."
+}, {
+  "director" : "Mel Gibson",
+  "genres" : [ "Biography", "Drama", "War" ],
+  "name" : "Braveheart",
+  "ranking" : 66,
+  "release_year" : 1995,
+  "synopsis" : "Scottish warrior William Wallace leads his countrymen in a rebellion to free his homeland from the tyranny of King Edward I of England."
+}, {
+  "director" : "Milos Forman",
+  "genres" : [ "Drama" ],
+  "name" : "One Flew Over the Cuckoo's Nest",
+  "ranking" : 67,
+  "release_year" : 1975,
+  "synopsis" : "A rebellious convict is sent to a psychiatric hospital for evaluation in 1963 Oregon, and encourages his docile companions to take more control of their lives and defy the tyrannical head nurse."
+}, {
+  "director" : "Bong Joon Ho",
+  "genres" : [ "Drama", "Thriller" ],
+  "name" : "Parasite",
+  "ranking" : 68,
+  "release_year" : 2019,
+  "synopsis" : "Greed and class discrimination threaten the newly formed symbiotic relationship between the wealthy Park family and the destitute Kim clan."
+}, {
+  "director" : "Damien Chazelle",
+  "genres" : [ "Drama", "Music" ],
+  "name" : "Whiplash",
+  "ranking" : 69,
+  "release_year" : 2014,
+  "synopsis" : "A promising young drummer enrolls at a cut-throat music conservatory where his dreams of greatness are mentored by an instructor who will stop at nothing to realize a student's potential."
+}, {
+  "director" : "M. Night Shyamalan",
+  "genres" : [ "Drama", "Mystery", "Thriller" ],
+  "name" : "The Sixth Sense",
+  "ranking" : 70,
+  "release_year" : 1999,
+  "synopsis" : "After being shot by a resentful former patient whom he failed to help, a Philadelphia child psychologist seeks redemption by treating a young boy with a disturbing secret."
+}, {
+  "director" : "Steven Spielberg",
+  "genres" : [ "Action", "Adventure" ],
+  "name" : "Raiders of the Lost Ark",
+  "ranking" : 71,
+  "release_year" : 1981,
+  "synopsis" : "In 1936, archaeologist Indiana Jones is tasked by Army Intelligence to help locate a legendary ancient power, the Ark of Covenant, before the Nazis get it first."
+}, {
+  "director" : "Gary Ross",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "The Hunger Games",
+  "ranking" : 72,
+  "release_year" : 2012,
+  "synopsis" : "Katniss Everdeen voluntarily takes her younger sister's place in the Hunger Games: a televised competition in which two teenagers from each of the twelve Districts of Panem are chosen at random to fight to the death."
+}, {
+  "director" : "Pete Docter",
+  "genres" : [ "Adventure", "Animation", "Comedy" ],
+  "name" : "Monsters, Inc.",
+  "ranking" : 73,
+  "release_year" : 2001,
+  "synopsis" : "In order to power the city, monsters have to scare children so that they scream. However, the children are toxic to the monsters, and after a child gets through, two monsters realize things may not be what they think."
+}, {
+  "director" : "Ridley Scott",
+  "genres" : [ "Horror", "Sci-Fi" ],
+  "name" : "Alien",
+  "ranking" : 74,
+  "release_year" : 1979,
+  "synopsis" : "After investigating a mysterious transmission of unknown origin, the crew of a commercial spacecraft encounters a deadly lifeform."
+}, {
+  "director" : "Ron Howard",
+  "genres" : [ "Biography", "Drama", "Mystery" ],
+  "name" : "A Beautiful Mind",
+  "ranking" : 75,
+  "release_year" : 2001,
+  "synopsis" : "A mathematical genius, John Nash made an astonishing discovery early in his career and stood on the brink of international acclaim. But the handsome and arrogant Nash soon found himself on a harrowing journey of self-discovery."
+}, {
+  "director" : "David Yates",
+  "genres" : [ "Adventure", "Family", "Fantasy" ],
+  "name" : "Harry Potter and the Deathly Hallows: Part 2",
+  "ranking" : 76,
+  "release_year" : 2011,
+  "synopsis" : "Harry, Ron and Hermione set out on a quest to eliminate the remaining horcruxes. On the other hand, the students and teachers must unite to defend Hogwarts against Lord Voldemort and his army."
+}, {
+  "director" : "Denis Villeneuve",
+  "genres" : [ "Action", "Adventure", "Drama" ],
+  "name" : "Dune: Part One",
+  "ranking" : 77,
+  "release_year" : 2021,
+  "synopsis" : "Paul Atreides arrives on Arrakis after his father accepts the stewardship of the dangerous planet. However, chaos ensues after a betrayal as forces clash to control melange, a precious resource."
+}, {
+  "director" : "John McTiernan",
+  "genres" : [ "Action", "Thriller" ],
+  "name" : "Die Hard",
+  "ranking" : 78,
+  "release_year" : 1988,
+  "synopsis" : "A New York City cop, John McClane, tries to save his estranged wife and several others taken hostage by terrorists during a Christmas Eve party at the Nakatomi Plaza Skyscraper in Los Angeles, California."
+}, {
+  "director" : "J.J. Abrams",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Star Wars: Episode VII - The Force Awakens",
+  "ranking" : 79,
+  "release_year" : 2015,
+  "synopsis" : "As a new threat to the galaxy rises, Rey, a desert scavenger, and Finn, an ex-stormtrooper, must join Han Solo and Chewbacca to search for the one hope of restoring peace."
+}, {
+  "director" : "Olivier Nakache",
+  "genres" : [ "Comedy", "Drama" ],
+  "name" : "The Intouchables",
+  "ranking" : 80,
+  "release_year" : 2011,
+  "synopsis" : "After he becomes a quadriplegic from a paragliding accident, an aristocrat hires a young man from the projects to be his caregiver."
+}, {
+  "director" : "Martin Scorsese",
+  "genres" : [ "Crime", "Drama" ],
+  "name" : "Taxi Driver",
+  "ranking" : 81,
+  "release_year" : 1976,
+  "synopsis" : "A mentally unstable veteran works as a nighttime taxi driver in New York City, where the perceived decadence and sleaze fuels his urge for violent action."
+}, {
+  "director" : "Christopher Nolan",
+  "genres" : [ "Biography", "Drama", "History" ],
+  "name" : "Oppenheimer",
+  "ranking" : 82,
+  "release_year" : 2023,
+  "synopsis" : "A dramatization of the life story of J. Robert Oppenheimer, the physicist who had a large hand in the development of the atomic bombs that brought an end to World War II."
+}, {
+  "director" : "Brian De Palma",
+  "genres" : [ "Crime", "Drama" ],
+  "name" : "Scarface",
+  "ranking" : 83,
+  "release_year" : 1983,
+  "synopsis" : "In the 1980s, a determined criminal-minded Cuban immigrant becomes the biggest drug smuggler in Miami, and is eventually undone by his own drug addiction."
+}, {
+  "director" : "Jon Watts",
+  "genres" : [ "Action", "Adventure", "Fantasy" ],
+  "name" : "Spider-Man: No Way Home",
+  "ranking" : 84,
+  "release_year" : 2021,
+  "synopsis" : "With Spider-Man's identity now revealed, Peter asks Doctor Strange for help. When a spell goes wrong, dangerous foes from other worlds start to appear."
+}, {
+  "director" : "Roman Polanski",
+  "genres" : [ "Biography", "Drama", "Music" ],
+  "name" : "The Pianist",
+  "ranking" : 85,
+  "release_year" : 2002,
+  "synopsis" : "During WWII, acclaimed Polish musician Wladyslaw faces various struggles as he loses contact with his family. As the situation worsens, he hides in the ruins of Warsaw in order to survive."
+}, {
+  "director" : "Ridley Scott",
+  "genres" : [ "Adventure", "Drama", "Sci-Fi" ],
+  "name" : "The Martian",
+  "ranking" : 86,
+  "release_year" : 2015,
+  "synopsis" : "An astronaut becomes stranded on Mars after his team assumes him dead, and must rely on his ingenuity to find a way to signal to Earth that he is alive and can survive until a potential rescue."
+}, {
+  "director" : "James Cameron",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "The Terminator",
+  "ranking" : 87,
+  "release_year" : 1984,
+  "synopsis" : "A cyborg assassin from the future attempts to find and kill a young woman who is destined to give birth to a warrior that will lead a resistance to save humankind from extinction."
+}, {
+  "director" : "Joss Whedon",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Avengers: Age of Ultron",
+  "ranking" : 88,
+  "release_year" : 2015,
+  "synopsis" : "When Tony Stark and Bruce Banner try to jump-start a dormant peacekeeping program called Ultron, things go horribly wrong and it's up to Earth's mightiest heroes to stop the villainous Ultron from enacting his terrible plan."
+}, {
+  "director" : "Sidney Lumet",
+  "genres" : [ "Crime", "Drama" ],
+  "name" : "12 Angry Men",
+  "ranking" : 89,
+  "release_year" : 1957,
+  "synopsis" : "The jury in a New York City murder trial is frustrated by a single member whose skeptical caution forces them to more carefully consider the evidence before jumping to a hasty verdict."
+}, {
+  "director" : "Guy Ritchie",
+  "genres" : [ "Comedy", "Crime" ],
+  "name" : "Snatch",
+  "ranking" : 90,
+  "release_year" : 2000,
+  "synopsis" : "Unscrupulous boxing promoters, violent bookmakers, a Russian gangster, incompetent amateur robbers and supposedly Jewish jewelers fight to track down a priceless stolen diamond."
+}, {
+  "director" : "Darren Aronofsky",
+  "genres" : [ "Drama" ],
+  "name" : "Requiem for a Dream",
+  "ranking" : 91,
+  "release_year" : 2000,
+  "synopsis" : "The drug-induced utopias of four Coney Island people are shattered when their addictions run deep."
+}, {
+  "director" : "Anthony Russo",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Captain America: The Winter Soldier",
+  "ranking" : 92,
+  "release_year" : 2014,
+  "synopsis" : "As Steve Rogers struggles to embrace his role in the modern world, he teams up with a fellow Avenger and S.H.I.E.L.D agent, Black Widow, to battle a new threat from history: an assassin known as the Winter Soldier."
+}, {
+  "director" : "Lee Unkrich",
+  "genres" : [ "Adventure", "Animation", "Comedy" ],
+  "name" : "Toy Story 3",
+  "ranking" : 93,
+  "release_year" : 2010,
+  "synopsis" : "The toys are mistakenly delivered to a day-care center instead of the attic right before Andy leaves for college, and it's up to Woody to convince the other toys that they weren't abandoned and to return home."
+}, {
+  "director" : "Wes Anderson",
+  "genres" : [ "Comedy", "Drama" ],
+  "name" : "The Grand Budapest Hotel",
+  "ranking" : 94,
+  "release_year" : 2014,
+  "synopsis" : "A writer encounters the owner of an aging high-class hotel, who tells him of his early years serving as a lobby boy in the hotel's glorious years under an exceptional concierge."
+}, {
+  "director" : "Joe Johnston",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Captain America: The First Avenger",
+  "ranking" : 95,
+  "release_year" : 2011,
+  "synopsis" : "Steve Rogers, a rejected military soldier, transforms into Captain America after taking a dose of a \"Super-Soldier serum\". But being Captain America comes at a price as he attempts to take down a warmonger and a terrorist organiza..."
+}, {
+  "director" : "Sam Raimi",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Spider-Man",
+  "ranking" : 96,
+  "release_year" : 2002,
+  "synopsis" : "After being bitten by a genetically-modified spider, a shy teenager gains spider-like abilities that he uses to fight injustice as a masked superhero and face a vengeful enemy."
+}, {
+  "director" : "Kenneth Branagh",
+  "genres" : [ "Action", "Fantasy" ],
+  "name" : "Thor",
+  "ranking" : 97,
+  "release_year" : 2011,
+  "synopsis" : "The powerful but arrogant god Thor is cast out of Asgard to live amongst humans in Midgard (Earth), where he soon becomes one of their finest defenders."
+}, {
+  "director" : "Shane Black",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Iron Man 3",
+  "ranking" : 98,
+  "release_year" : 2013,
+  "synopsis" : "When Tony Stark's world is torn apart by a formidable terrorist called the Mandarin, he starts an odyssey of rebuilding and retribution."
+}, {
+  "director" : "Hayao Miyazaki",
+  "genres" : [ "Adventure", "Animation", "Family" ],
+  "name" : "Spirited Away",
+  "ranking" : 99,
+  "release_year" : 2001,
+  "synopsis" : "During her family's move to the suburbs, a sullen 10-year-old girl wanders into a world ruled by gods, witches and spirits, and where humans are changed into beasts."
+}, {
+  "director" : "Quentin Tarantino",
+  "genres" : [ "Comedy", "Drama" ],
+  "name" : "Once Upon a Time... in Hollywood",
+  "ranking" : 100,
+  "release_year" : 2019,
+  "synopsis" : "As Hollywood's Golden Age is winding down during the summer of 1969, television actor Rick Dalton and his stunt double Cliff Booth endeavor to achieve lasting success in Hollywood while meeting several colorful characters along th..."
+}, {
+  "director" : "Chris Columbus",
+  "genres" : [ "Adventure", "Family", "Fantasy" ],
+  "name" : "Harry Potter and the Sorcerer's Stone",
+  "ranking" : 101,
+  "release_year" : 2001,
+  "synopsis" : "An orphaned boy enrolls in a school of wizardry, where he learns the truth about himself, his family and the terrible evil that haunts the magical world."
+}, {
+  "director" : "Alejandro G. Iñárritu",
+  "genres" : [ "Adventure", "Drama", "Western" ],
+  "name" : "The Revenant",
+  "ranking" : 102,
+  "release_year" : 2015,
+  "synopsis" : "A frontiersman on a fur trading expedition in the 1820s fights for survival after being mauled by a bear and left for dead by members of his own hunting team."
+}, {
+  "director" : "Brad Bird",
+  "genres" : [ "Adventure", "Animation", "Comedy" ],
+  "name" : "Ratatouille",
+  "ranking" : 103,
+  "release_year" : 2007,
+  "synopsis" : "A rat who can cook makes an unusual alliance with a young kitchen worker at a famous Paris restaurant."
+}, {
+  "director" : "Stanley Kubrick",
+  "genres" : [ "Crime", "Sci-Fi" ],
+  "name" : "A Clockwork Orange",
+  "ranking" : 104,
+  "release_year" : 1971,
+  "synopsis" : "Alex DeLarge and his droogs barbarize a decaying near-future."
+}, {
+  "director" : "Jon Favreau",
+  "genres" : [ "Action", "Sci-Fi" ],
+  "name" : "Iron Man 2",
+  "ranking" : 105,
+  "release_year" : 2010,
+  "synopsis" : "With the world now aware of his identity as Iron Man, Tony Stark must contend with both his declining health and a vengeful mad man with ties to his father's legacy."
+}, {
+  "director" : "Denis Villeneuve",
+  "genres" : [ "Crime", "Drama", "Mystery" ],
+  "name" : "Prisoners",
+  "ranking" : 106,
+  "release_year" : 2013,
+  "synopsis" : "A desperate father takes the law into his own hands after police fail to find two kidnapped girls."
+}, {
+  "director" : "Peter Jackson",
+  "genres" : [ "Adventure", "Fantasy" ],
+  "name" : "The Hobbit: An Unexpected Journey",
+  "ranking" : 107,
+  "release_year" : 2012,
+  "synopsis" : "A reluctant Hobbit, Bilbo Baggins, sets out to the Lonely Mountain with a spirited group of dwarves to reclaim their mountain home and the gold within it from the dragon Smaug."
+}, {
+  "director" : "Todd Phillips",
+  "genres" : [ "Comedy" ],
+  "name" : "The Hangover",
+  "ranking" : 108,
+  "release_year" : 2009,
+  "synopsis" : "Three buddies wake up from a bachelor party in Las Vegas with no memory of the previous night and the bachelor missing. They must make their way around the city in order to find their friend in time for his wedding."
+}, {
+  "director" : "Anthony Russo",
+  "genres" : [ "Action", "Sci-Fi" ],
+  "name" : "Captain America: Civil War",
+  "ranking" : 109,
+  "release_year" : 2016,
+  "synopsis" : "Political involvement in the Avengers' affairs causes a rift between Captain America and Iron Man."
+}, {
+  "director" : "George Lucas",
+  "genres" : [ "Action", "Adventure", "Fantasy" ],
+  "name" : "Star Wars: Episode I - The Phantom Menace",
+  "ranking" : 110,
+  "release_year" : 1999,
+  "synopsis" : "Two Jedi escape a hostile blockade to find allies and come across a young boy who may bring balance to the Force, but the long-dormant Sith resurface to claim their former glory."
+}, {
+  "director" : "James Mangold",
+  "genres" : [ "Action", "Drama", "Sci-Fi" ],
+  "name" : "Logan",
+  "ranking" : 111,
+  "release_year" : 2017,
+  "synopsis" : "In a future where mutants are nearly extinct, an elderly and weary Logan leads a quiet life. But when Laura, a mutant child pursued by scientists, comes to him for help, he must get her to safety."
+}, {
+  "director" : "Matt Reeves",
+  "genres" : [ "Action", "Crime", "Drama" ],
+  "name" : "The Batman",
+  "ranking" : 112,
+  "release_year" : 2022,
+  "synopsis" : "When a sadistic serial killer begins murdering key political figures in Gotham, the Batman is forced to investigate the city's hidden corruption and question his family's involvement."
+}, {
+  "director" : "George Lucas",
+  "genres" : [ "Action", "Adventure", "Fantasy" ],
+  "name" : "Star Wars: Episode III - Revenge of the Sith",
+  "ranking" : 113,
+  "release_year" : 2005,
+  "synopsis" : "As the Clone Wars nears its end, Obi-Wan Kenobi pursues a new threat, while Anakin Skywalker is lured by Chancellor Palpatine into a sinister plot for galactic domination."
+}, {
+  "director" : "Joel Coen",
+  "genres" : [ "Comedy", "Crime" ],
+  "name" : "The Big Lebowski",
+  "ranking" : 114,
+  "release_year" : 1998,
+  "synopsis" : "Jeff \"The Dude\" Lebowski, mistaken for a millionaire of the same name, seeks restitution for his ruined rug and enlists his bowling buddies to help get it."
+}, {
+  "director" : "Zack Snyder",
+  "genres" : [ "Action", "Drama" ],
+  "name" : "300",
+  "ranking" : 115,
+  "release_year" : 2006,
+  "synopsis" : "In the ancient battle of Thermopylae, King Leonidas and 300 Spartans fight against Xerxes and his massive Persian army."
+}, {
+  "director" : "Pete Docter",
+  "genres" : [ "Adventure", "Animation", "Comedy" ],
+  "name" : "Inside Out",
+  "ranking" : 116,
+  "release_year" : 2015,
+  "synopsis" : "After young Riley is uprooted from her Midwest life and moved to San Francisco, her emotions, Joy, Fear, Anger, Disgust, and Sadness, conflict on how best to navigate a new city, house, and school."
+}, {
+  "director" : "Danny Boyle",
+  "genres" : [ "Crime", "Drama", "Romance" ],
+  "name" : "Slumdog Millionaire",
+  "ranking" : 117,
+  "release_year" : 2008,
+  "synopsis" : "When a teenager from the slums of Mumbai is interrogated about his suspicious performance on a quiz show, he revisits various events from his past to explain how he knew all the answers."
+}, {
+  "director" : "Richard Kelly",
+  "genres" : [ "Drama", "Mystery", "Sci-Fi" ],
+  "name" : "Donnie Darko",
+  "ranking" : 118,
+  "release_year" : 2001,
+  "synopsis" : "After narrowly escaping a bizarre accident, a troubled teenager is plagued by visions of a man in a large rabbit suit who manipulates him to commit a series of crimes."
+}, {
+  "director" : "Ryan Coogler",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Black Panther",
+  "ranking" : 119,
+  "release_year" : 2018,
+  "synopsis" : "T'Challa, heir to the hidden but advanced kingdom of Wakanda, must step forward to lead his people into a new future and must confront a challenger from his country's past."
+}, {
+  "director" : "Alfonso Cuarón",
+  "genres" : [ "Drama", "Sci-Fi", "Thriller" ],
+  "name" : "Gravity",
+  "ranking" : 120,
+  "release_year" : 2013,
+  "synopsis" : "Dr Ryan Stone, an engineer on her first space mission, and Matt Kowalski, an astronaut on his final expedition, have to survive in space after they are hit by debris while spacewalking."
+}, {
+  "director" : "Brad Bird",
+  "genres" : [ "Action", "Adventure", "Animation" ],
+  "name" : "The Incredibles",
+  "ranking" : 121,
+  "release_year" : 2004,
+  "synopsis" : "While trying to lead a quiet suburban life, a family of undercover superheroes are forced into action to save the world."
+}, {
+  "director" : "Taika Waititi",
+  "genres" : [ "Action", "Adventure", "Comedy" ],
+  "name" : "Thor: Ragnarok",
+  "ranking" : 122,
+  "release_year" : 2017,
+  "synopsis" : "Imprisoned on the planet Sakaar, Thor must race against time to return to Asgard and stop Ragnarök, the destruction of his world, at the hands of the powerful and ruthless villain Hela."
+}, {
+  "director" : "Dean DeBlois",
+  "genres" : [ "Action", "Adventure", "Animation" ],
+  "name" : "How to Train Your Dragon",
+  "ranking" : 123,
+  "release_year" : 2010,
+  "synopsis" : "A hapless young Viking who aspires to hunt dragons becomes the unlikely friend of a young dragon himself, and learns there may be more to the creatures than he assumed."
+}, {
+  "director" : "Sergio Leone",
+  "genres" : [ "Adventure", "Drama", "Western" ],
+  "name" : "The Good, the Bad and the Ugly",
+  "ranking" : 124,
+  "release_year" : 1966,
+  "synopsis" : "A bounty-hunting scam joins two men in an uneasy alliance against a third in a race to find a fortune in gold buried in a remote cemetery."
+}, {
+  "director" : "Darren Aronofsky",
+  "genres" : [ "Drama", "Thriller" ],
+  "name" : "Black Swan",
+  "ranking" : 125,
+  "release_year" : 2010,
+  "synopsis" : "Nina is a talented but unstable ballerina on the verge of stardom. Pushed to the breaking point by her artistic director and a seductive rival, Nina's grip on reality slips, plunging her into a waking nightmare."
+}, {
+  "director" : "Ridley Scott",
+  "genres" : [ "Action", "Drama", "Sci-Fi" ],
+  "name" : "Blade Runner",
+  "ranking" : 126,
+  "release_year" : 1982,
+  "synopsis" : "A blade runner must pursue and terminate four replicants who stole a ship in space and have returned to Earth to find their creator."
+}, {
+  "director" : "Scott Derrickson",
+  "genres" : [ "Action", "Adventure", "Fantasy" ],
+  "name" : "Doctor Strange",
+  "ranking" : 127,
+  "release_year" : 2016,
+  "synopsis" : "While on a journey of physical and spiritual healing, a brilliant neurosurgeon is drawn into the world of the mystic arts."
+}, {
+  "director" : "Morten Tyldum",
+  "genres" : [ "Biography", "Drama", "Thriller" ],
+  "name" : "The Imitation Game",
+  "ranking" : 128,
+  "release_year" : 2014,
+  "synopsis" : "During World War II, the English mathematical genius Alan Turing tries to crack the German Enigma code with help from fellow mathematicians while attempting to come to terms with his troubled private life."
+}, {
+  "director" : "Francis Lawrence",
+  "genres" : [ "Drama", "Horror", "Sci-Fi" ],
+  "name" : "I Am Legend",
+  "ranking" : 129,
+  "release_year" : 2007,
+  "synopsis" : "Years after a plague kills most of humanity and transforms the rest into monsters, the sole survivor in New York City struggles valiantly to find a cure."
+}, {
+  "director" : "Rian Johnson",
+  "genres" : [ "Comedy", "Crime", "Drama" ],
+  "name" : "Knives Out",
+  "ranking" : 130,
+  "release_year" : 2019,
+  "synopsis" : "When renowned crime novelist Harlan Thrombey is found dead at his estate just after his 85th birthday, the inquisitive and debonair Detective Benoit Blanc is mysteriously enlisted to investigate."
+}, {
+  "director" : "Fernando Meirelles",
+  "genres" : [ "Crime", "Drama" ],
+  "name" : "City of God",
+  "ranking" : 131,
+  "release_year" : 2002,
+  "synopsis" : "In the slums of Rio, two kids' paths diverge as one struggles to become a photographer and the other a kingpin."
+}, {
+  "director" : "Quentin Tarantino",
+  "genres" : [ "Action", "Crime", "Thriller" ],
+  "name" : "Kill Bill: Vol. 2",
+  "ranking" : 132,
+  "release_year" : 2004,
+  "synopsis" : "The Bride continues her quest of vengeance against her former boss and lover Bill, the reclusive bouncer Budd, and the treacherous, one-eyed Elle."
+}, {
+  "director" : "Zack Snyder",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Man of Steel",
+  "ranking" : 133,
+  "release_year" : 2013,
+  "synopsis" : "An alien child is evacuated from his dying world and sent to Earth to live among humans. His peace is threatened when other survivors of his home planet invade Earth."
+}, {
+  "director" : "Steven Spielberg",
+  "genres" : [ "Action", "Adventure" ],
+  "name" : "Indiana Jones and the Last Crusade",
+  "ranking" : 134,
+  "release_year" : 1989,
+  "synopsis" : "In 1938, after his father goes missing while pursuing the Holy Grail, Indiana Jones finds himself up against the Nazis again to stop them from obtaining its powers."
+}, {
+  "director" : "Clint Eastwood",
+  "genres" : [ "Drama" ],
+  "name" : "Gran Torino",
+  "ranking" : 135,
+  "release_year" : 2008,
+  "synopsis" : "After a Hmong teenager tries to steal his prized 1972 Gran Torino, a disgruntled, prejudiced Korean War veteran seeks to redeem both the boy and himself."
+}, {
+  "director" : "Denis Villeneuve",
+  "genres" : [ "Drama", "Mystery", "Sci-Fi" ],
+  "name" : "Arrival",
+  "ranking" : 136,
+  "release_year" : 2016,
+  "synopsis" : "Linguist Louise Banks leads a team of investigators when gigantic spaceships touch down around the world. As nations teeter on the verge of global war, Banks and her crew must find a way to communicate with the extraterrestrial vi..."
+}, {
+  "director" : "Joseph Kosinski",
+  "genres" : [ "Action", "Drama" ],
+  "name" : "Top Gun: Maverick",
+  "ranking" : 137,
+  "release_year" : 2022,
+  "synopsis" : "The story involves Maverick confronting his past while training a group of younger Top Gun graduates, including the son of his deceased best friend, for a dangerous mission."
+}, {
+  "director" : "Stanley Kubrick",
+  "genres" : [ "Drama", "War" ],
+  "name" : "Full Metal Jacket",
+  "ranking" : 138,
+  "release_year" : 1987,
+  "synopsis" : "A pragmatic U.S. Marine observes the dehumanizing effects the Vietnam War has on his fellow recruits from their brutal boot camp training to the bloody street fighting in Hue."
+}, {
+  "director" : "James Cameron",
+  "genres" : [ "Action", "Adventure", "Horror" ],
+  "name" : "Aliens",
+  "ranking" : 139,
+  "release_year" : 1986,
+  "synopsis" : "Decades after surviving the Nostromo incident, Ellen Ripley is sent out to re-establish contact with a terraforming colony but finds herself battling the Alien Queen and her offspring."
+}, {
+  "director" : "Jean-Pierre Jeunet",
+  "genres" : [ "Comedy", "Romance" ],
+  "name" : "Amélie",
+  "ranking" : 140,
+  "release_year" : 2001,
+  "synopsis" : "Despite being caught in her imaginative world, young waitress Amelie decides to help people find happiness. Her quest to spread joy leads her on a journey during which she finds true love."
+}, {
+  "director" : "Mary Harron",
+  "genres" : [ "Crime", "Drama", "Horror" ],
+  "name" : "American Psycho",
+  "ranking" : 141,
+  "release_year" : 2000,
+  "synopsis" : "A wealthy New York City investment banking executive, Patrick Bateman, hides his alternate psychopathic ego from his co-workers and friends as he delves deeper into his violent, hedonistic fantasies."
+}, {
+  "director" : "James Gunn",
+  "genres" : [ "Action", "Adventure", "Comedy" ],
+  "name" : "Guardians of the Galaxy Vol. 2",
+  "ranking" : 142,
+  "release_year" : 2017,
+  "synopsis" : "The Guardians struggle to keep together as a team while dealing with their personal family issues, notably Star-Lord's encounter with his father, the ambitious celestial being Ego."
+}, {
+  "director" : "Chad Stahelski",
+  "genres" : [ "Action", "Crime", "Thriller" ],
+  "name" : "John Wick",
+  "ranking" : 143,
+  "release_year" : 2014,
+  "synopsis" : "John Wick is a former hitman grieving the loss of his true love. When his home is broken into, robbed, and his dog killed, he is forced to return to action to exact revenge."
+}, {
+  "director" : "Gore Verbinski",
+  "genres" : [ "Action", "Adventure", "Fantasy" ],
+  "name" : "Pirates of the Caribbean: Dead Man's Chest",
+  "ranking" : 144,
+  "release_year" : 2006,
+  "synopsis" : "Jack Sparrow races to recover the heart of Davy Jones to avoid enslaving his soul to Jones' service, as other friends and foes seek the heart for their own agenda as well."
+}, {
+  "director" : "Frank Miller",
+  "genres" : [ "Crime", "Thriller" ],
+  "name" : "Sin City",
+  "ranking" : 145,
+  "release_year" : 2005,
+  "synopsis" : "An exploration of the dark and miserable Basin City and three of its residents, all of whom are caught up in violent corruption."
+}, {
+  "director" : "George Lucas",
+  "genres" : [ "Action", "Adventure", "Fantasy" ],
+  "name" : "Star Wars: Episode II - Attack of the Clones",
+  "ranking" : 146,
+  "release_year" : 2002,
+  "synopsis" : "Ten years after initially meeting, Anakin Skywalker shares a forbidden romance with Padmé Amidala, while Obi-Wan Kenobi discovers a secret clone army crafted for the Jedi."
+}, {
+  "director" : "David Fincher",
+  "genres" : [ "Biography", "Drama" ],
+  "name" : "The Social Network",
+  "ranking" : 147,
+  "release_year" : 2010,
+  "synopsis" : "As Harvard student Mark Zuckerberg creates the social networking site that would become known as Facebook, he is sued by the twins who claimed he stole their idea and by the co-founder who was later squeezed out of the business."
+}, {
+  "director" : "Jordan Peele",
+  "genres" : [ "Horror", "Mystery", "Thriller" ],
+  "name" : "Get Out",
+  "ranking" : 148,
+  "release_year" : 2017,
+  "synopsis" : "A young African-American visits his white girlfriend's parents for the weekend, where his simmering uneasiness about their reception of him eventually reaches a boiling point."
+}, {
+  "director" : "Roberto Benigni",
+  "genres" : [ "Comedy", "Drama", "Romance" ],
+  "name" : "Life Is Beautiful",
+  "ranking" : 149,
+  "release_year" : 1997,
+  "synopsis" : "When an open-minded Jewish waiter and his son become victims of the Holocaust, he uses a perfect mixture of will, humor and imagination to protect his son from the dangers around their camp."
+}, {
+  "director" : "Andrew Adamson",
+  "genres" : [ "Adventure", "Animation", "Comedy" ],
+  "name" : "Shrek",
+  "ranking" : 150,
+  "release_year" : 2001,
+  "synopsis" : "A mean lord exiles fairytale creatures to the swamp of a grumpy ogre, who must go on a quest and rescue a princess for the lord in order to get his land back."
+}, {
+  "director" : "Christopher Nolan",
+  "genres" : [ "Action", "Drama", "History" ],
+  "name" : "Dunkirk",
+  "ranking" : 151,
+  "release_year" : 2017,
+  "synopsis" : "Allied soldiers from Belgium, the British Commonwealth and Empire, and France are surrounded by the German Army and evacuated during a fierce battle in World War II."
+}, {
+  "director" : "Doug Liman",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Edge of Tomorrow",
+  "ranking" : 152,
+  "release_year" : 2014,
+  "synopsis" : "A man fighting in a war against aliens must relive the same day every time he dies until he can find a way to stop their power source with the help of an elite soldier."
+}, {
+  "director" : "Michael Mann",
+  "genres" : [ "Action", "Crime", "Drama" ],
+  "name" : "Heat",
+  "ranking" : 153,
+  "release_year" : 1995,
+  "synopsis" : "A group of high-end professional thieves start to feel the heat from the LAPD when they unknowingly leave a verbal clue at their latest heist."
+}, {
+  "director" : "Jon Watts",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Spider-Man: Homecoming",
+  "ranking" : 154,
+  "release_year" : 2017,
+  "synopsis" : "Peter Parker tries to stop Adrian 'The Vulture' Toomes from selling weapons made with advanced Chitauri technology while trying to balance his life as an ordinary high school student."
+}, {
+  "director" : "Zack Snyder",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Batman v Superman: Dawn of Justice",
+  "ranking" : 155,
+  "release_year" : 2016,
+  "synopsis" : "Batman is manipulated by Lex Luthor to fear Superman. Superman´s existence is meanwhile dividing the world and he is framed for murder during an international crisis. The heroes clash and force the neutral Wonder Woman to reemerge."
+}, {
+  "director" : "Bryan Singer",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "X-Men: Days of Future Past",
+  "ranking" : 156,
+  "release_year" : 2014,
+  "synopsis" : "The X-Men send Wolverine to the past in a desperate effort to change history and prevent an event that results in doom for both humans and mutants."
+}, {
+  "director" : "Joel Coen",
+  "genres" : [ "Crime", "Drama", "Thriller" ],
+  "name" : "Fargo",
+  "ranking" : 157,
+  "release_year" : 1996,
+  "synopsis" : "Minnesota car salesman Jerry Lundegaard's inept crime falls apart due to his and his henchmen's bungling and the persistent police work of the quite pregnant Marge Gunderson."
+}, {
+  "director" : "Steve McQueen",
+  "genres" : [ "Biography", "Drama", "History" ],
+  "name" : "12 Years a Slave",
+  "ranking" : 158,
+  "release_year" : 2013,
+  "synopsis" : "In the antebellum United States, Solomon Northup, a free black man from upstate New York, is abducted and sold into slavery."
+}, {
+  "director" : "Alfred Hitchcock",
+  "genres" : [ "Drama", "Horror", "Mystery" ],
+  "name" : "Psycho",
+  "ranking" : 159,
+  "release_year" : 1960,
+  "synopsis" : "A secretary on the run for embezzlement takes refuge at a secluded California motel owned by a repressed man and his overbearing mother."
+}, {
+  "director" : "Bob Persichetti",
+  "genres" : [ "Action", "Adventure", "Animation" ],
+  "name" : "Spider-Man: Into the Spider-Verse",
+  "ranking" : 160,
+  "release_year" : 2018,
+  "synopsis" : "Teen Miles Morales becomes the Spider-Man of his universe and must join with five spider-powered individuals from other dimensions to stop a threat for all realities."
+}, {
+  "director" : "Stanley Kubrick",
+  "genres" : [ "Adventure", "Sci-Fi" ],
+  "name" : "2001: A Space Odyssey",
+  "ranking" : 161,
+  "release_year" : 1968,
+  "synopsis" : "When a mysterious artifact is uncovered on the Moon, a spacecraft manned by two humans and one supercomputer is sent to Jupiter to find its origins."
+}, {
+  "director" : "Marc Forster",
+  "genres" : [ "Action", "Adventure", "Horror" ],
+  "name" : "World War Z",
+  "ranking" : 162,
+  "release_year" : 2013,
+  "synopsis" : "Former United Nations employee Gerry Lane traverses the world in a race against time to stop a zombie pandemic that is toppling armies and governments and threatens to destroy humanity itself."
+}, {
+  "director" : "Sam Raimi",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Spider-Man 2",
+  "ranking" : 163,
+  "release_year" : 2004,
+  "synopsis" : "Peter Parker is beset with troubles in his failing personal life as he battles a former brilliant scientist named Otto Octavius."
+}, {
+  "director" : "Peyton Reed",
+  "genres" : [ "Action", "Comedy", "Sci-Fi" ],
+  "name" : "Ant-Man",
+  "ranking" : 164,
+  "release_year" : 2015,
+  "synopsis" : "Armed with a super-suit with the astonishing ability to shrink in scale but increase in strength, cat burglar Scott Lang must embrace his inner hero and help his mentor, Dr. Hank Pym, pull off a plan that will save the world."
+}, {
+  "director" : "Alan Taylor",
+  "genres" : [ "Action", "Adventure", "Fantasy" ],
+  "name" : "Thor: The Dark World",
+  "ranking" : 165,
+  "release_year" : 2013,
+  "synopsis" : "When the Dark Elves attempt to plunge the universe into darkness, Thor must embark on a perilous and personal journey that will reunite him with doctor Jane Foster."
+}, {
+  "director" : "Matthew Vaughn",
+  "genres" : [ "Action", "Adventure", "Comedy" ],
+  "name" : "Kingsman: The Secret Service",
+  "ranking" : 166,
+  "release_year" : 2014,
+  "synopsis" : "A spy organisation recruits a promising street kid into the agency's training program, while a global threat emerges from a twisted tech genius."
+}, {
+  "director" : "David O. Russell",
+  "genres" : [ "Comedy", "Drama", "Romance" ],
+  "name" : "Silver Linings Playbook",
+  "ranking" : 167,
+  "release_year" : 2012,
+  "synopsis" : "After a stint in a mental institution, former teacher Pat Solitano moves back in with his parents and tries to reconcile with his ex-wife. Things get more challenging when Pat meets Tiffany, a mysterious girl with problems of her ..."
+}, {
+  "director" : "Francis Lawrence",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "The Hunger Games: Catching Fire",
+  "ranking" : 168,
+  "release_year" : 2013,
+  "synopsis" : "Katniss Everdeen and Peeta Mellark become targets of the Capitol after their victory in the 74th Hunger Games sparks a rebellion in the Districts of Panem."
+}, {
+  "director" : "Sam Mendes",
+  "genres" : [ "Action", "Adventure", "Thriller" ],
+  "name" : "Skyfall",
+  "ranking" : 169,
+  "release_year" : 2012,
+  "synopsis" : "James Bond's loyalty to M is tested when her past comes back to haunt her. When MI6 comes under attack, 007 must track down and destroy the threat, no matter how personal the cost."
+}, {
+  "director" : "Francis Ford Coppola",
+  "genres" : [ "Drama", "Mystery", "War" ],
+  "name" : "Apocalypse Now",
+  "ranking" : 170,
+  "release_year" : 1979,
+  "synopsis" : "A U.S. Army officer serving in Vietnam is tasked with assassinating a renegade Special Forces Colonel who sees himself as a god."
+}, {
+  "director" : "Louis Leterrier",
+  "genres" : [ "Crime", "Mystery", "Thriller" ],
+  "name" : "Now You See Me",
+  "ranking" : 171,
+  "release_year" : 2013,
+  "synopsis" : "An FBI agent and an Interpol detective track a team of illusionists who pull off bank heists during their performances, and reward their audiences with the money."
+}, {
+  "director" : "Danny Boyle",
+  "genres" : [ "Crime", "Drama" ],
+  "name" : "Trainspotting",
+  "ranking" : 172,
+  "release_year" : 1996,
+  "synopsis" : "Renton, deeply immersed in the Edinburgh drug scene, tries to clean up and get out despite the allure of drugs and the influence of friends."
+}, {
+  "director" : "Sam Mendes",
+  "genres" : [ "Action", "Drama", "War" ],
+  "name" : "1917",
+  "ranking" : 173,
+  "release_year" : 2019,
+  "synopsis" : "April 6th, 1917. As an infantry battalion assembles to wage war deep in enemy territory, two soldiers are assigned to race against time and deliver a message that will stop 1,600 men from walking straight into a deadly trap."
+}, {
+  "director" : "Clint Eastwood",
+  "genres" : [ "Drama", "Sport" ],
+  "name" : "Million Dollar Baby",
+  "ranking" : 174,
+  "release_year" : 2004,
+  "synopsis" : "Frankie, an ill-tempered old coach, reluctantly agrees to train aspiring boxer Maggie. Impressed with her determination and talent, he helps her become the best and the two soon form a close bond."
+}, {
+  "director" : "Alfonso Cuarón",
+  "genres" : [ "Adventure", "Family", "Fantasy" ],
+  "name" : "Harry Potter and the Prisoner of Azkaban",
+  "ranking" : 175,
+  "release_year" : 2004,
+  "synopsis" : "Harry Potter, Ron and Hermione return to Hogwarts School of Witchcraft and Wizardry for their third year of study, where they delve into the mystery surrounding an escaped prisoner who poses a dangerous threat to the young wizard."
+}, {
+  "director" : "Chris Columbus",
+  "genres" : [ "Adventure", "Family", "Fantasy" ],
+  "name" : "Harry Potter and the Chamber of Secrets",
+  "ranking" : 176,
+  "release_year" : 2002,
+  "synopsis" : "Harry Potter lives his second year at Hogwarts with Ron and Hermione when a message on the wall announces that the legendary Chamber of Secrets has been opened. The trio soon realize that, to save the school, it will take a lot of..."
+}, {
+  "director" : "Matthew Vaughn",
+  "genres" : [ "Action", "Sci-Fi" ],
+  "name" : "X-Men: First Class",
+  "ranking" : 177,
+  "release_year" : 2011,
+  "synopsis" : "In the 1960s, superpowered humans Charles Xavier and Erik Lensherr work together to find others like them, but Erik's vengeful pursuit of an ambitious mutant who ruined his life causes a schism to divide them."
+}, {
+  "director" : "Marc Webb",
+  "genres" : [ "Action", "Sci-Fi" ],
+  "name" : "The Amazing Spider-Man",
+  "ranking" : 178,
+  "release_year" : 2012,
+  "synopsis" : "After Peter Parker is bitten by a genetically altered spider, he gains newfound, spider-like powers and ventures out to save the city from the machinations of a mysterious reptilian foe."
+}, {
+  "director" : "Nicolas Winding Refn",
+  "genres" : [ "Action", "Drama" ],
+  "name" : "Drive",
+  "ranking" : 179,
+  "release_year" : 2011,
+  "synopsis" : "A mysterious Hollywood action film stuntman gets in trouble with gangsters when he tries to help his neighbor's husband rob a pawn shop while serving as his getaway driver."
+}, {
+  "director" : "David Ayer",
+  "genres" : [ "Action", "Adventure", "Fantasy" ],
+  "name" : "Suicide Squad",
+  "ranking" : 180,
+  "release_year" : 2016,
+  "synopsis" : "A secret government agency recruits some of the most dangerous incarcerated super-villains to form a defensive task force. Their first mission: save the world from the apocalypse."
+}, {
+  "director" : "Damien Chazelle",
+  "genres" : [ "Comedy", "Drama", "Music" ],
+  "name" : "La La Land",
+  "ranking" : 181,
+  "release_year" : 2016,
+  "synopsis" : "When Sebastian, a pianist, and Mia, an actress, follow their passion and achieve success in their respective fields, they find themselves torn between their love for each other and their careers."
+}, {
+  "director" : "Gareth Edwards",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Rogue One: A Star Wars Story",
+  "ranking" : 182,
+  "release_year" : 2016,
+  "synopsis" : "In a time of conflict, a group of unlikely heroes band together on a mission to steal the plans to the Death Star, the Empire's ultimate weapon of destruction."
+}, {
+  "director" : "Peter Jackson",
+  "genres" : [ "Adventure", "Fantasy" ],
+  "name" : "The Hobbit: The Desolation of Smaug",
+  "ranking" : 183,
+  "release_year" : 2013,
+  "synopsis" : "The dwarves, along with Bilbo Baggins and Gandalf the Grey, continue their quest to reclaim the Lonely Mountain, their homeland, from the dragon Smaug."
+}, {
+  "director" : "Neill Blomkamp",
+  "genres" : [ "Action", "Sci-Fi", "Thriller" ],
+  "name" : "District 9",
+  "ranking" : 184,
+  "release_year" : 2009,
+  "synopsis" : "In a future Earth in which aliens are isolated in a remote ghetto, a government agent finds himself banished there."
+}, {
+  "director" : "Mike Newell",
+  "genres" : [ "Adventure", "Family", "Fantasy" ],
+  "name" : "Harry Potter and the Goblet of Fire",
+  "ranking" : 185,
+  "release_year" : 2005,
+  "synopsis" : "Harry Potter finds himself competing in a hazardous tournament between rival schools of magic, but he is distracted by recurring nightmares."
+}, {
+  "director" : "Denis Villeneuve",
+  "genres" : [ "Action", "Drama", "Mystery" ],
+  "name" : "Blade Runner 2049",
+  "ranking" : 186,
+  "release_year" : 2017,
+  "synopsis" : "Young Blade Runner K's discovery of a long-buried secret leads him to track down former Blade Runner Rick Deckard, who's been missing for thirty years."
+}, {
+  "director" : "Guillermo del Toro",
+  "genres" : [ "Drama", "Fantasy", "War" ],
+  "name" : "Pan's Labyrinth",
+  "ranking" : 187,
+  "release_year" : 2006,
+  "synopsis" : "In 1944 Spain, a girl is sent to live with her ruthless stepfather. During the night, she meets a fairy who takes her to an old faun. He tells her she's a princess, but must prove her royalty by surviving three gruesome tasks."
+}, {
+  "director" : "David Fincher",
+  "genres" : [ "Drama", "Fantasy", "Romance" ],
+  "name" : "The Curious Case of Benjamin Button",
+  "ranking" : 188,
+  "release_year" : 2008,
+  "synopsis" : "Benjamin Button, born in 1918 with the physical state of an elderly man, ages in reverse. He experiences love and break-ups, ecstasy and sorrow, and timelessness by the time he dies in 2003 as a baby."
+}, {
+  "director" : "Martin Campbell",
+  "genres" : [ "Action", "Adventure", "Thriller" ],
+  "name" : "Casino Royale",
+  "ranking" : 189,
+  "release_year" : 2006,
+  "synopsis" : "After earning a licence to kill, secret agent James Bond sets out on his first mission as 007. Bond must defeat a private banker funding terrorists in a high-stakes game of poker at Casino Royale, in Montenegro."
+}, {
+  "director" : "Gore Verbinski",
+  "genres" : [ "Action", "Adventure", "Fantasy" ],
+  "name" : "Pirates of the Caribbean: At World's End",
+  "ranking" : 190,
+  "release_year" : 2007,
+  "synopsis" : "Will Turner, Elizabeth Swann, Hector Barbossa, and the crew of the Black Pearl try and rescue Jack from davy jones locker and prepare to fight Lord Cutler Beckett, who controls Davy Jones and the Flying Dutchman."
+}, {
+  "director" : "David Leitch",
+  "genres" : [ "Action", "Adventure", "Comedy" ],
+  "name" : "Deadpool 2",
+  "ranking" : 191,
+  "release_year" : 2018,
+  "synopsis" : "Foul-mouthed mutant mercenary Wade Wilson (a.k.a. Deadpool) assembles a team of fellow mutant rogues to protect a young boy with abilities from the brutal, time-traveling cyborg Cable."
+}, {
+  "director" : "Chris Columbus",
+  "genres" : [ "Comedy", "Family" ],
+  "name" : "Home Alone",
+  "ranking" : 192,
+  "release_year" : 1990,
+  "synopsis" : "An eight-year-old troublemaker, mistakenly left home alone, must defend his home against a pair of burglars on Christmas Eve."
+}, {
+  "director" : "Harold Ramis",
+  "genres" : [ "Comedy", "Drama", "Fantasy" ],
+  "name" : "Groundhog Day",
+  "ranking" : 193,
+  "release_year" : 1993,
+  "synopsis" : "A narcissistic, self-centered weatherman finds himself in a time loop on Groundhog Day."
+}, {
+  "director" : "Patty Jenkins",
+  "genres" : [ "Action", "Adventure", "Fantasy" ],
+  "name" : "Wonder Woman",
+  "ranking" : 194,
+  "release_year" : 2017,
+  "synopsis" : "When a pilot crashes and tells of conflict in the outside world, Diana, an Amazonian warrior in training, leaves home to fight a war, discovering her full powers and true destiny."
+}, {
+  "director" : "Steven Spielberg",
+  "genres" : [ "Adventure", "Horror", "Thriller" ],
+  "name" : "Jaws",
+  "ranking" : 195,
+  "release_year" : 1975,
+  "synopsis" : "When a massive killer shark unleashes chaos on a beach community off Long Island, it's up to the local police chief, a marine biologist, and an old seafarer to hunt the beast down."
+}, {
+  "director" : "Tom Hooper",
+  "genres" : [ "Biography", "Drama", "History" ],
+  "name" : "The King's Speech",
+  "ranking" : 196,
+  "release_year" : 2010,
+  "synopsis" : "The story of King George VI, his unexpected ascension to the throne of the British Empire in 1936, and the speech therapist who helped the unsure monarch overcome his stammer."
+}, {
+  "director" : "Colin Trevorrow",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Jurassic World",
+  "ranking" : 197,
+  "release_year" : 2015,
+  "synopsis" : "A new theme park, built on the original site of Jurassic Park, creates a genetically modified hybrid dinosaur, the Indominus Rex, which escapes containment and goes on a killing spree."
+}, {
+  "director" : "Denis Villeneuve",
+  "genres" : [ "Action", "Adventure", "Drama" ],
+  "name" : "Dune: Part Two",
+  "ranking" : 198,
+  "release_year" : 2024,
+  "synopsis" : "Paul Atreides unites with the Fremen while on a warpath of revenge against the conspirators who destroyed his family. Facing a choice between the love of his life and the fate of the universe, he endeavors to prevent a terrible fu..."
+}, {
+  "director" : "Spike Jonze",
+  "genres" : [ "Drama", "Romance", "Sci-Fi" ],
+  "name" : "Her",
+  "ranking" : 199,
+  "release_year" : 2013,
+  "synopsis" : "In the near future, a lonely writer develops an unlikely relationship with an operating system designed to meet his every need."
+}, {
+  "director" : "Quentin Tarantino",
+  "genres" : [ "Crime", "Drama", "Mystery" ],
+  "name" : "The Hateful Eight",
+  "ranking" : 200,
+  "release_year" : 2015,
+  "synopsis" : "In the dead of a Wyoming winter, a bounty hunter and his prisoner find shelter in a cabin currently inhabited by a collection of nefarious characters."
+}, {
+  "director" : "Michael Bay",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Transformers",
+  "ranking" : 201,
+  "release_year" : 2007,
+  "synopsis" : "An ancient struggle between two Cybertronian races, the heroic Autobots and the evil Decepticons, comes to Earth, with a clue to the ultimate power held by a teenager."
+}, {
+  "director" : "Rian Johnson",
+  "genres" : [ "Action", "Adventure", "Fantasy" ],
+  "name" : "Star Wars: Episode VIII - The Last Jedi",
+  "ranking" : 202,
+  "release_year" : 2017,
+  "synopsis" : "Rey develops her abilities with the help of Luke Skywalker as the Resistance prepares for battle against the First Order."
+}, {
+  "director" : "Park Chan-wook",
+  "genres" : [ "Action", "Drama", "Mystery" ],
+  "name" : "Oldboy",
+  "ranking" : 203,
+  "release_year" : 2003,
+  "synopsis" : "After being kidnapped and imprisoned for fifteen years, Oh Dae-Su is released, only to find that he must track down his captor in five days."
+}, {
+  "director" : "Chris Buck",
+  "genres" : [ "Adventure", "Animation", "Comedy" ],
+  "name" : "Frozen",
+  "ranking" : 204,
+  "release_year" : 2013,
+  "synopsis" : "Fearless optimist Anna teams up with rugged mountain man Kristoff and his loyal reindeer Sven in an epic journey to find Anna's sister Elsa, whose icy powers have trapped the kingdom of Arendelle in eternal winter."
+}, {
+  "director" : "Seth MacFarlane",
+  "genres" : [ "Comedy" ],
+  "name" : "Ted",
+  "ranking" : 205,
+  "release_year" : 2012,
+  "synopsis" : "John Bennett, a man whose childhood wish of bringing his teddy bear to life came true, now must decide between keeping the relationship with the bear, Ted or his girlfriend, Lori."
+}, {
+  "director" : "Guy Ritchie",
+  "genres" : [ "Action", "Adventure", "Mystery" ],
+  "name" : "Sherlock Holmes",
+  "ranking" : 206,
+  "release_year" : 2009,
+  "synopsis" : "Detective Sherlock Holmes and his stalwart partner Watson engage in a battle of wits and brawn with a nemesis whose plot is a threat to all of England."
+}, {
+  "director" : "Paul Thomas Anderson",
+  "genres" : [ "Drama" ],
+  "name" : "There Will Be Blood",
+  "ranking" : 207,
+  "release_year" : 2007,
+  "synopsis" : "A story of family, religion, hatred, oil and madness, focusing on a turn-of-the-century prospector in the early days of the business."
+}, {
+  "director" : "Lee Unkrich",
+  "genres" : [ "Adventure", "Animation", "Drama" ],
+  "name" : "Coco",
+  "ranking" : 208,
+  "release_year" : 2017,
+  "synopsis" : "Aspiring musician Miguel, confronted with his family's ancestral ban on music, enters the Land of the Dead to find his great-great-grandfather, a legendary singer."
+}, {
+  "director" : "Ang Lee",
+  "genres" : [ "Adventure", "Drama", "Fantasy" ],
+  "name" : "Life of Pi",
+  "ranking" : 209,
+  "release_year" : 2012,
+  "synopsis" : "A young man who survives a disaster at sea is hurtled into an epic journey of adventure and discovery. While cast away, he forms an unexpected connection with another survivor: a fearsome Bengal tiger."
+}, {
+  "director" : "Ridley Scott",
+  "genres" : [ "Adventure", "Sci-Fi" ],
+  "name" : "Prometheus",
+  "ranking" : 210,
+  "release_year" : 2012,
+  "synopsis" : "Following clues to the origin of mankind, a team finds a structure on a distant moon, but they soon realize they are not alone."
+}, {
+  "director" : "Alejandro G. Iñárritu",
+  "genres" : [ "Comedy", "Drama" ],
+  "name" : "Birdman or (The Unexpected Virtue of Ignorance)",
+  "ranking" : 211,
+  "release_year" : 2014,
+  "synopsis" : "A washed-up superhero actor attempts to revive his fading career by writing, directing, and starring in a Broadway production."
+}, {
+  "director" : "David Yates",
+  "genres" : [ "Action", "Adventure", "Family" ],
+  "name" : "Harry Potter and the Order of the Phoenix",
+  "ranking" : 212,
+  "release_year" : 2007,
+  "synopsis" : "With their warning about Lord Voldemort's return scoffed at, Harry and Dumbledore are targeted by the Wizard authorities as an authoritarian bureaucrat slowly seizes power at Hogwarts."
+}, {
+  "director" : "Sam Raimi",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Spider-Man 3",
+  "ranking" : 213,
+  "release_year" : 2007,
+  "synopsis" : "A strange black entity from another world bonds with Peter Parker and causes inner turmoil as he contends with new villains, temptations, and revenge."
+}, {
+  "director" : "Sean Penn",
+  "genres" : [ "Adventure", "Biography", "Drama" ],
+  "name" : "Into the Wild",
+  "ranking" : 214,
+  "release_year" : 2007,
+  "synopsis" : "After graduating from Emory University, top student and athlete Christopher McCandless abandons his possessions, gives his entire $24,000 savings account to charity and hitchhikes to Alaska to live in the wilderness."
+}, {
+  "director" : "Andy Muschietti",
+  "genres" : [ "Horror" ],
+  "name" : "It",
+  "ranking" : 215,
+  "release_year" : 2017,
+  "synopsis" : "In the summer of 1989, a group of bullied kids band together to destroy a shape-shifting monster, which disguises itself as a clown and preys on the children of Derry, their small Maine town."
+}, {
+  "director" : "Greg Mottola",
+  "genres" : [ "Comedy" ],
+  "name" : "Superbad",
+  "ranking" : 216,
+  "release_year" : 2007,
+  "synopsis" : "Two co-dependent high school seniors are forced to deal with separation anxiety after their plan to stage a booze-soaked party goes awry."
+}, {
+  "director" : "Bryan Singer",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "X-Men",
+  "ranking" : 217,
+  "release_year" : 2000,
+  "synopsis" : "In a world where mutants (evolved super-powered humans) exist and are discriminated against, two groups form for an inevitable clash: the supremacist Brotherhood, and the pacifist X-Men."
+}, {
+  "director" : "Robert Zemeckis",
+  "genres" : [ "Adventure", "Drama", "Romance" ],
+  "name" : "Cast Away",
+  "ranking" : 218,
+  "release_year" : 2000,
+  "synopsis" : "A FedEx executive undergoes a physical and emotional transformation after crash landing on a deserted island."
+}, {
+  "director" : "John G. Avildsen",
+  "genres" : [ "Drama", "Sport" ],
+  "name" : "Rocky",
+  "ranking" : 219,
+  "release_year" : 1976,
+  "synopsis" : "A small-time Philadelphia boxer gets a supremely rare chance to fight the world heavyweight champion in a bout in which he strives to go the distance for his self-respect."
+}, {
+  "director" : "Nick Cassavetes",
+  "genres" : [ "Drama", "Romance" ],
+  "name" : "The Notebook",
+  "ranking" : 220,
+  "release_year" : 2004,
+  "synopsis" : "An elderly man reads to a woman with dementia the story of two young lovers whose romance is threatened by the difference in their respective social classes."
+}, {
+  "director" : "Paul Greengrass",
+  "genres" : [ "Action", "Mystery", "Thriller" ],
+  "name" : "The Bourne Ultimatum",
+  "ranking" : 221,
+  "release_year" : 2007,
+  "synopsis" : "Jason Bourne dodges a ruthless C.I.A. official and his Agents from a new assassination program while searching for the origins of his life as a trained killer."
+}, {
+  "director" : "Christopher Nolan",
+  "genres" : [ "Action", "Sci-Fi", "Thriller" ],
+  "name" : "Tenet",
+  "ranking" : 222,
+  "release_year" : 2020,
+  "synopsis" : "Armed with only the word \"Tenet,\" and fighting for the survival of the entire world, CIA operative, The Protagonist, journeys through a twilight world of international espionage on a global mission that unfolds beyond real time."
+}, {
+  "director" : "Edgar Wright",
+  "genres" : [ "Action", "Crime", "Drama" ],
+  "name" : "Baby Driver",
+  "ranking" : 223,
+  "release_year" : 2017,
+  "synopsis" : "Coerced into working for a crime boss, a young getaway driver must face the music when a doomed heist threatens his life, love, and freedom."
+}, {
+  "director" : "Peter Farrelly",
+  "genres" : [ "Biography", "Comedy", "Drama" ],
+  "name" : "Green Book",
+  "ranking" : 224,
+  "release_year" : 2018,
+  "synopsis" : "A working-class Italian-American bouncer becomes the driver for an African-American classical pianist on a tour of venues through the 1960s American South."
+}, {
+  "director" : "Terry Gilliam",
+  "genres" : [ "Mystery", "Sci-Fi", "Thriller" ],
+  "name" : "12 Monkeys",
+  "ranking" : 225,
+  "release_year" : 1995,
+  "synopsis" : "In a future world devastated by disease, a convict is sent back in time to gather information about the man-made virus that wiped out most of the human population on the planet."
+}, {
+  "director" : "Mel Gibson",
+  "genres" : [ "Biography", "Drama", "History" ],
+  "name" : "Hacksaw Ridge",
+  "ranking" : 226,
+  "release_year" : 2016,
+  "synopsis" : "World War II American Army Medic Desmond T. Doss, serving during the Battle of Okinawa, refuses to kill people and becomes the first man in American history to receive the Medal of Honor without firing a shot."
+}, {
+  "director" : "Steven Soderbergh",
+  "genres" : [ "Crime", "Thriller" ],
+  "name" : "Ocean's Eleven",
+  "ranking" : 227,
+  "release_year" : 2001,
+  "synopsis" : "Danny Ocean, a gangster, rounds up a gang of associates to stage a sophisticated and elaborate casino heist which involves robbing three Las Vegas casinos simultaneously during a popular boxing event."
+}, {
+  "director" : "Pierre Morel",
+  "genres" : [ "Action", "Crime", "Thriller" ],
+  "name" : "Taken",
+  "ranking" : 228,
+  "release_year" : 2008,
+  "synopsis" : "A retired CIA agent travels across Europe and relies on his old skills to save his estranged daughter, who has been kidnapped while on a trip to Paris."
+}, {
+  "director" : "David Fincher",
+  "genres" : [ "Crime", "Drama", "Mystery" ],
+  "name" : "Zodiac",
+  "ranking" : 229,
+  "release_year" : 2007,
+  "synopsis" : "Between 1968 and 1983, a San Francisco cartoonist becomes an amateur detective obsessed with tracking down the Zodiac Killer, an unidentified individual who terrorizes Northern California with a killing spree."
+}, {
+  "director" : "Lana Wachowski",
+  "genres" : [ "Action", "Sci-Fi" ],
+  "name" : "The Matrix Reloaded",
+  "ranking" : 230,
+  "release_year" : 2003,
+  "synopsis" : "Freedom fighters Neo, Trinity and Morpheus continue to lead the revolt against the Machine Army, unleashing their arsenal of extraordinary skills and weaponry against the systematic forces of repression and exploitation."
+}, {
+  "director" : "Adam McKay",
+  "genres" : [ "Comedy", "Drama", "Sci-Fi" ],
+  "name" : "Don't Look Up",
+  "ranking" : 231,
+  "release_year" : 2021,
+  "synopsis" : "Two low-level astronomers must go on a giant media tour to warn humankind of an approaching comet that will destroy planet Earth."
+}, {
+  "director" : "John Lasseter",
+  "genres" : [ "Adventure", "Animation", "Comedy" ],
+  "name" : "Toy Story 2",
+  "ranking" : 232,
+  "release_year" : 1999,
+  "synopsis" : "When Woody is stolen by a toy collector, Buzz and his friends set out on a rescue mission to save Woody before he becomes a museum toy property with his roundup gang Jessie, Prospector, and Bullseye."
+}, {
+  "director" : "Ruben Fleischer",
+  "genres" : [ "Action", "Comedy", "Horror" ],
+  "name" : "Zombieland",
+  "ranking" : 233,
+  "release_year" : 2009,
+  "synopsis" : "A shy student trying to reach his family in Ohio, a gun-toting bruiser in search of the last Twinkie and a pair of sisters striving to get to an amusement park join forces in a trek across a zombie-filled America."
+}, {
+  "director" : "Dan Gilroy",
+  "genres" : [ "Crime", "Drama", "Thriller" ],
+  "name" : "Nightcrawler",
+  "ranking" : 234,
+  "release_year" : 2014,
+  "synopsis" : "A petty thief desperate for work muscles into the world of crime journalism and becomes the star of his own story as he blurs the line between observer and participant."
+}, {
+  "director" : "Ben Affleck",
+  "genres" : [ "Biography", "Drama", "History" ],
+  "name" : "Argo",
+  "ranking" : 235,
+  "release_year" : 2012,
+  "synopsis" : "Acting under the cover of a Hollywood producer scouting a location for a science fiction film, a CIA agent launches a dangerous operation to rescue six Americans in Tehran during the U.S. hostage crisis in Iran in 1979."
+}, {
+  "director" : "Greta Gerwig",
+  "genres" : [ "Adventure", "Comedy", "Fantasy" ],
+  "name" : "Barbie",
+  "ranking" : 236,
+  "release_year" : 2023,
+  "synopsis" : "Barbie and Ken are having the time of their lives in the seemingly perfect world of Barbie Land. However, when they get a chance to go to the outside world, they soon discover the joys and perils of living among regular humans."
+}, {
+  "director" : "Barry Sonnenfeld",
+  "genres" : [ "Action", "Adventure", "Comedy" ],
+  "name" : "Men in Black",
+  "ranking" : 237,
+  "release_year" : 1997,
+  "synopsis" : "James, an NYC cop, is hired by Agent K of a secret government agency that monitors extraterrestrial life on Earth. Together, they must recover an item that has been stolen by an intergalactic villain."
+}, {
+  "director" : "David Yates",
+  "genres" : [ "Adventure", "Family", "Fantasy" ],
+  "name" : "Harry Potter and the Deathly Hallows: Part 1",
+  "ranking" : 238,
+  "release_year" : 2010,
+  "synopsis" : "Harry Potter is tasked with the dangerous and seemingly impossible task of locating and destroying Voldemort's remaining Horcruxes. Harry must rely on Ron and Hermione more than ever, but dark forces threaten to tear them apart."
+}, {
+  "director" : "Curtis Hanson",
+  "genres" : [ "Crime", "Drama", "Mystery" ],
+  "name" : "L.A. Confidential",
+  "ranking" : 239,
+  "release_year" : 1997,
+  "synopsis" : "As corruption grows in 1950s Los Angeles, three policemen - one strait-laced, one brutal, and one sleazy - investigate a series of murders with their own brand of justice."
+}, {
+  "director" : "David Yates",
+  "genres" : [ "Action", "Adventure", "Family" ],
+  "name" : "Harry Potter and the Half-Blood Prince",
+  "ranking" : 240,
+  "release_year" : 2009,
+  "synopsis" : "As Harry Potter begins his sixth year at Hogwarts, he discovers an old book marked as \"the property of the Half-Blood Prince\" and begins to learn more about Lord Voldemort's dark past."
+}, {
+  "director" : "Anna Boden",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Captain Marvel",
+  "ranking" : 241,
+  "release_year" : 2019,
+  "synopsis" : "Carol Danvers becomes one of the universe's most powerful heroes when Earth is caught in the middle of a galactic war between two alien races."
+}, {
+  "director" : "John Krasinski",
+  "genres" : [ "Drama", "Horror", "Sci-Fi" ],
+  "name" : "A Quiet Place",
+  "ranking" : 242,
+  "release_year" : 2018,
+  "synopsis" : "A family struggles for survival in a world invaded by blind alien creatures with ultra-sensitive hearing."
+}, {
+  "director" : "Michael Curtiz",
+  "genres" : [ "Drama", "Romance", "War" ],
+  "name" : "Casablanca",
+  "ranking" : 243,
+  "release_year" : 1942,
+  "synopsis" : "A cynical expatriate American cafe owner struggles to decide whether or not to help his former lover and her fugitive husband escape the Nazis in French Morocco."
+}, {
+  "director" : "Guy Ritchie",
+  "genres" : [ "Comedy", "Crime" ],
+  "name" : "Lock, Stock and Two Smoking Barrels",
+  "ranking" : 244,
+  "release_year" : 1998,
+  "synopsis" : "When four small-time criminals lose a rigged poker game against a London kingpin, he gives them one week to settle their enormous debt."
+}, {
+  "director" : "Peter Weir",
+  "genres" : [ "Comedy", "Drama" ],
+  "name" : "Dead Poets Society",
+  "ranking" : 245,
+  "release_year" : 1989,
+  "synopsis" : "Maverick teacher John Keating returns in 1959 to the prestigious New England boys' boarding school where he was once a star student, using poetry to embolden his pupils to new heights of self-expression."
+}, {
+  "director" : "Neil Burger",
+  "genres" : [ "Sci-Fi", "Thriller" ],
+  "name" : "Limitless",
+  "ranking" : 246,
+  "release_year" : 2011,
+  "synopsis" : "A mysterious pill that enables the user to access 100% of his brain's abilities transforms a struggling writer into a financial wizard, but it also puts him in a new world with many dangers."
+}, {
+  "director" : "Roland Emmerich",
+  "genres" : [ "Action", "Adventure", "Sci-Fi" ],
+  "name" : "Independence Day",
+  "ranking" : 247,
+  "release_year" : 1996,
+  "synopsis" : "The aliens are coming and their goal is to invade and destroy Earth. Fighting superior technology, mankind's best weapon is the will to survive."
+}, {
+  "director" : "Phil Lord",
+  "genres" : [ "Action", "Comedy", "Crime" ],
+  "name" : "21 Jump Street",
+  "ranking" : 248,
+  "release_year" : 2012,
+  "synopsis" : "A pair of underachieving cops are sent back to a local high school to blend in and bring down a synthetic drug ring."
+}, {
+  "director" : "Bryan Singer",
+  "genres" : [ "Biography", "Drama", "Music" ],
+  "name" : "Bohemian Rhapsody",
+  "ranking" : 249,
+  "release_year" : 2018,
+  "synopsis" : "With his impeccable vocal abilities, Freddie Mercury and his rock band, Queen, achieve superstardom. However, amidst his skyrocketing success, he grapples with his ego, sexuality and a fatal illness."
+}, {
+  "director" : "Baz Luhrmann",
+  "genres" : [ "Drama", "Romance" ],
+  "name" : "The Great Gatsby",
+  "ranking" : 250,
+  "release_year" : 2013,
+  "synopsis" : "A writer and wall street trader, Nick Carraway, finds himself drawn to the past and lifestyle of his mysterious millionaire neighbor, Jay Gatsby, amid the riotous parties of the Jazz Age."
+} ]
