@@ -6,12 +6,14 @@ import lombok.extern.slf4j.Slf4j;
 import my.javacraft.elastic.app.Application;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
+import org.springframework.test.context.ContextConfiguration;
 
 @CucumberContextConfiguration
 @SpringBootTest(
         classes = Application.class,
         webEnvironment = WebEnvironment.RANDOM_PORT
 )
+@ContextConfiguration(initializers = ElasticsearchContainerInitializer.class)
 @Slf4j
 public class CucumberSpringConfiguration {
 
