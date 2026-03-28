@@ -26,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -66,14 +67,94 @@ class SearchServiceTest {
     }
 
     @Test
-    void testWildcardSearch_fallsBackToSynopsisWhenCategoryNotInMetadata() throws IOException {
+    void testWildcardSearch_noQueryBuiltWhenCategoryNotInMetadata() throws IOException {
         when(metadataService.getContentCategoryMetadata()).thenReturn(Collections.emptySet());
-        when(wildcardFactory.createQuery(any(), any())).thenReturn(mock(Query.class));
         stubEmptySearchResponse();
 
         searchService.wildcardSearch(request("unknown", "test"));
 
-        verify(wildcardFactory, times(1)).createQuery(eq("synopsis"), eq("test"));
+        verify(wildcardFactory, never()).createQuery(any(), any());
+    }
+
+    // --- fuzzySearch field resolution ---
+
+    @Test
+    void testFuzzySearch_usesMetadataFieldsForMatchedCategory() throws IOException {
+        ContentCategoryMetadata metadata = new ContentCategoryMetadata(
+                ContentCategory.BOOKS, List.of("synopsis", "title"));
+        when(metadataService.getContentCategoryMetadata()).thenReturn(Set.of(metadata));
+        when(fuzzyFactory.createQuery(any(), any())).thenReturn(mock(Query.class));
+        stubEmptySearchResponse();
+
+        searchService.fuzzySearch(request("books", "frankenstein"));
+
+        verify(fuzzyFactory).createQuery(eq("synopsis"), eq("frankenstein"));
+        verify(fuzzyFactory).createQuery(eq("title"),    eq("frankenstein"));
+        verify(fuzzyFactory, times(2)).createQuery(any(), eq("frankenstein"));
+    }
+
+    @Test
+    void testFuzzySearch_noQueryBuiltWhenCategoryNotInMetadata() throws IOException {
+        when(metadataService.getContentCategoryMetadata()).thenReturn(Collections.emptySet());
+        stubEmptySearchResponse();
+
+        searchService.fuzzySearch(request("unknown", "test"));
+
+        verify(fuzzyFactory, never()).createQuery(any(), any());
+    }
+
+    // --- intervalSearch field resolution ---
+
+    @Test
+    void testIntervalSearch_usesMetadataFieldsForMatchedCategory() throws IOException {
+        ContentCategoryMetadata metadata = new ContentCategoryMetadata(
+                ContentCategory.BOOKS, List.of("synopsis", "title"));
+        when(metadataService.getContentCategoryMetadata()).thenReturn(Set.of(metadata));
+        when(intervalFactory.createQuery(any(), any())).thenReturn(mock(Query.class));
+        stubEmptySearchResponse();
+
+        searchService.intervalSearch(request("books", "victor frankenstein"));
+
+        verify(intervalFactory).createQuery(eq("synopsis"), eq("victor frankenstein"));
+        verify(intervalFactory).createQuery(eq("title"),    eq("victor frankenstein"));
+        verify(intervalFactory, times(2)).createQuery(any(), eq("victor frankenstein"));
+    }
+
+    @Test
+    void testIntervalSearch_noQueryBuiltWhenCategoryNotInMetadata() throws IOException {
+        when(metadataService.getContentCategoryMetadata()).thenReturn(Collections.emptySet());
+        stubEmptySearchResponse();
+
+        searchService.intervalSearch(request("unknown", "test"));
+
+        verify(intervalFactory, never()).createQuery(any(), any());
+    }
+
+    // --- spanSearch field resolution ---
+
+    @Test
+    void testSpanSearch_usesMetadataFieldsForMatchedCategory() throws IOException {
+        ContentCategoryMetadata metadata = new ContentCategoryMetadata(
+                ContentCategory.BOOKS, List.of("synopsis", "title"));
+        when(metadataService.getContentCategoryMetadata()).thenReturn(Set.of(metadata));
+        when(spanFactory.createQuery(any(), any())).thenReturn(mock(Query.class));
+        stubEmptySearchResponse();
+
+        searchService.spanSearch(request("books", "victor frankenstein"));
+
+        verify(spanFactory).createQuery(eq("synopsis"), eq("victor frankenstein"));
+        verify(spanFactory).createQuery(eq("title"),    eq("victor frankenstein"));
+        verify(spanFactory, times(2)).createQuery(any(), eq("victor frankenstein"));
+    }
+
+    @Test
+    void testSpanSearch_noQueryBuiltWhenCategoryNotInMetadata() throws IOException {
+        when(metadataService.getContentCategoryMetadata()).thenReturn(Collections.emptySet());
+        stubEmptySearchResponse();
+
+        searchService.spanSearch(request("unknown", "test"));
+
+        verify(spanFactory, never()).createQuery(any(), any());
     }
 
     // --- helpers ---

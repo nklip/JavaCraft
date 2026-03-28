@@ -37,8 +37,6 @@ public class SearchService {
     // A value greater than 1.0 increases the relevance score.
     public static final Float NEUTRAL_VALUE = 1f;
 
-    private static final String SYNOPSIS = "synopsis";
-
     private final ElasticsearchClient esClient;
     private final MetadataService metadataService;
     private final WildcardFactory wildcardFactory;
@@ -74,57 +72,63 @@ public class SearchService {
                 .filter(m -> m.contentCategory() == category)
                 .findFirst()
                 .map(ContentCategoryMetadata::searchFields)
-                .orElse(List.of(SYNOPSIS));
+                .orElse(Collections.emptyList());
     }
 
     /**
      * The fuzzy query is an expensive query due to the nature of how it was implemented.
      * Few other expensive queries are the range, prefix, fuzzy, regex, and join queries as well as others.
+     * <p>
+     * Search fields are resolved from {@code metadata.json} for the requested category.
      */
     public List<Object> fuzzySearch(ContentSearchRequest contentSearchRequest) throws IOException, ElasticsearchException {
-        Query fuzzyQuery = fuzzyFactory.createQuery(SYNOPSIS, contentSearchRequest.getPattern());
+        List<String> fields = resolveSearchFields(ContentCategory.valueByName(contentSearchRequest.getType()));
 
-        SearchRequest searchRequest = SearchRequest.of(r -> r
+        BoolQuery.Builder boolBuilder = new BoolQuery.Builder().minimumShouldMatch("1");
+        fields.forEach(field -> boolBuilder.should(fuzzyFactory.createQuery(field, contentSearchRequest.getPattern())));
+
+        SearchRequest searchRequest = new SearchRequest.Builder()
                 .index(contentSearchRequest.getType())
-                .query(q -> q
-                        .bool(b -> b
-                                .must(fuzzyQuery)
-                        )
-                )
-        );
+                .query(q -> q.bool(boolBuilder.build()))
+                .build();
 
         SearchResponse<Object> searchResponse = esClient.search(searchRequest, Object.class);
-
         return searchResponse.hits().hits().stream().map(Hit::source).collect(Collectors.toList());
     }
 
+    /**
+     * Search fields are resolved from {@code metadata.json} for the requested category.
+     */
     public List<Object> intervalSearch(ContentSearchRequest contentSearchRequest) throws IOException, ElasticsearchException {
-        Query intervalsQuery = intervalFactory.createQuery(SYNOPSIS, contentSearchRequest.getPattern());
+        List<String> fields = resolveSearchFields(ContentCategory.valueByName(contentSearchRequest.getType()));
 
-        SearchRequest searchRequest = SearchRequest.of(sr -> sr
-                .query(intervalsQuery)
-        );
+        BoolQuery.Builder boolBuilder = new BoolQuery.Builder().minimumShouldMatch("1");
+        fields.forEach(field -> boolBuilder.should(intervalFactory.createQuery(field, contentSearchRequest.getPattern())));
+
+        SearchRequest searchRequest = new SearchRequest.Builder()
+                .index(contentSearchRequest.getType())
+                .query(q -> q.bool(boolBuilder.build()))
+                .build();
 
         SearchResponse<Object> searchResponse = esClient.search(searchRequest, Object.class);
-
         return searchResponse.hits().hits().stream().map(Hit::source).collect(Collectors.toList());
-
     }
 
+    /**
+     * Search fields are resolved from {@code metadata.json} for the requested category.
+     */
     public List<Object> spanSearch(ContentSearchRequest contentSearchRequest) throws IOException, ElasticsearchException {
-        Query spanQuery = spanFactory.createQuery(SYNOPSIS, contentSearchRequest.getPattern());
+        List<String> fields = resolveSearchFields(ContentCategory.valueByName(contentSearchRequest.getType()));
 
-        SearchRequest searchRequest = SearchRequest.of(r -> r
+        BoolQuery.Builder boolBuilder = new BoolQuery.Builder().minimumShouldMatch("1");
+        fields.forEach(field -> boolBuilder.should(spanFactory.createQuery(field, contentSearchRequest.getPattern())));
+
+        SearchRequest searchRequest = new SearchRequest.Builder()
                 .index(contentSearchRequest.getType())
-                .query(q -> q
-                        .bool(b -> b
-                                .must(spanQuery)
-                        )
-                )
-        );
+                .query(q -> q.bool(boolBuilder.build()))
+                .build();
 
         SearchResponse<Object> searchResponse = esClient.search(searchRequest, Object.class);
-
         return searchResponse.hits().hits().stream().map(Hit::source).collect(Collectors.toList());
     }
 

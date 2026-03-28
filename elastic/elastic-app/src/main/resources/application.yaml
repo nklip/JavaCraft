@@ -1,5 +1,12 @@
 scheduler:
   enabled: true
+search:
+  fuzzy:
+    fuzziness: "2"
+  interval:
+    max-gaps: 3
+  span:
+    slop: 3
 server:
   port: "8001"
 spring:
@@ -22,5 +29,7 @@ spring:
         max-backoff-ms: 2000
 springdoc:
   swagger-ui:
-    # turn on alphabetical ordering in Swagger
+    # Tag groups (controllers) sorted A -> Z
     tagsSorter: alpha
+    # Operations sorted A -> Z by path within each tag
+    operationsSorter: alpha

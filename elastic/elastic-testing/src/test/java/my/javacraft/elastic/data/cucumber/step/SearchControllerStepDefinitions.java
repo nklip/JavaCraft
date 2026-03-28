@@ -151,8 +151,8 @@ public class SearchControllerStepDefinitions {
         assertSearchResponseEventually("/api/services/search", jsonBody, dataTable);
     }
 
-    private void assertSearchResponseEventually(String path, String jsonBody, DataTable dataTable) throws InterruptedException {
-        int expectedRows = dataTable.height();
+    private void assertSearchResponseEventually(String path, String jsonBody, DataTable expectedData) throws InterruptedException {
+        int expectedRows = expectedData.height();
 
         Assertions.assertTrue(CucumberSpringConfiguration.assertWithWait(expectedRows,
                 () -> Optional.of(postSearch(path, jsonBody))
@@ -161,8 +161,8 @@ public class SearchControllerStepDefinitions {
                         .orElse(0)
         ), "Expecting " + expectedRows + " rows in actual search response");
 
-        ResponseEntity<List<LinkedHashMap<String, Object>>> httpResponse = postSearch(path, jsonBody);
-        compareHttpResponseToDataTable(httpResponse, dataTable);
+        ResponseEntity<List<LinkedHashMap<String, Object>>> actualResponse = postSearch(path, jsonBody);
+        compareDataTableToHttpResponse(expectedData, actualResponse);
     }
 
     private ResponseEntity<List<LinkedHashMap<String, Object>>> postSearch(String path, String jsonBody) {
@@ -179,8 +179,9 @@ public class SearchControllerStepDefinitions {
         );
     }
 
-    private void compareHttpResponseToDataTable(
-            ResponseEntity<List<LinkedHashMap<String, Object>>> httpResponse, DataTable dataTable) {
+    private void compareDataTableToHttpResponse(
+            DataTable dataTable,
+            ResponseEntity<List<LinkedHashMap<String, Object>>> httpResponse) {
         Assertions.assertNotNull(httpResponse);
         Assertions.assertNotNull(httpResponse.getBody());
         Assertions.assertEquals(dataTable.cells().size(), httpResponse.getBody().size());

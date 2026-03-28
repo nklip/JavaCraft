@@ -1,17 +1,23 @@
 package my.javacraft.elastic.app.service.query;
 
 import co.elastic.clients.elasticsearch._types.query_dsl.*;
+import lombok.RequiredArgsConstructor;
+import my.javacraft.elastic.app.config.SearchProperties;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class IntervalFactory implements QueryFactory {
 
+    private final SearchProperties searchProperties;
+
     @Override
-    public Query createQuery (String field, String value) {
+    public Query createQuery(String field, String value) {
         IntervalsMatch intervalsMatch = new IntervalsMatch.Builder()
                 .query(value)
                 .ordered(true)
-                .maxGaps(3)
+                // Maximum number of intervening unmatched positions permitted between interval terms.
+                .maxGaps(searchProperties.interval().maxGaps())
                 .build();
 
         IntervalsQuery intervalsQuery = new IntervalsQuery.Builder()
@@ -19,7 +25,6 @@ public class IntervalFactory implements QueryFactory {
                 .match(intervalsMatch)
                 .build();
 
-        // Build the search query
         return Query.of(q -> q.intervals(intervalsQuery));
     }
 }
