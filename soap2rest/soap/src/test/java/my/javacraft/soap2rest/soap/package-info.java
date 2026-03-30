@@ -1,1 +1,0 @@
-package my.javacraft.soap2rest.soap;

@@ -11,6 +11,11 @@ spring:
   liquibase:
     enabled: true
     change-log: classpath:/liquibase/v1/changelog.xml
+  artemis:
+    mode: embedded
+    embedded:
+      persistent: false
+      queues: smart-metrics-queue
   jackson:
     serialization:
       INDENT_OUTPUT: true # provides pretty output

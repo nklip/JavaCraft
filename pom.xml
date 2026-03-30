@@ -28,7 +28,9 @@
         <spring.boot>3.5.11</spring.boot>
         <spring.version>6.2.16</spring.version>
         <springdoc-openapi-starter-webmvc-ui.version>2.8.16</springdoc-openapi-starter-webmvc-ui.version>
+
         <spring.kafka.version>3.3.13</spring.kafka.version>
+        <artemis.version>2.40.0</artemis.version>
 
         <jackson.version>2.21.1</jackson.version>
         <jakarta.jws-api.version>3.0.0</jakarta.jws-api.version>

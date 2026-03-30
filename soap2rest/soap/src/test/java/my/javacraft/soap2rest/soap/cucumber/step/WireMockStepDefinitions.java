@@ -23,6 +23,7 @@ public class WireMockStepDefinitions {
     private static final String FIRST_METRIC_ADDED = "FIRST_METRIC_ADDED";
     private static final String SECOND_METRIC_ADDED = "SECOND_METRIC_ADDED";
     private static final String THIRD_METRIC_ADDED = "THIRD_METRIC_ADDED";
+    private static final String ASYNC_PENDING = "ASYNC_PENDING";
     private static final String GAS_METRIC_TEMPLATE = "gas/metric.json.hbs";
     private static final String GAS_METRICS_TEMPLATE = "gas/metrics.json.hbs";
     private static final String ELECTRIC_METRIC_TEMPLATE = "electric/metric.json.hbs";
@@ -351,6 +352,30 @@ public class WireMockStepDefinitions {
                         metric(43, 400, "11.900", "2024-02-12")
                 )
         );
+
+        addSmartStubsForAccount(
+                wireMockServer,
+                "3",
+                List.of(metric(53, 500, "3333.111", "2024-03-01")),
+                List.of(metric(63, 600, "444.222", "2024-03-01"))
+        );
+        addAsyncSmartStubsForAccount(
+                wireMockServer,
+                "3",
+                "smart-async-3-1"
+        );
+
+        addSmartStubsForAccount(
+                wireMockServer,
+                "4",
+                List.of(),
+                List.of()
+        );
+        addFailingAsyncSmartStubsForAccount(
+                wireMockServer,
+                "4",
+                "smart-async-4-1"
+        );
     }
 
     void addSmartStubsForAccount(
@@ -363,36 +388,43 @@ public class WireMockStepDefinitions {
         String baseUrl = RestAppEndpoints.smart(accountId);
 
         addDeleteStubForState(wireMockServer, scenarioName, baseUrl, STARTED);
+        addDeleteStubForState(wireMockServer, scenarioName, baseUrl, ASYNC_PENDING);
         addDeleteStubForState(wireMockServer, scenarioName, baseUrl, FIRST_METRIC_ADDED);
         addDeleteStubForState(wireMockServer, scenarioName, baseUrl, SECOND_METRIC_ADDED);
         addDeleteStubForState(wireMockServer, scenarioName, baseUrl, THIRD_METRIC_ADDED);
 
-        wireMockServer.stubFor(put(urlEqualTo(baseUrl))
-                .inScenario(scenarioName)
-                .whenScenarioStateIs(STARTED)
-                .willSetStateTo(FIRST_METRIC_ADDED)
-                .willReturn(aResponse().withHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                        .withStatus(200)
-                        .withBody("true"))
-        );
+        if (hasAtLeast(gasMetrics, electricMetrics, 1)) {
+            wireMockServer.stubFor(put(urlEqualTo(baseUrl))
+                    .inScenario(scenarioName)
+                    .whenScenarioStateIs(STARTED)
+                    .willSetStateTo(FIRST_METRIC_ADDED)
+                    .willReturn(aResponse().withHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                            .withStatus(200)
+                            .withBody("true"))
+            );
+        }
 
-        wireMockServer.stubFor(put(urlEqualTo(baseUrl))
-                .inScenario(scenarioName)
-                .whenScenarioStateIs(FIRST_METRIC_ADDED)
-                .willSetStateTo(SECOND_METRIC_ADDED)
-                .willReturn(aResponse().withHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                        .withStatus(200)
-                        .withBody("true"))
-        );
+        if (hasAtLeast(gasMetrics, electricMetrics, 2)) {
+            wireMockServer.stubFor(put(urlEqualTo(baseUrl))
+                    .inScenario(scenarioName)
+                    .whenScenarioStateIs(FIRST_METRIC_ADDED)
+                    .willSetStateTo(SECOND_METRIC_ADDED)
+                    .willReturn(aResponse().withHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                            .withStatus(200)
+                            .withBody("true"))
+            );
+        }
 
-        wireMockServer.stubFor(put(urlEqualTo(baseUrl))
-                .inScenario(scenarioName)
-                .whenScenarioStateIs(SECOND_METRIC_ADDED)
-                .willSetStateTo(THIRD_METRIC_ADDED)
-                .willReturn(aResponse().withHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                        .withStatus(200)
-                        .withBody("true"))
-        );
+        if (hasAtLeast(gasMetrics, electricMetrics, 3)) {
+            wireMockServer.stubFor(put(urlEqualTo(baseUrl))
+                    .inScenario(scenarioName)
+                    .whenScenarioStateIs(SECOND_METRIC_ADDED)
+                    .willSetStateTo(THIRD_METRIC_ADDED)
+                    .willReturn(aResponse().withHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                            .withStatus(200)
+                            .withBody("true"))
+            );
+        }
 
         wireMockServer.stubFor(get(urlEqualTo(baseUrl + "/latest"))
                 .inScenario(scenarioName)
@@ -401,23 +433,29 @@ public class WireMockStepDefinitions {
                         .withStatus(200))
         );
 
-        wireMockServer.stubFor(get(urlEqualTo(baseUrl + "/latest"))
-                .inScenario(scenarioName)
-                .whenScenarioStateIs(FIRST_METRIC_ADDED)
-                .willReturn(withTemplateSmartMetrics(accountId, gasMetrics.subList(0, 1), electricMetrics.subList(0, 1)))
-        );
+        if (hasAtLeast(gasMetrics, electricMetrics, 1)) {
+            wireMockServer.stubFor(get(urlEqualTo(baseUrl + "/latest"))
+                    .inScenario(scenarioName)
+                    .whenScenarioStateIs(FIRST_METRIC_ADDED)
+                    .willReturn(withTemplateSmartMetrics(accountId, gasMetrics.subList(0, 1), electricMetrics.subList(0, 1)))
+            );
+        }
 
-        wireMockServer.stubFor(get(urlEqualTo(baseUrl + "/latest"))
-                .inScenario(scenarioName)
-                .whenScenarioStateIs(SECOND_METRIC_ADDED)
-                .willReturn(withTemplateSmartMetrics(accountId, gasMetrics.subList(1, 2), electricMetrics.subList(1, 2)))
-        );
+        if (hasAtLeast(gasMetrics, electricMetrics, 2)) {
+            wireMockServer.stubFor(get(urlEqualTo(baseUrl + "/latest"))
+                    .inScenario(scenarioName)
+                    .whenScenarioStateIs(SECOND_METRIC_ADDED)
+                    .willReturn(withTemplateSmartMetrics(accountId, gasMetrics.subList(1, 2), electricMetrics.subList(1, 2)))
+            );
+        }
 
-        wireMockServer.stubFor(get(urlEqualTo(baseUrl + "/latest"))
-                .inScenario(scenarioName)
-                .whenScenarioStateIs(THIRD_METRIC_ADDED)
-                .willReturn(withTemplateSmartMetrics(accountId, gasMetrics.subList(2, 3), electricMetrics.subList(2, 3)))
-        );
+        if (hasAtLeast(gasMetrics, electricMetrics, 3)) {
+            wireMockServer.stubFor(get(urlEqualTo(baseUrl + "/latest"))
+                    .inScenario(scenarioName)
+                    .whenScenarioStateIs(THIRD_METRIC_ADDED)
+                    .willReturn(withTemplateSmartMetrics(accountId, gasMetrics.subList(2, 3), electricMetrics.subList(2, 3)))
+            );
+        }
 
         wireMockServer.stubFor(get(urlEqualTo(baseUrl))
                 .inScenario(scenarioName)
@@ -425,22 +463,76 @@ public class WireMockStepDefinitions {
                 .willReturn(withTemplateSmartMetrics(accountId, List.of(), List.of()))
         );
 
-        wireMockServer.stubFor(get(urlEqualTo(baseUrl))
+        if (hasAtLeast(gasMetrics, electricMetrics, 1)) {
+            wireMockServer.stubFor(get(urlEqualTo(baseUrl))
+                    .inScenario(scenarioName)
+                    .whenScenarioStateIs(FIRST_METRIC_ADDED)
+                    .willReturn(withTemplateSmartMetrics(accountId, gasMetrics.subList(0, 1), electricMetrics.subList(0, 1)))
+            );
+        }
+
+        if (hasAtLeast(gasMetrics, electricMetrics, 2)) {
+            wireMockServer.stubFor(get(urlEqualTo(baseUrl))
+                    .inScenario(scenarioName)
+                    .whenScenarioStateIs(SECOND_METRIC_ADDED)
+                    .willReturn(withTemplateSmartMetrics(accountId, gasMetrics.subList(0, 2), electricMetrics.subList(0, 2)))
+            );
+        }
+
+        if (hasAtLeast(gasMetrics, electricMetrics, 3)) {
+            wireMockServer.stubFor(get(urlEqualTo(baseUrl))
+                    .inScenario(scenarioName)
+                    .whenScenarioStateIs(THIRD_METRIC_ADDED)
+                    .willReturn(withTemplateSmartMetrics(accountId, gasMetrics, electricMetrics))
+            );
+        }
+    }
+
+    void addAsyncSmartStubsForAccount(WireMockServer wireMockServer, String accountId, String requestId) {
+        String scenarioName = "smart-flow-account-" + accountId;
+        String baseUrl = RestAppEndpoints.smart(accountId);
+        String resultUrl = RestAppEndpoints.smartAsyncResult(requestId);
+
+        wireMockServer.stubFor(put(urlPathEqualTo(baseUrl))
+                .withQueryParam("async", equalTo("true"))
+                .inScenario(scenarioName)
+                .whenScenarioStateIs(STARTED)
+                .willSetStateTo(ASYNC_PENDING)
+                .willReturn(asyncAcceptedSubmissionResponse(requestId))
+        );
+
+        wireMockServer.stubFor(get(urlEqualTo(resultUrl))
+                .inScenario(scenarioName)
+                .whenScenarioStateIs(ASYNC_PENDING)
+                .willSetStateTo(FIRST_METRIC_ADDED)
+                .willReturn(asyncAcceptedPollResponse(requestId))
+        );
+
+        wireMockServer.stubFor(get(urlEqualTo(resultUrl))
                 .inScenario(scenarioName)
                 .whenScenarioStateIs(FIRST_METRIC_ADDED)
-                .willReturn(withTemplateSmartMetrics(accountId, gasMetrics.subList(0, 1), electricMetrics.subList(0, 1)))
+                .willReturn(asyncCompletedResponse(requestId))
+        );
+    }
+
+    void addFailingAsyncSmartStubsForAccount(WireMockServer wireMockServer, String accountId, String requestId) {
+        String scenarioName = "smart-flow-account-" + accountId;
+        String baseUrl = RestAppEndpoints.smart(accountId);
+        String resultUrl = RestAppEndpoints.smartAsyncResult(requestId);
+
+        wireMockServer.stubFor(put(urlPathEqualTo(baseUrl))
+                .withQueryParam("async", equalTo("true"))
+                .inScenario(scenarioName)
+                .whenScenarioStateIs(STARTED)
+                .willSetStateTo(ASYNC_PENDING)
+                .willReturn(asyncAcceptedSubmissionResponse(requestId))
         );
 
-        wireMockServer.stubFor(get(urlEqualTo(baseUrl))
+        wireMockServer.stubFor(get(urlEqualTo(resultUrl))
                 .inScenario(scenarioName)
-                .whenScenarioStateIs(SECOND_METRIC_ADDED)
-                .willReturn(withTemplateSmartMetrics(accountId, gasMetrics.subList(0, 2), electricMetrics.subList(0, 2)))
-        );
-
-        wireMockServer.stubFor(get(urlEqualTo(baseUrl))
-                .inScenario(scenarioName)
-                .whenScenarioStateIs(THIRD_METRIC_ADDED)
-                .willReturn(withTemplateSmartMetrics(accountId, gasMetrics, electricMetrics))
+                .whenScenarioStateIs(ASYNC_PENDING)
+                .willSetStateTo(STARTED)
+                .willReturn(asyncFailedResponse(requestId, "Async smart request failed"))
         );
     }
 
@@ -457,6 +549,45 @@ public class WireMockStepDefinitions {
                 .withTransformerParameter("accountId", Long.parseLong(accountId))
                 .withTransformerParameter("gasMetrics", gasMetrics)
                 .withTransformerParameter("electricMetrics", electricMetrics);
+    }
+
+    boolean hasAtLeast(
+            List<Map<String, Object>> gasMetrics,
+            List<Map<String, Object>> electricMetrics,
+            int expectedSize
+    ) {
+        return gasMetrics.size() >= expectedSize && electricMetrics.size() >= expectedSize;
+    }
+
+    com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder asyncAcceptedSubmissionResponse(String requestId) {
+        return aResponse()
+                .withHeader(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
+                .withStatus(202)
+                .withBody(requestId);
+    }
+
+    com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder asyncAcceptedPollResponse(String requestId) {
+        return aResponse()
+                .withHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .withStatus(202)
+                .withBody("{\"requestId\":\"%s\"}".formatted(requestId));
+    }
+
+    com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder asyncCompletedResponse(String requestId) {
+        return aResponse()
+                .withHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .withStatus(200)
+                .withBody("{\"requestId\":\"%s\",\"result\":true}".formatted(requestId));
+    }
+
+    com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder asyncFailedResponse(
+            String requestId,
+            String errorMessage
+    ) {
+        return aResponse()
+                .withHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .withStatus(500)
+                .withBody("{\"requestId\":\"%s\",\"errorMessage\":\"%s\"}".formatted(requestId, errorMessage));
     }
 
 }

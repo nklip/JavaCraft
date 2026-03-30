@@ -68,3 +68,36 @@ Feature: SmartResource
       And check the latest gas reading for the account = 1 and meterId = 100 is equal = 720.333
       And account 1 has electric metrics list size 3
       And account 1 has gas metrics list size 3
+
+  Rule: Async smart resource behavior
+
+    @Async
+    Scenario: async smart update completes successfully
+      Given the account 1 doesn't have any metrics
+      And account 1 has no latest electric metric
+      And account 1 has no latest gas metric
+      When an account 1 submits an ASYNC PUT request with new metrics
+        | type | meterId | reading  | date       |
+        | gas  | 100     | 686.666  | 2023-07-17 |
+        | ele  | 200     | 2345.505 | 2023-07-17 |
+      Then polling the async smart request eventually returns COMPLETED
+      And check the latest electric reading for the account = 1 and meterId = 200 is equal = 2345.505
+      And check the latest gas reading for the account = 1 and meterId = 100 is equal = 686.666
+      And account 1 has electric metrics list size 1
+      And account 1 has gas metrics list size 1
+
+    # this test also validates successfulness of rolling back electric changes
+    @Async
+    Scenario: async smart update fails for invalid meter
+      Given the account 1 doesn't have any metrics
+      And account 1 has no latest electric metric
+      And account 1 has no latest gas metric
+      When an account 1 submits an ASYNC PUT request with new metrics
+        | type | meterId | reading | date        |
+        | gas  | 100     | 686.666  | 2023-07-17 |
+        | ele  | 999     | 2345.505 | 2023-07-17 |
+      Then polling the async smart request eventually returns FAILED with message "Meter is not linked to account."
+      And account 1 has no latest electric metric
+      And account 1 has no latest gas metric
+      And account 1 has electric metrics list size 0
+      And account 1 has gas metrics list size 0

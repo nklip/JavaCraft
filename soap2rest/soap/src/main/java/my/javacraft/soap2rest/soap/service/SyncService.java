@@ -17,7 +17,7 @@ public class SyncService {
     @Autowired
     private List<OrderService> orderServices;
 
-    public DSResponse syncProcess(DSRequest dsRequest) {
+    public DSResponse process(DSRequest dsRequest) {
         ServiceOrder serviceOrder = dsRequest.getBody().getServiceOrder();
         String serviceName = serviceOrder.getServiceName();
 

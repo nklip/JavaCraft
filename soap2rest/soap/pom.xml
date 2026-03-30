@@ -132,6 +132,7 @@
                 <version>${maven.surefire.plugin.version}</version>
                 <configuration>
                     <includes>
+                        <include>**/*Test.java</include>
                         <include>**/CucumberRunner.java</include>
                     </includes>
                 </configuration>

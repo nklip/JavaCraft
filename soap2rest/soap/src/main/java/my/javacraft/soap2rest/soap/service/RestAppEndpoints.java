@@ -13,6 +13,14 @@ public final class RestAppEndpoints {
         return "/api/v1/smart/%s".formatted(accountId);
     }
 
+    public static String smartAsync(String accountId) {
+        return smart(accountId) + "?async=true";
+    }
+
+    public static String smartAsyncResult(String requestId) {
+        return "/api/v1/smart/async/%s".formatted(requestId);
+    }
+
     public static String smartLatest(String accountId) {
         return smart(accountId) + "/latest";
     }
