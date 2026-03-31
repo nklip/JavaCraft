@@ -23,13 +23,18 @@ public class ElasticsearchContainerInitializer
 
     static final String ELASTIC_PASSWORD = "test_elastic";
 
-    private static final ElasticsearchContainer CONTAINER =
-            new ElasticsearchContainer(DockerImageName.parse(ELASTICSEARCH_IMAGE))
-                    .withEnv("xpack.security.http.ssl.enabled", "false")
-                    .withEnv("ELASTIC_PASSWORD", ELASTIC_PASSWORD);
+    private static final ElasticsearchContainer CONTAINER = createContainer();
 
     static {
         CONTAINER.start();
+    }
+
+    @SuppressWarnings("resource")
+    private static ElasticsearchContainer createContainer() {
+        // The container stays up for the full cucumber JVM and Ryuk cleans it up afterwards.
+        return new ElasticsearchContainer(DockerImageName.parse(ELASTICSEARCH_IMAGE))
+                .withEnv("xpack.security.http.ssl.enabled", "false")
+                .withEnv("ELASTIC_PASSWORD", ELASTIC_PASSWORD);
     }
 
     @Override
