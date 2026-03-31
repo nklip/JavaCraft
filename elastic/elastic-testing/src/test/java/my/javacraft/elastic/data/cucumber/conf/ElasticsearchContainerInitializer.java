@@ -18,9 +18,6 @@ import org.testcontainers.utility.DockerImageName;
 public class ElasticsearchContainerInitializer
         implements ApplicationContextInitializer<ConfigurableApplicationContext> {
 
-    private static final String ELASTICSEARCH_IMAGE =
-            "docker.elastic.co/elasticsearch/elasticsearch:8.18.8";
-
     static final String ELASTIC_PASSWORD = "test_elastic";
 
     private static final ElasticsearchContainer CONTAINER = createContainer();
@@ -31,8 +28,14 @@ public class ElasticsearchContainerInitializer
 
     @SuppressWarnings("resource")
     private static ElasticsearchContainer createContainer() {
+        String image = System.getProperty("tc.image.elasticsearch");
+        if (image == null || image.isBlank()) {
+            throw new IllegalStateException(
+                    "System property 'tc.image.elasticsearch' is not set. "
+                    + "It must be provided via Maven Surefire systemPropertyVariables in pom.xml.");
+        }
         // The container stays up for the full cucumber JVM and Ryuk cleans it up afterwards.
-        return new ElasticsearchContainer(DockerImageName.parse(ELASTICSEARCH_IMAGE))
+        return new ElasticsearchContainer(DockerImageName.parse(image))
                 .withEnv("xpack.security.http.ssl.enabled", "false")
                 .withEnv("ELASTIC_PASSWORD", ELASTIC_PASSWORD);
     }
