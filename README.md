@@ -1,6 +1,6 @@
 # Micro java samples.
 
-* [Algorithms](algs/README.md) - Algorithms
+* [algs](algs/README.md) - Algorithms
 * [BDD](bdd/README.md) - Behaviour Driven Development
 * [echo](echo/README.md) - Different Server types
 * [elastic](elastic/README.md) - rest to elasticsearch

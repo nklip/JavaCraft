@@ -1,87 +1,124 @@
-# Soap2Rest SOAP Module
+# soap2rest-soap
 
-This module exposes a SOAP endpoint and translates SOAP service orders into REST calls to `soap2rest/rest-app`.
+<sub>[Back to soap2rest](../README.md)</sub>
 
 ## Contents
+1. [Purpose](#1-purpose)
+2. [What It Does](#2-what-it-does)
+3. [Supported Behavior](#3-supported-behavior)
+4. [Request Flow](#4-request-flow)
+5. [Endpoint and WSDL](#5-endpoint-and-wsdl)
+6. [Generated SOAP Classes](#6-generated-soap-classes)
+7. [Build and Test](#7-build-and-test)
+8. [Test Strategy](#8-test-strategy)
+9. [Run](#9-run)
+10. [Manual Testing](#10-manual-testing)
+11. [IntelliJ Note](#11-intellij-note)
+12. [Related Docs](#12-related-docs)
 
-- [What this module does](#what-this-module-does)
-- [Strangler pattern role](#strangler-pattern-role)
-- [Current status](#current-status)
-- [Request flow](#request-flow)
-- [Endpoints and ports](#endpoints-and-ports)
-- [WSDL and generated Java classes](#wsdl-and-generated-java-classes)
-- [How to run](#how-to-run)
-- [How to test](#how-to-test)
-- [Test architecture (Cucumber)](#test-architecture-cucumber)
-- [Expected output](#expected-output)
-- [IDEA troubleshooting](#idea-troubleshooting)
-- [SoapUI](#soapui)
+## 1. Purpose
+<sub>[Back to top](#soap2rest-soap)</sub>
 
-## What this module does
+`soap2rest/soap` exposes the SOAP contract and translates SOAP service orders into calls to `soap2rest/rest-app`.
 
-- Accepts SOAP `DSRequest` payloads in `DSEndpoint`.
-- Routes request processing via `EndpointService`.
-- Converts SOAP operation intent (`GET`, `PUT`, `DELETE`) to REST calls via `OrderService` implementations:
-  - `ElectricService`
-  - `GasService`
-  - `SmartService`
-- Maps REST responses back into SOAP `DSResponse`.
+It acts as the strangler facade:
+- existing clients continue using SOAP
+- the SOAP layer stays thin
+- real business execution happens in the REST backend
 
-## Strangler pattern role
+## 2. What It Does
+<sub>[Back to top](#soap2rest-soap)</sub>
 
-This module acts as a Strangler application pattern facade:
+- accepts `DSRequest` payloads in the SOAP endpoint
+- routes requests through `EndpointService`
+- delegates synchronous work to `SyncService`
+- delegates async-capable flows to `AsyncService`
+- maps REST responses back into `DSResponse`
 
-- External clients keep using the existing SOAP contract.
-- Internally, business operations are delegated to the REST application.
-- This enables gradual migration from SOAP integration to REST-based backend behavior without breaking existing SOAP clients.
+## 3. Supported Behavior
+<sub>[Back to top](#soap2rest-soap)</sub>
 
-## Current status
+### Synchronous requests
 
-- Synchronous processing is implemented for electric, gas, and smart service orders.
-- Asynchronous processing is not implemented yet.
-- If `asyncronousResponse=true`, the service currently returns:
-  - code: `501`
-  - description: `Async Service is not implemented yet!`
+Supported for electric, gas, and smart service orders across the existing `GET`, `PUT`, and `DELETE` flows implemented by the REST backend.
 
-## Request flow
+### Asynchronous requests
+
+Async is currently supported only for:
+- `SmartService`
+- `PUT`
+
+Behavior:
+1. SOAP receives an async smart write request.
+2. SOAP calls `rest-app` with `?async=true`.
+3. `rest-app` returns `202 Accepted` and a request id.
+4. SOAP immediately returns a `DSResponse` with:
+   - SOAP status code `202`
+   - description `Accepted for asynchronous processing`
+   - `serviceOrderID` set to the async request id
+
+### Polling async status
+
+SOAP polling is explicit and synchronous:
+
+1. Client sends a normal SOAP `GET` request for `SmartService`
+2. request param `path` must be `/async`
+3. `serviceOrderID` must contain the async request id
+4. SOAP performs one REST poll to `GET /api/v1/smart/async/{requestId}`
+5. SOAP maps the REST status back into `DSResponse`
+
+Mapped results:
+
+| REST status | SOAP status meaning |
+| --- | --- |
+| `202` | still accepted / in progress |
+| `200` | completed successfully |
+| `500` | async execution failed |
+| other | returned as unexpected backend response |
+
+Unsupported async combinations return `501`.
+
+## 4. Request Flow
+<sub>[Back to top](#soap2rest-soap)</sub>
 
 ```mermaid
 sequenceDiagram
-    participant Client as External client
-    participant SOAP as soap2rest/soap (SOAP endpoint)
-    participant Router as EndpointService + SyncService
-    participant REST as soap2rest/rest-app
-    participant DB as REST DB
+    participant Client
+    participant SOAP as DSEndpoint
+    participant Router as EndpointService
+    participant Sync as SyncService / AsyncService
+    participant REST as rest-app
 
     Client->>SOAP: SOAP DSRequest
     SOAP->>Router: executeDsRequest(dsRequest)
-    alt synchronous request
-        Router->>REST: HTTP GET/PUT/DELETE
-        REST->>DB: read/write metrics
-        DB-->>REST: data/status
-        REST-->>Router: HTTP response + payload
-        Router-->>SOAP: build DSResponse
-        SOAP-->>Client: SOAP DSResponse
-    else asynchronous request
-        Router-->>SOAP: 501 Not Implemented
-        SOAP-->>Client: SOAP DSResponse (immediate)
+    alt sync flow
+        Router->>Sync: syncService.process(dsRequest)
+        Sync->>REST: HTTP request
+        REST-->>Sync: JSON response
+        Sync-->>SOAP: DSResponse
+    else async smart submit or poll
+        Router->>Sync: asyncService.process(dsRequest)
+        Sync->>REST: async submit or poll request
+        REST-->>Sync: 202 / 200 / 500
+        Sync-->>SOAP: DSResponse
     end
+    SOAP-->>Client: SOAP response
 ```
 
-## Endpoints and ports
+## 5. Endpoint and WSDL
+<sub>[Back to top](#soap2rest-soap)</sub>
 
 - SOAP app default port: `8078`
-- SOAP base path: `/soap2rest/soap/v1/*`
+- SOAP mapping path: `/soap2rest/soap/v1/*`
 - WSDL URL: `http://localhost:8078/soap2rest/soap/v1/DeliverServiceWS.wsdl`
-- Target REST app (configured): `http://localhost:8081`
-- Auth header used for REST calls: `X-API-KEY`
+- target REST app default URL: `http://localhost:8081`
 
-## WSDL and generated Java classes
+## 6. Generated SOAP Classes
+<sub>[Back to top](#soap2rest-soap)</sub>
 
-- WSDL source file: `src/main/resources/wsdl/ds.wsdl`
-- Generated package: `my.javacraft.soap2rest.soap.generated.ds.ws`
-- Generated output directory: `target/generated-sources`
-- Generation plugin: `com.sun.xml.ws:jaxws-maven-plugin` (`wsimport` goal)
+- WSDL source: `src/main/resources/wsdl/ds.wsdl`
+- generated package: `my.javacraft.soap2rest.soap.generated.ds.ws`
+- generation plugin: `jaxws-maven-plugin`
 
 Generate sources explicitly:
 
@@ -89,73 +126,69 @@ Generate sources explicitly:
 mvn -pl soap2rest/soap generate-sources
 ```
 
-or as part of compile/tests:
+## 7. Build and Test
+<sub>[Back to top](#soap2rest-soap)</sub>
 
+From repository root:
+
+Run all SOAP tests:
 ```bash
-mvn -pl soap2rest/soap test-compile
+mvn -pl soap2rest/soap -am test
 ```
 
-## How to run
-
-Run REST app first (for end-to-end/manual checks):
-
-```bash
-mvn -pl soap2rest/rest/rest-app spring-boot:run
-```
-
-Run SOAP app:
-
-```bash
-mvn -pl soap2rest/soap spring-boot:run
-```
-
-## How to test
-
-Run all SOAP module tests:
-
-```bash
-mvn -pl soap2rest/soap test
-```
-
-Run only Cucumber scenarios:
-
+Run only cucumber scenarios:
 ```bash
 mvn -pl soap2rest/soap -Dtest=my.javacraft.soap2rest.soap.cucumber.CucumberRunner test
 ```
 
-## Test architecture (Cucumber)
+## 8. Test Strategy
+<sub>[Back to top](#soap2rest-soap)</sub>
 
-- Runner: `CucumberRunner`
-- Spring test context: `CucumberSpringConfiguration`
-- Step definitions:
-  - `ElectricStepDefinitions`
-  - `GasStepDefinitions`
-  - `SmartStepDefinitions`
-  - `WireMockStepDefinitions`
-- Feature files:
-  - `src/test/resources/features/ElectricService.feature`
-  - `src/test/resources/features/GasService.feature`
-  - `src/test/resources/features/SmartService.feature`
+- unit tests cover request routing and async/sync mapping
+- cucumber scenarios validate electric, gas, and smart flows
+- SOAP tests stub the REST backend with WireMock
+- async SOAP scenarios cover:
+  - accepted async smart submit
+  - completed async poll
+  - failed async poll
 
-All REST HTTP calls in Cucumber tests are mocked with WireMock stubs from `WireMockStepDefinitions`.
+Feature files:
+- `src/test/resources/features/ElectricService.feature`
+- `src/test/resources/features/GasService.feature`
+- `src/test/resources/features/SmartService.feature`
 
-## Expected output
+## 9. Run
+<sub>[Back to top](#soap2rest-soap)</sub>
 
-Successful test run prints:
-
-```text
-Tests run: <n>, Failures: 0, Errors: 0, Skipped: 0
-BUILD SUCCESS
+Start the REST backend first:
+```bash
+mvn -pl soap2rest/rest/rest-app -am spring-boot:run
 ```
 
-## IDEA troubleshooting
+Start the SOAP module:
+```bash
+mvn -pl soap2rest/soap -am spring-boot:run
+```
 
-If a feature file is not linked to step definitions in IntelliJ:  https://youtrack.jetbrains.com/projects/IDEA/issues/IDEA-362929/Cucumber-feature-file-step-appears-as-undefined-in-IntelliJ-despite-the-test-running-successfully.
+## 10. Manual Testing
+<sub>[Back to top](#soap2rest-soap)</sub>
 
-To fix it: install 'Cucumber Search Indexer' and 'Cucumber for Java' plugins
+- WSDL can be opened directly in the browser
+- the module also contains a `SoapUI/` project for manual request testing
 
-## SoapUI
+## 11. IntelliJ Note
+<sub>[Back to top](#soap2rest-soap)</sub>
 
-This module contains a `SoapUI` directory with a project for manual SOAP request testing.
+If IntelliJ marks cucumber steps as undefined even though tests pass, install next plugins:
+- `Cucumber for Java`
+- `Cucumber Search Indexer`
 
-Website: https://www.soapui.org/
+Related issue:
+- <https://youtrack.jetbrains.com/projects/IDEA/issues/IDEA-362929/Cucumber-feature-file-step-appears-as-undefined-in-IntelliJ-despite-the-test-running-successfully>
+
+## 12. Related Docs
+<sub>[Back to top](#soap2rest-soap)</sub>
+
+- overall module overview: [../README.md](../README.md)
+- architecture: [../ARCHITECTURE.md](../ARCHITECTURE.md)
+- REST backend: [../rest/rest-app/README.md](../rest/rest-app/README.md)

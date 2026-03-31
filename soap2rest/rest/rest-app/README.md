@@ -1,158 +1,234 @@
-# rest-app
+# soap2rest-rest-app
 
-## Purpose
-`rest-app` is the REST backend for the `soap2rest` example.  
-It provides account-scoped APIs for:
-- electric metrics
-- gas metrics
-- combined smart metrics
-- account meters
+<sub>[Back to soap2rest](../../README.md)</sub>
 
-The module is intended for learning and integration demos, including Swagger/OpenAPI exploration, API-key security, and Cucumber API scenarios.
+## Contents
+1. [Purpose](#1-purpose)
+2. [What It Demonstrates](#2-what-it-demonstrates)
+3. [Package Responsibilities](#3-package-responsibilities)
+4. [Main API Areas](#4-main-api-areas)
+5. [Smart Sync vs Async](#5-smart-sync-vs-async)
+6. [Data and Schema](#6-data-and-schema)
+7. [Security](#7-security)
+8. [Build and Test](#8-build-and-test)
+9. [Run](#9-run)
+10. [Troubleshooting](#10-troubleshooting)
+11. [Related Docs](#11-related-docs)
 
-## Architecture
-The module follows a layered structure:
-- `rest` package: HTTP controllers, request/response mapping.
-- `service` package: business logic and validation.
-- `dao` package: persistence and queries.
-- `dao.entity` package: JPA entities.
-- `security` + `conf` packages: authentication filter and security wiring.
+## 1. Purpose
+<sub>[Back to top](#soap2rest-rest-app)</sub>
 
-Data flow:
-1. Controller validates/marshals HTTP input.
-2. Service enforces business rules (meter-account linking, metric ordering checks).
-3. DAO executes database operations.
-4. Response is returned as JSON.
+`rest-app` is the runnable REST backend behind the `soap2rest` demo. It owns:
 
-## Tech Stack
-- Java 21+
-- Spring Boot (Web, Data JPA, Security)
-- Springdoc OpenAPI (Swagger UI)
-- Liquibase
-- H2 in-memory database
-- JUnit 5 + Mockito
-- Cucumber + RestAssured
+- metric and meter APIs
+- account-scoped validation and business rules
+- persistence and schema migration
+- API-key security
+- asynchronous smart metric execution over JMS/Artemis
 
-## Runtime Configuration
-Key defaults from `application.yaml`:
-- HTTP port: `8081`
-- DB URL: `jdbc:h2:mem:soap2rest;MODE=Oracle;`
-- H2 console: `/console`
-- Liquibase changelog: `classpath:/liquibase/v1/changelog.xml`
+This module is the system of record. The SOAP module delegates real work here rather than duplicating business logic.
 
-## Main API Areas
-- `GET /api/v1/smart`
-- `GET /api/v1/smart/{id}`
-- `GET /api/v1/smart/{id}/latest`
-- `PUT /api/v1/smart/{id}`
-- `DELETE /api/v1/smart/{id}`
+## 2. What It Demonstrates
+<sub>[Back to top](#soap2rest-rest-app)</sub>
 
-- `GET /api/v1/smart/{id}/electric`
-- `GET /api/v1/smart/{id}/electric/latest`
-- `PUT /api/v1/smart/{id}/electric`
-- `DELETE /api/v1/smart/{id}/electric`
+- layered Spring Boot design
+- JPA + Liquibase + H2
+- Swagger / OpenAPI exposure
+- synchronous and asynchronous API behavior on the same business area
+- unit tests plus REST cucumber scenarios
+- Testcontainers-backed Artemis coverage for async flows
 
-- `GET /api/v1/smart/{id}/gas`
-- `GET /api/v1/smart/{id}/gas/latest`
-- `PUT /api/v1/smart/{id}/gas`
-- `DELETE /api/v1/smart/{id}/gas`
+## 3. Package Responsibilities
+<sub>[Back to top](#soap2rest-rest-app)</sub>
 
-- `GET /api/v1/smart/{id}/meters`
-- `GET /api/v1/smart/{id}/meters/{meterId}`
-- `PUT /api/v1/smart/{id}/meters`
-- `PUT /api/v1/smart/{id}/meters/{meterId}`
-- `DELETE /api/v1/smart/{id}/meters`
-- `DELETE /api/v1/smart/{id}/meters/{meterId}`
+- `rest`
+  - controllers and HTTP mapping
+- `service`
+  - business logic and orchestration
+- `service.async`
+  - async job submission, state tracking, and JMS consumption
+- `dao`
+  - repositories and persistence operations
+- `dao.entity`
+  - database entities
+- `conf` and `security`
+  - application infrastructure and API-key security
 
-## Build and Tests
+## 4. Main API Areas
+<sub>[Back to top](#soap2rest-rest-app)</sub>
+
+| Area | Endpoints | Notes |
+| --- | --- | --- |
+| Smart | `GET /api/v1/smart`, `GET /api/v1/smart/{id}`, `GET /api/v1/smart/{id}/latest`, `PUT /api/v1/smart/{id}`, `DELETE /api/v1/smart/{id}` | combined gas + electric operations |
+| Smart async result | `GET /api/v1/smart/async/{requestId}` | poll result of async smart `PUT` |
+| Electric | `GET/PUT/DELETE /api/v1/smart/{id}/electric`, `GET /latest` | electric metric operations |
+| Gas | `GET/PUT/DELETE /api/v1/smart/{id}/gas`, `GET /latest` | gas metric operations |
+| Meter | `GET/PUT/DELETE /api/v1/smart/{id}/meters`, `GET/PUT/DELETE /api/v1/smart/{id}/meters/{meterId}` | account meter management |
+
+## 5. Smart Sync vs Async
+<sub>[Back to top](#soap2rest-rest-app)</sub>
+
+### Synchronous smart write
+
+`PUT /api/v1/smart/{id}?async=false`
+
+- processes the request immediately through `SmartService`
+- returns `200 OK`
+- response body is a boolean result
+
+### Asynchronous smart write
+
+`PUT /api/v1/smart/{id}?async=true`
+
+- stores an `ACCEPTED` async state
+- publishes work to Artemis queue `smart-metrics-queue`
+- returns `202 Accepted`
+- response body is the request id as plain text
+
+### Async result polling
+
+`GET /api/v1/smart/async/{requestId}`
+
+| HTTP status | Meaning |
+| --- | --- |
+| `202 Accepted` | request is still queued or running |
+| `200 OK` | request completed successfully |
+| `500 Internal Server Error` | async execution failed |
+| `404 Not Found` | unknown request id |
+
+Current implementation detail:
+- async state is stored in memory, so results do not survive application restart
+
+## 6. Data and Schema
+<sub>[Back to top](#soap2rest-rest-app)</sub>
+
+- Liquibase changelog root: `src/main/resources/liquibase/`
+- Default DB: `jdbc:h2:mem:soap2rest;MODE=Oracle`
+- H2 console path: `/console`
+- gas and electric metric uniqueness is meter/date scoped
+
+## 7. Security
+<sub>[Back to top](#soap2rest-rest-app)</sub>
+
+The application expects `X-API-KEY` on secured requests.
+
+Local keys are stored in:
+- `src/main/resources/api.keys`
+
+For browser-based Swagger or H2 usage, use a header extension such as ModHeader or Requestly and add:
+
+- header: `X-API-KEY`
+- value: one of the keys from `api.keys`
+
+## 8. Build and Test
+<sub>[Back to top](#soap2rest-rest-app)</sub>
+
 From repository root:
 
+Run all module tests:
 ```bash
-mvn -pl soap2rest/rest/rest-app test
+mvn -pl soap2rest/rest/rest-app -am test
 ```
 
-Note: `maven-surefire-plugin` in this module is configured to run Cucumber runner classes.
+Notes:
+- unit tests cover controller and service behavior
+- cucumber scenarios use RestAssured
+- async cucumber scenarios start Artemis via Testcontainers
 
-## Start Application
-From repository root:
+## 9. Run
+<sub>[Back to top](#soap2rest-rest-app)</sub>
 
 ```bash
 mvn -pl soap2rest/rest/rest-app -am spring-boot:run
 ```
 
-Swagger UI:
-- <http://localhost:8081/swagger-ui/index.html>
-
-OpenAPI JSON:
-- <http://localhost:8081/v3/api-docs>
-
-H2 Console:
-- <http://localhost:8081/console>
+Local URLs:
+- Swagger UI: `http://localhost:8081/swagger-ui/index.html`
+- OpenAPI JSON: `http://localhost:8081/v3/api-docs`
+- H2 console: `http://localhost:8081/console`
 
 H2 login values:
 - JDBC URL: `jdbc:h2:mem:soap2rest;MODE=Oracle;DB_CLOSE_DELAY=-1`
-- User: `sa`
-- Password: `sa`
+- user: `sa`
+- password: `sa`
 
-## Security Modes and Browser Access
+### Check local security mode
 
-### 1) Start with project security (API key filter)
-Current default in this module uses custom API-key security.
+The default local setup uses the project's API-key security.
 
-How to open Swagger/H2 in browser:
-1. Install a header extension (for example, ModHeader or Requestly).
-2. Add rule for `http://localhost:8081/*`:
-   - header: `X-API-KEY`
-   - value: one key from `src/main/resources/api.keys` (for example `57AkjqNuz44QmUHQuvVo`)
-3. Open:
-   - <http://localhost:8081/swagger-ui/index.html>
-   - <http://localhost:8081/console>
-
-### 2) Spring Boot default user mode (generated password)
-This mode is not the project default, but can be useful for troubleshooting.
-
-To use it:
-1. Disable custom security config (comment `@Configuration` and `@EnableWebSecurity` in `SecurityConfiguration`).
-2. Start app.
-
-Then Spring Boot creates:
-- username: `user`
-- password: generated at startup log line:
-  - `Using generated security password: ...`
-
-#### Drawbacks
-You cannot login into /console.
-
-It throws 403 exception.
-
-That 403 happens because you’re on Spring Boot default security flow, and H2 console login POST gets blocked by CSRF.
-
-So use either 1 or 3 option.
-
-### 3) No security mode (Swagger and /console without auth)
-To run with all security disabled:
-1. Keep `Application` excluding `SecurityAutoConfiguration`.
-2. Disable custom security config (comment `@Configuration` and `@EnableWebSecurity` in `SecurityConfiguration`).
-3. Add 
-```java
-@SpringBootApplication(scanBasePackages = {
-        "my.javacraft.soap2rest.utils",
-        "my.javacraft.soap2rest.rest.app",
-}, exclude = {
-        org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration.class
-})
-```
-4. Start app with:
+Quick checks:
 
 ```bash
-mvn -pl soap2rest/rest/rest-app -am spring-boot:run
+# without API key
+curl -i http://localhost:8081/v3/api-docs
+
+# with API key
+curl -i -H "X-API-KEY: <value-from-src/main/resources/api.keys>" \
+  http://localhost:8081/v3/api-docs
 ```
 
-In this mode, Swagger and H2 console are accessible directly:
-- <http://localhost:8081/swagger-ui/index.html>
-- <http://localhost:8081/console>
+How to interpret the result:
+- `401` without the header and `200` with the header
+  - you are in the normal project API-key mode
+- startup log contains `Using generated security password:`
+  - you are in Spring Boot default user/password mode
+- `200` without any auth header
+  - security is effectively disabled locally
 
-## Troubleshooting
-- `401 Invalid API Key`: missing/invalid `X-API-KEY` header.
-- `403` on H2 console login: you are likely in default Spring Security mode with CSRF; use project API-key mode or full no-security mode.
-- `Connection refused`: verify app is running and port `8081` is free.
+### Local mode 1: project API-key security
+
+This is the intended local mode and the current default.
+
+For browser-based Swagger or H2 usage:
+1. install a header extension such as ModHeader or Requestly
+2. add header `X-API-KEY`
+3. use one value from `src/main/resources/api.keys`
+4. open:
+   - `http://localhost:8081/swagger-ui/index.html`
+   - `http://localhost:8081/console`
+
+### Local mode 2: Spring Boot generated user/password
+
+This mode is useful only for troubleshooting.
+
+To switch to it:
+1. disable the custom security configuration in `SecurityConfiguration`
+2. start the application again
+3. read the generated password from the startup log line:
+   - `Using generated security password: ...`
+
+Limitation:
+- H2 console login still fails with `403` because the default Spring Security setup blocks the console flow with CSRF protection
+
+### Local mode 3: no security
+
+This is useful only for local debugging.
+
+To switch to it:
+1. keep `Application` excluding `SecurityAutoConfiguration`
+2. disable the custom security configuration in `SecurityConfiguration`
+3. start the application again
+
+In this mode:
+- Swagger UI is accessible without auth
+- H2 console is accessible without auth
+- requests to secured endpoints no longer require `X-API-KEY`
+
+## 10. Troubleshooting
+<sub>[Back to top](#soap2rest-rest-app)</sub>
+
+- `401 Invalid API Key`
+  - request is missing `X-API-KEY` or the key is invalid
+- async request stays at `202`
+  - check whether Artemis is reachable and the JMS listener is running
+- async request returns `500`
+  - check application logs for the business exception thrown during async processing
+- `404` from async poll endpoint
+  - request id does not exist in the in-memory async state map
+
+## 11. Related Docs
+<sub>[Back to top](#soap2rest-rest-app)</sub>
+
+- REST parent module: [../README.md](../README.md)
+- overall architecture: [../../ARCHITECTURE.md](../../ARCHITECTURE.md)
+- SOAP facade details: [../../soap/README.md](../../soap/README.md)
