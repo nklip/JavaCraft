@@ -10,10 +10,10 @@ import org.apache.maven.model.Model;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 
-/**
+/*
  * Implements fallback for missing 'tc.image.elasticsearch' property.
  *
- * Usually
+ * This usually happens when you run Cucumber tests outside of Maven, i.e., from IntelliJ IDEA.”
  */
 @SuppressWarnings("SameParameterValue")
 final class MavenPomPropertyResolver {

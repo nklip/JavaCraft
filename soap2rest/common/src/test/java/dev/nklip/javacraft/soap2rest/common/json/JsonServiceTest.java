@@ -5,7 +5,7 @@ import java.util.List;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-class JsonServicesTest {
+class JsonServiceTest {
 
     @Test
     void testObjectToJsonAndJsonToObjectHandlePayload() throws IOException {
@@ -15,7 +15,7 @@ class JsonServicesTest {
         payload.nullable = null;
         payload.emptyList = List.of();
 
-        String json = JsonServices.objectToJson(payload);
+        String json = JsonService.objectToJson(payload);
 
         Assertions.assertTrue(json.contains("\"name\""));
         Assertions.assertTrue(json.contains("\"alpha\""));
@@ -23,7 +23,7 @@ class JsonServicesTest {
         Assertions.assertFalse(json.contains("nullable"));
         Assertions.assertFalse(json.contains("emptyList"));
 
-        SamplePayload restored = JsonServices.jsonToObject(json, SamplePayload.class);
+        SamplePayload restored = JsonService.jsonToObject(json, SamplePayload.class);
         Assertions.assertEquals("alpha", restored.name);
         Assertions.assertEquals(3, restored.count);
         Assertions.assertNull(restored.nullable);
@@ -34,15 +34,15 @@ class JsonServicesTest {
     void testJsonToObjectThrowsForInvalidJson() {
         Assertions.assertThrows(
                 IOException.class,
-                () -> JsonServices.jsonToObject("{not-valid-json}", SamplePayload.class)
+                () -> JsonService.jsonToObject("{not-valid-json}", SamplePayload.class)
         );
     }
 
     @Test
     void testIsJsonHandlesValidInvalidAndNonObjectInput() {
-        Assertions.assertTrue(JsonServices.isJson("{\"id\": 1}"));
-        Assertions.assertFalse(JsonServices.isJson("plain-text"));
-        Assertions.assertFalse(JsonServices.isJson("{not-valid-json}"));
+        Assertions.assertTrue(JsonService.isJson("{\"id\": 1}"));
+        Assertions.assertFalse(JsonService.isJson("plain-text"));
+        Assertions.assertFalse(JsonService.isJson("{not-valid-json}"));
     }
 
     static final class SamplePayload {

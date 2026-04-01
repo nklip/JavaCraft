@@ -13,7 +13,6 @@ import java.io.IOException;
  */
 public class JsonService {
 
-    // I don't like static initialization
     private static final ObjectMapper mapper = createMapper();
 
     private static ObjectMapper createMapper() {
@@ -27,7 +26,7 @@ public class JsonService {
         return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(tag);
     }
 
-    public static Object jsonToObject(String json, Class className) throws IOException {
+    public static<T> T jsonToObject(String json, Class<T> className) throws IOException {
         return mapper.readValue(json, className);
     }
 

@@ -7,7 +7,7 @@ import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 
-public class JsonServices {
+public class JsonService {
 
     private static final ObjectMapper mapper = createMapper();
 
@@ -29,7 +29,6 @@ public class JsonServices {
     public static boolean isJson(String json) {
         try {
             if (json.contains("{") && json.contains("}")) {
-                final ObjectMapper mapper = new ObjectMapper();
                 mapper.readTree(json);
                 return true;
             } else {

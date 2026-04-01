@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import org.xsd2model.model.ResponseType;
 import org.xsd2model.model.UserType;
 
-
 /**
  * Created by nikilipa on 8/20/16.
  */
@@ -33,7 +32,7 @@ public class JsonServiceTest {
         // toJson
         String actualJson = JsonService.objectToJson(responseType0);
         // toObject
-        ResponseType responseType2 = (ResponseType) JsonService.jsonToObject(actualJson, ResponseType.class);
+        ResponseType responseType2 = JsonService.jsonToObject(actualJson, ResponseType.class);
         // toJson
         String actualJson2 = JsonService.objectToJson(responseType2);
 
