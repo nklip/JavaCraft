@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>my.javacraft</groupId>
+        <groupId>dev.nklip.javacraft</groupId>
         <artifactId>kafka</artifactId>
         <version>1.0-SNAPSHOT</version>
     </parent>
