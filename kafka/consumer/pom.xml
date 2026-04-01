@@ -39,6 +39,13 @@
             <artifactId>slf4j-simple</artifactId>
             <version>${slf4j.version}</version>
         </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit5.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -48,7 +55,7 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>${spring-boot.version}</version>
                 <configuration>
-                    <mainClass>my.javacraft.kafka.consumer.Application</mainClass>
+                    <mainClass>dev.nklip.javacraft.kafka.consumer.Application</mainClass>
                 </configuration>
             </plugin>
         </plugins>
