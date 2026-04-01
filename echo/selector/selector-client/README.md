@@ -7,21 +7,21 @@ It connects to the selector-based single-thread server and exchanges line-delimi
 
 ## How it is structured
 
-- `my.javacraft.echo.selector.client.SelectorClient`
+- `dev.nklip.javacraft.echo.selector.client.SelectorClient`
   - Public client API: `connectToServer()`, `sendMessage(...)`, `readMessage()`, `close()`, `run()`.
   - Starts one listener worker (`SelectorMessageListener`) on a single-thread executor.
   - Interactive loop reads stdin until `bye` or EOF.
-- `my.javacraft.echo.selector.client.SelectorNetworkManager`
+- `dev.nklip.javacraft.echo.selector.client.SelectorNetworkManager`
   - Owns `SocketChannel` and `Selector`.
   - Uses non-blocking connect with timeout and `wait/notify` handoff for sender/listener.
   - Stores incoming responses in a bounded queue.
-- `my.javacraft.echo.selector.client.SelectorMessageSender`
+- `dev.nklip.javacraft.echo.selector.client.SelectorMessageSender`
   - Frames outgoing commands with `\r\n`.
   - Uses `SelectionKey`/`Selector` write interest and a pending-write queue.
-- `my.javacraft.echo.selector.client.SelectorMessageListener`
+- `dev.nklip.javacraft.echo.selector.client.SelectorMessageListener`
   - Selector-driven reader for complete `\r\n` framed responses.
   - Preserves meaningful payload whitespace and protects against oversized frames.
-- `my.javacraft.echo.selector.client.SelectorClientApplication`
+- `dev.nklip.javacraft.echo.selector.client.SelectorClientApplication`
   - CLI entry point for manual usage.
 
 ## Protocol behavior
@@ -43,5 +43,5 @@ mvn -pl echo/selector/selector-client test
 
 1. Start `selector-server` first (for example on port `8077`).
 2. Run main class:
-   - `my.javacraft.echo.selector.client.SelectorClientApplication`
+   - `dev.nklip.javacraft.echo.selector.client.SelectorClientApplication`
 3. Optional first argument: port number (`0..65535`, default `8077`).

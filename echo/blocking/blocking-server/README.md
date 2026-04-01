@@ -14,7 +14,7 @@ Both are built on the same common server core.
 
 ## How it is structured
 
-- `my.javacraft.echo.blocking.server.common.MultithreadedServer`
+- `common.dev.nklip.javacraft.echo.blocking.server.MultithreadedServer`
   - Accept loop and shared server lifecycle.
   - Guard against duplicate `run()` calls via `running` flag.
   - Graceful shutdown via `close()` (implements `AutoCloseable`):
@@ -22,16 +22,16 @@ Both are built on the same common server core.
     - closes current `ServerSocket`
     - unblocks `accept()`
   - Wraps `startUpClient(...)` in base `RuntimeException` handling and closes failed client sockets.
-- `my.javacraft.echo.blocking.server.common.ServerThread`
+- `common.dev.nklip.javacraft.echo.blocking.server.ServerThread`
   - Per-client protocol processing.
   - UTF-8 input/output.
   - Per-client read timeout (`setSoTimeout(2000)`).
   - Per-server-instance connection counting through shared `AtomicInteger`.
-- `my.javacraft.echo.blocking.server.platform.PlatformServer`
+- `platform.dev.nklip.javacraft.echo.blocking.server.PlatformServer`
   - Starts each `ServerThread` on a platform daemon thread.
-- `my.javacraft.echo.blocking.server.virtual.VirtualServer`
+- `virtual.dev.nklip.javacraft.echo.blocking.server.VirtualServer`
   - Starts each `ServerThread` on a virtual thread.
-- `my.javacraft.echo.blocking.server.common.PortValidator`
+- `common.dev.nklip.javacraft.echo.blocking.server.PortValidator`
   - Validates CLI port (`1..65535`) with default fallback (`8075`).
 - `PlatformServerApplication` / `VirtualServerApplication`
   - Entry points for running server manually.
@@ -66,8 +66,8 @@ mvn -pl echo/blocking/blocking-server test
 
 Run from your IDE using one of these main classes:
 
-- `my.javacraft.echo.blocking.server.platform.PlatformServerApplication`
-- `my.javacraft.echo.blocking.server.virtual.VirtualServerApplication`
+- `platform.dev.nklip.javacraft.echo.blocking.server.PlatformServerApplication`
+- `virtual.dev.nklip.javacraft.echo.blocking.server.VirtualServerApplication`
 
 Optional CLI argument: port number (default `8075`).
 

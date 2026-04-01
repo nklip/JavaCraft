@@ -12,18 +12,18 @@ Both clients share the same core behavior through `UserClient`.
 
 ## How it is structured
 
-- `my.javacraft.echo.blocking.client.common.UserClient`
+- `common.dev.nklip.javacraft.echo.blocking.client.UserClient`
   - Common connection lifecycle and protocol behavior.
   - Connects with explicit timeout (`CONNECT_TIMEOUT_MILLIS`).
   - Uses UTF-8 for input/output streams.
   - Sends messages to server and reads responses via a bounded queue (`MAX_QUEUED_RESPONSES`).
   - Tracks closure state with `closedByClient` and `closedByServer`.
   - Provides interactive console loop in `readUserMessages(...)`.
-- `my.javacraft.echo.blocking.client.platform.PlatformThreadClient`
+- `platform.dev.nklip.javacraft.echo.blocking.client.PlatformThreadClient`
   - Starts response listener on a platform daemon thread.
-- `my.javacraft.echo.blocking.client.virtual.VirtualThreadClient`
+- `virtual.dev.nklip.javacraft.echo.blocking.client.VirtualThreadClient`
   - Starts response listener on a virtual thread.
-- `my.javacraft.echo.blocking.client.common.PortValidator`
+- `common.dev.nklip.javacraft.echo.blocking.client.PortValidator`
   - Validates CLI port (`1..65535`) with default fallback (`8075`).
 - `PlatformClientApplication` / `VirtualClientApplication`
   - Runnable entry points for manual interactive usage.
@@ -56,7 +56,7 @@ mvn -pl echo/blocking/blocking-client test
 
 1. Start a server (`blocking-server`) on a port, for example `8075`.
 2. Run one of these main classes from your IDE:
-   - `my.javacraft.echo.blocking.client.platform.PlatformClientApplication`
-   - `my.javacraft.echo.blocking.client.virtual.VirtualClientApplication`
+   - `platform.dev.nklip.javacraft.echo.blocking.client.PlatformClientApplication`
+   - `virtual.dev.nklip.javacraft.echo.blocking.client.VirtualClientApplication`
 3. Optionally pass the port as first argument (default is `8075`).
 4. Type messages in the console and finish with `bye` (or EOF).

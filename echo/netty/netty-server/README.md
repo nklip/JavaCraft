@@ -7,25 +7,25 @@ It accepts multiple TCP clients, processes line-delimited text requests, and res
 
 ## How it is structured
 
-- `my.javacraft.echo.netty.server.NettyServer`
+- `dev.nklip.javacraft.echo.netty.server.NettyServer`
   - Server lifecycle API:
     - `start()` for non-blocking startup
     - `run()` for blocking mode (waits on `closeFuture`)
     - `stop()` for graceful resource release
   - Uses separate boss/worker event loop groups.
-- `my.javacraft.echo.netty.server.NettyServerInitializer`
+- `dev.nklip.javacraft.echo.netty.server.NettyServerInitializer`
   - Builds server child pipeline with:
     - `DelimiterBasedFrameDecoder`
     - `StringDecoder`
     - `StringEncoder`
     - `NettyServerHandler`
   - Uses `ChannelGroup` to track connected clients.
-- `my.javacraft.echo.netty.server.NettyServerHandler`
+- `dev.nklip.javacraft.echo.netty.server.NettyServerHandler`
   - Sends greeting on `channelActive`.
   - Handles protocol commands (`stats`, `bye`, empty, echo).
   - Uses `ChannelFutureListener.CLOSE` for graceful close after `bye`.
   - Supports broadcast helper via `sendToAll(...)`.
-- `my.javacraft.echo.netty.server.NettyServerApplication`
+- `dev.nklip.javacraft.echo.netty.server.NettyServerApplication`
   - CLI entry point.
   - Default port: `8076`.
   - Port validation range: `0..65535`.
@@ -56,7 +56,7 @@ mvn -pl echo/netty/netty-server test
 
 Run main class:
 
-- `my.javacraft.echo.netty.server.NettyServerApplication`
+- `dev.nklip.javacraft.echo.netty.server.NettyServerApplication`
 
 Optional first argument: port number (`0..65535`, default `8076`).
 

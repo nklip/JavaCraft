@@ -53,7 +53,7 @@ If `@PerformanceSummary` is run before `@Performance` creates the summary file, 
 
 Runner:
 
-- `my.javacraft.echo.netty.CucumberRunner`
+- `dev.nklip.javacraft.echo.netty.CucumberRunner`
 
 Reports:
 

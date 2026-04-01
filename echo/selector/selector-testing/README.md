@@ -50,7 +50,7 @@ Summary step:
 
 Runner:
 
-- `my.javacraft.echo.selector.CucumberRunner`
+- `dev.nklip.javacraft.echo.selector.CucumberRunner`
 
 Reports:
 

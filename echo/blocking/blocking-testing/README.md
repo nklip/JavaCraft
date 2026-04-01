@@ -65,7 +65,7 @@ During benchmark message loops, step definitions temporarily suppress `System.ou
 
 ## How tests are run
 
-Runner: `my.javacraft.echo.blocking.CucumberRunner`
+Runner: `dev.nklip.javacraft.echo.blocking.CucumberRunner`
 
 Reports generated to:
 

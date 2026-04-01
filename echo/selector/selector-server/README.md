@@ -6,13 +6,13 @@
 
 ## How it is structured
 
-- `my.javacraft.echo.selector.server.SelectorServer`
+- `dev.nklip.javacraft.echo.selector.server.SelectorServer`
   - Main event loop with one `Selector`.
   - Accept/read/write handling by `SelectionKey` readiness (`OP_ACCEPT`, `OP_READ`, `OP_WRITE`).
   - Per-client request buffers and pending-write queues.
   - Bounded request/response frame limits to avoid unbounded memory growth.
   - Graceful stop API: `stop()` sets `running=false` and wakes selector.
-- `my.javacraft.echo.selector.server.SelectorServerApplication`
+- `dev.nklip.javacraft.echo.selector.server.SelectorServerApplication`
   - CLI entry point.
   - Installs shutdown hook to stop server cleanly on JVM shutdown.
 
@@ -44,6 +44,6 @@ mvn -pl echo/selector/selector-server test
 
 Run main class:
 
-- `my.javacraft.echo.selector.server.SelectorServerApplication`
+- `dev.nklip.javacraft.echo.selector.server.SelectorServerApplication`
 
 Optional first argument: port number (`0..65535`, default `8077`).

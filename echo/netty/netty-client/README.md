@@ -7,22 +7,22 @@ It opens TCP connections, sends line-delimited commands, and reads server respon
 
 ## How it is structured
 
-- `my.javacraft.echo.netty.client.NettyClient`
+- `dev.nklip.javacraft.echo.netty.client.NettyClient`
   - Main client API: `openConnection()`, `sendMessage(...)`, `readMessage()`, `close()`, `run()`.
   - Uses a shared Netty `EventLoopGroup` with reference counting, so load tests do not create one event loop per client.
   - Appends `\r\n` for outbound protocol framing.
-- `my.javacraft.echo.netty.client.NettyClientInitializer`
+- `dev.nklip.javacraft.echo.netty.client.NettyClientInitializer`
   - Builds client pipeline with:
     - `DelimiterBasedFrameDecoder`
     - `StringDecoder`
     - `StringEncoder`
     - `NettyClientHandler`
   - Uses a latch to expose handler safely after pipeline init.
-- `my.javacraft.echo.netty.client.NettyClientHandler`
+- `dev.nklip.javacraft.echo.netty.client.NettyClientHandler`
   - Stores inbound messages in a bounded queue.
   - Returns next message via timed polling.
   - Logs and preserves interrupt flag on interruption.
-- `my.javacraft.echo.netty.client.NettyClientApplication`
+- `dev.nklip.javacraft.echo.netty.client.NettyClientApplication`
   - CLI entry point.
   - Default port: `8076`.
   - Port validation range: `0..65535`.
@@ -51,6 +51,6 @@ mvn -pl echo/netty/netty-client test
 
 1. Start `netty-server` first (for example on port `8076`).
 2. Run main class:
-   - `my.javacraft.echo.netty.client.NettyClientApplication`
+   - `dev.nklip.javacraft.echo.netty.client.NettyClientApplication`
 3. Optional first argument: port number (`0..65535`, default `8076`).
 
