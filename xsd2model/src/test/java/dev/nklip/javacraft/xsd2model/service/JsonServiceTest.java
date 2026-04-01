@@ -1,4 +1,4 @@
-package my.javacraft.xsd2model.services;
+package dev.nklip.javacraft.xsd2model.service;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,7 +10,7 @@ import org.xsd2model.model.UserType;
 /**
  * Created by nikilipa on 8/20/16.
  */
-public class JsonServicesTest {
+public class JsonServiceTest {
 
     private UserType userType;
 
@@ -31,11 +31,11 @@ public class JsonServicesTest {
         responseType0.setDesc("Ok!");
 
         // toJson
-        String actualJson = JsonServices.objectToJson(responseType0);
+        String actualJson = JsonService.objectToJson(responseType0);
         // toObject
-        ResponseType responseType2 = (ResponseType) JsonServices.jsonToObject(actualJson, ResponseType.class);
+        ResponseType responseType2 = (ResponseType) JsonService.jsonToObject(actualJson, ResponseType.class);
         // toJson
-        String actualJson2 = JsonServices.objectToJson(responseType2);
+        String actualJson2 = JsonService.objectToJson(responseType2);
 
         Assertions.assertEquals(actualJson, actualJson2);
         String expectedJson = """
@@ -55,9 +55,9 @@ public class JsonServicesTest {
 
     @Test
     void testIsJsonHandlesValidInvalidAndNonObjectInput() {
-        Assertions.assertTrue(JsonServices.isJson("{\"id\": 1}"));
-        Assertions.assertFalse(JsonServices.isJson("plain-text"));
-        Assertions.assertFalse(JsonServices.isJson("{not-valid-json}"));
+        Assertions.assertTrue(JsonService.isJson("{\"id\": 1}"));
+        Assertions.assertFalse(JsonService.isJson("plain-text"));
+        Assertions.assertFalse(JsonService.isJson("{not-valid-json}"));
     }
 
 }

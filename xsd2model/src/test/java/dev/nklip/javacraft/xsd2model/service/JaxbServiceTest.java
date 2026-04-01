@@ -1,4 +1,4 @@
-package my.javacraft.xsd2model.services;
+package dev.nklip.javacraft.xsd2model.service;
 
 import jakarta.xml.bind.JAXBException;
 import java.nio.file.Files;
@@ -11,18 +11,18 @@ import org.xsd2model.model.*;
 /**
  * Created by nikilipa on 8/20/16.
  */
-public class JaxbServicesTest {
+public class JaxbServiceTest {
 
-    private JaxbServices<UserType> coreServices;
-    private JaxbServices<RequestType> requestServices;
-    private JaxbServices<ResponseType> responseServices;
+    private JaxbService<UserType> coreServices;
+    private JaxbService<RequestType> requestServices;
+    private JaxbService<ResponseType> responseServices;
     private UserType userType;
 
     @BeforeEach
     public void setUp() throws JAXBException {
-        coreServices = new JaxbServices<>(UserType.class);
-        requestServices = new JaxbServices<>(RequestType.class);
-        responseServices = new JaxbServices<>(ResponseType.class);
+        coreServices = new JaxbService<>(UserType.class);
+        requestServices = new JaxbService<>(RequestType.class);
+        responseServices = new JaxbService<>(ResponseType.class);
 
         UserType userType = new UserType();
         userType.setLogin("nikita");

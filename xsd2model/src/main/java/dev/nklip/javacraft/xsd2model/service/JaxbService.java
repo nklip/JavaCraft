@@ -1,4 +1,4 @@
-package my.javacraft.xsd2model.services;
+package dev.nklip.javacraft.xsd2model.service;
 
 import jakarta.xml.bind.*;
 import java.io.Reader;
@@ -14,12 +14,12 @@ import javax.xml.stream.XMLStreamReader;
  * JAXBContext is thread safe and should only be created once and reused to avoid the cost of initializing the metadata multiple times.
  * Marshaller and Unmarshaller are not thread safe, but are lightweight to create and could be created per operation.
  */
-public class JaxbServices<T> {
+public class JaxbService<T> {
 
     private final Class<T> clazz;
     private final JAXBContext context;
 
-    public JaxbServices(Class<T> clazz) throws JAXBException {
+    public JaxbService(Class<T> clazz) throws JAXBException {
         this.clazz = clazz;
         context = JAXBContext.newInstance(this.clazz);
     }
