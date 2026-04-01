@@ -1,6 +1,6 @@
-package my.javacraft.translation.rest;
+package dev.nklip.javacraft.translation.rest;
 
-import my.javacraft.translation.service.WordCounterService;
+import dev.nklip.javacraft.translation.service.WordCounterService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;

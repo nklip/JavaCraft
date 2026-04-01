@@ -1,4 +1,4 @@
-package my.javacraft.translation.rest;
+package dev.nklip.javacraft.translation.rest;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;

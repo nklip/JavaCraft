@@ -1,4 +1,4 @@
-package my.javacraft.translation.service;
+package dev.nklip.javacraft.translation.service;
 
 public interface TranslateService {
 

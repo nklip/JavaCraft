@@ -1,6 +1,6 @@
-package my.javacraft.translation.service.impl;
+package dev.nklip.javacraft.translation.service.impl;
 
-import my.javacraft.translation.service.TranslateService;
+import dev.nklip.javacraft.translation.service.TranslateService;
 import org.springframework.stereotype.Service;
 
 @Service

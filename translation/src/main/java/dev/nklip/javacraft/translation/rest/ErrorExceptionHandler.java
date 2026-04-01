@@ -1,4 +1,4 @@
-package my.javacraft.translation.rest;
+package dev.nklip.javacraft.translation.rest;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;

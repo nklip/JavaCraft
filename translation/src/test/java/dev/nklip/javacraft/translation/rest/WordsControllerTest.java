@@ -1,6 +1,6 @@
-package my.javacraft.translation.rest;
+package dev.nklip.javacraft.translation.rest;
 
-import my.javacraft.translation.service.WordCounterService;
+import dev.nklip.javacraft.translation.service.WordCounterService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;

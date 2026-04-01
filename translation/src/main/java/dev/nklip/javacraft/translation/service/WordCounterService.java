@@ -1,4 +1,4 @@
-package my.javacraft.translation.service;
+package dev.nklip.javacraft.translation.service;
 
 import java.util.Arrays;
 import java.util.List;
