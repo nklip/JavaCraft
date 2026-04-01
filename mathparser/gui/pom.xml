@@ -9,13 +9,12 @@
         <version>1.0-SNAPSHOT</version>
     </parent>
 
-    <groupId>my.javacraft.mathparser</groupId>
     <artifactId>gui</artifactId>
     <packaging>jar</packaging>
 
     <dependencies>
         <dependency>
-            <groupId>my.javacraft.mathparser</groupId>
+            <groupId>dev.nklip.javacraft</groupId>
             <artifactId>parser</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -45,7 +44,7 @@
                     <archive>
                         <index>true</index>
                         <manifestEntries>
-                            <Main-Class>my.javacraft.mathparser.gui.Main</Main-Class>
+                            <Main-Class>dev.nklip.javacraft.mathparser.gui.Main</Main-Class>
                         </manifestEntries>
                     </archive>
                 </configuration>
@@ -72,7 +71,7 @@
                             </filters>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>my.javacraft.mathparser.gui.Main</mainClass>
+                                    <mainClass>dev.nklip.javacraft.mathparser.gui.Main</mainClass>
                                 </transformer>
                             </transformers>
                         </configuration>
