@@ -19,6 +19,6 @@
     -->
     <context:annotation-config/>
 
-    <context:component-scan base-package="my.javacraft.ses"/>
+    <context:component-scan base-package="dev.nklip.javacraft.ses"/>
 
 </beans>

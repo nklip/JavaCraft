@@ -11,12 +11,12 @@
         <version>1.0-SNAPSHOT</version>
     </parent>
 
-    <groupId>my.javacraft.ses</groupId>
+    <groupId>dev.nklip.javacraft.ses</groupId>
     <artifactId>ses-simulator</artifactId>
 
     <dependencies>
         <dependency>
-            <groupId>my.javacraft.ses</groupId>
+            <groupId>dev.nklip.javacraft.ses</groupId>
             <artifactId>ses-events</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
