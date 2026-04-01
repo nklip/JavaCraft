@@ -12,6 +12,8 @@ import java.time.Duration;
 public class ArtemisContainerInitializer
         implements ApplicationContextInitializer<ConfigurableApplicationContext> {
 
+    static final String TC_ARTEMIS_IMAGE = "tc.image.artemis";
+
     private static final String ARTEMIS_USER = "artemis";
     private static final String ARTEMIS_PASSWORD = "artemis";
     private static final int ARTEMIS_CORE_PORT = 61616;
@@ -24,14 +26,9 @@ public class ArtemisContainerInitializer
 
     @SuppressWarnings("resource")
     private static GenericContainer<?> createContainer() {
-        String image = System.getProperty("tc.image.artemis");
-        if (image == null || image.isBlank()) {
-            throw new IllegalStateException(
-                    "System property 'tc.image.artemis' is not set. "
-                    + "It must be provided via Maven Surefire systemPropertyVariables in pom.xml.");
-        }
+        String dockerImage = MavenPomPropertyResolver.resolveRequiredSystemOrPomProperty(TC_ARTEMIS_IMAGE);
         // The container stays up for the full cucumber JVM and Ryuk cleans it up afterwards.
-        return new GenericContainer<>(DockerImageName.parse(image))
+        return new GenericContainer<>(DockerImageName.parse(dockerImage))
                 .withEnv("ARTEMIS_USER", ARTEMIS_USER)
                 .withEnv("ARTEMIS_PASSWORD", ARTEMIS_PASSWORD)
                 .waitingFor(Wait.forLogMessage(".*AMQ221007: Server is now active.*", 1))
