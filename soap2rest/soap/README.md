@@ -117,7 +117,7 @@ sequenceDiagram
 <sub>[Back to top](#soap2rest-soap)</sub>
 
 - WSDL source: `src/main/resources/wsdl/ds.wsdl`
-- generated package: `my.javacraft.soap2rest.soap.generated.ds.ws`
+- generated package: `dev.nklip.javacraft.soap2rest.soap.generated.ds.ws`
 - generation plugin: `jaxws-maven-plugin`
 
 Generate sources explicitly:
@@ -138,7 +138,7 @@ mvn -pl soap2rest/soap -am test
 
 Run only cucumber scenarios:
 ```bash
-mvn -pl soap2rest/soap -Dtest=my.javacraft.soap2rest.soap.cucumber.CucumberRunner test
+mvn -pl soap2rest/soap -Dtest=cucumber.dev.nklip.javacraft.soap2rest.soap.CucumberRunner test
 ```
 
 ## 8. Test Strategy

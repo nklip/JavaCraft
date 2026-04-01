@@ -114,7 +114,7 @@
                         (it is, via src/main/resources/wsdl/ds.wsdl).
                     -->
                     <wsdlLocation>/wsdl/ds.wsdl</wsdlLocation>
-                    <packageName>my.javacraft.soap2rest.soap.generated.ds.ws</packageName>
+                    <packageName>dev.nklip.javacraft.soap2rest.soap.generated.ds.ws</packageName>
                     <sourceDestDir>${project.build.directory}/generated-sources</sourceDestDir>
                 </configuration>
                 <executions>
