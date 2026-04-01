@@ -1,4 +1,4 @@
-package my.javacraft.bdd.service;
+package dev.nklip.javacraft.bdd.service;
 
 import java.math.BigDecimal;
 import java.util.List;

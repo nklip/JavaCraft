@@ -1,4 +1,4 @@
-package my.javacraft.bdd;
+package dev.nklip.javacraft.bdd;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

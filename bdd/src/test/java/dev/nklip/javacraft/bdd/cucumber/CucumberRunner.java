@@ -1,4 +1,4 @@
-package my.javacraft.bdd.cucumber;
+package dev.nklip.javacraft.bdd.cucumber;
 
 import org.junit.platform.suite.api.ConfigurationParameter;
 import org.junit.platform.suite.api.IncludeEngines;
@@ -15,6 +15,6 @@ import static io.cucumber.junit.platform.engine.Constants.PLUGIN_PROPERTY_NAME;
 @SelectPackages("features")
 @ConfigurationParameter(key = PLUGIN_PROPERTY_NAME,
         value = "pretty, html:target/cucumber-reports/cucumber.html, json:target/cucumber-reports/cucumber.json")
-@ConfigurationParameter(key = GLUE_PROPERTY_NAME, value = "my.javacraft.bdd.cucumber")
+@ConfigurationParameter(key = GLUE_PROPERTY_NAME, value = "dev.nklip.javacraft.bdd.cucumber")
 public class CucumberRunner {
 }

@@ -1,8 +1,8 @@
-package my.javacraft.bdd.service;
+package dev.nklip.javacraft.bdd.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import my.javacraft.bdd.model.BmiCategory;
+import dev.nklip.javacraft.bdd.model.BmiCategory;
 import org.springframework.stereotype.Service;
 
 /**

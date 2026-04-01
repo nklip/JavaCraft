@@ -1,5 +1,6 @@
-package my.javacraft.bdd.cucumber.step;
+package dev.nklip.javacraft.bdd.cucumber.step;
 
+import dev.nklip.javacraft.bdd.service.BMIService;
 import io.cucumber.datatable.DataTable;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
@@ -7,7 +8,6 @@ import io.cucumber.java.en.When;
 import java.math.BigDecimal;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
-import my.javacraft.bdd.service.BMIService;
 import org.junit.jupiter.api.Assertions;
 
 @Slf4j

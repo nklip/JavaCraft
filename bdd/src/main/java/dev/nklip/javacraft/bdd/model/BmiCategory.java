@@ -1,4 +1,4 @@
-package my.javacraft.bdd.model;
+package dev.nklip.javacraft.bdd.model;
 
 import java.math.BigDecimal;
 
