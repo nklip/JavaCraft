@@ -1,4 +1,4 @@
-package my.javacraft.tictactoe.view;
+package dev.nklip.javacraft.tictactoe.view;
 
 import javax.swing.*;
 
@@ -7,8 +7,8 @@ import javax.swing.*;
  */
 public class Cell extends JButton {
 
+    private final int type;
     private boolean isAlreadyPressed;
-    private int type;
 
     public Cell(int type) {
         super();
@@ -28,7 +28,4 @@ public class Cell extends JButton {
         return type;
     }
 
-    public void setType(int type) {
-        this.type = type;
-    }
 }

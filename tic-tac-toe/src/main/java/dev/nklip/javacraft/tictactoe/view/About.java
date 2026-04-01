@@ -1,4 +1,4 @@
-package my.javacraft.tictactoe.view;
+package dev.nklip.javacraft.tictactoe.view;
 
 import javax.swing.*;
 
@@ -10,9 +10,9 @@ import javax.swing.*;
 public class About extends JFrame {
     private static About instance = null;
     // Variables declaration - do not modify//GEN-BEGIN:variables
-    private javax.swing.JEditorPane editorPane;
-    private javax.swing.JPanel mainPanel;
-    private javax.swing.JScrollPane scrollPane;
+    private JEditorPane editorPane;
+    private JPanel mainPanel;
+    private JScrollPane scrollPane;
 
     private About() {
         initComponents();
@@ -30,7 +30,6 @@ public class About extends JFrame {
         return instance;
     }
 
-    @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
 

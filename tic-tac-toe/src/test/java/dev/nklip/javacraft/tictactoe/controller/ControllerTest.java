@@ -1,10 +1,10 @@
-package my.javacraft.tictactoe.controller;
+package dev.nklip.javacraft.tictactoe.controller;
 
-import my.javacraft.tictactoe.model.GameSettings;
-import my.javacraft.tictactoe.model.Player;
-import my.javacraft.tictactoe.model.TicTacToe;
-import my.javacraft.tictactoe.view.GUI;
-import my.javacraft.tictactoe.view.Options;
+import dev.nklip.javacraft.tictactoe.model.GameSettings;
+import dev.nklip.javacraft.tictactoe.model.Player;
+import dev.nklip.javacraft.tictactoe.model.TicTacToe;
+import dev.nklip.javacraft.tictactoe.view.GUI;
+import dev.nklip.javacraft.tictactoe.view.Options;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;

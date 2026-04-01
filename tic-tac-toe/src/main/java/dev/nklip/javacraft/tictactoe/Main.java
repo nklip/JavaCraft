@@ -1,7 +1,7 @@
-package my.javacraft.tictactoe;
+package dev.nklip.javacraft.tictactoe;
 
-import my.javacraft.tictactoe.controller.Controller;
-import my.javacraft.tictactoe.view.GUI;
+import dev.nklip.javacraft.tictactoe.controller.Controller;
+import dev.nklip.javacraft.tictactoe.view.GUI;
 
 /**
  * Entry point of Tic-tac-toe game.

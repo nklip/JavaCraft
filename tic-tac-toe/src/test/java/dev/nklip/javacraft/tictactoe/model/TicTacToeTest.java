@@ -1,4 +1,4 @@
-package my.javacraft.tictactoe.model;
+package dev.nklip.javacraft.tictactoe.model;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;

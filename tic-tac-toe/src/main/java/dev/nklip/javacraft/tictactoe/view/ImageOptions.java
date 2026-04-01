@@ -1,8 +1,9 @@
-package my.javacraft.tictactoe.view;
+package dev.nklip.javacraft.tictactoe.view;
 
 import java.awt.event.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import javax.swing.*;
 
 /**
@@ -12,10 +13,10 @@ import javax.swing.*;
  **/
 public class ImageOptions extends JFrame implements ActionListener {
     private static ImageOptions instance = null;
-    private String imageOne = null;  // path to the default first image
-    private String imageTwo = null;  // path to the default second image
-    private String iconDeft = null;  // path to default icon
-    private String source = null;  // path to folder with resources (into jar)
+    private final String defaultIconPath;  // path to default icon
+    private final String source;  // path to folder with resources (into jar)
+    private String imageOne;  // path to the default first image
+    private String imageTwo;  // path to the default second image
 
     private List<CheckboxItem> panelOne;
     private List<CheckboxItem> panelTwo;
@@ -28,7 +29,7 @@ public class ImageOptions extends JFrame implements ActionListener {
      */
     private ImageOptions() {
         source = "/img/"; // + File.separator;
-        iconDeft = source + "Icon.png";
+        defaultIconPath = source + "Icon.png";
         imageOne = source + "DefaultCrossOne.png";
         imageTwo = source + "DefaultNoughtOne.png";
         initComponents();
@@ -86,13 +87,12 @@ public class ImageOptions extends JFrame implements ActionListener {
         item.setSelected(true);
     }
 
-    @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
 
-        imagePanelOne = new javax.swing.JPanel();
+        imagePanelOne = new JPanel();
 
-        this.panelOne = new ArrayList<CheckboxItem>(14);
+        this.panelOne = new ArrayList<>(14);
         for (int i = 0; i < 14; i++) {
             CheckboxItem item = new CheckboxItem(1, i); // panel - 1; items 0-13
             this.panelOne.add(item);
@@ -132,9 +132,9 @@ public class ImageOptions extends JFrame implements ActionListener {
             imagePanelOne.add(item);
         }
 
-        imagePanelTwo = new javax.swing.JPanel();
+        imagePanelTwo = new JPanel();
 
-        this.panelTwo = new ArrayList<CheckboxItem>(14);
+        this.panelTwo = new ArrayList<>(14);
         for (int i = 0; i < 14; i++) {
             CheckboxItem item = new CheckboxItem(2, i); // panel - 2; items 0-13
             this.panelTwo.add(item);
@@ -239,8 +239,7 @@ public class ImageOptions extends JFrame implements ActionListener {
      * Get default ImageIcon
      **/
     public ImageIcon getDefaultIcon() {
-        ImageIcon icon = new ImageIcon(getClass().getResource(iconDeft));
-        return icon;
+        return new ImageIcon(Objects.requireNonNull(getClass().getResource(defaultIconPath)));
     }
 
 }

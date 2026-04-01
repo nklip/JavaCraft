@@ -1,4 +1,4 @@
-package my.javacraft.tictactoe.model;
+package dev.nklip.javacraft.tictactoe.model;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -41,7 +41,7 @@
                             <addClasspath>true</addClasspath>
                         </manifest>
                         <manifestEntries>
-                            <Main-Class>my.javacraft.tictactoe.Main</Main-Class>
+                            <Main-Class>dev.nklip.javacraft.tictactoe.Main</Main-Class>
                         </manifestEntries>
                     </archive>
                 </configuration>

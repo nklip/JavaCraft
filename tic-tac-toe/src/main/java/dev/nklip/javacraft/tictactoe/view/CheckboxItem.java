@@ -1,4 +1,4 @@
-package my.javacraft.tictactoe.view;
+package dev.nklip.javacraft.tictactoe.view;
 
 import javax.swing.*;
 

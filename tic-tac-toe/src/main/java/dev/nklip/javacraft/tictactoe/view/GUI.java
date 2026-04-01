@@ -1,4 +1,4 @@
-package my.javacraft.tictactoe.view;
+package dev.nklip.javacraft.tictactoe.view;
 
 import java.awt.*;
 import java.awt.event.*;
@@ -6,8 +6,8 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import javax.swing.*;
-import my.javacraft.tictactoe.controller.Controller;
-import my.javacraft.tictactoe.model.GameSettings;
+import dev.nklip.javacraft.tictactoe.controller.Controller;
+import dev.nklip.javacraft.tictactoe.model.GameSettings;
 
 /**
  * Main Window
