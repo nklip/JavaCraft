@@ -1,11 +1,11 @@
-package my.javacraft.linker.datamanager.rest;
+package dev.nklip.javacraft.linker.datamanager.rest;
 
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import my.javacraft.linker.datamanager.dao.LinkRepository;
-import my.javacraft.linker.datamanager.dao.entity.Link;
-import my.javacraft.linker.datamanager.service.LinkServices;
+import dev.nklip.javacraft.linker.datamanager.dao.LinkRepository;
+import dev.nklip.javacraft.linker.datamanager.dao.entity.Link;
+import dev.nklip.javacraft.linker.datamanager.service.LinkServices;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

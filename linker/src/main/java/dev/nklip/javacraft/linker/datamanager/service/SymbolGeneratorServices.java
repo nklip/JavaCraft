@@ -1,4 +1,4 @@
-package my.javacraft.linker.datamanager.service;
+package dev.nklip.javacraft.linker.datamanager.service;
 
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;

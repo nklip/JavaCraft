@@ -1,4 +1,4 @@
-package my.javacraft.linker.datamanager.service;
+package dev.nklip.javacraft.linker.datamanager.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -9,8 +9,8 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.Optional;
-import my.javacraft.linker.datamanager.dao.LinkRepository;
-import my.javacraft.linker.datamanager.dao.entity.Link;
+import dev.nklip.javacraft.linker.datamanager.dao.LinkRepository;
+import dev.nklip.javacraft.linker.datamanager.dao.entity.Link;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;

@@ -1,4 +1,4 @@
-package my.javacraft.linker.datamanager.rest;
+package dev.nklip.javacraft.linker.datamanager.rest;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -12,9 +12,9 @@ import java.net.InetSocketAddress;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
-import my.javacraft.linker.datamanager.Application;
-import my.javacraft.linker.datamanager.dao.LinkRepository;
-import my.javacraft.linker.datamanager.dao.entity.Link;
+import dev.nklip.javacraft.linker.datamanager.Application;
+import dev.nklip.javacraft.linker.datamanager.dao.LinkRepository;
+import dev.nklip.javacraft.linker.datamanager.dao.entity.Link;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;

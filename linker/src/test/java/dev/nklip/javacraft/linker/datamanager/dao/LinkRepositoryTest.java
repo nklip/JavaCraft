@@ -1,4 +1,4 @@
-package my.javacraft.linker.datamanager.dao;
+package dev.nklip.javacraft.linker.datamanager.dao;
 
 import de.bwaldvogel.mongo.MongoServer;
 import de.bwaldvogel.mongo.backend.memory.MemoryBackend;
@@ -7,7 +7,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.Optional;
-import my.javacraft.linker.datamanager.dao.entity.Link;
+import dev.nklip.javacraft.linker.datamanager.dao.entity.Link;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;

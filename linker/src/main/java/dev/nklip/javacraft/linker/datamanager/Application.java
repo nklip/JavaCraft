@@ -1,4 +1,4 @@
-package my.javacraft.linker.datamanager;
+package dev.nklip.javacraft.linker.datamanager;
 
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.info.Info;

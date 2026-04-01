@@ -1,13 +1,13 @@
-package my.javacraft.linker.datamanager.rest;
+package dev.nklip.javacraft.linker.datamanager.rest;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
-import my.javacraft.linker.datamanager.dao.LinkRepository;
-import my.javacraft.linker.datamanager.dao.entity.Link;
-import my.javacraft.linker.datamanager.service.LinkServices;
+import dev.nklip.javacraft.linker.datamanager.dao.LinkRepository;
+import dev.nklip.javacraft.linker.datamanager.dao.entity.Link;
+import dev.nklip.javacraft.linker.datamanager.service.LinkServices;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;

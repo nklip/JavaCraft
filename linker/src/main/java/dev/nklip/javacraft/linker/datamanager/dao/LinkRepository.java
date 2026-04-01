@@ -1,7 +1,7 @@
-package my.javacraft.linker.datamanager.dao;
+package dev.nklip.javacraft.linker.datamanager.dao;
 
 import java.util.Optional;
-import my.javacraft.linker.datamanager.dao.entity.Link;
+import dev.nklip.javacraft.linker.datamanager.dao.entity.Link;
 import org.springframework.data.mongodb.repository.MongoRepository;
 
 public interface LinkRepository extends MongoRepository<Link, String> {
