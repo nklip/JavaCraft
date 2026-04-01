@@ -1,4 +1,4 @@
-package my.javacraft.modules.app;
+package dev.nklip.javacraft.modules.app;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -6,8 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.lang.module.ModuleDescriptor;
 import java.lang.module.ModuleFinder;
 import java.nio.file.Path;
-import my.javacraft.modules.hello.HelloService;
-import my.javacraft.modules.util.Util;
+import dev.nklip.javacraft.modules.hello.HelloService;
+import dev.nklip.javacraft.modules.util.Util;
 import org.junit.jupiter.api.Test;
 
 class JpmsDescriptorTest {
@@ -28,7 +28,7 @@ class JpmsDescriptorTest {
                 .findFirst()
                 .orElseThrow();
 
-        assertTrue(provides.providers().contains("my.javacraft.modules.hello.impl.HelloServiceImpl"));
+        assertTrue(provides.providers().contains("dev.nklip.javacraft.modules.hello.impl.HelloServiceImpl"));
     }
 
     @Test
@@ -37,7 +37,7 @@ class JpmsDescriptorTest {
 
         ModuleDescriptor.Exports utilExport = utilDescriptor.exports()
                 .stream()
-                .filter(exported -> exported.source().equals("my.javacraft.modules.util"))
+                .filter(exported -> exported.source().equals("dev.nklip.javacraft.modules.util"))
                 .findFirst()
                 .orElseThrow();
 
@@ -52,7 +52,7 @@ class JpmsDescriptorTest {
 
         assertTrue(utilDescriptor.exports()
                 .stream()
-                .noneMatch(exported -> exported.source().equals("my.javacraft.modules.util.secret")));
+                .noneMatch(exported -> exported.source().equals("dev.nklip.javacraft.modules.util.secret")));
     }
 
     private ModuleDescriptor descriptorFor(Class<?> sourceType, String expectedModuleName) throws Exception {

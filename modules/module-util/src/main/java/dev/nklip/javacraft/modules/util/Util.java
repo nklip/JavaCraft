@@ -1,4 +1,4 @@
-package my.javacraft.modules.util;
+package dev.nklip.javacraft.modules.util;
 
 public class Util {
     public static void printMessage(String message) {

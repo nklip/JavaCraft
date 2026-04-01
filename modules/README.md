@@ -30,7 +30,7 @@ mvn -pl modules/module-app -am test
 mvn -pl modules/module-app -am package
 java \
   --module-path modules/module-util/target/module-util-1.0-SNAPSHOT.jar:modules/module-hello/target/module-hello-1.0-SNAPSHOT.jar:modules/module-app/target/module-app-1.0-SNAPSHOT.jar \
-  --module module.app/my.javacraft.modules.app.App
+  --module module.app/dev.nklip.javacraft.modules.app.App
 ```
 
 Expected output:
@@ -79,14 +79,14 @@ keeping the `secret` package completely hidden from all other modules.
 
 ```java
 module module.util {
-    exports my.javacraft.modules.util to module.app;
+    exports dev.nklip.javacraft.modules.util to module.app;
 }
 ```
 
 | Class | Package | Accessible from | Description |
 |-------|---------|-----------------|-------------|
-| `Util` | `my.javacraft.modules.util` | `module.app` only | Prints a message to stdout |
-| `SecretUtil` | `my.javacraft.modules.util.secret` | **Nobody** (not exported) | Internal helper — invisible to all other modules |
+| `Util` | `dev.nklip.javacraft.modules.util` | `module.app` only | Prints a message to stdout |
+| `SecretUtil` | `dev.nklip.javacraft.modules.util.secret` | **Nobody** (not exported) | Internal helper — invisible to all other modules |
 
 ---
 
@@ -97,16 +97,16 @@ The consumer (`module.app`) is fully decoupled — it depends on the interface, 
 
 ```java
 module module.hello {
-    exports my.javacraft.modules.hello;
-    provides my.javacraft.modules.hello.HelloService
-            with my.javacraft.modules.hello.impl.HelloServiceImpl;
+    exports dev.nklip.javacraft.modules.hello;
+    provides dev.nklip.javacraft.modules.hello.HelloService
+            with impl.dev.nklip.javacraft.modules.hello.HelloServiceImpl;
 }
 ```
 
 | Class | Package | Description |
 |-------|---------|-------------|
-| `HelloService` | `my.javacraft.modules.hello` | Service interface — declares `sayHello()` returning a `String` |
-| `HelloServiceImpl` | `my.javacraft.modules.hello.impl` | Provider implementation — returns `"Hello World from Modules!"` |
+| `HelloService` | `dev.nklip.javacraft.modules.hello` | Service interface — declares `sayHello()` returning a `String` |
+| `HelloServiceImpl` | `dev.nklip.javacraft.modules.hello.impl` | Provider implementation — returns `"Hello World from Modules!"` |
 
 ---
 
@@ -120,7 +120,7 @@ via `ServiceLoader`.
 module module.app {
     requires transitive module.util;
     requires transitive module.hello;
-    uses my.javacraft.modules.hello.HelloService;
+    uses dev.nklip.javacraft.modules.hello.HelloService;
 }
 ```
 
@@ -141,9 +141,9 @@ Util.printMessage(message);
 
 | Feature | Module | Directive | What it achieves |
 |---------|--------|-----------|------------------|
-| **Unqualified export** | `module.hello` | `exports my.javacraft.modules.hello` | Package visible to every module on the module path |
-| **Qualified export** | `module.util` | `exports my.javacraft.modules.util to module.app` | Package visible only to `module.app`; all others get a compile-time error |
-| **Hidden package** | `module.util` | *(no export for `secret`)* | `my.javacraft.modules.util.secret` is inaccessible outside the module at both compile time and runtime |
+| **Unqualified export** | `module.hello` | `exports dev.nklip.javacraft.modules.hello` | Package visible to every module on the module path |
+| **Qualified export** | `module.util` | `exports dev.nklip.javacraft.modules.util to module.app` | Package visible only to `module.app`; all others get a compile-time error |
+| **Hidden package** | `module.util` | *(no export for `secret`)* | `dev.nklip.javacraft.modules.util.secret` is inaccessible outside the module at both compile time and runtime |
 | **Transitive requires** | `module.app` | `requires transitive module.util` | Any module that reads `module.app` implicitly also reads `module.util` and `module.hello` |
 | **Service declaration** | `module.hello` | `provides HelloService with HelloServiceImpl` | Registers the implementation in the module layer — no compile-time dependency on the impl class from the consumer |
 | **Service consumption** | `module.app` | `uses HelloService` | Enables `ServiceLoader` to scan module descriptors and discover providers at runtime |

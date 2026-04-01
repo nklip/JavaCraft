@@ -1,4 +1,4 @@
-package my.javacraft.modules.app;
+package dev.nklip.javacraft.modules.app;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -9,8 +9,8 @@ import java.nio.file.Path;
 import java.util.Locale;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import my.javacraft.modules.hello.HelloService;
-import my.javacraft.modules.util.Util;
+import dev.nklip.javacraft.modules.hello.HelloService;
+import dev.nklip.javacraft.modules.util.Util;
 import org.junit.jupiter.api.Test;
 
 class ServiceLoaderIntegrationTest {
@@ -31,7 +31,7 @@ class ServiceLoaderIntegrationTest {
                 "--module-path",
                 modulePath,
                 "--module",
-                "module.app/my.javacraft.modules.app.App"
+                "module.app/dev.nklip.javacraft.modules.app.App"
         );
         processBuilder.redirectErrorStream(true);
 

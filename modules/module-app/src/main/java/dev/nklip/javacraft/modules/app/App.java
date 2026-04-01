@@ -1,8 +1,8 @@
-package my.javacraft.modules.app;
+package dev.nklip.javacraft.modules.app;
 
 import java.util.ServiceLoader;
-import my.javacraft.modules.util.Util;
-import my.javacraft.modules.hello.HelloService;
+import dev.nklip.javacraft.modules.util.Util;
+import dev.nklip.javacraft.modules.hello.HelloService;
 
 public class App {
 

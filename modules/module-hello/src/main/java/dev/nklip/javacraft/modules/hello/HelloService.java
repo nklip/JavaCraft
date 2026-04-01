@@ -1,4 +1,4 @@
-package my.javacraft.modules.hello;
+package dev.nklip.javacraft.modules.hello;
 
 public interface HelloService {
 
