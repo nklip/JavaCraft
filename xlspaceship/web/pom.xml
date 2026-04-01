@@ -16,8 +16,8 @@
 
     <dependencies>
         <dependency>
-            <groupId>org.games</groupId>
-            <artifactId>impl</artifactId>
+            <groupId>dev.nklip.javacraft</groupId>
+            <artifactId>xlspaceship-impl</artifactId>
             <version>${project.version}</version>
         </dependency>
 
