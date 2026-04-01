@@ -26,10 +26,25 @@
 
 | Module | Responsibility | Depends on |
 | --- | --- | --- |
-| `utils` | Shared utility code used by other `soap2rest` modules | Spring AOP only |
-| `rest/rest-api` | Shared DTOs exchanged between `soap` and `rest-app` | none of the runtime modules |
-| `rest/rest-app` | REST controllers, services, JPA, Liquibase, security, async smart processing | `rest-api`, `utils` |
-| `soap` | SOAP endpoint, WSDL-generated model, SOAP-to-REST translation | `rest-api`, `utils` |
+| `common` | Shared utility code used by other `soap2rest` modules | Spring AOP only |
+| `rest-api` | Shared DTOs exchanged between `soap` and `rest-app` | none of the runtime modules |
+| `rest-app` | REST controllers, services, JPA, Liquibase, security, async smart processing | `rest-api`, `common` |
+| `soap` | SOAP endpoint, WSDL-generated model, SOAP-to-REST translation | `rest-api`, `common` |
+
+```mermaid
+graph TD
+    common[common]
+    rest-api[rest-api]
+    rest-app[rest-app]
+    soap[soap]
+
+    rest-app --> common
+    soap --> common
+    rest-app --> rest-api
+    soap --> rest-api
+```
+
+`soap` and `rest-app` are independent of each other. At runtime `soap` calls `rest-app` over HTTP, but there is no compile-time dependency between them.
 
 ## 3. Dependency Rules
 <sub>[Back to top](#soap2rest-architecture)</sub>
@@ -37,7 +52,7 @@
 - `soap` may use shared DTOs from `rest-api`, but it must not depend on `rest-app` internals.
 - `rest-app` owns HTTP controllers, business services, persistence, and JMS listeners.
 - `soap` owns SOAP transport concerns, request routing, and SOAP response mapping.
-- Shared utility code belongs in `utils` only when it is truly cross-cutting.
+- Shared utility code belongs in `common` only when it is truly cross-cutting.
 
 ## 4. Layering
 <sub>[Back to top](#soap2rest-architecture)</sub>
@@ -192,7 +207,6 @@ On the SOAP side:
 <sub>[Back to top](#soap2rest-architecture)</sub>
 
 - overview: [README.md](README.md)
-- REST details: [rest/README.md](rest/README.md)
-- REST runtime details: [rest/rest-app/README.md](rest/rest-app/README.md)
+- common: [common/README.md](common/README.md)
+- REST runtime details: [rest-app/README.md](rest-app/README.md)
 - SOAP details: [soap/README.md](soap/README.md)
-- shared utilities: [utils/README.md](utils/README.md)

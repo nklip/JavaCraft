@@ -9,18 +9,18 @@
         <version>1.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>soap</artifactId>
+    <artifactId>soap2rest-soap</artifactId>
     <packaging>jar</packaging>
 
     <dependencies>
         <dependency>
             <groupId>my.javacraft</groupId>
-            <artifactId>soap2rest-utils</artifactId>
+            <artifactId>soap2rest-common</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>my.javacraft.rest</groupId>
-            <artifactId>rest-api</artifactId>
+            <groupId>my.javacraft</groupId>
+            <artifactId>soap2rest-rest-api</artifactId>
             <version>${project.version}</version>
         </dependency>
 

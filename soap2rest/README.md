@@ -31,12 +31,13 @@ Detailed design notes live in [ARCHITECTURE.md](ARCHITECTURE.md).
 ## 2. Modules
 <sub>[Back to top](#soap-to-rest-soap2rest)</sub>
 
-- [utils](utils/README.md)
+- [common](common/README.md)
   - shared utility code used by the REST and SOAP modules
   - currently provides the `@ExecutionTime` aspect for lightweight timing logs
-- [rest](rest/README.md)
-  - REST-facing part of the demo
-  - contains the shared API model and the runnable REST backend
+- [rest-api](rest-api/README.md)
+  - shared DTOs such as `Metric`, `Metrics`, and async result payloads
+- [rest-app](rest-app/README.md)
+  - runnable Spring Boot REST backend with controllers, services, DAO layer, security, Swagger, and tests
 - [soap](soap/README.md)
   - SOAP endpoint and SOAP-to-REST translation layer
   - owns the WSDL-generated model and SOAP-side integration tests
@@ -73,7 +74,7 @@ From the repository root:
 
 Run REST tests:
 ```bash
-mvn -pl soap2rest/rest/rest-app -am test
+mvn -pl soap2rest/rest-app -am test
 ```
 
 Run SOAP tests:
@@ -86,7 +87,7 @@ mvn -pl soap2rest/soap -am test
 
 Start the REST backend first:
 ```bash
-mvn -pl soap2rest/rest/rest-app -am spring-boot:run
+mvn -pl soap2rest/rest-app -am spring-boot:run
 ```
 
 Start the SOAP facade:
@@ -98,5 +99,5 @@ mvn -pl soap2rest/soap -am spring-boot:run
 <sub>[Back to top](#soap-to-rest-soap2rest)</sub>
 
 - module design and boundaries: [ARCHITECTURE.md](ARCHITECTURE.md)
-- REST implementation details: [rest/README.md](rest/README.md)
+- REST implementation details: [rest-app/README.md](rest-app/README.md)
 - SOAP contract and request mapping: [soap/README.md](soap/README.md)

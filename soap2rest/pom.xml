@@ -12,8 +12,9 @@
     <packaging>pom</packaging>
 
     <modules>
-        <module>utils</module>
-        <module>rest</module>
+        <module>common</module>
+        <module>rest-api</module>
+        <module>rest-app</module>
         <module>soap</module>
     </modules>
 
@@ -165,6 +166,7 @@
                 <configuration>
                     <includes>
                         <include>**/CucumberRunner.java</include>
+                        <include>**/*Test.java</include>
                     </includes>
                 </configuration>
             </plugin>

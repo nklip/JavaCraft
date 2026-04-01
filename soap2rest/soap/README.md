@@ -162,7 +162,7 @@ Feature files:
 
 Start the REST backend first:
 ```bash
-mvn -pl soap2rest/rest/rest-app -am spring-boot:run
+mvn -pl soap2rest/rest-app -am spring-boot:run
 ```
 
 Start the SOAP module:
@@ -191,4 +191,4 @@ Related issue:
 
 - overall module overview: [../README.md](../README.md)
 - architecture: [../ARCHITECTURE.md](../ARCHITECTURE.md)
-- REST backend: [../rest/rest-app/README.md](../rest/rest-app/README.md)
+- REST backend: [../rest-app/README.md](../rest-app/README.md)

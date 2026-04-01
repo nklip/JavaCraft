@@ -37,3 +37,11 @@ soap2rest:
   rest:
     smart:
       message: REST SmartResource is up!
+
+# sort endpoints in Swagger
+springdoc:
+  swagger-ui:
+    # Tag groups (controllers) sorted A -> Z
+    tagsSorter: alpha
+    # Operations sorted A -> Z by path within each tag
+    operationsSorter: alpha

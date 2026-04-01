@@ -1,6 +1,6 @@
 # soap2rest-rest-app
 
-<sub>[Back to soap2rest](../../README.md)</sub>
+<sub>[Back to soap2rest](../README.md)</sub>
 
 ## Contents
 1. [Purpose](#1-purpose)
@@ -127,7 +127,7 @@ From repository root:
 
 Run all module tests:
 ```bash
-mvn -pl soap2rest/rest/rest-app -am test
+mvn -pl soap2rest/rest-app -am test
 ```
 
 Notes:
@@ -139,7 +139,7 @@ Notes:
 <sub>[Back to top](#soap2rest-rest-app)</sub>
 
 ```bash
-mvn -pl soap2rest/rest/rest-app -am spring-boot:run
+mvn -pl soap2rest/rest-app -am spring-boot:run
 ```
 
 Local URLs:
@@ -229,6 +229,6 @@ In this mode:
 ## 11. Related Docs
 <sub>[Back to top](#soap2rest-rest-app)</sub>
 
-- REST parent module: [../README.md](../README.md)
-- overall architecture: [../../ARCHITECTURE.md](../../ARCHITECTURE.md)
-- SOAP facade details: [../../soap/README.md](../../soap/README.md)
+- overall architecture: [../ARCHITECTURE.md](../ARCHITECTURE.md)
+- SOAP facade details: [../soap/README.md](../soap/README.md)
+- shared utilities: [../common/README.md](../common/README.md)
