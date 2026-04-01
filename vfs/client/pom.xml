@@ -58,7 +58,7 @@
 						</manifest>
 						<manifestEntries>
 							<Manifest-Version>1.0</Manifest-Version>
-							<Main-Class>org.vfs.client.Application</Main-Class>
+							<Main-Class>dev.nklip.vfs.client.Application</Main-Class>
 						</manifestEntries>
 					</archive>
 				</configuration>
