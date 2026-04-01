@@ -67,6 +67,7 @@
         <rest-assured.version>5.5.7</rest-assured.version>
         <testcontainers.version>1.20.6</testcontainers.version>
         <wiremock.version>3.13.2</wiremock.version>
+        <maven-model.version>3.9.14</maven-model.version>
 
         <!-- testcontainers docker images -->
         <tc.image.artemis>apache/artemis:2.53.0-alpine</tc.image.artemis>

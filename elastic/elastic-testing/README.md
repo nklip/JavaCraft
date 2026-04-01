@@ -34,11 +34,11 @@ To regenerate a dataset JSON file, run the corresponding downloader as a `main` 
 ```bash
 # example: regenerate movies.json
 mvn -pl elastic/elastic-testing compile exec:java \
-  -Dexec.mainClass=my.javacraft.elastic.data.json.MoviesDownloader
+  -Dexec.mainClass=json.dev.nklip.javacraft.elastic.data.MoviesDownloader
 
 # optional: write to a custom path
 mvn -pl elastic/elastic-testing exec:java \
-  -Dexec.mainClass=my.javacraft.elastic.data.json.MoviesDownloader \
+  -Dexec.mainClass=json.dev.nklip.javacraft.elastic.data.MoviesDownloader \
   -Dexec.args="/tmp/movies.json"
 ```
 
