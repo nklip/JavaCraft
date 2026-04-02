@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+    <head>
+        <title>XL Spaceship : New Game.</title>
+        <script type="text/javascript" src="../../js/ajax-errors.js"></script>
+        <script type="text/javascript" src="../../js/index.js"></script>
+    </head>
+
+    <body>
+        <div>
+            <h1>XL Spaceship: New Game.</h1>
+            <br/>
+
+            <div th:if="${error != null}">
+                <p th:text="${error}"></p>
+            </div>
+
+            <div>
+                <table>
+                    <tr>
+                        <td>Pilot Id</td>
+                        <td><input type="text"
+                                   th:id="${pilot.userId}"
+                                   th:name="${pilot.userId}"
+                                   th:value="${pilot.userId}"
+                                   readonly="readonly"
+                                   disabled="disabled"/>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Pilot Name</td>
+                        <td><input type="text"
+                                   th:id="${pilot.fullName}"
+                                   th:name="${pilot.fullName}"
+                                   th:value="${pilot.fullName}"
+                                   readonly="readonly"
+                                   disabled="disabled"/>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <br/>
+            <br/>
+            Remote XL Spaceship instance:
+            <br/>
+            <div>
+                <form id="new-game-form">
+                    <table>
+                        <tr>
+                            <td>Host</td>
+                            <td><input id="hostname" name="hostname" type="text" /></td>
+                        </tr>
+                        <tr>
+                            <td>Port</td>
+                            <td><input id="port" name="port" type="text" /></td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <button type="submit">Create New Game</button>
+                            </td>
+                        </tr>
+                    </table>
+                </form>
+            </div>
+        </div>
+    </body>
+
+</html>

@@ -14,8 +14,8 @@
     <packaging>pom</packaging>
 
     <modules>
-        <module>impl</module>
-        <module>web</module>
+        <module>engine</module>
+        <module>server</module>
     </modules>
 
     <dependencyManagement>
