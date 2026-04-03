@@ -1,8 +1,6 @@
 package dev.nklip.javacraft.elastic.data.cucumber.step;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import co.elastic.clients.elasticsearch.core.UpdateRequest;
-import co.elastic.clients.elasticsearch.core.UpdateResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -87,24 +85,13 @@ public class SearchControllerStepDefinitions {
         ObjectMapper objectMapper = new ObjectMapper();
         File resource = new ClassPathResource(pathToFile).getFile();
         TypeReference<List<LinkedHashMap<String, Object>>> typeRef = new TypeReference<>() {};
-        List<LinkedHashMap<String, Object>> movies = objectMapper.readValue(resource, typeRef);
+        List<LinkedHashMap<String, Object>> documents = objectMapper.readValue(resource, typeRef);
 
-        Assertions.assertNotNull(movies);
+        Assertions.assertNotNull(documents);
+        Assertions.assertFalse(documents.isEmpty(), "No JSON documents found in " + pathToFile);
 
-        for (LinkedHashMap<String, Object> entity : movies) {
-            String id = createId(entity);
-            UpdateRequest<Object, Object> updateRequest = new UpdateRequest.Builder<>()
-                    .index(index)
-                    .id(id)
-                    .doc(entity)
-                    .upsert(entity)
-                    .build();
-
-            UpdateResponse<Object> updateResponse = esClient.update(updateRequest, Object.class);
-            log.info("document with id = '{}' was ingested with the result '{}'",
-                    id, updateResponse.result().toString()
-            );
-        }
+        int ingestedDocuments = ParallelJsonIngestor.ingest(esClient, index, documents, this::createId);
+        Assertions.assertEquals(documents.size(), ingestedDocuments);
     }
 
     private String createId(LinkedHashMap<String, Object> entity) {

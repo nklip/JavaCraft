@@ -155,11 +155,18 @@ HTTP endpoint against the Testcontainers ES instance.
 
 | Feature file | Scenarios | What it tests |
 |---|---|---|
-| `AdminController.feature` | Index creation for all 7 indexes | `PUT /api/admin/indexes/{index}` — idempotent, acknowledges `true` |
-| `SearchController.feature` | Wildcard, Fuzzy, Interval, Span, Search per dataset | Full round-trip: ingest JSON → query → assert exact field values |
+| `AdminController.feature` | Index creation for all 7 indexes | `PUT /api/admin/indexes/{index}` plus parallel fixture ingestion checks |
+| `SearchController.feature` | Wildcard, Fuzzy, Interval, Span, Search per dataset | Full round-trip: ingest JSON in parallel → query → assert exact field values |
 | `VoteController.feature` | Vote creation, update, idempotency | Vote endpoints and `VoteResult` outcomes |
-| `PostRankingController.feature` | Post ranking scores | Karma, hotScore, risingScore, bestScore calculations |
+| `PostRankingController.feature` | Post ranking scores | Karma, hotScore, risingScore, bestScore calculations from CSV fixtures replayed in parallel |
 | `SchedulerJobs.feature` | Scheduled job execution | Background scheduler runs and side effects |
+
+### Test Data Ingestion
+
+- JSON search fixtures are ingested in parallel across independent generated document ids.
+- Vote CSV fixtures are replayed in parallel across independent `postId`s.
+- Rows that target the same document or post stay serial, so the final Elasticsearch state
+  remains deterministic and matches the feature expectations.
 
 ### SearchController scenarios
 
