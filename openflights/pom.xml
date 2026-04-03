@@ -1,0 +1,28 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>dev.nklip.javacraft</groupId>
+        <artifactId>javacraft</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>openflights</artifactId>
+    <packaging>pom</packaging>
+
+    <name>openflights</name>
+
+    <modules>
+        <module>openflights-api</module>
+        <module>openflights-data</module>
+        <module>openflights-jpa</module>
+        <module>openflights-app</module>
+        <module>openflights-kafka-consumer</module>
+        <module>openflights-kafka-producer</module>
+        <module>openflights-testing</module>
+    </modules>
+
+
+</project>

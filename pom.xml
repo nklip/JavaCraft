@@ -43,9 +43,10 @@
         <artemis.version>2.40.0</artemis.version>
 
         <!-- data / persistence -->
+        <postgresql.version>42.7.7</postgresql.version>
         <h2.version>2.4.240</h2.version>
-        <liquibase.version>5.0.2</liquibase.version>
         <mongo-java-server.version>1.47.0</mongo-java-server.version>
+        <liquibase.version>5.0.2</liquibase.version>
 
         <!-- serialization / networking -->
         <jackson.version>2.21.1</jackson.version>
@@ -73,6 +74,8 @@
         <!-- testcontainers docker images -->
         <tc.image.artemis>apache/artemis:2.53.0-alpine</tc.image.artemis>
         <tc.image.elasticsearch>docker.elastic.co/elasticsearch/elasticsearch:8.18.8</tc.image.elasticsearch>
+        <tc.image.kafka>apache/kafka:3.9.0</tc.image.kafka>
+        <tc.image.postgresql>postgres:17</tc.image.postgresql>
 
         <!--
             If test.jvm.args is undefined, some runs pass a raw placeholder
@@ -86,10 +89,10 @@
         <module>bdd</module>
         <module>echo</module>
         <module>elastic</module>
-        <module>kafka</module>
         <module>linker</module>
         <module>mathparser</module>
         <module>modules</module>
+        <module>openflights</module>
         <module>ses</module>
         <module>soap2rest</module>
         <module>tic-tac-toe</module>
@@ -130,6 +133,8 @@
                     <systemPropertyVariables>
                         <tc.image.elasticsearch>${tc.image.elasticsearch}</tc.image.elasticsearch>
                         <tc.image.artemis>${tc.image.artemis}</tc.image.artemis>
+                        <tc.image.kafka>${tc.image.kafka}</tc.image.kafka>
+                        <tc.image.postgresql>${tc.image.postgresql}</tc.image.postgresql>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>

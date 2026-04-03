@@ -1,0 +1,12 @@
+server:
+  port: 8052
+
+spring:
+  config:
+    import: classpath:openflights-jpa-defaults.yaml
+  kafka:
+    bootstrap-servers: localhost:9092
+
+openflights:
+  kafka:
+    route-consumer-concurrency: 8

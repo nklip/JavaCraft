@@ -1,0 +1,12 @@
+# shared persistence defaults for modules that persist OpenFlights entities locally
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/openflights
+    username: openflights
+    password: openflights
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    show-sql: false
