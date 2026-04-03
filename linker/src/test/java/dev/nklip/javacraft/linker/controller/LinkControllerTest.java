@@ -1,11 +1,11 @@
-package dev.nklip.javacraft.linker.datamanager.rest;
+package dev.nklip.javacraft.linker.controller;
 
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import dev.nklip.javacraft.linker.datamanager.dao.LinkRepository;
-import dev.nklip.javacraft.linker.datamanager.dao.entity.Link;
-import dev.nklip.javacraft.linker.datamanager.service.LinkServices;
+import dev.nklip.javacraft.linker.dao.LinkRepository;
+import dev.nklip.javacraft.linker.dao.entity.Link;
+import dev.nklip.javacraft.linker.service.LinkService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,14 +17,14 @@ import org.springframework.http.ResponseEntity;
 public class LinkControllerTest {
 
     LinkRepository linkRepository;
-    LinkServices linkServices;
+    LinkService linkService;
     LinkController linkController;
 
     @BeforeEach
     public void setUp() {
         linkRepository = Mockito.mock(LinkRepository.class);
-        linkServices = Mockito.mock(LinkServices.class);
-        linkController = new LinkController(linkRepository, linkServices);
+        linkService = Mockito.mock(LinkService.class);
+        linkController = new LinkController(linkRepository, linkService);
     }
 
     @Test
@@ -53,8 +53,8 @@ public class LinkControllerTest {
         link.setUrl("long-url");
         link.setShortUrl("short-url");
 
-        Mockito.when(linkServices.resolveLink(Mockito.eq("short-url")))
-                .thenReturn(new LinkServices.ResolveLinkResult(LinkServices.ResolveStatus.FOUND, link.getUrl()));
+        Mockito.when(linkService.resolveLink(Mockito.eq("short-url")))
+                .thenReturn(new LinkService.ResolveLinkResult(LinkService.ResolveStatus.FOUND, link.getUrl()));
 
         ResponseEntity<byte[]> redirectResponse = linkController.shortUrl2FullUrl("short-url");
 
@@ -73,8 +73,8 @@ public class LinkControllerTest {
 
     @Test
     public void testShortUrlNotFound() {
-        Mockito.when(linkServices.resolveLink(Mockito.eq("missing")))
-                .thenReturn(new LinkServices.ResolveLinkResult(LinkServices.ResolveStatus.NOT_FOUND, null));
+        Mockito.when(linkService.resolveLink(Mockito.eq("missing")))
+                .thenReturn(new LinkService.ResolveLinkResult(LinkService.ResolveStatus.NOT_FOUND, null));
 
         ResponseEntity<byte[]> redirectResponse = linkController.shortUrl2FullUrl("missing");
 
@@ -84,8 +84,8 @@ public class LinkControllerTest {
 
     @Test
     public void testShortUrlExpired() {
-        Mockito.when(linkServices.resolveLink(Mockito.eq("expired")))
-                .thenReturn(new LinkServices.ResolveLinkResult(LinkServices.ResolveStatus.EXPIRED, null));
+        Mockito.when(linkService.resolveLink(Mockito.eq("expired")))
+                .thenReturn(new LinkService.ResolveLinkResult(LinkService.ResolveStatus.EXPIRED, null));
 
         ResponseEntity<byte[]> redirectResponse = linkController.shortUrl2FullUrl("expired");
 
@@ -95,7 +95,7 @@ public class LinkControllerTest {
 
     @Test
     public void testAddLink() {
-        Mockito.when(linkServices.createLink(Mockito.eq("long-url")))
+        Mockito.when(linkService.createLink(Mockito.eq("long-url")))
                 .thenReturn("http://localhost:8080/short-url");
 
         ResponseEntity<String> response = linkController.addLink("long-url");
@@ -107,7 +107,7 @@ public class LinkControllerTest {
 
     @Test
     public void testFindAnalytics() {
-        LinkServices.LinkAnalytics analytics = new LinkServices.LinkAnalytics(
+        LinkService.LinkAnalytics analytics = new LinkService.LinkAnalytics(
                 "short-url",
                 "long-url",
                 new Date(),
@@ -116,10 +116,10 @@ public class LinkControllerTest {
                 new Date(),
                 false
         );
-        Mockito.when(linkServices.getAnalytics(Mockito.eq("short-url")))
+        Mockito.when(linkService.getAnalytics(Mockito.eq("short-url")))
                 .thenReturn(java.util.Optional.of(analytics));
 
-        ResponseEntity<LinkServices.LinkAnalytics> response = linkController.findAnalytics("short-url");
+        ResponseEntity<LinkService.LinkAnalytics> response = linkController.findAnalytics("short-url");
 
         Assertions.assertNotNull(response);
         Assertions.assertEquals(200, response.getStatusCode().value());
@@ -130,10 +130,10 @@ public class LinkControllerTest {
 
     @Test
     public void testFindAnalyticsShouldReturnNotFound() {
-        Mockito.when(linkServices.getAnalytics(Mockito.eq("unknown")))
+        Mockito.when(linkService.getAnalytics(Mockito.eq("unknown")))
                 .thenReturn(java.util.Optional.empty());
 
-        ResponseEntity<LinkServices.LinkAnalytics> response = linkController.findAnalytics("unknown");
+        ResponseEntity<LinkService.LinkAnalytics> response = linkController.findAnalytics("unknown");
 
         Assertions.assertNotNull(response);
         Assertions.assertEquals(404, response.getStatusCode().value());

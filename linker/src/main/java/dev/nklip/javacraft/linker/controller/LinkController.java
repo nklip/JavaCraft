@@ -1,13 +1,13 @@
-package dev.nklip.javacraft.linker.datamanager.rest;
+package dev.nklip.javacraft.linker.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
-import dev.nklip.javacraft.linker.datamanager.dao.LinkRepository;
-import dev.nklip.javacraft.linker.datamanager.dao.entity.Link;
-import dev.nklip.javacraft.linker.datamanager.service.LinkServices;
+import dev.nklip.javacraft.linker.dao.LinkRepository;
+import dev.nklip.javacraft.linker.dao.entity.Link;
+import dev.nklip.javacraft.linker.service.LinkService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.*;
 public class LinkController {
 
     private final LinkRepository linkRepository;
-    private final LinkServices linkServices;
+    private final LinkService linkService;
 
     @Operation(summary = "Find all stored links")
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
@@ -35,7 +35,7 @@ public class LinkController {
     @Operation(summary = "Redirect by short URL")
     @GetMapping(value = "/{shortUrl}")
     public ResponseEntity<byte []> shortUrl2FullUrl(@PathVariable("shortUrl") String shortUrl) {
-        LinkServices.ResolveLinkResult resolveLinkResult = linkServices.resolveLink(shortUrl);
+        LinkService.ResolveLinkResult resolveLinkResult = linkService.resolveLink(shortUrl);
         switch (resolveLinkResult.status()) {
             case NOT_FOUND -> {
                 return ResponseEntity.notFound().build();
@@ -54,8 +54,8 @@ public class LinkController {
 
     @Operation(summary = "Get analytics for a short URL")
     @GetMapping(value = "/{shortUrl}/analytics", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<LinkServices.LinkAnalytics> findAnalytics(@PathVariable("shortUrl") String shortUrl) {
-        return linkServices.getAnalytics(shortUrl)
+    public ResponseEntity<LinkService.LinkAnalytics> findAnalytics(@PathVariable("shortUrl") String shortUrl) {
+        return linkService.getAnalytics(shortUrl)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
@@ -73,7 +73,7 @@ public class LinkController {
         return ResponseEntity
                 .ok()
                 .contentType(MediaType.TEXT_PLAIN)
-                .body(linkServices.createLink(normalizedUrl));
+                .body(linkService.createLink(normalizedUrl));
     }
 
     private String normalizeUrlBody(String url) {

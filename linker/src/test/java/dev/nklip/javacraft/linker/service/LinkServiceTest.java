@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.linker.datamanager.service;
+package dev.nklip.javacraft.linker.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -9,32 +9,32 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.Optional;
-import dev.nklip.javacraft.linker.datamanager.dao.LinkRepository;
-import dev.nklip.javacraft.linker.datamanager.dao.entity.Link;
+import dev.nklip.javacraft.linker.dao.LinkRepository;
+import dev.nklip.javacraft.linker.dao.entity.Link;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-class LinkServicesTest {
+class LinkServiceTest {
 
     private LinkRepository linkRepository;
-    private LinkServices linkServices;
+    private LinkService linkService;
 
     @BeforeEach
     void setUp() {
         linkRepository = Mockito.mock(LinkRepository.class);
-        linkServices = Mockito.spy(new LinkServices(linkRepository));
-        linkServices.setHost("http://localhost:8080/api/v1/links");
-        linkServices.setShortUrlLength(6);
-        linkServices.setMaxShortUrlAttempts(5);
-        linkServices.setExpirationDays(30);
+        linkService = Mockito.spy(new LinkService(linkRepository));
+        linkService.setHost("http://localhost:8080/api/v1/links");
+        linkService.setShortUrlLength(6);
+        linkService.setMaxShortUrlAttempts(5);
+        linkService.setExpirationDays(30);
     }
 
     @Test
     void testCreateLinkShouldRetryOnCollisionAndReturnShortUrl() {
         Mockito.when(linkRepository.findFirstByUrlOrderByCreationDateAsc("https://example.org/path"))
                 .thenReturn(Optional.empty());
-        Mockito.doReturn("ABC123", "XYZ789").when(linkServices).generateCandidateShortUrl();
+        Mockito.doReturn("ABC123", "XYZ789").when(linkService).generateCandidateShortUrl();
         Mockito.when(linkRepository.existsByShortUrl("ABC123")).thenReturn(true);
         Mockito.when(linkRepository.existsByShortUrl("XYZ789")).thenReturn(false);
         Mockito.when(linkRepository.save(Mockito.any(Link.class)))
@@ -44,7 +44,7 @@ class LinkServicesTest {
                     return link;
                 });
 
-        String shortUrl = linkServices.createLink("https://example.org/path");
+        String shortUrl = linkService.createLink("https://example.org/path");
 
         assertEquals("http://localhost:8080/api/v1/links/XYZ789", shortUrl);
         Mockito.verify(linkRepository, Mockito.times(1)).save(Mockito.any(Link.class));
@@ -60,7 +60,7 @@ class LinkServicesTest {
         Mockito.when(linkRepository.findFirstByUrlOrderByCreationDateAsc("https://existing.example/path"))
                 .thenReturn(Optional.of(existingLink));
 
-        String shortUrl = linkServices.createLink("https://existing.example/path");
+        String shortUrl = linkService.createLink("https://existing.example/path");
 
         assertEquals("http://localhost:8080/api/v1/links/ready11", shortUrl);
         Mockito.verify(linkRepository, Mockito.never()).save(Mockito.any(Link.class));
@@ -71,9 +71,9 @@ class LinkServicesTest {
     void testResolveLinkShouldReturnNotFoundWhenMissing() {
         Mockito.when(linkRepository.findByShortUrl("missing")).thenReturn(Optional.empty());
 
-        LinkServices.ResolveLinkResult result = linkServices.resolveLink("missing");
+        LinkService.ResolveLinkResult result = linkService.resolveLink("missing");
 
-        assertEquals(LinkServices.ResolveStatus.NOT_FOUND, result.status());
+        assertEquals(LinkService.ResolveStatus.NOT_FOUND, result.status());
         Mockito.verify(linkRepository, Mockito.never()).save(Mockito.any(Link.class));
     }
 
@@ -85,9 +85,9 @@ class LinkServicesTest {
         link.setExpirationDate(Date.from(Instant.now().minus(1, ChronoUnit.DAYS)));
         Mockito.when(linkRepository.findByShortUrl("expired")).thenReturn(Optional.of(link));
 
-        LinkServices.ResolveLinkResult result = linkServices.resolveLink("expired");
+        LinkService.ResolveLinkResult result = linkService.resolveLink("expired");
 
-        assertEquals(LinkServices.ResolveStatus.EXPIRED, result.status());
+        assertEquals(LinkService.ResolveStatus.EXPIRED, result.status());
         Mockito.verify(linkRepository, Mockito.never()).save(Mockito.any(Link.class));
     }
 
@@ -101,9 +101,9 @@ class LinkServicesTest {
         Mockito.when(linkRepository.findByShortUrl("ready")).thenReturn(Optional.of(link));
         Mockito.when(linkRepository.save(Mockito.any(Link.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        LinkServices.ResolveLinkResult result = linkServices.resolveLink("ready");
+        LinkService.ResolveLinkResult result = linkService.resolveLink("ready");
 
-        assertEquals(LinkServices.ResolveStatus.FOUND, result.status());
+        assertEquals(LinkService.ResolveStatus.FOUND, result.status());
         assertEquals("https://ok.example", result.url());
         assertEquals(3L, link.getRedirectCount());
         assertNotNull(link.getLastAccessDate());
@@ -122,10 +122,10 @@ class LinkServicesTest {
         link.setLastAccessDate(now);
         Mockito.when(linkRepository.findByShortUrl("stat")).thenReturn(Optional.of(link));
 
-        Optional<LinkServices.LinkAnalytics> analyticsOptional = linkServices.getAnalytics("stat");
+        Optional<LinkService.LinkAnalytics> analyticsOptional = linkService.getAnalytics("stat");
 
         assertTrue(analyticsOptional.isPresent());
-        LinkServices.LinkAnalytics analytics = analyticsOptional.get();
+        LinkService.LinkAnalytics analytics = analyticsOptional.get();
         assertEquals("stat", analytics.shortUrl());
         assertEquals("https://stats.example", analytics.url());
         assertEquals(4L, analytics.redirectCount());

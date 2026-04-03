@@ -1,9 +1,9 @@
-package dev.nklip.javacraft.linker.datamanager.service;
+package dev.nklip.javacraft.linker.service;
 
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 
-public class SymbolGeneratorServices {
+public class SymbolGeneratorService {
 
     private static final String ALL_AVAILABLE_SYMBOLS = "ABCDEFGHIJKLMNOPQRSTYVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 

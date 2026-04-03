@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.linker.datamanager.dao.entity;
+package dev.nklip.javacraft.linker.dao.entity;
 
 import java.util.Date;
 import lombok.Data;

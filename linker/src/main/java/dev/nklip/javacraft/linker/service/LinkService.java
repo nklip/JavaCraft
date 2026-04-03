@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.linker.datamanager.service;
+package dev.nklip.javacraft.linker.service;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -7,8 +7,8 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import dev.nklip.javacraft.linker.datamanager.dao.LinkRepository;
-import dev.nklip.javacraft.linker.datamanager.dao.entity.Link;
+import dev.nklip.javacraft.linker.dao.LinkRepository;
+import dev.nklip.javacraft.linker.dao.entity.Link;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 @Setter
 @Service
 @RequiredArgsConstructor
-public class LinkServices {
+public class LinkService {
 
     @Value("${host}")
     String host;
@@ -106,7 +106,7 @@ public class LinkServices {
     }
 
     String generateCandidateShortUrl() {
-        return SymbolGeneratorServices.generateShortText(shortUrlLength);
+        return SymbolGeneratorService.generateShortText(shortUrlLength);
     }
 
     private Optional<Link> findExistingLinkByUrl(String url) {
