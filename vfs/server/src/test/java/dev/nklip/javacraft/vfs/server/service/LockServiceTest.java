@@ -1,7 +1,5 @@
 package dev.nklip.javacraft.vfs.server.service;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mockito;
@@ -18,7 +16,8 @@ import dev.nklip.javacraft.vfs.server.util.NodePrinter;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.Collection;
 
 /**
@@ -175,38 +174,118 @@ public class LockServiceTest {
         final Node weblogic = nodeService.getNodeManager().newNode("weblogic", NodeTypes.DIR);
         nodeService.getNodeManager().setParent(weblogic, servers);
 
-        int threads = 100;
+        final int threads = 100;
+        CountDownLatch ready = new CountDownLatch(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(threads);
 
         try (ExecutorService executor = Executors.newFixedThreadPool(threads)) {
-            final Map<Integer, User> users = new ConcurrentHashMap<>();
-
-            for (final AtomicInteger aint = new AtomicInteger(1); aint.get() <= threads; aint.incrementAndGet()) {
-                users.put(aint.get(), User.newBuilder().setId(aint.toString()).setLogin("nikita" + aint).build());
+            for (int index = 1; index <= threads; index++) {
+                final User user = User.newBuilder()
+                        .setId(Integer.toString(index))
+                        .setLogin("nikita" + index)
+                        .build();
                 Runnable thread = () -> {
-                    User user = users.get(aint.get());
-                    if (!lockService.isLocked(weblogic)) {
-                        lockService.lock(user, weblogic);
+                    ready.countDown();
+                    try {
+                        Assertions.assertTrue(start.await(5, TimeUnit.SECONDS));
+                        if (!lockService.isLocked(weblogic)) {
+                            lockService.lock(user, weblogic);
+                        }
+                    } catch (InterruptedException interruptedException) {
+                        Thread.currentThread().interrupt();
+                        Assertions.fail(interruptedException);
+                    } finally {
+                        done.countDown();
                     }
                 };
                 executor.execute(thread);
             }
+
+            Assertions.assertTrue(ready.await(5, TimeUnit.SECONDS));
+            start.countDown();
+            Assertions.assertTrue(done.await(5, TimeUnit.SECONDS));
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+            Assertions.fail(interruptedException);
         }
 
         Assertions.assertTrue(lockService.isLocked(weblogic));
 
-        // could be any user
-        Assertions.assertTrue(lockService.getUser(weblogic).getLogin().startsWith("nikita"));
+        User lockingUser = lockService.getUser(weblogic);
+        Assertions.assertNotNull(lockingUser);
+        Assertions.assertTrue(lockingUser.getLogin().startsWith("nikita"));
         String actualResult = nodePrinter.print(nodeService.getRoot());
-        Assertions.assertTrue(
-                actualResult.startsWith(
-                        """
-                        /
-                        |__home
-                        |  |__servers
-                        |  |  |__weblogic [Locked by nikita2 ]
-                        """
-                ),
+        String expectedResult = """
+                /
+                |__home
+                |  |__servers
+                |  |  |__weblogic [Locked by %s ]
+                """.formatted(lockingUser.getLogin());
+        Assertions.assertEquals(
+                expectedResult,
                 actualResult
+        );
+    }
+
+    @Test
+    public void testLockMultithreadingWhenSpecificUserLocksFirst() {
+        final Node home = nodeService.getHome();
+        final Node servers = nodeService.getNodeManager().newNode("servers-first-owner", NodeTypes.DIR);
+        nodeService.getNodeManager().setParent(servers, home);
+        final Node weblogic = nodeService.getNodeManager().newNode("weblogic-first-owner", NodeTypes.DIR);
+        nodeService.getNodeManager().setParent(weblogic, servers);
+
+        User winningUser = User.newBuilder()
+                .setId("1")
+                .setLogin("nikita-1")
+                .build();
+
+        Assertions.assertTrue(lockService.lock(winningUser, weblogic));
+
+        final int threads = 50;
+        CountDownLatch ready = new CountDownLatch(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(threads);
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(threads)) {
+            for (int index = 2; index <= threads + 1; index++) {
+                final User challenger = User.newBuilder()
+                        .setId(Integer.toString(index))
+                        .setLogin("nikita-" + index)
+                        .build();
+                executor.execute(() -> {
+                    ready.countDown();
+                    try {
+                        Assertions.assertTrue(start.await(5, TimeUnit.SECONDS));
+                        lockService.lock(challenger, weblogic);
+                    } catch (InterruptedException interruptedException) {
+                        Thread.currentThread().interrupt();
+                        Assertions.fail(interruptedException);
+                    } finally {
+                        done.countDown();
+                    }
+                });
+            }
+
+            Assertions.assertTrue(ready.await(5, TimeUnit.SECONDS));
+            start.countDown();
+            Assertions.assertTrue(done.await(5, TimeUnit.SECONDS));
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+            Assertions.fail(interruptedException);
+        }
+
+        Assertions.assertTrue(lockService.isLocked(weblogic));
+        Assertions.assertEquals(winningUser, lockService.getUser(weblogic));
+        Assertions.assertEquals(
+                """
+                /
+                |__home
+                |  |__servers-first-owner
+                |  |  |__weblogic-first-owner [Locked by nikita-1 ]
+                """,
+                nodePrinter.print(nodeService.getRoot())
         );
     }
 
