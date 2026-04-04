@@ -1,85 +1,67 @@
 # xsd2model
-A simple example how to generate java classes from XSD files.
 
-## Content
-- [How to add @XmlRootElement annotation to JAXB classes](#How-to-add-XmlRootElement-annotation-to-JAXB-classes)
-- [How to generate java-classes](#How-to-generate-java-classes)
-- [How to add generated classes into IDEA classpath](#How-to-add-generated-classes-into-IDEA-classpath)
+Demonstrates XSD-to-Java code generation with JAXB and round-trip serialization to both XML and JSON.
 
-### How to add @XmlRootElement annotation to JAXB classes
+**Stack:** Jakarta JAXB, Jackson, jaxb2-maven-plugin, build-helper-maven-plugin
 
-1) Add xjc simple
-```xml
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<jaxb:bindings
-        version="3.0"
-        xmlns:jaxb="https://jakarta.ee/xml/ns/jaxb"
-        xmlns:xjc="http://java.sun.com/xml/ns/jaxb/xjc"
-        xmlns:xs="http://www.w3.org/2001/XMLSchema"
-        jaxb:extensionBindingPrefixes="xjc"
->
+---
 
-    <jaxb:globalBindings>
-        <xjc:simple/> <!-- adds @XmlRootElement annotations -->
-    </jaxb:globalBindings>
+## Contents
+1. [Quick Start](#1-quick-start)
+2. [What It Does](#2-what-it-does)
+3. [Module Map](#3-module-map)
 
-</jaxb:bindings>
+---
+## 1. Quick Start
+<sub>[Back to top](#xsd2model)</sub>
+
+Run the module tests and trigger XSD-to-Java generation with:
+
+```bash
+mvn -pl xsd2model -am test
 ```
 
-2) Add element before complexType declaration.
-```xml
-<xs:element name="userType" type="ns:UserType"/>
+Main generated output:
+
+- `target/generated-classes/org/xsd2model/model/`
+
+Reference docs:
+
+- [README.md](README.md)
+- [pom.xml](pom.xml)
+
+---
+
+## 2. What It Does
+<sub>[Back to top](#xsd2model)</sub>
+
+- Generates Java POJOs from three XSD schema files at build time
+- Provides `JaxbService` for type-safe XML marshal/unmarshal
+- Provides `JsonService` for JSON serialization via Jackson
+- Tests round-trip conversion: Object → XML → Object → XML and Object → JSON → Object → JSON
+
+---
+
+## 3. Module Map
+<sub>[Back to top](#xsd2model)</sub>
+
+```mermaid
+flowchart LR
+    xsd["XSD files"]
+    bind["bindings.xjb"]
+    xjc["jaxb2-maven-plugin"]
+    generated["Generated JAXB classes"]
+    jaxb["JaxbService"]
+    json["JsonService"]
+    tests["JUnit tests"]
+
+    xsd --> xjc
+    bind --> xjc
+    xjc --> generated
+    generated --> jaxb
+    generated --> json
+    jaxb --> tests
+    json --> tests
 ```
 
-### How to generate java-classes
-
-You should use next maven plugin
-```xml
-<plugin>
-    <groupId>org.codehaus.mojo</groupId>
-    <artifactId>jaxb2-maven-plugin</artifactId>
-    <version>4.1.0</version>
-    <executions>
-        <execution>
-            <id>xjc</id>
-            <goals>
-                <goal>xjc</goal>
-            </goals>
-        </execution>
-    </executions>
-    <configuration>
-        <xjbSources>
-            <xjbSource>src/main/resources/schemas/bindings.xjb</xjbSource>
-        </xjbSources>
-        <sources>
-            <source>src/main/resources/schemas/Core.xsd</source>
-            <source>src/main/resources/schemas/Request.xsd</source>
-            <source>src/main/resources/schemas/Response.xsd</source>
-        </sources>
-        <outputDirectory>${project.build.directory}/generated-classes</outputDirectory>
-        <clearOutputDir>false</clearOutputDir>
-    </configuration>
-</plugin>
-```
-
-### How to add generated classes into IDEA classpath
-
-```xml
-<plugin>
-    <groupId>org.codehaus.mojo</groupId>
-    <artifactId>build-helper-maven-plugin</artifactId>
-    <version>1.10</version>
-    <executions>
-        <execution>
-            <phase>generate-sources</phase>
-            <goals><goal>add-source</goal></goals>
-            <configuration>
-                <sources>
-                    <source>${project.build.directory}/generated-classes</source>
-                </sources>
-            </configuration>
-        </execution>
-    </executions>
-</plugin>
-```
-
+---
