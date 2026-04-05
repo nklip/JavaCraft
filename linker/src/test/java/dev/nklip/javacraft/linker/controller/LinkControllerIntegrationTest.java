@@ -12,9 +12,9 @@ import java.net.InetSocketAddress;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
-import dev.nklip.javacraft.linker.Application;
-import dev.nklip.javacraft.linker.dao.LinkRepository;
-import dev.nklip.javacraft.linker.dao.entity.Link;
+import dev.nklip.javacraft.linker.LinkerApplication;
+import dev.nklip.javacraft.linker.persistence.repository.LinkRepository;
+import dev.nklip.javacraft.linker.persistence.entity.Link;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
@@ -29,7 +29,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-@SpringBootTest(classes = Application.class)
+@SpringBootTest(classes = LinkerApplication.class)
 @AutoConfigureMockMvc
 class LinkControllerIntegrationTest {
 
@@ -65,7 +65,7 @@ class LinkControllerIntegrationTest {
     static void dynamicProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.data.mongodb.uri", () -> mongoUri);
         registry.add("spring.data.mongodb.database", () -> "linker_integration_test");
-        registry.add("host", () -> "http://localhost:8080/api/v1/links");
+        registry.add("host", () -> "http://localhost:8100/api/v1/links");
         registry.add("linker.expiration-days", () -> 30L);
         registry.add("linker.short-url.length", () -> 6);
         registry.add("linker.short-url.max-attempts", () -> 64);
@@ -81,7 +81,7 @@ class LinkControllerIntegrationTest {
                 .andReturn();
 
         String fullShortUrl = createResult.getResponse().getContentAsString();
-        Assertions.assertTrue(fullShortUrl.startsWith("http://localhost:8080/api/v1/links/"));
+        Assertions.assertTrue(fullShortUrl.startsWith("http://localhost:8100/api/v1/links/"));
 
         String shortUrl = fullShortUrl.substring(fullShortUrl.lastIndexOf('/') + 1);
 

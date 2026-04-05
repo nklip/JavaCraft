@@ -3,8 +3,8 @@ package dev.nklip.javacraft.linker.controller;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import dev.nklip.javacraft.linker.dao.LinkRepository;
-import dev.nklip.javacraft.linker.dao.entity.Link;
+import dev.nklip.javacraft.linker.persistence.repository.LinkRepository;
+import dev.nklip.javacraft.linker.persistence.entity.Link;
 import dev.nklip.javacraft.linker.service.LinkService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -96,13 +96,13 @@ public class LinkControllerTest {
     @Test
     public void testAddLink() {
         Mockito.when(linkService.createLink(Mockito.eq("long-url")))
-                .thenReturn("http://localhost:8080/short-url");
+                .thenReturn("http://localhost:8100/short-url");
 
         ResponseEntity<String> response = linkController.addLink("long-url");
 
         Assertions.assertNotNull(response);
         Assertions.assertNotNull(response.getBody());
-        Assertions.assertEquals("http://localhost:8080/short-url", response.getBody());
+        Assertions.assertEquals("http://localhost:8100/short-url", response.getBody());
     }
 
     @Test

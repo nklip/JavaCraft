@@ -1,0 +1,20 @@
+services:
+  mongodb-atlas-local:
+    image: "mongodb/mongodb-atlas-local:8"
+    container_name: "${LINKER_MONGO_CONTAINER_NAME:-linker-mongodb}"
+    user: mongod
+    ports:
+      - "127.0.0.1:${LINKER_MONGO_PORT:-27017}:27017"
+    volumes:
+      - linker_mongodb_data:/data/db
+      - linker_mongodb_config:/data/configdb
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/runner", "healthcheck"]
+      interval: 30s
+      timeout: 60s
+      start_period: 60s
+      retries: 3
+
+volumes:
+  linker_mongodb_data:
+  linker_mongodb_config:

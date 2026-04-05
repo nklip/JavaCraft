@@ -1,13 +1,14 @@
-package dev.nklip.javacraft.linker.dao;
+package dev.nklip.javacraft.linker.persistence;
 
 import de.bwaldvogel.mongo.MongoServer;
 import de.bwaldvogel.mongo.backend.memory.MemoryBackend;
+import dev.nklip.javacraft.linker.persistence.repository.LinkRepository;
 import java.net.InetSocketAddress;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.Optional;
-import dev.nklip.javacraft.linker.dao.entity.Link;
+import dev.nklip.javacraft.linker.persistence.entity.Link;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;

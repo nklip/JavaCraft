@@ -1,7 +1,7 @@
-package dev.nklip.javacraft.linker.dao;
+package dev.nklip.javacraft.linker.persistence.repository;
 
 import java.util.Optional;
-import dev.nklip.javacraft.linker.dao.entity.Link;
+import dev.nklip.javacraft.linker.persistence.entity.Link;
 import org.springframework.data.mongodb.repository.MongoRepository;
 
 public interface LinkRepository extends MongoRepository<Link, String> {

@@ -15,10 +15,10 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
                 description = "Swagger UI for short-link creation, redirect, and analytics endpoints"
         )
 )
-public class Application {
+public class LinkerApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(Application.class, args);
+        SpringApplication.run(LinkerApplication.class, args);
     }
 
 }

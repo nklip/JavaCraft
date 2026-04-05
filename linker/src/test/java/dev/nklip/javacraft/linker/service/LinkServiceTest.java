@@ -9,8 +9,8 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.Optional;
-import dev.nklip.javacraft.linker.dao.LinkRepository;
-import dev.nklip.javacraft.linker.dao.entity.Link;
+import dev.nklip.javacraft.linker.persistence.repository.LinkRepository;
+import dev.nklip.javacraft.linker.persistence.entity.Link;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -24,7 +24,7 @@ class LinkServiceTest {
     void setUp() {
         linkRepository = Mockito.mock(LinkRepository.class);
         linkService = Mockito.spy(new LinkService(linkRepository));
-        linkService.setHost("http://localhost:8080/api/v1/links");
+        linkService.setHost("http://localhost:8100/api/v1/links");
         linkService.setShortUrlLength(6);
         linkService.setMaxShortUrlAttempts(5);
         linkService.setExpirationDays(30);
@@ -46,7 +46,7 @@ class LinkServiceTest {
 
         String shortUrl = linkService.createLink("https://example.org/path");
 
-        assertEquals("http://localhost:8080/api/v1/links/XYZ789", shortUrl);
+        assertEquals("http://localhost:8100/api/v1/links/XYZ789", shortUrl);
         Mockito.verify(linkRepository, Mockito.times(1)).save(Mockito.any(Link.class));
     }
 
@@ -62,7 +62,7 @@ class LinkServiceTest {
 
         String shortUrl = linkService.createLink("https://existing.example/path");
 
-        assertEquals("http://localhost:8080/api/v1/links/ready11", shortUrl);
+        assertEquals("http://localhost:8100/api/v1/links/ready11", shortUrl);
         Mockito.verify(linkRepository, Mockito.never()).save(Mockito.any(Link.class));
         Mockito.verify(linkRepository, Mockito.never()).existsByShortUrl(Mockito.anyString());
     }
