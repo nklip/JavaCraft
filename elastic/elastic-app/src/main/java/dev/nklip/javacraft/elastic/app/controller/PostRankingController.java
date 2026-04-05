@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.elastic.app.rest;
+package dev.nklip.javacraft.elastic.app.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;

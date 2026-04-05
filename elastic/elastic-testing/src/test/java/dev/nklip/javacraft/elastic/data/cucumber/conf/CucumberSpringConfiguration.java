@@ -1,9 +1,9 @@
 package dev.nklip.javacraft.elastic.data.cucumber.conf;
 
+import dev.nklip.javacraft.elastic.app.ElasticApplication;
 import io.cucumber.spring.CucumberContextConfiguration;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
-import dev.nklip.javacraft.elastic.app.Application;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.test.context.ContextConfiguration;
@@ -15,7 +15,7 @@ import org.springframework.test.context.ContextConfiguration;
  */
 @CucumberContextConfiguration
 @SpringBootTest(
-        classes = Application.class,
+        classes = ElasticApplication.class,
         webEnvironment = WebEnvironment.RANDOM_PORT
 )
 @ContextConfiguration(initializers = ElasticsearchContainerInitializer.class)

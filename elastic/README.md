@@ -35,8 +35,31 @@ strategies via REST, ingests user click events, and surfaces popular and trendin
 ## 1. Quick Start
 <sub>[Back to top](#elasticsearch)</sub>
 
-**Prerequisites:** Elasticsearch running on `localhost:9200`
-([Docker quickstart](https://www.elastic.co/docs/deploy-manage/deploy/self-managed/local-development-installation-quickstart))
+**Prerequisites:** You need to have Elasticsearch running on `localhost:9200` with parameters.
+
+User either official documentation - ([Local development installation](https://www.elastic.co/docs/deploy-manage/deploy/self-managed/local-development-installation-quickstart))
+or Docker
+
+### Docker local stack
+
+The repo now includes a local Elastic Stack compose file that mirrors the currently running
+Docker Desktop setup (`es-local-dev`, `kibana-local-settings`, `kibana-local-dev`):
+
+```bash
+docker compose -f elastic/compose.yaml up -d
+docker compose -f elastic/compose.yaml down
+```
+
+By default it starts:
+
+| URL | Description |
+|-----|-------------|
+| http://localhost:9200 | Elasticsearch |
+| http://localhost:5601 | Kibana |
+
+The compose file uses default ports and passwords for Docker Desktop stack, but
+you can still override them with environment variables such as `ES_LOCAL_PASSWORD`,
+`KIBANA_LOCAL_PASSWORD`, `ES_LOCAL_PORT`, and `KIBANA_LOCAL_PORT`.
 
 ```bash
 mvn -pl elastic/elastic-app spring-boot:run

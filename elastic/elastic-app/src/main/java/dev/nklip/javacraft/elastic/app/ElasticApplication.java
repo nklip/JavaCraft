@@ -18,11 +18,11 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
                 description = "Swagger UI for Elastic application"
         )
 )
-public class Application {
+public class ElasticApplication {
 
     public static void main(String[] args){
-        log.info("Elastic Application starting...");
-        SpringApplication.run(Application.class, args);
+        log.info("Elastic ElasticApplication starting...");
+        SpringApplication.run(ElasticApplication.class, args);
     }
 
 }

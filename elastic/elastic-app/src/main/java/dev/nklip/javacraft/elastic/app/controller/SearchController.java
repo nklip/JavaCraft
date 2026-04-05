@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.elastic.app.rest;
+package dev.nklip.javacraft.elastic.app.controller;
 
 import co.elastic.clients.elasticsearch._types.ElasticsearchException;
 import io.swagger.v3.oas.annotations.Operation;

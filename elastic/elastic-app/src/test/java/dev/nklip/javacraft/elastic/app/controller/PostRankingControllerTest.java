@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.elastic.app.rest;
+package dev.nklip.javacraft.elastic.app.controller;
 
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;

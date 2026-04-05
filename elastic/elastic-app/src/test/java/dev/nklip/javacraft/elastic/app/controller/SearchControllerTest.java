@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.elastic.app.rest;
+package dev.nklip.javacraft.elastic.app.controller;
 
 import java.io.IOException;
 import java.util.ArrayList;
