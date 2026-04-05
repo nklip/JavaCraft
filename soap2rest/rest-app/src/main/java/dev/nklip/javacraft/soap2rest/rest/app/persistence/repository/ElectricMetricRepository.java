@@ -1,8 +1,8 @@
-package dev.nklip.javacraft.soap2rest.rest.app.dao;
+package dev.nklip.javacraft.soap2rest.rest.app.persistence.repository;
 
 import java.util.List;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.entity.ElectricMetric;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.entity.MetricEntity;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.entity.ElectricMetric;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.entity.MetricEntity;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -11,7 +11,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-public interface ElectricMetricDao extends JpaRepository<ElectricMetric, Long>, MetricEntityDao {
+public interface ElectricMetricRepository extends JpaRepository<ElectricMetric, Long>, MetricEntityRepository {
 
     @Query(value = """
             SELECT e FROM Account a, Meter m, ElectricMetric e

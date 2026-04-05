@@ -8,19 +8,19 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 @Slf4j
 @EnableJpaRepositories(
-        "dev.nklip.javacraft.soap2rest.rest.app.dao"
+        "dev.nklip.javacraft.soap2rest.rest.app.persistence.repository"
 )
 @EntityScan(
-        "dev.nklip.javacraft.soap2rest.rest.app.dao.entity"
+        "dev.nklip.javacraft.soap2rest.rest.app.persistence.entity"
 )
 @SpringBootApplication(scanBasePackages = {
-        "dev.nklip.javacraft.soap2rest.utils",
+        "dev.nklip.javacraft.soap2rest.common",
         "dev.nklip.javacraft.soap2rest.rest.app",
 })
-public class Application {
+public class RestApplication {
 
     public static void main(String[] args) {
-        log.info("REST Application starting...");
-        SpringApplication.run(Application.class, args);
+        log.info("REST RestApplication starting...");
+        SpringApplication.run(RestApplication.class, args);
     }
 }

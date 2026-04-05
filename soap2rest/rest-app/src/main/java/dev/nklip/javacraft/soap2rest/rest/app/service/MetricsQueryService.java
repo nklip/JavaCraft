@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.soap2rest.rest.app.dao;
+package dev.nklip.javacraft.soap2rest.rest.app.service;
 
 import java.util.Collections;
 import java.util.List;
@@ -6,13 +6,11 @@ import java.util.Optional;
 import dev.nklip.javacraft.soap2rest.rest.api.Metric;
 import lombok.RequiredArgsConstructor;
 import dev.nklip.javacraft.soap2rest.rest.api.Metrics;
-import dev.nklip.javacraft.soap2rest.rest.app.service.ElectricService;
-import dev.nklip.javacraft.soap2rest.rest.app.service.GasService;
-import org.springframework.stereotype.Repository;
+import org.springframework.stereotype.Service;
 
-@Repository
+@Service
 @RequiredArgsConstructor
-public class MetricsDao {
+public class MetricsQueryService {
 
     private final ElectricService electricService;
     private final GasService gasService;

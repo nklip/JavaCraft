@@ -3,8 +3,8 @@ package dev.nklip.javacraft.soap2rest.rest.app.service;
 import java.math.BigDecimal;
 import java.sql.Date;
 import dev.nklip.javacraft.soap2rest.rest.api.Metric;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.ElectricMetricDao;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.MeterDao;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.repository.ElectricMetricRepository;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.repository.MeterRepository;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,63 +23,57 @@ public class ElectricServiceTest {
     MetricValidationService metricValidationService;
 
     @Mock
-    ElectricMetricDao electricMetricDao;
+    ElectricMetricRepository electricMetricRepository;
 
     @Mock
-    MeterDao meterDao;
+    MeterRepository meterRepository;
 
     @Test
     public void testDeleteAllByAccountId() {
         ElectricService electricService = new ElectricService(
                 metricService,
-                metricValidationService,
-                electricMetricDao,
-                meterDao
+                metricValidationService, electricMetricRepository, meterRepository
         );
-        when(electricMetricDao.deleteByAccountId(1L)).thenReturn(2);
+        when(electricMetricRepository.deleteByAccountId(1L)).thenReturn(2);
 
         int deleted = electricService.deleteAllByAccountId(1L);
 
         Assertions.assertEquals(2, deleted);
-        verify(electricMetricDao).deleteByAccountId(1L);
+        verify(electricMetricRepository).deleteByAccountId(1L);
     }
 
     @Test
     public void testDeleteAllByAccountIdWhenNoMetricsFound() {
         ElectricService electricService = new ElectricService(
                 metricService,
-                metricValidationService,
-                electricMetricDao,
-                meterDao
+                metricValidationService, electricMetricRepository, meterRepository
         );
-        when(electricMetricDao.deleteByAccountId(7L)).thenReturn(0);
+        when(electricMetricRepository.deleteByAccountId(7L)).thenReturn(0);
 
         int deleted = electricService.deleteAllByAccountId(7L);
 
         Assertions.assertEquals(0, deleted);
-        verify(electricMetricDao).deleteByAccountId(7L);
+        verify(electricMetricRepository).deleteByAccountId(7L);
     }
 
     @Test
     public void testSubmitThrowsWhenMeterDoesNotBelongToAccount() {
         ElectricService electricService = new ElectricService(
                 metricService,
-                metricValidationService,
-                electricMetricDao,
-                meterDao
+                metricValidationService, electricMetricRepository, meterRepository
         );
         Metric metric = new Metric();
         metric.setMeterId(100L);
         metric.setReading(new BigDecimal("10.000"));
         metric.setDate(Date.valueOf("2024-01-15"));
-        when(meterDao.existsByIdAndAccountId(100L, 2L)).thenReturn(false);
+        when(meterRepository.existsByIdAndAccountId(100L, 2L)).thenReturn(false);
 
         Assertions.assertThrows(
                 IllegalArgumentException.class,
                 () -> electricService.submit(2L, metric)
         );
 
-        verify(electricMetricDao, never()).save(any());
+        verify(electricMetricRepository, never()).save(any());
         verify(metricValidationService, never()).validate(any(), any());
     }
 
@@ -87,15 +81,13 @@ public class ElectricServiceTest {
     public void testSubmitSavesMetricWhenMeterBelongsToAccount() {
         ElectricService electricService = new ElectricService(
                 metricService,
-                metricValidationService,
-                electricMetricDao,
-                meterDao
+                metricValidationService, electricMetricRepository, meterRepository
         );
         Metric metric = new Metric();
         metric.setMeterId(100L);
         metric.setReading(new BigDecimal("10.000"));
         metric.setDate(Date.valueOf("2024-01-15"));
-        when(meterDao.existsByIdAndAccountId(100L, 1L)).thenReturn(true);
+        when(meterRepository.existsByIdAndAccountId(100L, 1L)).thenReturn(true);
 
         Metric response = electricService.submit(1L, metric);
 
@@ -104,6 +96,6 @@ public class ElectricServiceTest {
         Assertions.assertEquals(new BigDecimal("10.000"), response.getReading());
         Assertions.assertEquals(Date.valueOf("2024-01-15"), response.getDate());
         verify(metricValidationService).validate(isNull(), eq(metric));
-        verify(electricMetricDao).save(any());
+        verify(electricMetricRepository).save(any());
     }
 }

@@ -1,7 +1,7 @@
-package dev.nklip.javacraft.soap2rest.rest.app.cucumber.conf;
+package dev.nklip.javacraft.soap2rest.rest.app.cucumber.config;
 
 import io.cucumber.spring.CucumberContextConfiguration;
-import dev.nklip.javacraft.soap2rest.rest.app.Application;
+import dev.nklip.javacraft.soap2rest.rest.app.RestApplication;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ContextConfiguration;
@@ -14,7 +14,7 @@ import org.springframework.test.context.ContextConfiguration;
 @SuppressWarnings("unused")
 @CucumberContextConfiguration
 @SpringBootTest(
-        classes = Application.class,
+        classes = RestApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
 )
 @ContextConfiguration(initializers = ArtemisContainerInitializer.class)

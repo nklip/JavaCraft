@@ -5,10 +5,10 @@ import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import dev.nklip.javacraft.soap2rest.rest.api.Metric;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.ElectricMetricDao;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.MeterDao;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.entity.ElectricMetric;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.entity.MetricEntity;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.repository.ElectricMetricRepository;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.repository.MeterRepository;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.entity.ElectricMetric;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.entity.MetricEntity;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -17,11 +17,11 @@ public class ElectricService {
 
     private final MetricService metricService;
     private final MetricValidationService metricValidationService;
-    private final ElectricMetricDao electricMetricDao;
-    private final MeterDao meterDao;
+    private final ElectricMetricRepository electricMetricRepository;
+    private final MeterRepository meterRepository;
 
     public List<Metric> getMetricsByAccountId(Long accountId) {
-        return metricService.calculateExtraFields(electricMetricDao.findMetrics(accountId));
+        return metricService.calculateExtraFields(electricMetricRepository.findMetrics(accountId));
     }
 
     public Metric findLatestMetric(Long accountId) {
@@ -32,11 +32,11 @@ public class ElectricService {
     }
 
     public Metric submit(Long accountId, Metric submittedMetric) {
-        if (!meterDao.existsByIdAndAccountId(submittedMetric.getMeterId(), accountId)) {
+        if (!meterRepository.existsByIdAndAccountId(submittedMetric.getMeterId(), accountId)) {
             throw new IllegalArgumentException("Meter is not linked to account.");
         }
 
-        Metric latestMetric = Optional.ofNullable(electricMetricDao
+        Metric latestMetric = Optional.ofNullable(electricMetricRepository
                 .findTopByMeterIdInOrderByDateDesc(
                         Collections.singletonList(submittedMetric.getMeterId())
                 ))
@@ -50,12 +50,12 @@ public class ElectricService {
         electricMetric.setReading(submittedMetric.getReading());
         electricMetric.setDate(submittedMetric.getDate());
 
-        electricMetricDao.save(electricMetric);
+        electricMetricRepository.save(electricMetric);
 
         return electricMetric.toApiMetric();
     }
 
     public int deleteAllByAccountId(Long accountId) {
-        return electricMetricDao.deleteByAccountId(accountId);
+        return electricMetricRepository.deleteByAccountId(accountId);
     }
 }

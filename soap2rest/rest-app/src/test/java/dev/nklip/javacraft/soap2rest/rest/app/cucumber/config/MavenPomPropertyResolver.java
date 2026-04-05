@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.soap2rest.rest.app.cucumber.conf;
+package dev.nklip.javacraft.soap2rest.rest.app.cucumber.config;
 
 import java.io.IOException;
 import java.io.Reader;

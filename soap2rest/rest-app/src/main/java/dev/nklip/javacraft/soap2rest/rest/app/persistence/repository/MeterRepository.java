@@ -1,8 +1,8 @@
-package dev.nklip.javacraft.soap2rest.rest.app.dao;
+package dev.nklip.javacraft.soap2rest.rest.app.persistence.repository;
 
 import java.util.List;
 import java.util.Optional;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.entity.Meter;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.entity.Meter;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -11,7 +11,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-public interface MeterDao extends JpaRepository<Meter, Long> {
+public interface MeterRepository extends JpaRepository<Meter, Long> {
     @Query(value =
             "SELECT m FROM Meter m WHERE m.accountId = :id")
     List<Meter> findByAccountId(@Param("id") Long id);

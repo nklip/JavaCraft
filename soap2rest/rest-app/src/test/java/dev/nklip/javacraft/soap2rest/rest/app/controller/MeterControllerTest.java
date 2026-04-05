@@ -2,7 +2,7 @@ package dev.nklip.javacraft.soap2rest.rest.app.controller;
 
 import java.util.ArrayList;
 import java.util.List;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.entity.Meter;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.entity.Meter;
 import dev.nklip.javacraft.soap2rest.rest.app.service.MeterService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;

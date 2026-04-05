@@ -12,7 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import dev.nklip.javacraft.soap2rest.rest.api.AsyncJobResultResponse;
 import dev.nklip.javacraft.soap2rest.rest.api.Metrics;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.MetricsDao;
+import dev.nklip.javacraft.soap2rest.rest.app.service.MetricsQueryService;
 import dev.nklip.javacraft.soap2rest.rest.app.service.async.AsyncJobState;
 import dev.nklip.javacraft.soap2rest.rest.app.service.async.AsyncMetricsStorage;
 import dev.nklip.javacraft.soap2rest.rest.app.service.SmartService;
@@ -30,7 +30,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class SmartController {
 
-    private final MetricsDao metricsDao;
+    private final MetricsQueryService metricsQueryService;
     private final AsyncMetricsStorage asyncMetricsStorage;
     private final SmartService smartService;
     @Value("${soap2rest.rest.smart.message:Hello World!}")
@@ -55,7 +55,7 @@ public class SmartController {
             produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Metrics> getMetrics(@PathVariable Long id) {
         return ResponseEntity
-                .ok(metricsDao.findByAccountId(id));
+                .ok(metricsQueryService.findByAccountId(id));
     }
 
     @ExecutionTime
@@ -67,7 +67,7 @@ public class SmartController {
             produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Metrics> getLatestMetrics(@PathVariable Long id) {
         return ResponseEntity
-                .ok(metricsDao.findLatestMetrics(id));
+                .ok(metricsQueryService.findLatestMetrics(id));
     }
 
     @ExecutionTime

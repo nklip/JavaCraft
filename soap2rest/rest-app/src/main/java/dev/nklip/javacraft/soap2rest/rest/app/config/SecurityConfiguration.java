@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.soap2rest.rest.app.conf;
+package dev.nklip.javacraft.soap2rest.rest.app.config;
 
 import dev.nklip.javacraft.soap2rest.rest.app.security.AuthenticationFilter;
 import org.springframework.context.annotation.Bean;

@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.soap2rest.rest.app.cucumber.conf;
+package dev.nklip.javacraft.soap2rest.rest.app.cucumber.config;
 
 import org.springframework.boot.test.util.TestPropertyValues;
 import org.springframework.context.ApplicationContextInitializer;

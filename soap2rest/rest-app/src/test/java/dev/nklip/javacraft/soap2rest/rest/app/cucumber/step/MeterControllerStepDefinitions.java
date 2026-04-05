@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.entity.Meter;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.entity.Meter;
 import dev.nklip.javacraft.soap2rest.rest.app.security.AuthenticationService;
 import org.junit.jupiter.api.Assertions;
 import org.springframework.boot.test.web.server.LocalServerPort;

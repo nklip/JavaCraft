@@ -5,7 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.entity.Meter;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.entity.Meter;
 import dev.nklip.javacraft.soap2rest.rest.app.service.MeterService;
 import dev.nklip.javacraft.soap2rest.common.aop.ExecutionTime;
 import org.springframework.http.MediaType;

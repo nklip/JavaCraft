@@ -6,10 +6,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @Slf4j
 @SpringBootApplication
-public class Application {
+public class SoapApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(Application.class, args);
-        log.info("SOAP Application started.");
+        SpringApplication.run(SoapApplication.class, args);
+        log.info("SOAP SoapApplication started.");
     }
 }

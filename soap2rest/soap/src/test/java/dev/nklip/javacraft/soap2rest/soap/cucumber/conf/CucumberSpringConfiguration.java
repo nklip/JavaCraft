@@ -1,7 +1,7 @@
 package dev.nklip.javacraft.soap2rest.soap.cucumber.conf;
 
 import io.cucumber.spring.CucumberContextConfiguration;
-import dev.nklip.javacraft.soap2rest.soap.Application;
+import dev.nklip.javacraft.soap2rest.soap.SoapApplication;
 import org.springframework.boot.test.context.SpringBootTest;
 
 /**
@@ -12,7 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 @SuppressWarnings("unused")
 @CucumberContextConfiguration
 @SpringBootTest(
-        classes = Application.class,
+        classes = SoapApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
 )
 public class CucumberSpringConfiguration {

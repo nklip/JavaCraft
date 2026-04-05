@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.soap2rest.soap.conf;
+package dev.nklip.javacraft.soap2rest.soap.config;
 
 import org.springframework.boot.web.servlet.ServletRegistrationBean;
 import org.springframework.context.ApplicationContext;

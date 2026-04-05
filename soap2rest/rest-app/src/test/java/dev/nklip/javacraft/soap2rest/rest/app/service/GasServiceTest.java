@@ -3,8 +3,8 @@ package dev.nklip.javacraft.soap2rest.rest.app.service;
 import java.math.BigDecimal;
 import java.sql.Date;
 import dev.nklip.javacraft.soap2rest.rest.api.Metric;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.GasMetricDao;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.MeterDao;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.repository.GasMetricRepository;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.repository.MeterRepository;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,63 +23,57 @@ public class GasServiceTest {
     MetricValidationService metricValidationService;
 
     @Mock
-    GasMetricDao gasMetricDao;
+    GasMetricRepository gasMetricRepository;
 
     @Mock
-    MeterDao meterDao;
+    MeterRepository meterRepository;
 
     @Test
     public void testDeleteAllByAccountId() {
         GasService gasService = new GasService(
                 metricService,
-                metricValidationService,
-                gasMetricDao,
-                meterDao
+                metricValidationService, gasMetricRepository, meterRepository
         );
-        when(gasMetricDao.deleteByAccountId(1L)).thenReturn(2);
+        when(gasMetricRepository.deleteByAccountId(1L)).thenReturn(2);
 
         int deleted = gasService.deleteAllByAccountId(1L);
 
         Assertions.assertEquals(2, deleted);
-        verify(gasMetricDao).deleteByAccountId(1L);
+        verify(gasMetricRepository).deleteByAccountId(1L);
     }
 
     @Test
     public void testDeleteAllByAccountIdWhenNoMetricsFound() {
         GasService gasService = new GasService(
                 metricService,
-                metricValidationService,
-                gasMetricDao,
-                meterDao
+                metricValidationService, gasMetricRepository, meterRepository
         );
-        when(gasMetricDao.deleteByAccountId(7L)).thenReturn(0);
+        when(gasMetricRepository.deleteByAccountId(7L)).thenReturn(0);
 
         int deleted = gasService.deleteAllByAccountId(7L);
 
         Assertions.assertEquals(0, deleted);
-        verify(gasMetricDao).deleteByAccountId(7L);
+        verify(gasMetricRepository).deleteByAccountId(7L);
     }
 
     @Test
     public void testSubmitThrowsWhenMeterDoesNotBelongToAccount() {
         GasService gasService = new GasService(
                 metricService,
-                metricValidationService,
-                gasMetricDao,
-                meterDao
+                metricValidationService, gasMetricRepository, meterRepository
         );
         Metric metric = new Metric();
         metric.setMeterId(100L);
         metric.setReading(new BigDecimal("10.000"));
         metric.setDate(Date.valueOf("2024-01-15"));
-        when(meterDao.existsByIdAndAccountId(100L, 2L)).thenReturn(false);
+        when(meterRepository.existsByIdAndAccountId(100L, 2L)).thenReturn(false);
 
         Assertions.assertThrows(
                 IllegalArgumentException.class,
                 () -> gasService.submit(2L, metric)
         );
 
-        verify(gasMetricDao, never()).save(any());
+        verify(gasMetricRepository, never()).save(any());
         verify(metricValidationService, never()).validate(any(), any());
     }
 
@@ -87,15 +81,13 @@ public class GasServiceTest {
     public void testSubmitSavesMetricWhenMeterBelongsToAccount() {
         GasService gasService = new GasService(
                 metricService,
-                metricValidationService,
-                gasMetricDao,
-                meterDao
+                metricValidationService, gasMetricRepository, meterRepository
         );
         Metric metric = new Metric();
         metric.setMeterId(100L);
         metric.setReading(new BigDecimal("10.000"));
         metric.setDate(Date.valueOf("2024-01-15"));
-        when(meterDao.existsByIdAndAccountId(100L, 1L)).thenReturn(true);
+        when(meterRepository.existsByIdAndAccountId(100L, 1L)).thenReturn(true);
 
         Metric response = gasService.submit(1L, metric);
 
@@ -104,6 +96,6 @@ public class GasServiceTest {
         Assertions.assertEquals(new BigDecimal("10.000"), response.getReading());
         Assertions.assertEquals(Date.valueOf("2024-01-15"), response.getDate());
         verify(metricValidationService).validate(isNull(), eq(metric));
-        verify(gasMetricDao).save(any());
+        verify(gasMetricRepository).save(any());
     }
 }

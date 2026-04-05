@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import dev.nklip.javacraft.soap2rest.rest.api.Metric;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.entity.ElectricMetric;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.entity.ElectricMetric;
 import dev.nklip.javacraft.soap2rest.rest.app.security.AuthenticationService;
 import org.junit.jupiter.api.Assertions;
 import org.springframework.boot.test.web.server.LocalServerPort;

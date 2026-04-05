@@ -1,8 +1,8 @@
-package dev.nklip.javacraft.soap2rest.rest.app.dao;
+package dev.nklip.javacraft.soap2rest.rest.app.persistence.repository;
 
 import java.util.List;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.entity.GasMetric;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.entity.MetricEntity;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.entity.GasMetric;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.entity.MetricEntity;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -11,7 +11,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-public interface GasMetricDao extends JpaRepository<GasMetric, Long>, MetricEntityDao {
+public interface GasMetricRepository extends JpaRepository<GasMetric, Long>, MetricEntityRepository {
 
     @Query(value = """
             SELECT g FROM Account a, Meter m, GasMetric g

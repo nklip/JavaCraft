@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.soap2rest.rest.app.dao.entity;
+package dev.nklip.javacraft.soap2rest.rest.app.persistence.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;

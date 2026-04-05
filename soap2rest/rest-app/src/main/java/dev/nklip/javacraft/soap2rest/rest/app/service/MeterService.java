@@ -2,52 +2,52 @@ package dev.nklip.javacraft.soap2rest.rest.app.service;
 
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.AccountDao;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.MeterDao;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.entity.Meter;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.repository.AccountRepository;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.repository.MeterRepository;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.entity.Meter;
 import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
 public class MeterService {
 
-    private final MeterDao meterDao;
-    private final AccountDao accountDao;
+    private final MeterRepository meterRepository;
+    private final AccountRepository accountRepository;
 
     public Meter createMeter(Long accountId, Meter submittedMeter) {
-        if (!accountDao.existsById(accountId)) {
+        if (!accountRepository.existsById(accountId)) {
             throw new IllegalArgumentException("Account is not found.");
         }
 
         Meter meter = new Meter();
         meter.setAccountId(accountId);
         meter.setManufacturer(requireManufacturer(submittedMeter.getManufacturer()));
-        return meterDao.save(meter);
+        return meterRepository.save(meter);
     }
 
     public Meter updateMeter(Long accountId, Long meterId, Meter submittedMeter) {
-        Meter existingMeter = meterDao.findByIdAndAccountId(meterId, accountId)
+        Meter existingMeter = meterRepository.findByIdAndAccountId(meterId, accountId)
                 .orElseThrow(() -> new IllegalArgumentException("Meter is not linked to account."));
 
         existingMeter.setManufacturer(requireManufacturer(submittedMeter.getManufacturer()));
-        return meterDao.save(existingMeter);
+        return meterRepository.save(existingMeter);
     }
 
     public List<Meter> getMetersByAccountId(Long accountId) {
-        return meterDao.findByAccountId(accountId);
+        return meterRepository.findByAccountId(accountId);
     }
 
     public Meter getMeterByAccountIdAndMeterId(Long accountId, Long meterId) {
-        return meterDao.findByIdAndAccountId(meterId, accountId)
+        return meterRepository.findByIdAndAccountId(meterId, accountId)
                 .orElseThrow(() -> new IllegalArgumentException("Meter is not linked to account."));
     }
 
     public int deleteAllByAccountId(Long accountId) {
-        return meterDao.deleteByAccountId(accountId);
+        return meterRepository.deleteByAccountId(accountId);
     }
 
     public int deleteByAccountIdAndMeterId(Long accountId, Long meterId) {
-        return meterDao.deleteByIdAndAccountId(meterId, accountId);
+        return meterRepository.deleteByIdAndAccountId(meterId, accountId);
     }
 
     private String requireManufacturer(String manufacturer) {

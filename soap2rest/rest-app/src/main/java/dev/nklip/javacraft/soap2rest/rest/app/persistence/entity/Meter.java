@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.soap2rest.rest.app.dao.entity;
+package dev.nklip.javacraft.soap2rest.rest.app.persistence.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;

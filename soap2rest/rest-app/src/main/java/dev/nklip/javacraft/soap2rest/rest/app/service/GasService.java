@@ -5,10 +5,10 @@ import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import dev.nklip.javacraft.soap2rest.rest.api.Metric;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.GasMetricDao;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.MeterDao;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.entity.GasMetric;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.entity.MetricEntity;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.repository.GasMetricRepository;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.repository.MeterRepository;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.entity.GasMetric;
+import dev.nklip.javacraft.soap2rest.rest.app.persistence.entity.MetricEntity;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -17,11 +17,11 @@ public class GasService {
 
     private final MetricService metricService;
     private final MetricValidationService metricValidationService;
-    private final GasMetricDao gasMetricDao;
-    private final MeterDao meterDao;
+    private final GasMetricRepository gasMetricRepository;
+    private final MeterRepository meterRepository;
 
     public List<Metric> getMetricsByAccountId(Long accountId) {
-        return metricService.calculateExtraFields(gasMetricDao.findMetrics(accountId));
+        return metricService.calculateExtraFields(gasMetricRepository.findMetrics(accountId));
     }
 
     public Metric findLatestMetric(Long accountId) {
@@ -32,11 +32,11 @@ public class GasService {
     }
 
     public Metric submit(Long accountId, Metric submittedMetric) {
-        if (!meterDao.existsByIdAndAccountId(submittedMetric.getMeterId(), accountId)) {
+        if (!meterRepository.existsByIdAndAccountId(submittedMetric.getMeterId(), accountId)) {
             throw new IllegalArgumentException("Meter is not linked to account.");
         }
 
-        Metric latestMetric = Optional.ofNullable(gasMetricDao
+        Metric latestMetric = Optional.ofNullable(gasMetricRepository
                 .findTopByMeterIdInOrderByDateDesc(
                         Collections.singletonList(submittedMetric.getMeterId())
                 )).map(MetricEntity::toApiMetric).orElse(null);
@@ -48,12 +48,12 @@ public class GasService {
         gasMetric.setReading(submittedMetric.getReading());
         gasMetric.setDate(submittedMetric.getDate());
 
-        gasMetricDao.save(gasMetric);
+        gasMetricRepository.save(gasMetric);
 
         return gasMetric.toApiMetric();
     }
 
     public int deleteAllByAccountId(Long accountId) {
-        return gasMetricDao.deleteByAccountId(accountId);
+        return gasMetricRepository.deleteByAccountId(accountId);
     }
 }

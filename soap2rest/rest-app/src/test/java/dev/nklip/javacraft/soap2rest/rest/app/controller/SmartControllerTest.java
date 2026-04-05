@@ -6,7 +6,7 @@ import java.util.List;
 import dev.nklip.javacraft.soap2rest.rest.api.AsyncJobResultResponse;
 import dev.nklip.javacraft.soap2rest.rest.api.Metric;
 import dev.nklip.javacraft.soap2rest.rest.api.Metrics;
-import dev.nklip.javacraft.soap2rest.rest.app.dao.MetricsDao;
+import dev.nklip.javacraft.soap2rest.rest.app.service.MetricsQueryService;
 import dev.nklip.javacraft.soap2rest.rest.app.service.async.AsyncJobProcessingStatus;
 import dev.nklip.javacraft.soap2rest.rest.app.service.async.AsyncJobState;
 import dev.nklip.javacraft.soap2rest.rest.app.service.async.AsyncMetricsStorage;
@@ -28,7 +28,7 @@ import static org.mockito.Mockito.when;
 public class SmartControllerTest {
 
     @Mock
-    MetricsDao metricsDao;
+    MetricsQueryService metricsQueryService;
 
     @Mock
     SmartService smartService;
@@ -40,7 +40,7 @@ public class SmartControllerTest {
 
     @BeforeEach
     public void beforeEach() {
-        this.smartController = new SmartController(metricsDao, asyncMetricsStorage, smartService);
+        this.smartController = new SmartController(metricsQueryService, asyncMetricsStorage, smartService);
         this.smartController.setSmartMessage("Hello World!");
     }
 
@@ -55,7 +55,7 @@ public class SmartControllerTest {
 
     @Test
     public void testGetMetrics() {
-        when(metricsDao.findByAccountId(eq(111L))).thenReturn(createMetrics());
+        when(metricsQueryService.findByAccountId(eq(111L))).thenReturn(createMetrics());
 
         ResponseEntity<Metrics> response = smartController.getMetrics(111L);
 
@@ -66,7 +66,7 @@ public class SmartControllerTest {
 
     @Test
     public void testGetLatestMetrics() {
-        when(metricsDao.findLatestMetrics(eq(111L))).thenReturn(createMetrics());
+        when(metricsQueryService.findLatestMetrics(eq(111L))).thenReturn(createMetrics());
 
         ResponseEntity<Metrics> response = smartController.getLatestMetrics(111L);
 
