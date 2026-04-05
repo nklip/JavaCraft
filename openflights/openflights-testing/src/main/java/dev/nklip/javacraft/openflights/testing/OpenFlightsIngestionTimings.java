@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.openflights.testing.cucumber.step;
+package dev.nklip.javacraft.openflights.testing;
 
 public record OpenFlightsIngestionTimings(
         long countriesMillis,

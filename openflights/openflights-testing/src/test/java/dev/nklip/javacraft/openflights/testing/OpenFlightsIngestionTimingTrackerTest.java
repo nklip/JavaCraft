@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.openflights.testing.cucumber.step;
+package dev.nklip.javacraft.openflights.testing;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;

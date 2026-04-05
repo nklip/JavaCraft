@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.openflights.testing.cucumber.step;
+package dev.nklip.javacraft.openflights.testing;
 
 import dev.nklip.javacraft.openflights.api.Airline;
 import dev.nklip.javacraft.openflights.api.Airport;
@@ -91,6 +91,17 @@ public class ExpectedOpenFlightsIngestionCalculator {
                 expectedAfterPlanes,
                 expectedDatabaseStatus
         );
+    }
+
+    public void confirmExpectedDatabaseStatus(OpenFlightsDatabaseStatus expectedStatusFromTable) {
+        OpenFlightsDatabaseStatus calculatedStatus = calculate().expectedDatabaseStatus();
+        if (!calculatedStatus.equals(expectedStatusFromTable)) {
+            throw new IllegalStateException(
+                    "Expected OpenFlights dataset table is out of sync with the current source datasets. "
+                            + "Expected from feature table=%s, calculated from source files=%s"
+                            .formatted(expectedStatusFromTable, calculatedStatus)
+            );
+        }
     }
 
     private long calculateExpectedCountryCount(

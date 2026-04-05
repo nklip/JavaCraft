@@ -22,12 +22,14 @@ public class PostgresContainerInitializer implements ApplicationContextInitializ
         CONTAINER.start();
     }
 
+    @SuppressWarnings("resource")
     private static PostgreSQLContainer<?> createContainer() {
         String dockerImage = MavenPomPropertyResolver.resolveRequiredSystemOrPomProperty(TC_POSTGRESQL_IMAGE);
+        // The container stays up for the full cucumber JVM and Ryuk cleans it up afterwards.
         return new PostgreSQLContainer<>(DockerImageName.parse(dockerImage))
-                .withDatabaseName(DATABASE_NAME)
-                .withUsername(USERNAME)
-                .withPassword(PASSWORD);
+            .withDatabaseName(DATABASE_NAME)
+            .withUsername(USERNAME)
+            .withPassword(PASSWORD);
     }
 
     @Override

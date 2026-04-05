@@ -1,6 +1,6 @@
-package dev.nklip.javacraft.openflights.testing.cucumber.step;
+package dev.nklip.javacraft.openflights.testing;
 
-final class OpenFlightsIngestionTimingTracker {
+public final class OpenFlightsIngestionTimingTracker {
 
     private final OpenFlightsDatabaseStatus expectedStatus;
     private final long startedAtMillis;
@@ -12,12 +12,12 @@ final class OpenFlightsIngestionTimingTracker {
     private long routesReachedAtMillis = -1L;
     private long routeEquipmentCodesReachedAtMillis = -1L;
 
-    OpenFlightsIngestionTimingTracker(OpenFlightsDatabaseStatus expectedStatus, long startedAtMillis) {
+    public OpenFlightsIngestionTimingTracker(OpenFlightsDatabaseStatus expectedStatus, long startedAtMillis) {
         this.expectedStatus = expectedStatus;
         this.startedAtMillis = startedAtMillis;
     }
 
-    void recordProgress(OpenFlightsDatabaseStatus actualStatus, long observedAtMillis) {
+    public void recordProgress(OpenFlightsDatabaseStatus actualStatus, long observedAtMillis) {
         if (countriesReachedAtMillis < 0L && actualStatus.countries() >= expectedStatus.countries()) {
             countriesReachedAtMillis = observedAtMillis;
         }
@@ -39,7 +39,7 @@ final class OpenFlightsIngestionTimingTracker {
         }
     }
 
-    OpenFlightsIngestionTimings finish(long finishedAtMillis) {
+    public OpenFlightsIngestionTimings finish(long finishedAtMillis) {
         return new OpenFlightsIngestionTimings(
                 elapsedSinceStart(countriesReachedAtMillis),
                 elapsedSinceStart(airlinesReachedAtMillis),

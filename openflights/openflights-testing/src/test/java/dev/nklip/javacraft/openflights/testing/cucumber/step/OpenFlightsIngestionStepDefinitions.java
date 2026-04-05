@@ -1,10 +1,14 @@
 package dev.nklip.javacraft.openflights.testing.cucumber.step;
 
 import dev.nklip.javacraft.openflights.kafka.producer.model.OpenFlightsImportResult;
+import dev.nklip.javacraft.openflights.testing.*;
+import io.cucumber.datatable.DataTable;
 import io.cucumber.java.Before;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -80,12 +84,14 @@ public class OpenFlightsIngestionStepDefinitions {
     }
 
     @Then("PostgreSQL eventually contains the expected OpenFlights dataset")
-    public void postgresEventuallyContainsExpectedDataset() {
+    public void postgresEventuallyContainsExpectedDataset(DataTable expectedDatasetTable) {
         Assertions.assertTrue(ingestionStartedAtMillis >= 0L, "Ingestion start time must be recorded first");
         Assertions.assertNotNull(timingTracker, "Expected PostgreSQL ingestion timing tracker to be initialized");
+        OpenFlightsDatabaseStatus expectedStatus = parseExpectedDatabaseStatus(expectedDatasetTable);
+        ingestionCalculator.confirmExpectedDatabaseStatus(expectedStatus);
 
         TimedOpenFlightsDatabaseStatus actualStatus =
-                waitForDatabaseStatus(expectations.expectedDatabaseStatus(), "final OpenFlights dataset");
+                waitForDatabaseStatus(expectedStatus, "final OpenFlights dataset");
         ingestionTimings = timingTracker.finish(actualStatus.observedAtMillis());
         ingestionDurationMillis = ingestionTimings.totalMillis();
         log.info(
@@ -145,6 +151,37 @@ public class OpenFlightsIngestionStepDefinitions {
                     .formatted(phaseName, INGESTION_TIMEOUT, expectedStatus, actualStatus.status()));
         }
         return actualStatus;
+    }
+
+    private OpenFlightsDatabaseStatus parseExpectedDatabaseStatus(DataTable expectedDatasetTable) {
+        List<Map<String, String>> rows = expectedDatasetTable.asMaps(String.class, String.class);
+        Assertions.assertEquals(1, rows.size(),
+                "Expected exactly one OpenFlights dataset row in the feature table but got " + rows.size());
+
+        Map<String, String> row = rows.getFirst();
+        return new OpenFlightsDatabaseStatus(
+                parseRequiredLong(row, "countries"),
+                parseRequiredLong(row, "airlines"),
+                parseRequiredLong(row, "airports"),
+                parseRequiredLong(row, "planes"),
+                parseRequiredLong(row, "routes"),
+                parseRequiredLong(row, "routeEquipmentCodes")
+        );
+    }
+
+    private long parseRequiredLong(Map<String, String> row, String columnName) {
+        String rawValue = row.get(columnName);
+        Assertions.assertNotNull(rawValue,
+                "Expected column '" + columnName + "' in the OpenFlights dataset feature table");
+        try {
+            return Long.parseLong(rawValue.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(
+                    "Expected numeric value for column '%s' in the OpenFlights dataset feature table but got '%s'"
+                            .formatted(columnName, rawValue),
+                    e
+            );
+        }
     }
 
     private TimedOpenFlightsDatabaseStatus readTimedDatabaseStatus() {

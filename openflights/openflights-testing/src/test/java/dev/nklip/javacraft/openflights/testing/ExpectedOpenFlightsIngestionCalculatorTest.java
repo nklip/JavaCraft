@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.openflights.testing.cucumber.step;
+package dev.nklip.javacraft.openflights.testing;
 
 import dev.nklip.javacraft.openflights.api.Airline;
 import dev.nklip.javacraft.openflights.api.Airport;
@@ -68,5 +68,69 @@ class ExpectedOpenFlightsIngestionCalculatorTest {
                 expectations.expectedAfterPlanes());
         Assertions.assertEquals(new OpenFlightsDatabaseStatus(3, 4, 5, 1, 2, 4),
                 expectations.expectedDatabaseStatus());
+    }
+
+    @Test
+    void confirmExpectedDatabaseStatusAcceptsMatchingFeatureTableValues() {
+        OpenFlightsDataReader dataReader = Mockito.mock(OpenFlightsDataReader.class);
+        Mockito.when(dataReader.readCountries()).thenReturn(List.of(
+                new Country("Peru", "PE", null)
+        ));
+        Mockito.when(dataReader.readAirlines()).thenReturn(List.of(
+                new Airline(1, "Aero Peru", null, "AP", "APR", null, "Peru", true)
+        ));
+        Mockito.when(dataReader.readAirports()).thenReturn(List.of(
+                new Airport(10, "Lima", "Lima", "Peru", "LIM", "SPJC",
+                        null, null, null, null, null, null, null, null)
+        ));
+        Mockito.when(dataReader.readPlanes()).thenReturn(List.of(
+                new Plane("Boeing 737", "73G", "B737")
+        ));
+        Mockito.when(dataReader.readRoutes()).thenReturn(List.of(
+                new Route("AP", 1, "LIM", 10, "LIM", 10, false, 0, List.of("738"))
+        ));
+
+        ExpectedOpenFlightsIngestionCalculator calculator = new ExpectedOpenFlightsIngestionCalculator(
+                dataReader,
+                new CountryNameNormalizer(),
+                new RouteEntityMapper()
+        );
+
+        Assertions.assertDoesNotThrow(() -> calculator.confirmExpectedDatabaseStatus(
+                new OpenFlightsDatabaseStatus(1, 1, 1, 1, 1, 1)
+        ));
+    }
+
+    @Test
+    void confirmExpectedDatabaseStatusFailsWhenFeatureTableDriftsFromSourceData() {
+        OpenFlightsDataReader dataReader = Mockito.mock(OpenFlightsDataReader.class);
+        Mockito.when(dataReader.readCountries()).thenReturn(List.of(
+                new Country("Peru", "PE", null)
+        ));
+        Mockito.when(dataReader.readAirlines()).thenReturn(List.of(
+                new Airline(1, "Aero Peru", null, "AP", "APR", null, "Peru", true)
+        ));
+        Mockito.when(dataReader.readAirports()).thenReturn(List.of(
+                new Airport(10, "Lima", "Lima", "Peru", "LIM", "SPJC",
+                        null, null, null, null, null, null, null, null)
+        ));
+        Mockito.when(dataReader.readPlanes()).thenReturn(List.of(
+                new Plane("Boeing 737", "73G", "B737")
+        ));
+        Mockito.when(dataReader.readRoutes()).thenReturn(List.of(
+                new Route("AP", 1, "LIM", 10, "LIM", 10, false, 0, List.of("738"))
+        ));
+
+        ExpectedOpenFlightsIngestionCalculator calculator = new ExpectedOpenFlightsIngestionCalculator(
+                dataReader,
+                new CountryNameNormalizer(),
+                new RouteEntityMapper()
+        );
+
+        IllegalStateException exception = Assertions.assertThrows(
+                IllegalStateException.class,
+                () -> calculator.confirmExpectedDatabaseStatus(new OpenFlightsDatabaseStatus(1, 1, 1, 1, 2, 1))
+        );
+        Assertions.assertTrue(exception.getMessage().contains("feature table"));
     }
 }

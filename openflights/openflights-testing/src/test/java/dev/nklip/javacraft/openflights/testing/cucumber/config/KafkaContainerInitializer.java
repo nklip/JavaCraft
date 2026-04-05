@@ -3,6 +3,7 @@ package dev.nklip.javacraft.openflights.testing.cucumber.config;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.PortBinding;
 import com.github.dockerjava.api.model.Ports;
+import java.util.Objects;
 import org.springframework.boot.test.util.TestPropertyValues;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -26,11 +27,13 @@ public class KafkaContainerInitializer implements ApplicationContextInitializer<
         CONTAINER.start();
     }
 
+    @SuppressWarnings("resource")
     private static GenericContainer<?> createContainer() {
         String dockerImage = MavenPomPropertyResolver.resolveRequiredSystemOrPomProperty(TC_KAFKA_IMAGE);
+        // The container stays up for the full cucumber JVM and Ryuk cleans it up afterwards.
         return new GenericContainer<>(DockerImageName.parse(dockerImage))
                 .withCreateContainerCmdModifier(command -> command.withHostConfig(
-                        command.getHostConfig().withPortBindings(
+                        Objects.requireNonNull(command.getHostConfig()).withPortBindings(
                                 new PortBinding(
                                         Ports.Binding.bindPort(TEST_KAFKA_PORT),
                                         new ExposedPort(CONTAINER_KAFKA_PORT)
