@@ -28,8 +28,12 @@ mvn dependency:tree
 mvn dependency:analyze
 ```
 
-### To check new dependencies
+### To see new dependencies without snapshots, prereleases, or major upgrades
 ```bash
 mvn versions:display-dependency-updates
 ```
 
+### To see new dependencies including major upgrades
+```bash
+mvn versions:display-dependency-updates -DallowMajorUpdates=true
+```

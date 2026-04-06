@@ -3,7 +3,7 @@ package dev.nklip.javacraft.openflights.testing.cucumber.config;
 import org.springframework.boot.test.util.TestPropertyValues;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.testcontainers.containers.PostgreSQLContainer;
+import  org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
@@ -16,17 +16,17 @@ public class PostgresContainerInitializer implements ApplicationContextInitializ
     static final String USERNAME = "openflights";
     static final String PASSWORD = "openflights";
 
-    private static final PostgreSQLContainer<?> CONTAINER = createContainer();
+    private static final PostgreSQLContainer CONTAINER = createContainer();
 
     static {
         CONTAINER.start();
     }
 
     @SuppressWarnings("resource")
-    private static PostgreSQLContainer<?> createContainer() {
+    private static PostgreSQLContainer createContainer() {
         String dockerImage = MavenPomPropertyResolver.resolveRequiredSystemOrPomProperty(TC_POSTGRESQL_IMAGE);
         // The container stays up for the full cucumber JVM and Ryuk cleans it up afterwards.
-        return new PostgreSQLContainer<>(DockerImageName.parse(dockerImage))
+        return new PostgreSQLContainer(DockerImageName.parse(dockerImage))
             .withDatabaseName(DATABASE_NAME)
             .withUsername(USERNAME)
             .withPassword(PASSWORD);

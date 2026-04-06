@@ -12,6 +12,12 @@
     <artifactId>echo</artifactId>
     <packaging>pom</packaging>
 
+    <properties>
+        <mockito.agent.argLine>
+            -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
+        </mockito.agent.argLine>
+    </properties>
+
     <modules>
         <module>blocking</module>
         <module>netty</module>
