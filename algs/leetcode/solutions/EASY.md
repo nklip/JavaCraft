@@ -92,6 +92,10 @@ There are two variants:
 * <b>Elements must be contiguous</b> : This is the key differentiator from two pointers — sliding window only applies when the answer involves adjacent elements. If the problem lets you pick any two elements regardless of position, two pointers is the right pattern instead.
 * <b>Keywords to watch for</b> : "subarray", "substring", "contiguous", "consecutive", "window of size k", "longest", "shortest", "minimum length", "maximum sum", "at most k distinct", "no repeating".
 
+## 2.5. LeetCode problems
+
+* https://leetcode.com/problems/contains-duplicate-ii/
+
 ---
 
 # 3. Modified Binary search

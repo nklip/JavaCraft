@@ -11,6 +11,7 @@ public class ContainsDuplicateIITest {
         ContainsDuplicateII solution = new ContainsDuplicateII();
 
         // nums[0] == nums[3] and abs(3-0) <= 3
+        Assertions.assertTrue(solution.containsNearbyDuplicate(nums, 3));
         Assertions.assertTrue(solution.containsNearbyDuplicateUseHashMap(nums, 3));
     }
 
@@ -20,6 +21,7 @@ public class ContainsDuplicateIITest {
         ContainsDuplicateII solution = new ContainsDuplicateII();
 
         // nums[2] == nums[3] and abs(3-2) <= 1
+        Assertions.assertTrue(solution.containsNearbyDuplicate(nums, 1));
         Assertions.assertTrue(solution.containsNearbyDuplicateUseHashMap(nums, 1));
     }
 
@@ -29,7 +31,18 @@ public class ContainsDuplicateIITest {
         ContainsDuplicateII solution = new ContainsDuplicateII();
 
         // nums[0] == nums[3] and abs(3-0) >= 2
+        Assertions.assertFalse(solution.containsNearbyDuplicate(nums, 2));
         Assertions.assertFalse(solution.containsNearbyDuplicateUseHashMap(nums, 2));
+    }
+
+    @Test
+    void testCase4() {
+        int[] nums = new int[] {2, 2};
+        ContainsDuplicateII solution = new ContainsDuplicateII();
+
+        // nums[0] == nums[3] and abs(3-0) >= 2
+        Assertions.assertTrue(solution.containsNearbyDuplicate(nums, 3));
+        Assertions.assertTrue(solution.containsNearbyDuplicateUseHashMap(nums, 3));
     }
 
 

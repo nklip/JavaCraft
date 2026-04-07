@@ -1,9 +1,6 @@
 package dev.nklip.javacraft.algs.leetcode.easy;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /*
  * 219. Contains Duplicate II
@@ -15,7 +12,25 @@ import java.util.Map;
  */
 public class ContainsDuplicateII {
 
-    // TODO: add sliding window solution
+    // sliding windows
+    public boolean containsNearbyDuplicate(int[] nums, int k) {
+        Set<Integer> slidingWindow = new HashSet<>();
+        for (int i = 0; i < nums.length; i++) {
+            // remove the first element when it leaves the sliding window
+            if (i > k) {
+                int temp = nums[i - k - 1];
+                slidingWindow.remove(temp);
+            }
+
+            int value = nums[i];
+            // duplicate value inside the sliding window
+            if (!slidingWindow.add(value)) {
+                return true;
+            }
+
+        }
+        return false;
+    }
 
     public boolean containsNearbyDuplicateUseHashMap(int[] nums, int k) {
         Map<Integer, List<Integer>> map = new HashMap<>();
