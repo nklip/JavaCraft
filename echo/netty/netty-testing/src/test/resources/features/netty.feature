@@ -17,7 +17,7 @@ Feature: Netty server behavior
       And client "Ava" sends "stats" and receives "Simultaneously connected clients: 3"
       And client "Alyssa" sends "stats" and receives "Simultaneously connected clients: 3"
       And client "Nikita" sends "Hello World!" and receives "Did you say 'Hello World!'?"
-      And client "Ava" sends "Java 21" and receives "Did you say 'Java 21'?"
+      And client "Ava" sends "Java" and receives "Did you say 'Java'?"
       And client "Alyssa" sends "mimimi" and receives "Did you say 'mimimi'?"
       And client "Nikita" disconnects with goodbye
       And client "Ava" disconnects with goodbye

@@ -12,7 +12,7 @@ public class VirtualServer extends MultithreadedServer {
 
     @Override
     public void startUpClient(Socket client) {
-        // we use virtual threads added in Java 21
+        // we use virtual threads, available since Java 21
         Thread.startVirtualThread(new ServerThread(client, connectedClients));
     }
 

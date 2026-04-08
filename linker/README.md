@@ -3,7 +3,7 @@
 A URL shortening service built with Spring Boot and MongoDB Atlas Local. It stores long URLs,
 generates collision-safe short IDs, redirects users, and tracks redirect analytics.
 
-**Stack:** Java 21, Spring Boot, Spring Data MongoDB, MongoDB Atlas Local, Swagger/OpenAPI, JUnit 5, Mockito
+**Stack:** Java 25, Spring Boot, Spring Data MongoDB, MongoDB Atlas Local, Swagger/OpenAPI, JUnit 5, Mockito
 
 ## Contents
 1. [Quick Start](#1-quick-start)

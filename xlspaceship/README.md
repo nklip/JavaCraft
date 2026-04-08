@@ -5,7 +5,7 @@ Two Spring Boot instances communicate over REST — one for the human player, on
 
 **Originally created in 2017.**
 
-**Stack:** Java 21, Spring Boot, Spring MVC, Thymeleaf, JQuery/AJAX, Swagger/OpenAPI
+**Stack:** Java 25, Spring Boot, Spring MVC, Thymeleaf, JQuery/AJAX, Swagger/OpenAPI
 
 ---
 

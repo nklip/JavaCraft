@@ -3,7 +3,7 @@
 An OpenFlights-based ingestion system that reads `.dat` datasets, publishes typed Kafka
 messages, consumes them, and stores the normalized result in PostgreSQL.
 
-**Stack:** Java 21, Spring Boot, Spring Kafka, Spring Data JPA, PostgreSQL, Swagger/OpenAPI, Cucumber, Testcontainers
+**Stack:** Java 25, Spring Boot, Spring Kafka, Spring Data JPA, PostgreSQL, Swagger/OpenAPI, Cucumber, Testcontainers
 
 ## Contents
 1. [Quick Start](#1-quick-start)

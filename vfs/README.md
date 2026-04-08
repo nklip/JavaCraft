@@ -4,7 +4,7 @@ A shared in-memory file system emulator accessed over TCP. Multiple clients conn
 simultaneously, browse a shared directory tree, manage files and directories, and
 coordinate access via distributed locking.
 
-**Stack:** Java 21, Spring Boot, Spring Framework, Protobuf v2, Netty
+**Stack:** Java 25, Spring Boot, Spring Framework, Protobuf v2, Netty
 
 ## Contents
 1. [Quick Start](#1-quick-start)
