@@ -30,10 +30,10 @@ mvn dependency:analyze
 
 ### To see new dependencies without snapshots, prereleases, or major upgrades
 ```bash
-mvn versions:display-dependency-updates
+mvn versions:display-dependency-updates -DprocessDependencyManagement=false -DprocessDependencyManagementTransitive=false
 ```
 
 ### To see new dependencies including major upgrades
 ```bash
-mvn versions:display-dependency-updates -DallowMajorUpdates=true
+mvn versions:display-dependency-updates -DallowMajorUpdates=true -DprocessDependencyManagement=false -DprocessDependencyManagementTransitive=false
 ```
