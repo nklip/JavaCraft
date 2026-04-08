@@ -1,7 +1,11 @@
 package dev.nklip.javacraft.ses.events;
 
 /**
- * Created by nikilipa on 7/25/16.
+ * Priority scale shared by tasks and events.
+ *
+ * <p>The simulator creates tasks with one of these priority levels, and every emitted event carries the same
+ * priority so downstream consumers can preserve that context. The {@code sort} value defines the ordering used
+ * by task queues and by event comparison logic: lower sort means higher importance.
  */
 public enum Priority {
     BLOCKER(0),
@@ -14,17 +18,6 @@ public enum Priority {
 
     Priority(final int sort) {
         this.sort = sort;
-    }
-
-    public static Priority valueOf(int sort) {
-        return switch (sort) {
-            case 0 -> BLOCKER;
-            case 1 -> CRITICAL;
-            case 2 -> MAJOR;
-            case 3 -> NORMAL;
-            case 4 -> MINOR;
-            default -> throw new RuntimeException(String.format("Unknown Priority status = %s", sort));
-        };
     }
 
     public int getSort() {

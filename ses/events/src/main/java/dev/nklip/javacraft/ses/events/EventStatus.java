@@ -1,8 +1,15 @@
 package dev.nklip.javacraft.ses.events;
 
-
 /**
- * Created by nikilipa on 8/29/16.
+ * Enumerates the lifecycle states that a task can reach in the simulator.
+ *
+ * <p>This enum exists so the whole module shares one canonical vocabulary for workflow transitions.
+ * Every concrete event type maps to exactly one of these statuses, which makes it easy for read-side
+ * code such as {@link EventsMonitor} and the simulator reporter to understand what an event means.
+ *
+ * <p>The {@code sort} value gives the status a stable display order:
+ * created -> accepted -> running -> completed -> rejected.
+ * That order is used when events are rendered for humans.
  */
 public enum EventStatus {
     CREATED("Created", 0),
@@ -22,17 +29,6 @@ public enum EventStatus {
     @Override
     public String toString() {
         return value;
-    }
-
-    public static EventStatus valueOf(int sort) {
-        return switch (sort) {
-            case 0 -> CREATED;
-            case 1 -> ACCEPTED;
-            case 2 -> RUNNING;
-            case 3 -> COMPLETED;
-            case 4 -> REJECTED;
-            default -> throw new RuntimeException(String.format("Unknown EventStatus sortId = %s", sort));
-        };
     }
 
     public int getSort() {

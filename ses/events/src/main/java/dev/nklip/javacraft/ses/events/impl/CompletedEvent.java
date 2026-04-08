@@ -4,12 +4,15 @@ import dev.nklip.javacraft.ses.events.EventStatus;
 import dev.nklip.javacraft.ses.events.Priority;
 
 /**
- * Created by nikilipa on 7/26/16.
+ * Event emitted when the worker finishes processing a task.
+ *
+ * <p>This is the terminal success state in the simulator pipeline. The monitor uses it as the latest known
+ * state for a task once the execution stage has finished.
  */
 public class CompletedEvent extends BaseEvent {
 
-    public CompletedEvent(Priority priority, String title, String financeCode, int estimate) {
-        super(priority, title, financeCode, estimate, EventStatus.COMPLETED);
+    public CompletedEvent(int taskId, Priority priority, String title, String financeCode, int estimate) {
+        super(taskId, priority, title, financeCode, estimate, EventStatus.COMPLETED);
     }
 
 }

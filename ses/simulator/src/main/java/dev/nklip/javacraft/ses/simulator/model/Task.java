@@ -29,6 +29,10 @@ public class Task implements Comparable<Task> {
         return title;
     }
 
+    public int getId() {
+        return id;
+    }
+
     public String getFinanceCode() {
         return financeCode;
     }
@@ -37,6 +41,7 @@ public class Task implements Comparable<Task> {
         return estimate;
     }
 
+    @Override
     public int compareTo(Task that) {
         if (this.priority.getSort() > that.getPriority().getSort()) {
             return 1;

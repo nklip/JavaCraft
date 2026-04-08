@@ -16,7 +16,7 @@
 
         <!-- maven plugins -->
         <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
-        <maven-dependency-plugin.version>3.6.1</maven-dependency-plugin.version>
+        <maven-dependency-plugin.version>3.9.0</maven-dependency-plugin.version>
         <maven-deploy-plugin.version>3.1.4</maven-deploy-plugin.version>
         <maven-install-plugin.version>3.1.4</maven-install-plugin.version>
         <maven-jar-plugin.version>3.5.0</maven-jar-plugin.version>
@@ -239,6 +239,11 @@
                     <allowSnapshots>false</allowSnapshots>
                     <rulesUri>file://${maven.multiModuleProjectDirectory}/versions-rules.xml</rulesUri>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>${maven-dependency-plugin.version}</version>
             </plugin>
         </plugins>
     </build>

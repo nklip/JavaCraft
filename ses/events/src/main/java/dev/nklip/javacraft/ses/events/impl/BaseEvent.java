@@ -5,9 +5,25 @@ import dev.nklip.javacraft.ses.events.EventStatus;
 import dev.nklip.javacraft.ses.events.Priority;
 
 /**
- * Created by nikilipa on 7/25/16.
+ * Shared implementation for all concrete workflow events.
+ *
+ * <p>This base class holds the state that every event variant has in common: which task the event belongs to,
+ * what priority and finance code the task has, what the estimate is, and which workflow status this event
+ * represents. That keeps the concrete subclasses extremely small; they only need to declare which
+ * {@link EventStatus} they stand for.
+ *
+ * <p>It also centralizes identity and ordering rules:
+ * <ul>
+ *     <li>events are considered equal when they belong to the same {@code taskId}</li>
+ *     <li>events sort first by priority, then by status, then by estimate, then by task id</li>
+ * </ul>
+ *
+ * <p>Those rules are here because they apply to all event variants equally and should not drift between
+ * subclasses.
  */
 public abstract class BaseEvent implements Event {
+
+    protected final int taskId;
 
     protected final Priority priority;
 
@@ -19,14 +35,18 @@ public abstract class BaseEvent implements Event {
 
     protected final EventStatus status;
 
-    protected Exception exception;
-
-    public BaseEvent(Priority priority, String title, String financeCode, int estimate, EventStatus status) {
+    public BaseEvent(int taskId, Priority priority, String title, String financeCode, int estimate, EventStatus status) {
+        this.taskId = taskId;
         this.priority = priority;
         this.title = title;
         this.financeCode = financeCode;
         this.estimate = estimate;
         this.status = status;
+    }
+
+    @Override
+    public int getTaskId() {
+        return taskId;
     }
 
     @Override
@@ -54,26 +74,17 @@ public abstract class BaseEvent implements Event {
         return status;
     }
 
-    public Exception getException() {
-        return exception;
-    }
-
-    @Override
-    public void setException(Exception exception) {
-        this.exception = exception;
-    }
-
     @Override
     public boolean equals(Object that) {
         if (that instanceof Event event) {
-            return this.title.equals(event.getTitle());
+            return taskId == event.getTaskId();
         }
         return false;
     }
 
     @Override
     public int hashCode() {
-        return title.hashCode();
+        return Integer.hashCode(taskId);
     }
 
     @Override
@@ -86,7 +97,12 @@ public abstract class BaseEvent implements Event {
                 return compareStatus;
             }
 
-            return Integer.compare(that.getEstimate(), this.estimate);
+            int compareEstimate = Integer.compare(that.getEstimate(), this.estimate);
+            if (compareEstimate != 0) {
+                return compareEstimate;
+            }
+
+            return Integer.compare(this.taskId, that.getTaskId());
         } else {
             return -1;
         }

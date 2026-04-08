@@ -9,7 +9,7 @@ import java.util.concurrent.PriorityBlockingQueue;
  * Created by nikilipa on 8/25/16.
  */
 @Service
-public class QueueServices {
+public class QueueService {
 
     private final PriorityBlockingQueue<Task> creationQueue = new PriorityBlockingQueue<>();
     private final PriorityBlockingQueue<Task> validationQueue = new PriorityBlockingQueue<>();

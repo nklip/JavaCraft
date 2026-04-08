@@ -8,7 +8,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
- * Created by nikilipa on 7/25/16.
+ * Default Spring-managed implementation of {@link EventsManager}.
+ *
+ * <p>This class is intentionally thin. Its job is to expose a higher-level subscription API while delegating
+ * the actual listener storage to {@link EventsSubscriptionsManager}. That keeps callers such as
+ * {@link dev.nklip.javacraft.ses.events.EventsMonitor} decoupled from the concrete storage structure.
  */
 @Service
 public class EventsManagerImpl implements EventsManager {

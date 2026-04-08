@@ -3,15 +3,10 @@ package dev.nklip.javacraft.ses.simulator.service;
 import dev.nklip.javacraft.ses.simulator.db.FinanceDao;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 /**
  * Created by nikilipa on 7/25/16.
  */
-@ExtendWith(SpringExtension.class)
-@ContextConfiguration(locations = { "/application.xml" })
 public class FinanceServiceTest {
 
     @Test
@@ -60,5 +55,22 @@ public class FinanceServiceTest {
         Assertions.assertFalse(financeService.updateFinance(financeCode, days8));
         Assertions.assertTrue(financeService.isEnoughMoney(financeCode, days10));
         Assertions.assertTrue(financeService.updateFinance(financeCode, days10));
+    }
+
+    @Test
+    public void testUnknownFinanceCode() {
+        FinanceService financeService = new FinanceService(new FinanceDao());
+
+        IllegalArgumentException enoughMoneyException = Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> financeService.isEnoughMoney("UnknownFinanceCode", 10)
+        );
+        IllegalArgumentException updateFinanceException = Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> financeService.updateFinance("UnknownFinanceCode", 10)
+        );
+
+        Assertions.assertEquals("Finance code UnknownFinanceCode not found", enoughMoneyException.getMessage());
+        Assertions.assertEquals("Finance code UnknownFinanceCode not found", updateFinanceException.getMessage());
     }
 }
