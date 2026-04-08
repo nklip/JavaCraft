@@ -69,7 +69,6 @@
         <junit-platform-suite.version>1.14.3</junit-platform-suite.version>
         <junit5.version>5.14.3</junit5.version>
         <mockito.version>5.23.0</mockito.version>
-        <byte-buddy.version>1.17.7</byte-buddy.version>
         <cucumber.version>7.34.3</cucumber.version>
         <rest-assured.version>5.5.7</rest-assured.version>
         <testcontainers.version>2.0.4</testcontainers.version>
@@ -118,6 +117,61 @@
         <module>xsd2model</module>
     </modules>
 
+    <!--
+        A BOM (Bill Of Materials) is a pom-only dependency that does not put code on any classpath by itself.
+        Instead, it provides a catalog of recommended versions for a family of artifacts.
+
+        Maven applies BOM entries only during dependency resolution. This means:
+        1. Child modules can declare artifacts without repeating <version>.
+        2. Transitive dependencies can be aligned to one coherent version line.
+        3. The actual selected version is decided by dependency mediation + dependencyManagement imports.
+
+        Why we use BOMs here:
+        - JUnit BOM keeps Jupiter + Platform artifacts on the same release train.
+        - Netty BOM keeps all Netty modules on one version line.
+        - Spring Boot BOM manages the large Spring ecosystem and many common libraries.
+
+        Why import order matters:
+        Maven uses the "nearest definition wins" rule, and inside the same dependencyManagement section
+        the first matching managed version wins.
+
+        That is the reason the more specific BOMs are imported before the broader Spring Boot BOM:
+        - JUnit BOM comes first so Boot does not silently force an older JUnit/JUnit Platform line.
+        - Netty BOM comes next so Boot does not mix our direct Netty 4.2.x modules with Boot-managed Netty 4.1.x transitives.
+        - Spring Boot BOM comes after that and manages the rest of the Spring-aligned dependency graph.
+
+        In practice, this block means:
+        - modules usually should not hardcode versions for JUnit, Netty, or Spring Boot managed libraries
+        - if a transitive dependency unexpectedly downgrades, the BOM import order here is one of the first places to inspect
+        - adding another broad BOM later should be done carefully, because it can override or conflict with the version
+          alignment established here
+    -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.junit</groupId>
+                <artifactId>junit-bom</artifactId>
+                <version>${junit5.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-bom</artifactId>
+                <version>${netty.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <build>
         <plugins>
             <plugin>
@@ -144,6 +198,27 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${maven-surefire-plugin.version}</version>
+                <dependencies>
+                    <!--
+                        Surefire 3.5.5 brings an older JUnit Platform line on the plugin classpath.
+                        Override it here so Jupiter, Platform, and Cucumber stay aligned for all modules.
+                    -->
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-commons</artifactId>
+                        <version>${junit-platform-suite.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-engine</artifactId>
+                        <version>${junit-platform-suite.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-launcher</artifactId>
+                        <version>${junit-platform-suite.version}</version>
+                    </dependency>
+                </dependencies>
                 <configuration>
                     <argLine>${test.jvm.args} ${mockito.agent.argLine}</argLine>
                     <systemPropertyVariables>

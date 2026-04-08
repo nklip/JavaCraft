@@ -40,6 +40,7 @@
             <artifactId>spring-boot-starter</artifactId>
             <version>${spring-boot.version}</version>
             <exclusions>
+                <!-- Keep Logback out because this test harness uses slf4j-simple for lightweight console output. -->
                 <exclusion>
                     <groupId>ch.qos.logback</groupId>
                     <artifactId>logback-classic</artifactId>
@@ -66,14 +67,17 @@
             <version>${spring-boot.version}</version>
             <scope>test</scope>
             <exclusions>
+                <!-- Keep test logging aligned with the same slf4j-simple binding used by this module. -->
                 <exclusion>
                     <groupId>ch.qos.logback</groupId>
                     <artifactId>logback-classic</artifactId>
                 </exclusion>
+                <!-- Exclude Boot's older Mockito so the direct mockito-core dependency controls the version. -->
                 <exclusion>
                     <groupId>org.mockito</groupId>
                     <artifactId>mockito-core</artifactId>
                 </exclusion>
+                <!-- These tests do not use Mockito's JUnit extension, and excluding it avoids mixed Mockito versions. -->
                 <exclusion>
                     <groupId>org.mockito</groupId>
                     <artifactId>mockito-junit-jupiter</artifactId>
