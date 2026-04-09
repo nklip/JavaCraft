@@ -29,38 +29,35 @@ public class SummaryRanges {
         }
         List<String> list = new ArrayList<>();
 
-        boolean singleDigit = true;
-        int start = nums[0];
-        int checkValue = start;
+        int startValue = nums[0];
+        int endValue = startValue;
         for (int i = 1; i < nums.length; i++) {
             int end = nums[i];
-            if (end == checkValue + 1) {
-                singleDigit = false;
-                checkValue = end;
+            if (end == endValue + 1) {
+                endValue = end;
             } else {
-                addRange(list, singleDigit, start, nums[i - 1]);
+                addRange(list, startValue, endValue);
 
-                singleDigit = true;
                 if (i <= nums.length - 1) {
-                    start = nums[i];
-                    checkValue = start;
+                    startValue = nums[i];
+                    endValue = startValue;
                 }
             }
 
             // last action in cycle
             if (i == nums.length - 1) {
-                addRange(list, singleDigit, start, nums[i]);
+                addRange(list, startValue, nums[i]);
             }
         }
         if (list.isEmpty()) {
-            list.add(Integer.toString(start));
+            list.add(Integer.toString(startValue));
         }
 
         return list;
     }
 
-    private void addRange(List<String> list, boolean singleDigit, int start, int end) {
-        if (singleDigit) {
+    private void addRange(List<String> list, int start, int end) {
+        if (start == end) {
             list.add(Integer.toString(start));
         } else {
             list.add("%s->%s".formatted(start, end));
