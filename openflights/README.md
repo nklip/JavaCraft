@@ -75,6 +75,8 @@ Important runtime responsibilities:
   writes temporary airline/airport/country placeholders in separate transactions so a concurrent duplicate placeholder insert does not abort the outer route transaction.
 - `AdminDataController`
   exposes the PostgreSQL cleanup endpoint from `openflights-app`.
+- `SqlController` / `SqlService` / `SqlRepository`
+  power the admin SQL console in `openflights-app`, where the backend returns structured query data and the browser renders the result table locally.
 
 `openflights-kafka-consumer` and `openflights-app` both reuse the same datasource/JPA defaults from
 `openflights-jpa` via `classpath:openflights-jpa-defaults.yaml`, so the Postgres connection settings
@@ -128,6 +130,22 @@ The route consumer also uses `8` listener threads by default. Those defaults can
 
 That endpoint deletes persisted PostgreSQL rows only. It does not reset Kafka topics, consumer offsets,
 or any in-flight retry state.
+
+### Admin SQL console
+
+`openflights-app` also exposes a small SQL console at:
+
+- `http://localhost:8050/index.html`
+
+Current design notes:
+
+- the editor uses CodeMirror with SQL highlighting
+- the browser calls `POST /api/v1/openflights/admin/sql`
+- the backend returns structured JSON, not pre-rendered HTML
+- the browser renders the result table, toolbar, paging controls, and messages
+- paging is database-backed for row-returning queries, so PostgreSQL is asked for the current page window instead of returning the full result set to the app
+
+That split keeps repositories focused on SQL execution and keeps presentation logic in the frontend where it belongs.
 
 ## 4. Modules
 <sub>[Back to top](#openflights)</sub>

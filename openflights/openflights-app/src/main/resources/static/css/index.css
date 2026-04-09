@@ -1,0 +1,127 @@
+body {
+    font-family: sans-serif;
+    margin: 24px;
+}
+
+main {
+    max-width: 960px;
+}
+
+textarea {
+    box-sizing: border-box;
+    width: 100%;
+    font-family: monospace;
+    font-size: 14px;
+    padding: 12px;
+    resize: vertical;
+}
+
+#sql-input {
+    min-height: 240px;
+}
+
+.CodeMirror {
+    border: 1px solid #c7c7c7;
+    font-family: monospace;
+    font-size: 14px;
+    height: 240px;
+}
+
+.actions {
+    margin-top: 12px;
+    display: flex;
+    width: 100%;
+    gap: 12px;
+    justify-content: flex-start;
+}
+
+#hide-show-button {
+    margin-left: auto;
+}
+
+button {
+    padding: 10px 18px;
+}
+
+#sql-output {
+    min-height: 200px;
+    margin-top: 12px;
+    overflow-x: auto;
+}
+
+.sql-result-toolbar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.sql-page-size-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-self: end;
+}
+
+.sql-page-size-label {
+    font-weight: 600;
+}
+
+.sql-pagination {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-self: center;
+}
+
+.sql-page-summary {
+    color: #5f5f5f;
+    font-size: 14px;
+    justify-self: start;
+}
+
+.sql-result-table {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+.sql-result-table th,
+.sql-result-table td {
+    border: 1px solid #c7c7c7;
+    padding: 10px 12px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.sql-result-table th {
+    background: #efefef;
+    font-weight: 700;
+}
+
+.sql-page-size-button,
+.sql-page-button {
+    padding: 8px 12px;
+}
+
+.sql-page-size-button-active,
+.sql-page-button-current {
+    background: #dedede;
+    font-weight: 700;
+}
+
+.sql-empty,
+.sql-result-message,
+.sql-result-error {
+    border: 1px solid #c7c7c7;
+    padding: 12px;
+}
+
+.sql-result-message {
+    background: #f5f5f5;
+}
+
+.sql-result-error {
+    background: #fff2f2;
+    color: #8a1c1c;
+}

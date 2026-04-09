@@ -163,6 +163,9 @@ flowchart LR
 | `OpenFlightsPlaceholderWriteService` | `openflights-kafka-consumer` | creates temporary placeholder rows in isolated transactions so concurrent route imports do not poison the outer transaction |
 | `CountryNameNormalizer` | `openflights-jpa` | converts raw source country strings into canonical SQL-facing country names |
 | `AdminDataController` | `openflights-app` | exposes the PostgreSQL cleanup endpoint |
+| `SqlController` | `openflights-app` | exposes the structured JSON contract for the admin SQL console |
+| `SqlService` | `openflights-app` | validates SQL-console paging inputs and delegates execution |
+| `SqlRepository` | `openflights-app` | executes raw SQL, applies database-backed paging, and extracts structured results without rendering HTML |
 
 ### Operational data paths
 
@@ -186,6 +189,50 @@ flowchart LR
 2. `AdminDataService` delegates cleanup.
 3. `OpenFlightsAdminDataRepository` deletes PostgreSQL rows in FK-safe order.
 4. Kafka offsets and broker state are intentionally left unchanged.
+
+#### Admin SQL console path
+
+1. The browser opens `openflights-app` static assets from `/index.html`.
+2. CodeMirror provides SQL editing in the browser.
+3. `index.js` sends SQL + paging state to `POST /api/v1/openflights/admin/sql`.
+4. `SqlController` delegates to `SqlService`.
+5. `SqlService` validates paging defaults and forwards the request to `SqlRepository`.
+6. `SqlRepository` executes the SQL and returns a structured `SqlQueryResult`.
+7. For row-returning queries, the repository first runs `count(*)`, then fetches only the requested page with `limit/offset`.
+8. The browser renders the toolbar, result table, empty state, or error message from the JSON response.
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant StaticPage as "index.html / index.js"
+    participant Controller as "SqlController"
+    participant Service as "SqlService"
+    participant Repository as "SqlRepository"
+    participant PostgreSQL
+
+    Browser->>StaticPage: Open /index.html
+    StaticPage-->>Browser: Load CodeMirror + JS UI
+    Browser->>StaticPage: Execute SQL
+    StaticPage->>Controller: POST /api/v1/openflights/admin/sql
+    Controller->>Service: executeSql(sql, page, pageSize)
+    Service->>Repository: executeSql(sql, effectivePage, effectivePageSize)
+
+    alt Row-returning query
+        Repository->>PostgreSQL: select count(*) from (<sql>)
+        PostgreSQL-->>Repository: total rows
+        Repository->>PostgreSQL: select * from (<sql>) limit ... offset ...
+        PostgreSQL-->>Repository: current page rows
+        Repository-->>Service: SqlQueryResult(TABLE, ...)
+    else Update / DDL statement
+        Repository->>PostgreSQL: execute statement
+        PostgreSQL-->>Repository: update count
+        Repository-->>Service: SqlQueryResult(MESSAGE, ...)
+    end
+
+    Service-->>Controller: SqlQueryResult
+    Controller-->>StaticPage: JSON response
+    StaticPage-->>Browser: Render table + paging or message
+```
 
 ## 5. Kafka Topology
 <sub>[Back to top](#openflights-architecture)</sub>

@@ -12,7 +12,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @SpringBootApplication(scanBasePackages = "dev.nklip.javacraft.openflights")
 public class OpenFlightsApplication {
 
-    public static void main(String[] args) {
+    static void main(String[] args) {
         log.info("OpenFlights application starting...");
         SpringApplication.run(OpenFlightsApplication.class, args);
     }

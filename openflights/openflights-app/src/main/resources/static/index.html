@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>OpenFlights SQL Console</title>
+    <!--
+        CodeMirror turns the plain textarea below into a SQL-aware editor.
+        The page keeps its own lightweight static shell here, while index.js
+        owns the dynamic rendering of query results, paging, and messages.
+    -->
+    <link rel="stylesheet" href="/webjars/codemirror/5.65.20/lib/codemirror.css">
+    <link rel="stylesheet" href="/css/index.css">
+</head>
+<body>
+<main>
+    <h1>SQL console</h1>
+    <textarea id="sql-input" placeholder="Enter an SQL statement"></textarea>
+    <div class="actions">
+        <button id="execute-button" type="button">Execute</button>
+        <button id="hide-show-button" type="button" hidden>Hide</button>
+    </div>
+    <div id="sql-output" aria-live="polite"></div>
+</main>
+<script src="/webjars/codemirror/5.65.20/lib/codemirror.js"></script>
+<script src="/webjars/codemirror/5.65.20/mode/sql/sql.js"></script>
+<script src="/js/index.js"></script>
+</body>
+</html>
