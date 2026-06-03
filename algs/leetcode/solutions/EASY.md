@@ -89,7 +89,7 @@ Key signals that Two Pointers is the right approach:
 * https://leetcode.com/problems/container-with-most-water/ ![Implemented](images/assets/implemented.svg)
 * https://leetcode.com/problems/3sum/ ![Implemented](images/assets/implemented.svg)
 * https://leetcode.com/problems/3sum-closest/ ![Implemented](images/assets/implemented.svg)
-* https://leetcode.com/problems/4sum/
+* https://leetcode.com/problems/4sum/ ![Implemented](images/assets/implemented.svg)
 * https://leetcode.com/problems/remove-nth-node-from-end-of-list/
 * https://leetcode.com/problems/next-permutation/
 * https://leetcode.com/problems/sort-colors/
