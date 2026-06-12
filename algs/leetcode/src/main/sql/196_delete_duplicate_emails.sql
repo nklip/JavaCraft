@@ -49,7 +49,7 @@ DELETE FROM Person
 WHERE ctid IN (
     SELECT ctid
     FROM (
-             SELECT ctid, ROW_NUMBER() OVER (PARTITION BY email ORDER BY email) AS rn
+             SELECT ctid, ROW_NUMBER() OVER (PARTITION BY email ORDER BY id) AS rn
              FROM Person
          ) t
     WHERE rn > 1
