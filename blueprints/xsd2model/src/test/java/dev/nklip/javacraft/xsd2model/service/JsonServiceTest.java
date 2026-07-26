@@ -22,7 +22,7 @@ public class JsonServiceTest {
     }
 
     @Test
-    public void testObject2Json2Object2Json() throws Exception {
+    public void testObject2Json2Object2Json() {
         // object
         ResponseType responseType0 = new ResponseType();
         responseType0.setUser(userType);
@@ -37,14 +37,17 @@ public class JsonServiceTest {
         String actualJson2 = JsonService.objectToJson(responseType2);
 
         Assertions.assertEquals(actualJson, actualJson2);
+        // Jackson 3 enables MapperFeature.SORT_PROPERTIES_ALPHABETICALLY by default
+        // (it was off in Jackson 2), so properties now serialize in alphabetical order
+        // rather than declaration order. The content is unchanged.
         String expectedJson = """
                 {
+                  "code" : "0",
+                  "desc" : "Ok!",
                   "user" : {
                     "login" : "nikita",
                     "password" : "password22"
-                  },
-                  "code" : "0",
-                  "desc" : "Ok!"
+                  }
                 }""";
         Assertions.assertEquals(
                 expectedJson.replaceAll("\r", "\n"),

@@ -1,6 +1,6 @@
 package dev.nklip.javacraft.soap2rest.rest.app.cucumber.step;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import io.cucumber.datatable.DataTable;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
@@ -25,8 +25,6 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
 import static io.cucumber.spring.CucumberTestContext.SCOPE_CUCUMBER_GLUE;
@@ -53,7 +51,7 @@ public class SmartControllerStepDefinitions {
     }
 
     private HttpEntity<String> prepareHttpEntity(String jsonBody) {
-        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+        HttpHeaders headers = new HttpHeaders();
         headers.set(AuthenticationService.AUTH_TOKEN_HEADER_NAME, "57AkjqNuz44QmUHQuvVo");
         headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
 
@@ -71,7 +69,7 @@ public class SmartControllerStepDefinitions {
     }
 
     @When("an account {long} submits a PUT request with new metrics")
-    public void applyPutRequestWithGasReading(Long accountId, DataTable table) throws Exception {
+    public void applyPutRequestWithGasReading(Long accountId, DataTable table) {
         Metrics metrics = data2Metrics(accountId, table);
 
         String jsonBody = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(metrics);
@@ -95,7 +93,7 @@ public class SmartControllerStepDefinitions {
     }
 
     @When("an account {long} submits an ASYNC PUT request with new metrics")
-    public void applyAsyncPutRequestWithMetrics(Long accountId, DataTable table) throws Exception {
+    public void applyAsyncPutRequestWithMetrics(Long accountId, DataTable table) {
         Metrics metrics = data2Metrics(accountId, table);
         String jsonBody = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(metrics);
 
@@ -112,7 +110,7 @@ public class SmartControllerStepDefinitions {
     }
 
     @Then("polling the async smart request eventually returns COMPLETED")
-    public void pollingAsyncRequestEventuallyReturnsCompleted() throws Exception {
+    public void pollingAsyncRequestEventuallyReturnsCompleted() {
         Response response = pollAsyncResultUntilFinished();
 
         Assertions.assertEquals(200, response.statusCode());
@@ -126,7 +124,7 @@ public class SmartControllerStepDefinitions {
     }
 
     @Then("polling the async smart request eventually returns FAILED with message {string}")
-    public void pollingAsyncRequestEventuallyReturnsFailed(String expectedMessage) throws Exception {
+    public void pollingAsyncRequestEventuallyReturnsFailed(String expectedMessage) {
         Response response = pollAsyncResultUntilFinished();
 
         Assertions.assertEquals(500, response.statusCode());

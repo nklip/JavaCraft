@@ -1,6 +1,6 @@
 package dev.nklip.javacraft.soap2rest.rest.api;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -23,7 +23,7 @@ public class MetricsTest {
     """;
 
     @Test
-    public void testJsonDeserialization() throws Exception {
+    public void testJsonDeserialization() {
         ObjectMapper mapper = new ObjectMapper();
         Metrics metrics = mapper.readValue(json, Metrics.class);
         Assertions.assertNotNull(metrics);

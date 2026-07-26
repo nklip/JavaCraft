@@ -1,6 +1,6 @@
 package dev.nklip.javacraft.soap2rest.soap.service.routing;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+import tools.jackson.core.JacksonException;
 import dev.nklip.javacraft.soap2rest.soap.service.order.SmartService;
 import java.nio.charset.StandardCharsets;
 import dev.nklip.javacraft.soap2rest.rest.api.AsyncJobResultResponse;
@@ -45,7 +45,7 @@ class AsyncServiceTest {
     private final DSRequestService dsRequestService = new DSRequestService();
 
     @Test
-    void testAsyncProcessShouldReturn501ForUnsupportedService() throws Exception {
+    void testAsyncProcessShouldReturn501ForUnsupportedService() {
         AsyncService asyncService = new AsyncService(dsRequestService, httpCallService, smartOrderService);
         DSRequest dsRequest = createSubmissionRequest("123", "GasService", RequestMethod.PUT.name());
 
@@ -60,7 +60,7 @@ class AsyncServiceTest {
     }
 
     @Test
-    void testAsyncProcessShouldReturnAcceptedResponseImmediately() throws Exception {
+    void testAsyncProcessShouldReturnAcceptedResponseImmediately() {
         AsyncService asyncService = new AsyncService(dsRequestService, httpCallService, smartOrderService);
         DSRequest dsRequest = createSubmissionRequest("123", "SmartService", RequestMethod.PUT.name());
         Metrics metrics = new Metrics();
@@ -82,7 +82,7 @@ class AsyncServiceTest {
     }
 
     @Test
-    void testAsyncProcessShouldReturnStatusWhenRestAppDidNotAcceptRequest() throws Exception {
+    void testAsyncProcessShouldReturnStatusWhenRestAppDidNotAcceptRequest() {
         AsyncService asyncService = new AsyncService(dsRequestService, httpCallService, smartOrderService);
         DSRequest dsRequest = createSubmissionRequest("123", "SmartService", RequestMethod.PUT.name());
         when(smartOrderService.toMetrics(any())).thenReturn(new Metrics());
@@ -96,7 +96,7 @@ class AsyncServiceTest {
     }
 
     @Test
-    void testAsyncProcessShouldReturnErrorWhenRequestIdIsMissing() throws Exception {
+    void testAsyncProcessShouldReturnErrorWhenRequestIdIsMissing() {
         AsyncService asyncService = new AsyncService(dsRequestService, httpCallService, smartOrderService);
         DSRequest dsRequest = createSubmissionRequest("123", "SmartService", RequestMethod.PUT.name());
         when(smartOrderService.toMetrics(any())).thenReturn(new Metrics());
@@ -110,12 +110,12 @@ class AsyncServiceTest {
     }
 
     @Test
-    void testAsyncProcessShouldReturnErrorWhenSerializationFails() throws Exception {
+    void testAsyncProcessShouldReturnErrorWhenSerializationFails() {
         AsyncService asyncService = new AsyncService(dsRequestService, httpCallService, smartOrderService);
         DSRequest dsRequest = createSubmissionRequest("123", "SmartService", RequestMethod.PUT.name());
         when(smartOrderService.toMetrics(any())).thenReturn(new Metrics());
         when(httpCallService.put(eq(RestAppEndpoints.smartAsync("123")), eq(String.class), any(Metrics.class)))
-                .thenThrow(new JsonProcessingException("broken") { });
+                .thenThrow(new JacksonException("broken") { });
 
         DSResponse response = asyncService.asyncProcess(dsRequest);
 

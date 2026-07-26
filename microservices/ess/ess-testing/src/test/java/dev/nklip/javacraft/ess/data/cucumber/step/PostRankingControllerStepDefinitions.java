@@ -23,17 +23,15 @@ import dev.nklip.javacraft.ess.data.cucumber.conf.CucumberSpringConfiguration;
 
 import dev.nklip.javacraft.ess.api.model.Post;
 import dev.nklip.javacraft.ess.app.service.VoteService;
-import org.apache.http.HttpHeaders;
 import org.junit.jupiter.api.Assertions;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Scope;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
 import static io.cucumber.spring.CucumberTestContext.SCOPE_CUCUMBER_GLUE;
@@ -423,7 +421,7 @@ public class PostRankingControllerStepDefinitions {
 
     /** Single direct call to a ranking endpoint; returns the response body. */
     private List<Post> fetchRankedPosts(String path) {
-        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+        HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
         HttpEntity<String> entity = new HttpEntity<>(null, headers);
         String url = "http://localhost:%s/api/services/posts/ranking%s".formatted(port, path);

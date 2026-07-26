@@ -26,46 +26,18 @@
                 <version>${springdoc-openapi-starter-webmvc-ui.version}</version>
             </dependency>
 
-            <dependency>
-                <groupId>org.liquibase</groupId>
-                <artifactId>liquibase-core</artifactId>
-                <version>${liquibase.version}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-databind</artifactId>
-                <version>${jackson.version}</version>
-            </dependency>
+            <!--
+                liquibase-core, jackson-databind, slf4j, h2 and artemis are intentionally not
+                managed here: the spring-boot-dependencies BOM imported by the root pom owns
+                those version lines. A version-less entry in this block would shadow the BOM
+                (nearest definition wins) and leave the dependency with no version at all.
+            -->
 
             <!-- lombok & log libraries-->
             <dependency>
                 <groupId>org.projectlombok</groupId>
                 <artifactId>lombok</artifactId>
                 <version>${lombok.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.slf4j</groupId>
-                <artifactId>slf4j-api</artifactId>
-                <version>${slf4j.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.slf4j</groupId>
-                <artifactId>slf4j-simple</artifactId>
-                <version>${slf4j.version}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>com.h2database</groupId>
-                <artifactId>h2</artifactId>
-                <version>${h2.version}</version>
-                <scope>runtime</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.artemis</groupId>
-                <artifactId>artemis-jakarta-server</artifactId>
-                <version>${artemis.version}</version>
-                <scope>runtime</scope>
             </dependency>
 
             <dependency>

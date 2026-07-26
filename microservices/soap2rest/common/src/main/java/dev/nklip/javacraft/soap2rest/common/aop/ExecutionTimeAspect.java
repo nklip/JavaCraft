@@ -1,5 +1,7 @@
 package dev.nklip.javacraft.soap2rest.common.aop;
 
+import java.util.concurrent.TimeUnit;
+
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -11,9 +13,9 @@ import org.springframework.context.annotation.Configuration;
  *
  * <p>How it works:</p>
  * <p>1. The {@code @Around} advice is triggered before the annotated method starts.</p>
- * <p>2. The current timestamp is captured.</p>
+ * <p>2. The monotonic timer value is captured.</p>
  * <p>3. {@link ProceedingJoinPoint#proceed()} invokes the original method.</p>
- * <p>4. After the method returns, the advice captures the end timestamp and logs the duration.</p>
+ * <p>4. After the method returns, the advice captures the end timer value and logs the duration.</p>
  * <p>5. The original return value is passed back unchanged.</p>
  *
  * <p>If the target method throws an exception, this aspect does not swallow it;
@@ -27,20 +29,20 @@ public class ExecutionTimeAspect {
     /**
      * Surrounds an {@link ExecutionTime}-annotated method with timing logic.
      */
-    @Around("@annotation(dev.nklip.javacraft.soap2rest.utils.interceptor.ExecutionTime)")
+    @Around("@annotation(dev.nklip.javacraft.soap2rest.common.aop.ExecutionTime)")
     public Object around(ProceedingJoinPoint point) throws Throwable {
-        Long startedTime = System.currentTimeMillis();
+        long startedTime = System.nanoTime();
 
         Object returnObject = point.proceed();
 
-        Long endedTime = System.currentTimeMillis();
+        long executionTimeMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedTime);
 
         String logOutput =
                 """
                 \n===============================================================
                 Method Signature: %s
                 Method Execution: %s ms
-                """.formatted(point.getSignature(), endedTime - startedTime);
+                """.formatted(point.getSignature(), executionTimeMs);
 
         log.info(logOutput);
 

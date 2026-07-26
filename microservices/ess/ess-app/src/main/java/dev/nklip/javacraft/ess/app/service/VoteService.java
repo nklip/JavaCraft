@@ -91,7 +91,7 @@ public class VoteService {
         UserVote userVote = new UserVote(voteRequest, timestamp);
 
         Script script = Script.of(s -> s
-                .source(VOTE_SCRIPT)
+                .source(source -> source.scriptString(VOTE_SCRIPT))
                 .params(Map.of(
                         ElasticsearchConstants.ACTION,    JsonData.of(userVote.getAction()),
                         ElasticsearchConstants.TIMESTAMP, JsonData.of(timestamp)

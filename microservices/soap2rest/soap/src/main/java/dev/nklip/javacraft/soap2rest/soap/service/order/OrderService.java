@@ -1,7 +1,7 @@
 package dev.nklip.javacraft.soap2rest.soap.service.order;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.util.ArrayList;
@@ -48,7 +48,7 @@ public interface OrderService {
         return sos;
     }
 
-    void put(ServiceOrder serviceOrder, StatusType statusType) throws JsonProcessingException;
+    void put(ServiceOrder serviceOrder, StatusType statusType) throws JacksonException;
     void delete(ServiceOrder serviceOrder, StatusType statusType);
     void get(ServiceOrder serviceOrder, StatusType statusType);
 
@@ -64,7 +64,7 @@ public interface OrderService {
         return metric;
     }
 
-    default Metrics toMetrics(List<KeyValuesType> paramsList) throws JsonProcessingException {
+    default Metrics toMetrics(List<KeyValuesType> paramsList) throws JacksonException {
         Metrics metrics = new Metrics();
         List<Metric> gasMetrics = new ArrayList<>();
         List<Metric> elecMetrics = new ArrayList<>();

@@ -1,7 +1,6 @@
 package dev.nklip.javacraft.openflights.kafka.consumer.config;
 
 import dev.nklip.javacraft.openflights.api.Country;
-import java.time.Duration;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.junit.jupiter.api.Assertions;
@@ -24,7 +23,7 @@ class KafkaConsumerConfigurationTest {
                 () -> consumerFactory.createConsumer("test-group", "test-client"));
 
         Assertions.assertNotNull(consumer);
-        consumer.close(Duration.ZERO);
+        consumer.close();
     }
 
     @Test

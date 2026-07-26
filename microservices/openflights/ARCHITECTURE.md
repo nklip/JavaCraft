@@ -174,7 +174,8 @@ flowchart LR
 1. `OpenFlightsFileImportController` receives a dataset-specific import request.
 2. `OpenFlightsFileImportService` loads the matching source file through `OpenFlightsDataReader`.
 3. Parsed records are split into bounded chunks and published in parallel.
-4. `KafkaMessageProducer` sends typed records to dataset-specific Kafka topics with stable keys.
+4. Each worker waits for Kafka acknowledgement; the request succeeds only after all records are acknowledged.
+5. `KafkaMessageProducer` sends typed records to dataset-specific Kafka topics with stable keys.
 
 #### Consumer path
 

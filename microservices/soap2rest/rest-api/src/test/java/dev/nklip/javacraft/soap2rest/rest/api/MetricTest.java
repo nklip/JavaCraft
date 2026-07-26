@@ -1,6 +1,6 @@
 package dev.nklip.javacraft.soap2rest.rest.api;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -34,14 +34,14 @@ public class MetricTest {
     """;
 
     @Test
-    public void testJsonDeserialization() throws Exception {
+    public void testJsonDeserialization() {
         ObjectMapper mapper = new ObjectMapper();
         Metric metric = mapper.readValue(json1, Metric.class);
         Assertions.assertNotNull(metric);
     }
 
     @Test
-    public void testSortByDateByValueAscWithAscOrder() throws Exception {
+    public void testSortByDateByValueAscWithAscOrder() {
         ObjectMapper mapper = new ObjectMapper();
         Metric metric1 = mapper.readValue(json1, Metric.class);
         Metric metric2 = mapper.readValue(json2, Metric.class);
@@ -61,7 +61,7 @@ public class MetricTest {
     }
 
     @Test
-    public void testSortByDateByValueAscWithDescOrder() throws Exception {
+    public void testSortByDateByValueAscWithDescOrder() {
         ObjectMapper mapper = new ObjectMapper();
         Metric metric1 = mapper.readValue(json1, Metric.class);
         Metric metric2 = mapper.readValue(json2, Metric.class);

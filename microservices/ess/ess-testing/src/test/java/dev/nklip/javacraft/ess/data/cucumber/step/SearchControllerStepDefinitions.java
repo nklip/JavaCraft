@@ -1,9 +1,9 @@
 package dev.nklip.javacraft.ess.data.cucumber.step;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 import io.cucumber.datatable.DataTable;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
@@ -18,7 +18,6 @@ import lombok.extern.slf4j.Slf4j;
 import dev.nklip.javacraft.ess.api.model.ClientType;
 import dev.nklip.javacraft.ess.api.model.ContentSearchRequest;
 import dev.nklip.javacraft.ess.data.cucumber.conf.CucumberSpringConfiguration;
-import org.apache.http.HttpHeaders;
 import org.junit.jupiter.api.Assertions;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -26,11 +25,10 @@ import org.springframework.context.annotation.Scope;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
 import static io.cucumber.spring.CucumberTestContext.SCOPE_CUCUMBER_GLUE;
@@ -109,31 +107,31 @@ public class SearchControllerStepDefinitions {
     }
 
     @When("wildcard search for {string} in {string}")
-    public void testWildcard(String pattern, String type, DataTable dataTable) throws IOException, InterruptedException {
+    public void testWildcard(String pattern, String type, DataTable dataTable) throws InterruptedException {
         String jsonBody = jsonBody(pattern, type);
         assertSearchResponseEventually("/api/services/search/wildcard", jsonBody, dataTable);
     }
 
     @When("fuzzy search for {string} in {string}")
-    public void testFuzzy(String pattern, String type, DataTable dataTable) throws IOException, InterruptedException {
+    public void testFuzzy(String pattern, String type, DataTable dataTable) throws InterruptedException {
         String jsonBody = jsonBody(pattern, type);
         assertSearchResponseEventually("/api/services/search/fuzzy", jsonBody, dataTable);
     }
 
     @When("span search for {string} in {string}")
-    public void testSpan(String pattern, String type, DataTable dataTable) throws IOException, InterruptedException {
+    public void testSpan(String pattern, String type, DataTable dataTable) throws InterruptedException {
         String jsonBody = jsonBody(pattern, type);
         assertSearchResponseEventually("/api/services/search/span", jsonBody, dataTable);
     }
 
     @When("interval search for {string} in {string}")
-    public void testInterval(String pattern, String type, DataTable dataTable) throws IOException, InterruptedException {
+    public void testInterval(String pattern, String type, DataTable dataTable) throws InterruptedException {
         String jsonBody = jsonBody(pattern, type);
         assertSearchResponseEventually("/api/services/search/interval", jsonBody, dataTable);
     }
 
     @When("search for {string} in {string}")
-    public void testSearch(String pattern, String type, DataTable dataTable) throws IOException, InterruptedException {
+    public void testSearch(String pattern, String type, DataTable dataTable) throws InterruptedException {
         String jsonBody = jsonBody(pattern, type);
         assertSearchResponseEventually("/api/services/search", jsonBody, dataTable);
     }
@@ -153,7 +151,7 @@ public class SearchControllerStepDefinitions {
     }
 
     private ResponseEntity<List<LinkedHashMap<String, Object>>> postSearch(String path, String jsonBody) {
-        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+        HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
 
         HttpEntity<String> entity = new HttpEntity<>(jsonBody, headers);
@@ -189,7 +187,7 @@ public class SearchControllerStepDefinitions {
         }
     }
 
-    private String jsonBody(String pattern, String type) throws JsonProcessingException {
+    private String jsonBody(String pattern, String type) throws JacksonException {
         ContentSearchRequest contentSearchRequest = new ContentSearchRequest();
         contentSearchRequest.setType(type);
         contentSearchRequest.setPattern(pattern);

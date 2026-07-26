@@ -1,7 +1,7 @@
 package dev.nklip.javacraft.soap2rest.rest.app.service.async;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import dev.nklip.javacraft.soap2rest.rest.app.service.SmartService;
@@ -64,7 +64,7 @@ public class AsyncMetricsListener {
     private AsyncMetrics deserialize(String payload) {
         try {
             return objectMapper.readValue(payload, AsyncMetrics.class);
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             throw new IllegalStateException("Unable to deserialize smart async request", ex);
         }
     }

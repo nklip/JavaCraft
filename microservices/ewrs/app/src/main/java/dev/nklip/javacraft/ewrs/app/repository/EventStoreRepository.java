@@ -1,8 +1,8 @@
 package dev.nklip.javacraft.ewrs.app.repository;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import dev.nklip.javacraft.ewrs.app.model.StoredEventRecord;
 import dev.nklip.javacraft.ewrs.events.Event;
 import dev.nklip.javacraft.ewrs.events.EventStatus;
@@ -209,7 +209,7 @@ public class EventStoreRepository {
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("Unable to serialize EWRS event payload", e);
         }
     }
@@ -217,7 +217,7 @@ public class EventStoreRepository {
     private JsonNode readJson(String rawJson) {
         try {
             return objectMapper.readTree(rawJson);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("Unable to deserialize EWRS event payload", e);
         }
     }
@@ -238,11 +238,11 @@ public class EventStoreRepository {
         if (value == null || value.isNull()) {
             throw new IllegalStateException("Missing required EWRS event field: " + fieldName);
         }
-        return value.asText();
+        return value.asString();
     }
 
     private String optionalReason(JsonNode payload) {
         JsonNode value = payload.get("reason");
-        return value == null || value.isNull() ? null : value.asText();
+        return value == null || value.isNull() ? null : value.asString();
     }
 }

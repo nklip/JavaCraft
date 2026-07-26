@@ -1,6 +1,6 @@
 package dev.nklip.javacraft.ess.data.json;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -391,7 +391,7 @@ public final class CompaniesDownloader implements JsonDownloader<CompaniesDownlo
     }
 
     private static String value(JsonNode binding, String field) {
-        return sanitize(binding.path(field).path("value").asText(""));
+        return sanitize(binding.path(field).path("value").asString(""));
     }
 
     private static String sanitize(String value) {

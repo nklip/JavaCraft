@@ -56,9 +56,10 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  *
  * <p>Why there is a dedicated import executor:
  *
- * <p>OpenFlights imports can publish large datasets, especially for routes. The producer does not want to perform that
- * entire import flow on a request thread or with the generic task executor used by unrelated parts of the application.
- * A dedicated executor gives the import process its own bounded thread pool and makes the concurrency policy explicit.
+ * <p>OpenFlights imports can publish large datasets, especially for routes. Publication work should not use the generic
+ * task executor shared by unrelated parts of the application. A dedicated executor gives the import process its own
+ * bounded thread pool and makes the concurrency policy explicit. The HTTP request waits for those workers because the
+ * endpoint reports a completed, broker-acknowledged import.
  *
  * <p>Why the executor is sized from available processors:
  *

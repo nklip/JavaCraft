@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -63,8 +63,8 @@ class LinkControllerIntegrationTest {
 
     @DynamicPropertySource
     static void dynamicProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.data.mongodb.uri", () -> mongoUri);
-        registry.add("spring.data.mongodb.database", () -> "linker_integration_test");
+        registry.add("spring.mongodb.uri", () -> mongoUri);
+        registry.add("spring.mongodb.database", () -> "linker_integration_test");
         registry.add("host", () -> "http://localhost:8100/api/v1/links");
         registry.add("linker.expiration-days", () -> 30L);
         registry.add("linker.short-url.length", () -> 6);

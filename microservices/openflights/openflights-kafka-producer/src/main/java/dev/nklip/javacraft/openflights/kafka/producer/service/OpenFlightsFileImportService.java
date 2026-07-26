@@ -11,8 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.function.Consumer;
-import lombok.RequiredArgsConstructor;
+import java.util.function.Function;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
@@ -30,7 +29,7 @@ import org.springframework.stereotype.Service;
  * "import the countries dataset" or "import the routes dataset" into a concrete workflow:
  * - read all records for one dataset
  * - publish them through the typed Kafka producer
- * - return a small result describing what was submitted
+ * - return a small result describing what Kafka acknowledged
  *
  * <p>Main responsibilities of this service:
  *
@@ -38,7 +37,7 @@ import org.springframework.stereotype.Service;
  * <p>2. delegate reading to {@link OpenFlightsDataReader}
  * <p>3. delegate per-record publication to {@link KafkaMessageProducer}
  * <p>4. parallelize publication in a bounded way for large datasets
- * <p>5. report how many records were submitted for a given import request
+ * <p>5. report how many records were acknowledged for a given import request
  *
  * <p>Why there is one import method per dataset:
  *
@@ -83,22 +82,31 @@ import org.springframework.stereotype.Service;
  * <p>Why the service waits for all tasks to finish:
  *
  * <p>The import endpoints report submitted record counts for a completed import operation, not for a fire-and-forget
- * background launch. Joining all publication tasks here means that when an import method returns, the dataset has been
- * fully handed off to the Kafka producer logic for all records in that file.
+ * background launch. Each worker dispatches all sends for its chunk and then waits for those acknowledgements together,
+ * so records stay in flight concurrently and Kafka can still batch them. Joining all worker tasks here means that when
+ * an import method returns, Kafka has acknowledged every record in that file. A failed acknowledgement completes the
+ * import exceptionally instead of returning a misleading successful result.
  *
  * <p>In short, this class is the producer-side file-import orchestrator: it coordinates reading one OpenFlights source
  * dataset, publishing its typed records through Kafka, and doing that work with bounded parallelism suitable for large
  * imports.
  */
 @Service
-@RequiredArgsConstructor
 public class OpenFlightsFileImportService {
 
     private final OpenFlightsDataReader dataReader;
     private final KafkaMessageProducer kafkaMessageProducer;
-
-    @Qualifier("openFlightsImportExecutor")
     private final Executor importExecutor;
+
+    public OpenFlightsFileImportService(
+            OpenFlightsDataReader dataReader,
+            KafkaMessageProducer kafkaMessageProducer,
+            @Qualifier("openFlightsImportExecutor") Executor importExecutor
+    ) {
+        this.dataReader = dataReader;
+        this.kafkaMessageProducer = kafkaMessageProducer;
+        this.importExecutor = importExecutor;
+    }
 
     public OpenFlightsImportResult importCountries() {
         List<Country> countries = dataReader.readCountries();
@@ -130,7 +138,7 @@ public class OpenFlightsFileImportService {
         return new OpenFlightsImportResult("routes", routes.size());
     }
 
-    private <T> void publishInParallel(List<T> records, Consumer<T> sender) {
+    private <T> void publishInParallel(List<T> records, Function<T, CompletableFuture<?>> sender) {
         if (records.isEmpty()) {
             return;
         }
@@ -138,7 +146,19 @@ public class OpenFlightsFileImportService {
         int workers = Math.min(Math.max(1, Runtime.getRuntime().availableProcessors()), records.size());
         List<List<T>> chunks = splitIntoChunks(records, workers);
         CompletableFuture<?>[] tasks = chunks.stream()
-                .map(chunk -> CompletableFuture.runAsync(() -> chunk.forEach(sender), importExecutor))
+                .map(chunk -> CompletableFuture.runAsync(
+                        () -> {
+                            // Dispatch every record in the chunk first, then wait once. Joining per
+                            // record would cap the producer at one in-flight record per worker and
+                            // defeat Kafka's batching; waiting on the whole chunk keeps the same
+                            // "fail if any acknowledgement fails" guarantee.
+                            CompletableFuture<?>[] sends = chunk.stream()
+                                    .map(sender)
+                                    .toArray(CompletableFuture[]::new);
+                            CompletableFuture.allOf(sends).join();
+                        },
+                        importExecutor
+                ))
                 .toArray(CompletableFuture[]::new);
         CompletableFuture.allOf(tasks).join();
     }

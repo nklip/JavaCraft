@@ -10,11 +10,12 @@ linker:
   expiration-days: 30
 
 spring:
-  data:
-    mongodb:
-      database: links
-      uri: mongodb://localhost:27017/?directConnection=true/links
-#      uri: mongodb+srv://inikki:PASSWORD@mymongoinaws.pdq9e7w.mongodb.net/links
+  # Spring Boot 4 moved MongoDB connection settings from spring.data.mongodb.*
+  # to spring.mongodb.*; only Spring Data specific keys stay under spring.data.
+  mongodb:
+    database: links
+    uri: mongodb://localhost:27017/?directConnection=true/links
+#    uri: mongodb+srv://inikki:PASSWORD@mymongoinaws.pdq9e7w.mongodb.net/links
 
 springdoc:
   swagger-ui:

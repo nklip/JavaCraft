@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -13,15 +14,16 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
+@AutoConfigureTestRestTemplate
 @SpringBootTest(
         classes = EwrsDashboardApplication.class,
         webEnvironment = WebEnvironment.RANDOM_PORT,
+        // The JPA auto-configuration exclusions that used to live here are gone: ewrs-app
+        // is JdbcTemplate-only and now depends on spring-boot-starter-jdbc rather than
+        // spring-boot-starter-data-jpa, so there is no JPA auto-configuration to exclude.
         properties = {
                 "spring.liquibase.enabled=true",
                 "spring.liquibase.change-log=classpath:db/changelog/db.changelog-master.yaml",
-                "spring.autoconfigure.exclude="
-                        + "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration,"
-                        + "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration",
                 "logging.level.dev.nklip.javacraft.ewrs=WARN"
         }
 )

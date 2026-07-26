@@ -7,7 +7,7 @@ import co.elastic.clients.elasticsearch.core.MsearchRequest;
 import co.elastic.clients.elasticsearch.core.SearchRequest;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.msearch.MultiSearchResponseItem;
-import co.elastic.clients.elasticsearch.core.msearch.MultisearchBody;
+import co.elastic.clients.elasticsearch.core.search.SearchRequestBody;
 import co.elastic.clients.elasticsearch.core.msearch.MultisearchHeader;
 import co.elastic.clients.elasticsearch.core.msearch.RequestItem;
 import co.elastic.clients.elasticsearch.core.search.Hit;
@@ -211,7 +211,7 @@ public class SearchService {
                                     .index(contentCategoryMetadata.contentCategory().toString().toLowerCase())
                                     .build()
                             )
-                            .body(new MultisearchBody.Builder()
+                            .body(new SearchRequestBody.Builder()
                                     .query(boolQuery._toQuery())
                                     .build()
                             )

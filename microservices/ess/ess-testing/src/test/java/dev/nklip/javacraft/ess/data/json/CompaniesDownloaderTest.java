@@ -1,7 +1,7 @@
 package dev.nklip.javacraft.ess.data.json;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
 import dev.nklip.javacraft.ess.data.json.CompaniesDownloader.CompanyRecord;
@@ -31,8 +31,7 @@ class CompaniesDownloaderTest {
         );
 
         ObjectNode json = OBJECT_MAPPER.valueToTree(record);
-        List<String> actualFields = new ArrayList<>();
-        json.fieldNames().forEachRemaining(actualFields::add);
+        List<String> actualFields = new ArrayList<>(json.propertyNames());
 
         List<String> expectedFields = actualFields.stream().sorted().toList();
         assertEquals(expectedFields, actualFields, "CompanyRecord fields must be in alphabetical order");

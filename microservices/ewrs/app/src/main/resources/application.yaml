@@ -2,6 +2,15 @@ server:
   port: 8053
 
 spring:
+  # Jackson 3 enables EnumFeature.WRITE_ENUMS_USING_TO_STRING by default (it was off in
+  # Jackson 2). EventStatus overrides toString() with a display label ("Created",
+  # "In running"), so leaving the new default on would change the API contract from
+  # CREATED to Created and silently break the dashboard's status colour lookup.
+  jackson:
+    datatype:
+      enum:
+        write-enums-using-to-string: false
+        read-enums-using-to-string: false
   application:
     name: ewrs-app
   datasource:
@@ -9,10 +18,9 @@ spring:
     username: ewrs
     password: ewrs
     driver-class-name: org.postgresql.Driver
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    open-in-view: false
+  # No spring.jpa.* here on purpose: this module has no JPA entities or repositories,
+  # uses JdbcTemplate throughout, and now depends on spring-boot-starter-jdbc.
+  # Schema management is Liquibase's job.
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml
 

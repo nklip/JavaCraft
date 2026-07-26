@@ -68,7 +68,7 @@ public ResponseEntity<String> getDefault() {
 From repository root:
 
 ```bash
-mvn -pl soap2rest/common -am test
+mvn -pl microservices/soap2rest/common -am test
 ```
 
 ## 8. Related Docs

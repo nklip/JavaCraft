@@ -1,6 +1,6 @@
 package dev.nklip.javacraft.ewrs.scenarios.client;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import dev.nklip.javacraft.ewrs.api.command.ApproveWorkRequest;
 import dev.nklip.javacraft.ewrs.api.command.CompleteWorkRequest;
 import dev.nklip.javacraft.ewrs.api.command.CreateWorkRequest;
@@ -19,6 +19,7 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
@@ -35,12 +36,12 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 public class HttpScenarioTargetClient implements ScenarioTargetClient {
 
     private final ScenariosProperties properties;
-    private final ObjectMapper objectMapper;
+    private final JsonMapper jsonMapper;
     private final JdkClientHttpRequestFactory requestFactory;
 
-    public HttpScenarioTargetClient(ScenariosProperties properties, ObjectMapper objectMapper) {
+    public HttpScenarioTargetClient(ScenariosProperties properties, JsonMapper jsonMapper) {
         this.properties = properties;
-        this.objectMapper = objectMapper;
+        this.jsonMapper = jsonMapper;
 
         HttpClient httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.connectTimeout())
@@ -175,6 +176,12 @@ public class HttpScenarioTargetClient implements ScenarioTargetClient {
         return RestClient.builder()
                 .requestFactory(requestFactory)
                 .baseUrl(resolveTargetBaseUrl())
+                // RestClient.builder() otherwise builds its own default JsonMapper, which
+                // ignores every spring.jackson.* setting. That silently disagreed with how
+                // ewrs-app serializes enums, so reuse the application's configured mapper
+                // and leave the remaining default converters in place.
+                .configureMessageConverters(converters ->
+                        converters.withJsonConverter(new JacksonJsonHttpMessageConverter(jsonMapper)))
                 .build();
     }
 
@@ -202,7 +209,7 @@ public class HttpScenarioTargetClient implements ScenarioTargetClient {
 
     private ErrorResponse deserializeErrorResponse(RestClientResponseException e) {
         try {
-            return objectMapper.readValue(e.getResponseBodyAsByteArray(), ErrorResponse.class);
+            return jsonMapper.readValue(e.getResponseBodyAsByteArray(), ErrorResponse.class);
         } catch (Exception ex) {
             throw new ScenarioExecutionException("Unable to parse EWRS error response for the expected conflict path", ex);
         }

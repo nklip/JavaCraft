@@ -94,6 +94,9 @@ Import data through the producer endpoints in this order:
 4. planes
 5. routes
 
+Each endpoint returns `200 OK` after Kafka has acknowledged every record in that dataset. A failed
+Kafka send fails the import request instead of returning a successful submitted-record count.
+
 Endpoints:
 
 | Dataset | Endpoint |

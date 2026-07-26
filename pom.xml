@@ -16,78 +16,91 @@
 
         <!-- maven plugins -->
         <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
-        <maven-dependency-plugin.version>3.9.0</maven-dependency-plugin.version>
+        <maven-dependency-plugin.version>3.11.0</maven-dependency-plugin.version>
         <maven-deploy-plugin.version>3.1.4</maven-deploy-plugin.version>
         <maven-install-plugin.version>3.1.4</maven-install-plugin.version>
-        <maven-jar-plugin.version>3.5.0</maven-jar-plugin.version>
-        <maven-shade-plugin.version>3.6.0</maven-shade-plugin.version>
+        <maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
+        <maven-shade-plugin.version>3.6.2</maven-shade-plugin.version>
         <maven-source-plugin.version>3.4.0</maven-source-plugin.version>
-        <maven-surefire-plugin.version>3.5.5</maven-surefire-plugin.version>
+        <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
         <!-- org.codehaus.mojo plugins -->
         <build-helper-maven-plugin.version>3.6.1</build-helper-maven-plugin.version>
-        <exec-maven-plugin.version>3.5.0</exec-maven-plugin.version>
+        <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
         <jaxb2-maven-plugin.version>4.1.0</jaxb2-maven-plugin.version>
         <versions-maven-plugin.version>2.21.0</versions-maven-plugin.version>
         <!-- 3rd party plugins -->
-        <jaxws-maven-plugin.version>4.0.3</jaxws-maven-plugin.version>
-        <frontend-maven-plugin.version>2.0.0</frontend-maven-plugin.version>
+        <jaxws-maven-plugin.version>4.0.5</jaxws-maven-plugin.version>
+        <frontend-maven-plugin.version>2.0.1</frontend-maven-plugin.version>
 
-        <!-- spring -->
-        <spring-boot.version>3.5.14</spring-boot.version>
-        <spring-framework.version>6.2.18</spring-framework.version>
-        <spring-kafka.version>3.3.15</spring-kafka.version>
-        <springdoc-openapi-starter-webmvc-ui.version>2.8.17</springdoc-openapi-starter-webmvc-ui.version>
+        <!--
+            Spring Boot 4.x. The spring-boot-dependencies BOM below manages the Spring
+            Framework, Spring Kafka, Jackson, Artemis, PostgreSQL, H2, Liquibase, slf4j,
+            Mockito and Testcontainers version lines, so those are deliberately NOT pinned
+            here. Add a property back only when we intend to deviate from the BOM.
+        -->
+        <spring-boot.version>4.1.0</spring-boot.version>
+        <!-- springdoc is not Boot-managed; the 3.x line is the one built against Boot 4 -->
+        <springdoc-openapi-starter-webmvc-ui.version>3.0.3</springdoc-openapi-starter-webmvc-ui.version>
 
         <!-- jakarta / xml -->
         <jakarta.jws-api.version>3.0.0</jakarta.jws-api.version>
         <jakarta.xml.bind-api.version>4.0.5</jakarta.xml.bind-api.version>
         <jakarta.xml.ws-api.version>4.0.3</jakarta.xml.ws-api.version>
-        <jaxb-runtime.version>4.0.7</jaxb-runtime.version>
-
-        <!-- messaging -->
-        <artemis.version>2.53.0</artemis.version>
-
-        <!-- data / persistence -->
-        <postgresql.version>42.7.7</postgresql.version>
-        <h2.version>2.4.240</h2.version>
-        <mongo-java-server.version>1.47.0</mongo-java-server.version>
-        <liquibase.version>5.0.2</liquibase.version>
+        <jaxb-runtime.version>4.0.9</jaxb-runtime.version>
 
         <!-- serialization / networking -->
-        <jackson.version>2.21.3</jackson.version>
-        <netty.version>4.2.13.Final</netty.version>
-        <protobuf.version>4.34.1</protobuf.version>
+        <!-- ahead of the Boot BOM on purpose: vfs and echo/netty use the 4.2-only
+             MultiThreadIoEventLoopGroup / NioIoHandler APIs -->
+        <netty.version>4.2.16.Final</netty.version>
+        <!-- protoc-jar-maven-plugin needs a literal protoc version, so this stays pinned;
+             keep it aligned with the protobuf-java version the Boot BOM manages -->
+        <protobuf.version>4.34.2</protobuf.version>
 
         <!-- utilities -->
         <commons-compress.version>1.28.0</commons-compress.version>
         <guava.version>33.6.0-jre</guava.version>
         <lombok.version>1.18.46</lombok.version>
         <opencsv.version>5.12.0</opencsv.version>
-        <slf4j.version>2.0.17</slf4j.version>
         <codemirror.version>5.65.20</codemirror.version>
+        <mongo-java-server.version>1.47.0</mongo-java-server.version>
 
         <!-- testing -->
-        <junit-platform-suite.version>1.14.4</junit-platform-suite.version>
-        <junit5.version>5.14.4</junit5.version>
+        <!-- JUnit 6 unifies Jupiter and Platform on one version line, so there is no
+             separate junit-platform-suite version any more -->
+        <junit6.version>6.1.2</junit6.version>
+        <!--
+            Pinned on purpose even though the Boot BOM manages Mockito: the shared Surefire
+            configuration builds a -javaagent path out of this exact value, so the property
+            and the agent jar must never drift apart.
+        -->
         <mockito.version>5.23.0</mockito.version>
-        <cucumber.version>7.34.3</cucumber.version>
-        <rest-assured.version>5.5.7</rest-assured.version>
-        <testcontainers.version>2.0.5</testcontainers.version>
+        <cucumber.version>7.34.6</cucumber.version>
+        <rest-assured.version>6.0.1</rest-assured.version>
         <wiremock.version>3.13.2</wiremock.version>
-        <maven-model.version>3.9.15</maven-model.version>
+        <maven-model.version>3.9.16</maven-model.version>
 
         <!-- testcontainers docker images -->
         <tc.image.artemis>apache/artemis:2.53.0-alpine</tc.image.artemis>
-        <tc.image.elasticsearch>docker.elastic.co/elasticsearch/elasticsearch:8.18.8</tc.image.elasticsearch>
+        <!--
+            Must track the elasticsearch-java client version the Spring Boot BOM manages
+            (9.4.x). The 9.x client sends 'compatible-with=9' media types that an 8.x
+            server rejects with media_type_header_exception, so these cannot drift apart.
+        -->
+        <tc.image.elasticsearch>docker.elastic.co/elasticsearch/elasticsearch:9.4.2</tc.image.elasticsearch>
         <tc.image.kafka>apache/kafka:3.9.0</tc.image.kafka>
         <tc.image.postgresql>postgres:17</tc.image.postgresql>
 
         <!--
             If test.jvm.args is undefined, some runs pass a raw placeholder
             to the forked JVM and tests fail to start.
+
+            Mockito's inline mock maker appends its dispatcher to the bootstrap classpath,
+            which disables class-data sharing. Disable it explicitly to avoid the JVM warning.
         -->
-        <test.jvm.args> </test.jvm.args>
-        <mockito.agent.argLine> </mockito.agent.argLine>
+        <test.jvm.args>-Xshare:off</test.jvm.args>
+        <mockito.agent.argLine>
+            -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
+        </mockito.agent.argLine>
 
         <!--
             The -DallowMajorUpdates=true flag on the command line does not override
@@ -138,8 +151,10 @@
         the first matching managed version wins.
 
         That is the reason the more specific BOMs are imported before the broader Spring Boot BOM:
-        - JUnit BOM comes first so Boot does not silently force an older JUnit/JUnit Platform line.
-        - Netty BOM comes next so Boot does not mix our direct Netty 4.2.x modules with Boot-managed Netty 4.1.x transitives.
+        - JUnit BOM comes first so Boot does not silently force an older JUnit/JUnit Platform line
+          (Boot 4.1.0 manages Jupiter 6.0.3; we want 6.1.2).
+        - Netty BOM comes next so all Netty modules stay on the single version we chose
+          (Boot 4.1.0 manages 4.2.15.Final; we want 4.2.16.Final).
         - Spring Boot BOM comes after that and manages the rest of the Spring-aligned dependency graph.
 
         In practice, this block means:
@@ -153,7 +168,7 @@
             <dependency>
                 <groupId>org.junit</groupId>
                 <artifactId>junit-bom</artifactId>
-                <version>${junit5.version}</version>
+                <version>${junit6.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -196,29 +211,37 @@
                 </configuration>
             </plugin>
             <plugin>
-                <!-- modules that need inline/static Mockito features can opt in via mockito.agent.argLine -->
+                <!-- Load Mockito as a startup agent so it never needs dynamic self-attachment. -->
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${maven-surefire-plugin.version}</version>
                 <dependencies>
+                    <!-- Ensures the agent path exists before any child module starts its test JVM. -->
+                    <dependency>
+                        <groupId>org.mockito</groupId>
+                        <artifactId>mockito-core</artifactId>
+                        <version>${mockito.version}</version>
+                    </dependency>
                     <!--
-                        Surefire 3.5.5 brings an older JUnit Platform line on the plugin classpath.
+                        Surefire brings an older JUnit Platform line on the plugin classpath.
                         Override it here so Jupiter, Platform, and Cucumber stay aligned for all modules.
+                        Since JUnit 6 the Platform shares the Jupiter version line, so these track
+                        ${junit5.version} directly.
                     -->
                     <dependency>
                         <groupId>org.junit.platform</groupId>
                         <artifactId>junit-platform-commons</artifactId>
-                        <version>${junit-platform-suite.version}</version>
+                        <version>${junit6.version}</version>
                     </dependency>
                     <dependency>
                         <groupId>org.junit.platform</groupId>
                         <artifactId>junit-platform-engine</artifactId>
-                        <version>${junit-platform-suite.version}</version>
+                        <version>${junit6.version}</version>
                     </dependency>
                     <dependency>
                         <groupId>org.junit.platform</groupId>
                         <artifactId>junit-platform-launcher</artifactId>
-                        <version>${junit-platform-suite.version}</version>
+                        <version>${junit6.version}</version>
                     </dependency>
                 </dependencies>
                 <configuration>

@@ -18,7 +18,7 @@ import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.listener.CommonErrorHandler;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.listener.DefaultErrorHandler;
-import org.springframework.kafka.support.serializer.JsonDeserializer;
+import org.springframework.kafka.support.serializer.JacksonJsonDeserializer;
 import org.springframework.util.backoff.FixedBackOff;
 
 /**
@@ -175,7 +175,7 @@ public class KafkaConsumerConfiguration {
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 
-        JsonDeserializer<T> valueDeserializer = new JsonDeserializer<>(valueType);
+        JacksonJsonDeserializer<T> valueDeserializer = new JacksonJsonDeserializer<>(valueType);
         valueDeserializer.addTrustedPackages("dev.nklip.javacraft.openflights.api");
         valueDeserializer.ignoreTypeHeaders();
         return new DefaultKafkaConsumerFactory<>(props, new StringDeserializer(), valueDeserializer);

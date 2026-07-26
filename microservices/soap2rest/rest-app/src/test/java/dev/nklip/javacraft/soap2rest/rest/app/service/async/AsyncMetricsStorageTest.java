@@ -1,8 +1,8 @@
 package dev.nklip.javacraft.soap2rest.rest.app.service.async;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.util.List;
@@ -33,7 +33,7 @@ class AsyncMetricsStorageTest {
     private ObjectMapper objectMapper;
 
     @Test
-    void testSubmitShouldStoreAcceptedResultAndSendJmsMessage() throws Exception {
+    void testSubmitShouldStoreAcceptedResultAndSendJmsMessage() {
         AsyncMetricsStorage asyncService = new AsyncMetricsStorage(jmsTemplate, objectMapper);
         Metrics metrics = createMetrics();
         when(objectMapper.writeValueAsString(any())).thenAnswer(invocation ->
@@ -50,18 +50,18 @@ class AsyncMetricsStorageTest {
         verify(jmsTemplate).convertAndSend(eq(AsyncMetricsStorage.SMART_ASYNC_QUEUE), payloadCaptor.capture());
 
         JsonNode payload = new ObjectMapper().readTree(payloadCaptor.getValue());
-        Assertions.assertEquals(requestId, payload.get("requestId").asText());
+        Assertions.assertEquals(requestId, payload.get("requestId").asString());
         Assertions.assertEquals(7L, payload.get("accountId").asLong());
     }
 
     @Test
-    void testSubmitShouldRemoveAcceptedResultWhenSerializationFails() throws Exception {
+    void testSubmitShouldRemoveAcceptedResultWhenSerializationFails() {
         AsyncMetricsStorage asyncService = new AsyncMetricsStorage(jmsTemplate, objectMapper);
         AtomicReference<String> requestId = new AtomicReference<>();
         when(objectMapper.writeValueAsString(any())).thenAnswer(invocation -> {
             AsyncMetrics command = invocation.getArgument(0);
             requestId.set(command.getRequestId());
-            throw new JsonProcessingException("broken") { };
+            throw new JacksonException("broken") { };
         });
 
         IllegalStateException exception = Assertions.assertThrows(
@@ -75,7 +75,7 @@ class AsyncMetricsStorageTest {
     }
 
     @Test
-    void testSubmitShouldRemoveAcceptedResultWhenJmsSendFails() throws Exception {
+    void testSubmitShouldRemoveAcceptedResultWhenJmsSendFails() {
         AsyncMetricsStorage asyncService = new AsyncMetricsStorage(jmsTemplate, objectMapper);
         AtomicReference<String> requestId = new AtomicReference<>();
         when(objectMapper.writeValueAsString(any())).thenAnswer(invocation -> {

@@ -1,6 +1,6 @@
 package dev.nklip.javacraft.soap2rest.soap.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+import tools.jackson.core.JacksonException;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
@@ -38,7 +38,7 @@ public class HttpCallService {
     }
 
     public <T> ResponseEntity<T> put(String methodUrl, Class<T> objectType, Object object)
-            throws JsonProcessingException {
+            throws JacksonException {
         return restClient.method(HttpMethod.PUT)
                 .uri(methodUrl)
                 .contentType(MediaType.APPLICATION_JSON)

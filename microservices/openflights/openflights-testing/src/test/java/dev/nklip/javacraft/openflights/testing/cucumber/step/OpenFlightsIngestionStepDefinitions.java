@@ -67,19 +67,19 @@ public class OpenFlightsIngestionStepDefinitions {
                 ingestionStartedAtMillis
         );
 
-        assertImportAccepted("/api/v1/openflights/import/countries",
+        assertImportCompleted("/api/v1/openflights/import/countries",
                 "countries", expectations.submittedCountries());
         waitForDatabaseStatus(expectations.expectedAfterCountries(), "countries");
-        assertImportAccepted("/api/v1/openflights/import/airlines",
+        assertImportCompleted("/api/v1/openflights/import/airlines",
                 "airlines", expectations.submittedAirlines());
         waitForDatabaseStatus(expectations.expectedAfterAirlines(), "airlines");
-        assertImportAccepted("/api/v1/openflights/import/airports",
+        assertImportCompleted("/api/v1/openflights/import/airports",
                 "airports", expectations.submittedAirports());
         waitForDatabaseStatus(expectations.expectedAfterAirports(), "airports");
-        assertImportAccepted("/api/v1/openflights/import/planes",
+        assertImportCompleted("/api/v1/openflights/import/planes",
                 "planes", expectations.submittedPlanes());
         waitForDatabaseStatus(expectations.expectedAfterPlanes(), "planes");
-        assertImportAccepted("/api/v1/openflights/import/routes",
+        assertImportCompleted("/api/v1/openflights/import/routes",
                 "routes", expectations.submittedRoutes());
     }
 
@@ -121,7 +121,7 @@ public class OpenFlightsIngestionStepDefinitions {
                 "Expected a non-negative PostgreSQL ingestion duration but was " + ingestionDurationMillis);
     }
 
-    private void assertImportAccepted(String path, String datasetName, int expectedSubmittedRecords) {
+    private void assertImportCompleted(String path, String datasetName, int expectedSubmittedRecords) {
         ResponseEntity<OpenFlightsImportResult> response = restTemplate.exchange(
                 "http://localhost:%s%s".formatted(port, path),
                 HttpMethod.POST,
@@ -129,7 +129,7 @@ public class OpenFlightsIngestionStepDefinitions {
                 OpenFlightsImportResult.class
         );
 
-        Assertions.assertEquals(HttpStatus.ACCEPTED, response.getStatusCode());
+        Assertions.assertEquals(HttpStatus.OK, response.getStatusCode());
         Assertions.assertNotNull(response.getBody());
         Assertions.assertEquals(datasetName, response.getBody().dataset());
         Assertions.assertEquals(expectedSubmittedRecords, response.getBody().submittedRecords());

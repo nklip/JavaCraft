@@ -19,7 +19,7 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
+            <artifactId>spring-boot-starter-webmvc</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springdoc</groupId>
@@ -36,7 +36,6 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-            <version>${slf4j.version}</version>
         </dependency>
 
         <dependency>
@@ -54,6 +53,18 @@
             <groupId>de.bwaldvogel</groupId>
             <artifactId>mongo-java-server-memory-backend</artifactId>
             <version>${mongo-java-server.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- Boot 4 moved @AutoConfigureMockMvc out of spring-boot-test-autoconfigure into this module -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Boot 4 moved @DataMongoTest out of spring-boot-test-autoconfigure into this module -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-data-mongodb-test</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

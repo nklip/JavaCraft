@@ -1,7 +1,7 @@
 package dev.nklip.javacraft.xlspaceship.server.controller;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import dev.nklip.javacraft.xlspaceship.engine.game.GameStatus;
 import dev.nklip.javacraft.xlspaceship.engine.game.GameTurn;
 import dev.nklip.javacraft.xlspaceship.engine.game.Board;
@@ -44,7 +44,7 @@ public class UserControllerTest {
     }
     
     @Test
-    public void testGetStatusByGameIdWhenGameExist() throws Exception {
+    public void testGetStatusByGameIdWhenGameExist() {
         var validServices = mock(GameRequestValidationService.class);
         var restServices = mock(RemoteGameClient.class);
         var shipServices = mock(GameSessionService.class);
@@ -82,7 +82,7 @@ public class UserControllerTest {
     }
 
     @Test
-    public void testGetStatusByGameIdWhenGameDoesNotExist() throws Exception {
+    public void testGetStatusByGameIdWhenGameDoesNotExist() {
         String gameId = "game-1-2-3";
         var validServices = mock(GameRequestValidationService.class);
         var restServices = mock(RemoteGameClient.class);
@@ -116,7 +116,7 @@ public class UserControllerTest {
     }
 
     @Test
-    public void testCreateNewGameWithWrongPort() throws Exception {
+    public void testCreateNewGameWithWrongPort() {
         var restServices = mock(RemoteGameClient.class);
         var shipServices = mock(GameSessionService.class);
         var gridHtmlRenderer = mock(BoardHtmlRenderer.class);
@@ -147,7 +147,7 @@ public class UserControllerTest {
     }
 
     @Test
-    public void testCreateRematchWithGatewayTimeout() throws Exception {
+    public void testCreateRematchWithGatewayTimeout() {
         var restServices = mock(RemoteGameClient.class);
         var shipServices = mock(GameSessionService.class);
         var gridHtmlRenderer = mock(BoardHtmlRenderer.class);
@@ -190,7 +190,7 @@ public class UserControllerTest {
     }
 
     @Test
-    public void testCreateRematchWhenPreviousGameIsNotFinished() throws Exception {
+    public void testCreateRematchWhenPreviousGameIsNotFinished() {
         var restServices = mock(RemoteGameClient.class);
         var shipServices = mock(GameSessionService.class);
         var gridHtmlRenderer = mock(BoardHtmlRenderer.class);
@@ -219,7 +219,7 @@ public class UserControllerTest {
     }
 
     @Test
-    public void testCreateRematchWhenGameDoesNotExist() throws Exception {
+    public void testCreateRematchWhenGameDoesNotExist() {
         String gameId = "match-1-3-6";
         var restServices = mock(RemoteGameClient.class);
         var shipServices = mock(GameSessionService.class);
@@ -249,7 +249,7 @@ public class UserControllerTest {
     }
 
     @Test
-    void testFireRequestMoreThanFive() throws JsonProcessingException {
+    void testFireRequestMoreThanFive() throws JacksonException {
         var restServices = mock(RemoteGameClient.class);
         var shipServices = mock(GameSessionService.class);
         var gridHtmlRenderer = mock(BoardHtmlRenderer.class);
@@ -288,7 +288,7 @@ public class UserControllerTest {
     }
 
     @Test
-    void testFireRequestGameNotExist() throws JsonProcessingException {
+    void testFireRequestGameNotExist() throws JacksonException {
         var restServices = mock(RemoteGameClient.class);
         var shipServices = mock(GameSessionService.class);
         var gridHtmlRenderer = mock(BoardHtmlRenderer.class);
@@ -326,7 +326,7 @@ public class UserControllerTest {
     }
 
     @Test
-    void testFireRequestRemoteServerTimeout() throws JsonProcessingException {
+    void testFireRequestRemoteServerTimeout() throws JacksonException {
         String gameId = "match-1-1";
         var validServices = mock(GameRequestValidationService.class);
         var restServices = mock(RemoteGameClient.class);
@@ -369,7 +369,7 @@ public class UserControllerTest {
     }
 
     @Test
-    void testFireRequestConnectionRefused() throws JsonProcessingException {
+    void testFireRequestConnectionRefused() throws JacksonException {
         String gameId = "match-1-1";
         var validServices = mock(GameRequestValidationService.class);
         var restServices = mock(RemoteGameClient.class);
@@ -407,7 +407,7 @@ public class UserControllerTest {
     }
 
     @Test
-    public void testStatusRequestGameNotExists() throws Exception {
+    public void testStatusRequestGameNotExists() {
         String gameId = "match-1-1";
         var restServices = mock(RemoteGameClient.class);
         var shipServices = mock(GameSessionService.class);
@@ -435,7 +435,7 @@ public class UserControllerTest {
     }
 
     @Test
-    public void testStatusRequestGameExists() throws Exception {
+    public void testStatusRequestGameExists() {
         var restServices = mock(RemoteGameClient.class);
         var shipServices = mock(GameSessionService.class);
 

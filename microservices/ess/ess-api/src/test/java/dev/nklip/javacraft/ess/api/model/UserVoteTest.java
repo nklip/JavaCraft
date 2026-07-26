@@ -1,11 +1,10 @@
 package dev.nklip.javacraft.ess.api.model;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
-import java.io.IOException;
 import java.util.Locale;
 import java.util.Set;
 import org.junit.jupiter.api.Assertions;
@@ -14,19 +13,22 @@ import org.junit.jupiter.api.Test;
 public class UserVoteTest {
 
     @Test
-    public void testJsonFormat() throws IOException {
+    public void testJsonFormat() {
         UserVote userVote = new UserVote(
                 VoteRequestTest.createVoteRequest(),
                 "2024-01-08T18:16:41.530Z"
         );
 
         ObjectMapper objectMapper = new ObjectMapper();
+        // Jackson 3 enables MapperFeature.SORT_PROPERTIES_ALPHABETICALLY by default, so
+        // properties serialize alphabetically rather than in declaration order. UserVote
+        // does not declare @JsonPropertyOrder, so its previous order was incidental.
         Assertions.assertEquals("""
                 {
-                  "postId" : "12345",
-                  "userId" : "nl8888",
                   "action" : "UPVOTE",
-                  "timestamp" : "2024-01-08T18:16:41.530Z"
+                  "postId" : "12345",
+                  "timestamp" : "2024-01-08T18:16:41.530Z",
+                  "userId" : "nl8888"
                 }""",
                 objectMapper
                         .writerWithDefaultPrettyPrinter()

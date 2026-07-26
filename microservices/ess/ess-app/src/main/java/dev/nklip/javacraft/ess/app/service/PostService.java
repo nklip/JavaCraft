@@ -163,7 +163,7 @@ public class PostService {
     public void updateScores(String postId, int delta, int upvoteDelta) throws IOException {
         long nowSec = Instant.now().getEpochSecond();
         Script script = Script.of(s -> s
-                .source(SCORES_SCRIPT)
+                .source(source -> source.scriptString(SCORES_SCRIPT))
                 .params(Map.of(
                         "delta",       JsonData.of(delta),
                         "upvoteDelta", JsonData.of(upvoteDelta),

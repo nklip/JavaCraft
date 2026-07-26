@@ -5,7 +5,6 @@ import dev.nklip.javacraft.openflights.kafka.producer.service.OpenFlightsFileImp
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,30 +21,30 @@ public class OpenFlightsFileImportController {
     @PostMapping("/airlines")
     @Operation(summary = "Read airlines.dat and publish airlines to Kafka")
     public ResponseEntity<OpenFlightsImportResult> importAirlines() {
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(importService.importAirlines());
+        return ResponseEntity.ok(importService.importAirlines());
     }
 
     @PostMapping("/airports")
     @Operation(summary = "Read airports.dat and publish airports to Kafka")
     public ResponseEntity<OpenFlightsImportResult> importAirports() {
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(importService.importAirports());
+        return ResponseEntity.ok(importService.importAirports());
     }
 
     @PostMapping("/countries")
     @Operation(summary = "Read countries.dat and publish countries to Kafka")
     public ResponseEntity<OpenFlightsImportResult> importCountries() {
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(importService.importCountries());
+        return ResponseEntity.ok(importService.importCountries());
     }
 
     @PostMapping("/planes")
     @Operation(summary = "Read planes.dat and publish planes to Kafka")
     public ResponseEntity<OpenFlightsImportResult> importPlanes() {
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(importService.importPlanes());
+        return ResponseEntity.ok(importService.importPlanes());
     }
 
     @PostMapping("/routes")
     @Operation(summary = "Read routes.dat and publish routes to Kafka")
     public ResponseEntity<OpenFlightsImportResult> importRoutes() {
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(importService.importRoutes());
+        return ResponseEntity.ok(importService.importRoutes());
     }
 }

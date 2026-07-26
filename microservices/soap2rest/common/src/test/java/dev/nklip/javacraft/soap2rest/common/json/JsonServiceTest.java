@@ -1,14 +1,14 @@
 package dev.nklip.javacraft.soap2rest.common.json;
 
-import java.io.IOException;
 import java.util.List;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import tools.jackson.core.JacksonException;
 
 class JsonServiceTest {
 
     @Test
-    void testObjectToJsonAndJsonToObjectHandlePayload() throws IOException {
+    void testObjectToJsonAndJsonToObjectHandlePayload() {
         SamplePayload payload = new SamplePayload();
         payload.name = "alpha";
         payload.count = 3;
@@ -32,8 +32,10 @@ class JsonServiceTest {
 
     @Test
     void testJsonToObjectThrowsForInvalidJson() {
+        // Jackson 3 rooted its exception hierarchy at the unchecked JacksonException;
+        // in Jackson 2 the equivalent JsonProcessingException extended IOException.
         Assertions.assertThrows(
-                IOException.class,
+                JacksonException.class,
                 () -> JsonService.jsonToObject("{not-valid-json}", SamplePayload.class)
         );
     }

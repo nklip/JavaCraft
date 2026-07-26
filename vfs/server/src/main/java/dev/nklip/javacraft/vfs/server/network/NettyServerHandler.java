@@ -59,7 +59,6 @@ public class NettyServerHandler extends SimpleChannelInboundHandler<Request> {
     // Close the connection when an exception is raised.
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        //cause.printStackTrace();
         userSessionService.notifyUsers(
                 userId,
                 String.format(

@@ -13,7 +13,7 @@ import static org.mockito.Mockito.when;
 class OpenFlightsFileImportControllerTest {
 
     @Test
-    void importCountriesReturnsAcceptedResult() {
+    void importCountriesReturnsCompletedResult() {
         OpenFlightsFileImportService importService = mock(OpenFlightsFileImportService.class);
         OpenFlightsFileImportController controller = new OpenFlightsFileImportController(importService);
         OpenFlightsImportResult expected = new OpenFlightsImportResult("countries", 3);
@@ -21,12 +21,12 @@ class OpenFlightsFileImportControllerTest {
 
         ResponseEntity<OpenFlightsImportResult> response = controller.importCountries();
 
-        Assertions.assertEquals(HttpStatus.ACCEPTED, response.getStatusCode());
+        Assertions.assertEquals(HttpStatus.OK, response.getStatusCode());
         Assertions.assertEquals(expected, response.getBody());
     }
 
     @Test
-    void importAirlinesReturnsAcceptedResult() {
+    void importAirlinesReturnsCompletedResult() {
         OpenFlightsFileImportService importService = mock(OpenFlightsFileImportService.class);
         OpenFlightsFileImportController controller = new OpenFlightsFileImportController(importService);
         OpenFlightsImportResult expected = new OpenFlightsImportResult("airlines", 3);
@@ -34,12 +34,12 @@ class OpenFlightsFileImportControllerTest {
 
         ResponseEntity<OpenFlightsImportResult> response = controller.importAirlines();
 
-        Assertions.assertEquals(HttpStatus.ACCEPTED, response.getStatusCode());
+        Assertions.assertEquals(HttpStatus.OK, response.getStatusCode());
         Assertions.assertEquals(expected, response.getBody());
     }
 
     @Test
-    void importAirportsReturnsAcceptedResult() {
+    void importAirportsReturnsCompletedResult() {
         OpenFlightsFileImportService importService = mock(OpenFlightsFileImportService.class);
         OpenFlightsFileImportController controller = new OpenFlightsFileImportController(importService);
         OpenFlightsImportResult expected = new OpenFlightsImportResult("airports", 3);
@@ -47,12 +47,12 @@ class OpenFlightsFileImportControllerTest {
 
         ResponseEntity<OpenFlightsImportResult> response = controller.importAirports();
 
-        Assertions.assertEquals(HttpStatus.ACCEPTED, response.getStatusCode());
+        Assertions.assertEquals(HttpStatus.OK, response.getStatusCode());
         Assertions.assertEquals(expected, response.getBody());
     }
 
     @Test
-    void importPlanesReturnsAcceptedResult() {
+    void importPlanesReturnsCompletedResult() {
         OpenFlightsFileImportService importService = mock(OpenFlightsFileImportService.class);
         OpenFlightsFileImportController controller = new OpenFlightsFileImportController(importService);
         OpenFlightsImportResult expected = new OpenFlightsImportResult("planes", 3);
@@ -60,12 +60,12 @@ class OpenFlightsFileImportControllerTest {
 
         ResponseEntity<OpenFlightsImportResult> response = controller.importPlanes();
 
-        Assertions.assertEquals(HttpStatus.ACCEPTED, response.getStatusCode());
+        Assertions.assertEquals(HttpStatus.OK, response.getStatusCode());
         Assertions.assertEquals(expected, response.getBody());
     }
 
     @Test
-    void importRoutesReturnsAcceptedResult() {
+    void importRoutesReturnsCompletedResult() {
         OpenFlightsFileImportService importService = mock(OpenFlightsFileImportService.class);
         OpenFlightsFileImportController controller = new OpenFlightsFileImportController(importService);
         OpenFlightsImportResult expected = new OpenFlightsImportResult("routes", 3);
@@ -73,7 +73,7 @@ class OpenFlightsFileImportControllerTest {
 
         ResponseEntity<OpenFlightsImportResult> response = controller.importRoutes();
 
-        Assertions.assertEquals(HttpStatus.ACCEPTED, response.getStatusCode());
+        Assertions.assertEquals(HttpStatus.OK, response.getStatusCode());
         Assertions.assertEquals(expected, response.getBody());
     }
 }

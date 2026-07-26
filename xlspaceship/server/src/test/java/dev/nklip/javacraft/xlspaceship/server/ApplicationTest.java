@@ -8,8 +8,9 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
@@ -18,6 +19,7 @@ import java.util.List;
 
 @ActiveProfiles("test")
 @ExtendWith(SpringExtension.class)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,
         properties = {
                 ApplicationTest.AI_PORT
@@ -49,7 +51,10 @@ public class ApplicationTest {
         Assertions.assertEquals("AI-1000", ngr.getFullName());
         Assertions.assertEquals("match-1-3-6", ngr.getGameId());
 
-        GameStatus gameStatus = this.restTemplate.getForObject("/xl-spaceship/user/game/%s".formatted(ngr.getGameId()), GameStatus.class);
+        GameStatus gameStatus = this.restTemplate.getForObject(
+                "/xl-spaceship/user/game/%s".formatted(ngr.getGameId()),
+                GameStatus.class
+        );
 
         Assertions.assertNotNull(gameStatus);
         Assertions.assertNotNull(gameStatus.getSelf());
@@ -57,11 +62,11 @@ public class ApplicationTest {
 
         Assertions.assertEquals(
                 """
-                -..**......**...
-                -..*.*....*.....
-                -..**......**...
-                -..*.*.......*..
-                -..**......**...
+                ...**......**...
+                ...*.*....*.....
+                ...**......**...
+                ...*.*.......*..
+                ...**......**...
                 ................
                 ...*.*..........
                 ...*.*.....*....
@@ -74,7 +79,7 @@ public class ApplicationTest {
                 .......*........
                 .......***......
                 """,
-                getMyBoard(myBoard)
+                getShipLayout(myBoard)
         );
     }
 
@@ -113,10 +118,10 @@ public class ApplicationTest {
         Assertions.assertEquals(CONNECTION_REFUSED, error.getError());
     }
 
-    private String getMyBoard(BoardStatus boardStatus) {
+    private String getShipLayout(BoardStatus boardStatus) {
         StringBuilder board = new StringBuilder();
         for (String row : boardStatus.getRows()) {
-            board.append(row);
+            board.append(row.replace('-', '.').replace('X', '*'));
             board.append("\n");
         }
         return board.toString();

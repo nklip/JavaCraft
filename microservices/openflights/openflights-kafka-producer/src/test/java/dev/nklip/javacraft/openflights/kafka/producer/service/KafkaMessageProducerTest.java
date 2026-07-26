@@ -6,8 +6,9 @@ import dev.nklip.javacraft.openflights.api.Country;
 import dev.nklip.javacraft.openflights.api.kafka.OpenFlightsTopics;
 import dev.nklip.javacraft.openflights.api.Plane;
 import dev.nklip.javacraft.openflights.api.Route;
-import java.util.concurrent.CompletableFuture;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
@@ -32,8 +33,9 @@ class KafkaMessageProducerTest {
         when(kafkaTemplate.send(eq(OpenFlightsTopics.DEFAULT), eq(message), eq(message)))
                 .thenReturn(completedSendResult(OpenFlightsTopics.DEFAULT, message, message));
 
-        Assertions.assertDoesNotThrow(() -> service.sendMessage2DefaultTopic(message));
+        CompletableFuture<SendResult<String, Object>> sendFuture = service.sendMessage2DefaultTopic(message);
 
+        Assertions.assertDoesNotThrow(sendFuture::join);
         verify(kafkaTemplate).send(OpenFlightsTopics.DEFAULT, message, message);
     }
 
@@ -46,8 +48,9 @@ class KafkaMessageProducerTest {
         when(kafkaTemplate.send(eq(OpenFlightsTopics.COUNTRY), eq("RU"), eq(country)))
                 .thenReturn(completedSendResult(OpenFlightsTopics.COUNTRY, "RU", country));
 
-        Assertions.assertDoesNotThrow(() -> service.sendCountry(country));
+        CompletableFuture<SendResult<String, Object>> sendFuture = service.sendCountry(country);
 
+        Assertions.assertDoesNotThrow(sendFuture::join);
         verify(kafkaTemplate).send(OpenFlightsTopics.COUNTRY, "RU", country);
     }
 
@@ -60,8 +63,9 @@ class KafkaMessageProducerTest {
         when(kafkaTemplate.send(eq(OpenFlightsTopics.AIRLINE), eq("410"), eq(airline)))
                 .thenReturn(completedSendResult(OpenFlightsTopics.AIRLINE, "410", airline));
 
-        Assertions.assertDoesNotThrow(() -> service.sendAirline(airline));
+        CompletableFuture<SendResult<String, Object>> sendFuture = service.sendAirline(airline);
 
+        Assertions.assertDoesNotThrow(sendFuture::join);
         verify(kafkaTemplate).send(OpenFlightsTopics.AIRLINE, "410", airline);
     }
 
@@ -75,8 +79,9 @@ class KafkaMessageProducerTest {
         when(kafkaTemplate.send(eq(OpenFlightsTopics.AIRPORT), eq("2965"), eq(airport)))
                 .thenReturn(completedSendResult(OpenFlightsTopics.AIRPORT, "2965", airport));
 
-        Assertions.assertDoesNotThrow(() -> service.sendAirport(airport));
+        CompletableFuture<SendResult<String, Object>> sendFuture = service.sendAirport(airport);
 
+        Assertions.assertDoesNotThrow(sendFuture::join);
         verify(kafkaTemplate).send(OpenFlightsTopics.AIRPORT, "2965", airport);
     }
 
@@ -89,8 +94,9 @@ class KafkaMessageProducerTest {
         when(kafkaTemplate.send(eq(OpenFlightsTopics.PLANE), eq("CRJ2"), eq(plane)))
                 .thenReturn(completedSendResult(OpenFlightsTopics.PLANE, "CRJ2", plane));
 
-        Assertions.assertDoesNotThrow(() -> service.sendPlane(plane));
+        CompletableFuture<SendResult<String, Object>> sendFuture = service.sendPlane(plane);
 
+        Assertions.assertDoesNotThrow(sendFuture::join);
         verify(kafkaTemplate).send(OpenFlightsTopics.PLANE, "CRJ2", plane);
     }
 
@@ -104,13 +110,14 @@ class KafkaMessageProducerTest {
         when(kafkaTemplate.send(eq(OpenFlightsTopics.ROUTE), eq(routeKey), eq(route)))
                 .thenReturn(completedSendResult(OpenFlightsTopics.ROUTE, routeKey, route));
 
-        Assertions.assertDoesNotThrow(() -> service.sendRoute(route));
+        CompletableFuture<SendResult<String, Object>> sendFuture = service.sendRoute(route);
 
+        Assertions.assertDoesNotThrow(sendFuture::join);
         verify(kafkaTemplate).send(OpenFlightsTopics.ROUTE, routeKey, route);
     }
 
     @Test
-    void sendMessage2DefaultTopicHandlesFailedCallback() {
+    void sendMessage2DefaultTopicExposesFailedCallback() {
         KafkaTemplate<String, Object> kafkaTemplate = mockKafkaTemplate();
         KafkaMessageProducer service = new KafkaMessageProducer(kafkaTemplate);
         String message = "hello kafka";
@@ -119,8 +126,10 @@ class KafkaMessageProducerTest {
         when(kafkaTemplate.send(eq(OpenFlightsTopics.DEFAULT), eq(message), eq(message)))
                 .thenReturn(CompletableFuture.failedFuture(failure));
 
-        Assertions.assertDoesNotThrow(() -> service.sendMessage2DefaultTopic(message));
+        CompletableFuture<SendResult<String, Object>> sendFuture = service.sendMessage2DefaultTopic(message);
 
+        CompletionException exception = Assertions.assertThrows(CompletionException.class, sendFuture::join);
+        Assertions.assertSame(failure, exception.getCause());
         verify(kafkaTemplate).send(OpenFlightsTopics.DEFAULT, message, message);
     }
 

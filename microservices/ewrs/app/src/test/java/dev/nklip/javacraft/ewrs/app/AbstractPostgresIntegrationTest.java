@@ -3,6 +3,7 @@ package dev.nklip.javacraft.ewrs.app;
 import dev.nklip.javacraft.ewrs.events.EventsMonitor;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -11,6 +12,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
+@AutoConfigureTestRestTemplate
 @SpringBootTest(
         classes = EwrsApplication.class,
         webEnvironment = WebEnvironment.RANDOM_PORT,

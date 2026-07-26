@@ -1,7 +1,7 @@
 package dev.nklip.javacraft.soap2rest.rest.app.service.async;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import dev.nklip.javacraft.soap2rest.rest.api.Metrics;
 import dev.nklip.javacraft.soap2rest.rest.app.service.SmartService;
 import org.junit.jupiter.api.Assertions;
@@ -29,7 +29,7 @@ class AsyncMetricsListenerTest {
     private SmartService smartService;
 
     @Test
-    void testHandleAsyncRequestShouldStoreCompletedResult() throws Exception {
+    void testHandleAsyncRequestShouldStoreCompletedResult() {
         AsyncMetrics command = new AsyncMetrics("req-7", 7L, new Metrics());
         AsyncMetricsListener listener = new AsyncMetricsListener(asyncMetricsStorage, smartService, objectMapper);
         when(objectMapper.readValue("payload", AsyncMetrics.class)).thenReturn(command);
@@ -42,7 +42,7 @@ class AsyncMetricsListenerTest {
     }
 
     @Test
-    void testHandleAsyncRequestShouldStoreFailedResult() throws Exception {
+    void testHandleAsyncRequestShouldStoreFailedResult() {
         AsyncMetrics command = new AsyncMetrics("req-9", 7L, new Metrics());
         AsyncMetricsListener listener = new AsyncMetricsListener(asyncMetricsStorage, smartService, objectMapper);
         when(objectMapper.readValue("payload", AsyncMetrics.class)).thenReturn(command);
@@ -55,10 +55,10 @@ class AsyncMetricsListenerTest {
     }
 
     @Test
-    void testHandleAsyncRequestShouldThrowWhenDeserializationFails() throws Exception {
+    void testHandleAsyncRequestShouldThrowWhenDeserializationFails() {
         AsyncMetricsListener listener = new AsyncMetricsListener(asyncMetricsStorage, smartService, objectMapper);
         when(objectMapper.readValue("payload", AsyncMetrics.class))
-                .thenThrow(new JsonProcessingException("broken") { });
+                .thenThrow(new JacksonException("broken") { });
 
         IllegalStateException exception = Assertions.assertThrows(
                 IllegalStateException.class,

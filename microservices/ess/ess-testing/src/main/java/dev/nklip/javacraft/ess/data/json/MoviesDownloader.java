@@ -1,7 +1,7 @@
 package dev.nklip.javacraft.ess.data.json;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.type.TypeReference;
+import tools.jackson.core.type.TypeReference;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;

@@ -1,6 +1,6 @@
 package dev.nklip.javacraft.ewrs.testing;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import dev.nklip.javacraft.ewrs.api.query.WorkRequestResponse;
 import dev.nklip.javacraft.ewrs.scenarios.api.ScenarioExecutionResponse;
 import dev.nklip.javacraft.ewrs.scenarios.api.ScenarioRunResponse;
@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;

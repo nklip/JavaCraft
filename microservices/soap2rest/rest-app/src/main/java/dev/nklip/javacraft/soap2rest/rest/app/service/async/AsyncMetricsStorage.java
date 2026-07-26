@@ -1,7 +1,7 @@
 package dev.nklip.javacraft.soap2rest.rest.app.service.async;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -63,7 +63,7 @@ public class AsyncMetricsStorage {
             AsyncMetrics command = new AsyncMetrics(requestId, accountId, metrics);
             jmsTemplate.convertAndSend(SMART_ASYNC_QUEUE, objectMapper.writeValueAsString(command));
             return requestId;
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             removeResult(requestId);
             throw new IllegalStateException("Unable to serialize smart async request", ex);
         } catch (RuntimeException ex) {

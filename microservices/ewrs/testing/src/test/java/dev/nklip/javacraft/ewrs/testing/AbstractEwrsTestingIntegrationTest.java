@@ -4,18 +4,24 @@ import dev.nklip.javacraft.ewrs.events.EventsMonitor;
 import dev.nklip.javacraft.ewrs.testing.cucumber.config.PostgresContainerInitializer;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ContextConfiguration;
 
+@AutoConfigureTestRestTemplate
 @SpringBootTest(
         classes = EwrsTestingApplication.class,
         webEnvironment = WebEnvironment.RANDOM_PORT,
         properties = {
                 "logging.level.dev.nklip.javacraft.ewrs=WARN",
                 "spring.application.name=ewrs-testing",
-                "spring.http.client.factory=simple",
+                // Jackson 3 turns EnumFeature READ/WRITE_ENUMS_USING_TO_STRING on by default;
+                // EventStatus.toString() is a display label, so keep the name() wire format.
+                "spring.jackson.datatype.enum.write-enums-using-to-string=false",
+                "spring.jackson.datatype.enum.read-enums-using-to-string=false",
+                "spring.http.clients.imperative.factory=simple",
                 "ewrs.scenarios.target-base-url=",
                 "springdoc.api-docs.enabled=false",
                 "springdoc.swagger-ui.enabled=false"

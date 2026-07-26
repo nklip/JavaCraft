@@ -1,6 +1,6 @@
 package dev.nklip.javacraft.soap2rest.soap.service.order;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+import tools.jackson.core.JacksonException;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import dev.nklip.javacraft.soap2rest.rest.api.Metrics;
@@ -19,7 +19,7 @@ public class SmartService implements OrderService {
     private final HttpCallService httpCallService;
 
     @Override
-    public void put(ServiceOrder serviceOrder, StatusType statusType) throws JsonProcessingException {
+    public void put(ServiceOrder serviceOrder, StatusType statusType) throws JacksonException {
         String accountId = serviceOrder.getServiceOrderID();
 
         Metrics metrics = toMetrics(serviceOrder.getParams());

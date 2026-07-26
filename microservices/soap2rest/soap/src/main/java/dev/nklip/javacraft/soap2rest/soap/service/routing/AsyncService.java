@@ -1,7 +1,7 @@
 package dev.nklip.javacraft.soap2rest.soap.service.routing;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import dev.nklip.javacraft.soap2rest.soap.service.order.SmartService;
 import java.util.List;
 import dev.nklip.javacraft.soap2rest.rest.api.AsyncJobResultResponse;
@@ -94,7 +94,7 @@ public class AsyncService {
                     dsRequest,
                     toServiceOrderStatus(requestId, "202", ASYNC_ACCEPTED_DESCRIPTION, null)
             );
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             return dsRequestService.getDSResponse(
                     dsRequest,
                     "500",
@@ -180,7 +180,7 @@ public class AsyncService {
         try {
             return ResponseEntity.status(ex.getStatusCode())
                     .body(objectMapper.readValue(responseBody, AsyncJobResultResponse.class));
-        } catch (JsonProcessingException jsonProcessingException) {
+        } catch (JacksonException jsonProcessingException) {
             throw new IllegalStateException("Unable to deserialize async smart result", jsonProcessingException);
         }
     }

@@ -2,6 +2,15 @@ server:
   port: 8054
 
 spring:
+  # Jackson 3 enables EnumFeature.WRITE_ENUMS_USING_TO_STRING by default (it was off in
+  # Jackson 2). EventStatus overrides toString() with a display label ("Created",
+  # "In running"), so leaving the new default on would change the API contract from
+  # CREATED to Created and silently break the dashboard's status colour lookup.
+  jackson:
+    datatype:
+      enum:
+        write-enums-using-to-string: false
+        read-enums-using-to-string: false
   application:
     name: ewrs-scenarios
 

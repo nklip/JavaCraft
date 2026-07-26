@@ -2,10 +2,9 @@ package dev.nklip.javacraft.xsd2model.service;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.PropertyAccessor;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Provide services for serialization and deserialization from Json to Object and visa versa.
@@ -16,17 +15,18 @@ public class JsonService {
     private static final ObjectMapper mapper = createMapper();
 
     private static ObjectMapper createMapper() {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
-        mapper.setDefaultPropertyInclusion(JsonInclude.Include.NON_EMPTY);
-        return mapper;
+        return JsonMapper.builder()
+                .changeDefaultVisibility(visibility -> visibility.withFieldVisibility(JsonAutoDetect.Visibility.ANY))
+                .changeDefaultPropertyInclusion(_ -> JsonInclude.Value.construct(
+                        JsonInclude.Include.NON_EMPTY, JsonInclude.Include.NON_EMPTY))
+                .build();
     }
 
-    public static String objectToJson(Object tag) throws JsonProcessingException {
+    public static String objectToJson(Object tag) {
         return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(tag);
     }
 
-    public static<T> T jsonToObject(String json, Class<T> className) throws IOException {
+    public static<T> T jsonToObject(String json, Class<T> className) {
         return mapper.readValue(json, className);
     }
 
@@ -38,7 +38,7 @@ public class JsonService {
             } else {
                 return false;
             }
-        } catch (IOException e) {
+        } catch (JacksonException e) {
             return false;
         }
     }

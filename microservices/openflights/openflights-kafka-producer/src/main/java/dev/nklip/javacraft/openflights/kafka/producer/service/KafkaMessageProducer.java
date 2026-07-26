@@ -34,7 +34,7 @@ import org.springframework.stereotype.Service;
  * <p>1. accept already-parsed OpenFlights records from the import flow
  * <p>2. route each record type to the correct Kafka topic
  * <p>3. derive stable Kafka keys for partitioning and ordering
- * <p>4. send the record asynchronously through the shared {@link KafkaTemplate}
+ * <p>4. send the record asynchronously through the shared {@link KafkaTemplate} and return its completion future
  * <p>5. log send success/failure at an appropriate level
  *
  * <p>Why there is one method per entity type:
@@ -69,8 +69,9 @@ import org.springframework.stereotype.Service;
  * <p>Why sends are asynchronous:
  *
  * <p>{@link KafkaTemplate#send(String, Object, Object)} returns a future because Kafka publishing is asynchronous. This
- * class intentionally preserves that model. It does not block waiting for broker acknowledgements; instead, it attaches
- * completion logging so the producer can keep high throughput while still surfacing failures.
+ * class intentionally preserves that model by returning the completion future and attaching completion logging. The
+ * caller can therefore compose the send with other asynchronous work or wait for the broker acknowledgement. The
+ * file-import service waits so it cannot report success after a failed send.
  *
  * <p>Why success is logged at DEBUG and failures at WARN:
  *
@@ -89,43 +90,46 @@ public class KafkaMessageProducer {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
-    public void sendMessage2DefaultTopic(String message) {
-        send(OpenFlightsTopics.DEFAULT, message, message);
+    public CompletableFuture<SendResult<String, Object>> sendMessage2DefaultTopic(String message) {
+        return send(OpenFlightsTopics.DEFAULT, message, message);
     }
 
-    public void sendCountry(Country country) {
+    public CompletableFuture<SendResult<String, Object>> sendCountry(Country country) {
         Objects.requireNonNull(country, "country must not be null");
-        send(OpenFlightsTopics.COUNTRY, firstNonBlank(country.isoCode(), country.name()), country);
+        return send(OpenFlightsTopics.COUNTRY, firstNonBlank(country.isoCode(), country.name()), country);
     }
 
-    public void sendAirline(Airline airline) {
+    public CompletableFuture<SendResult<String, Object>> sendAirline(Airline airline) {
         Objects.requireNonNull(airline, "airline must not be null");
-        send(OpenFlightsTopics.AIRLINE, stringKey(airline.airlineId(), airline.iataCode(), airline.name()), airline);
+        return send(OpenFlightsTopics.AIRLINE,
+                stringKey(airline.airlineId(), airline.iataCode(), airline.name()), airline);
     }
 
-    public void sendAirport(Airport airport) {
+    public CompletableFuture<SendResult<String, Object>> sendAirport(Airport airport) {
         Objects.requireNonNull(airport, "airport must not be null");
-        send(OpenFlightsTopics.AIRPORT, stringKey(airport.airportId(), airport.iataCode(), airport.name()), airport);
+        return send(OpenFlightsTopics.AIRPORT,
+                stringKey(airport.airportId(), airport.iataCode(), airport.name()), airport);
     }
 
-    public void sendPlane(Plane plane) {
+    public CompletableFuture<SendResult<String, Object>> sendPlane(Plane plane) {
         Objects.requireNonNull(plane, "plane must not be null");
-        send(OpenFlightsTopics.PLANE, stringKey(plane.icaoCode(), plane.iataCode(), plane.name()), plane);
+        return send(OpenFlightsTopics.PLANE,
+                stringKey(plane.icaoCode(), plane.iataCode(), plane.name()), plane);
     }
 
-    public void sendRoute(Route route) {
+    public CompletableFuture<SendResult<String, Object>> sendRoute(Route route) {
         Objects.requireNonNull(route, "route must not be null");
         String routeKey = String.join("|",
                 stringValue(route.airlineId(), route.airlineCode()),
                 stringValue(route.sourceAirportId(), route.sourceAirportCode()),
                 stringValue(route.destinationAirportId(), route.destinationAirportCode()),
                 stringValue(route.stops(), "0"));
-        send(OpenFlightsTopics.ROUTE, routeKey, route);
+        return send(OpenFlightsTopics.ROUTE, routeKey, route);
     }
 
-    private void send(String topic, String key, Object payload) {
+    private CompletableFuture<SendResult<String, Object>> send(String topic, String key, Object payload) {
         CompletableFuture<SendResult<String, Object>> future = kafkaTemplate.send(topic, key, payload);
-        future.whenComplete((result, ex) -> {
+        return future.whenComplete((result, ex) -> {
             if (ex == null) {
                 log.debug("Sent message to topic [{}] with key [{}] and offset [{}]", topic, key,
                         result.getRecordMetadata().offset());

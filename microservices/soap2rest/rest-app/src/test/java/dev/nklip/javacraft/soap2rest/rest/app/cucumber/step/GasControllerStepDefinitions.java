@@ -23,8 +23,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
 import io.restassured.RestAssured;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
 import static io.cucumber.spring.CucumberTestContext.SCOPE_CUCUMBER_GLUE;
@@ -44,7 +42,7 @@ public class GasControllerStepDefinitions {
     }
 
     private HttpEntity<String> prepareHttpEntity() {
-        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+        HttpHeaders headers = new HttpHeaders();
         headers.set(AuthenticationService.AUTH_TOKEN_HEADER_NAME, "57AkjqNuz44QmUHQuvVo");
         return new HttpEntity<>(null, headers);
     }
