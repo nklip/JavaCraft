@@ -1,12 +1,14 @@
+import java.util.Arrays;
+
 /**
  * @author Lipatov Nikita
  */
 public class Board {
 
-    private short []tiles;
-    private short []goal;
-    private short N; // double size
-    private short D; // one size
+    private final short []tiles;
+    private final short []goal;
+    private final short N; // double size
+    private final short D; // one size
 
     // construct a board from an N-by-N array of tiles
     public Board(int[][] blocks) {
@@ -110,6 +112,7 @@ public class Board {
     }
 
     // does this board equal y?
+    @Override
     public boolean equals(Object y) {
         if (y == this) {
             return true;
@@ -122,7 +125,9 @@ public class Board {
         }
 
         Board that = (Board) y;
-        if (this.N != that.N || this.D != that.D) {
+        // D is always N * N and both are final,
+        // so comparing N alone settles the dimension
+        if (this.N != that.N) {
             return false;
         }
         for (short i = 0; i < D; i++) {
@@ -133,10 +138,16 @@ public class Board {
         return true;
     }
 
+    @Override
+    public int hashCode() {
+        return Arrays.hashCode(tiles);
+    }
+
     // string representation of this board (in the output format specified below)
+    @Override
     public String toString() {
         StringBuilder s = new StringBuilder();
-        s.append(N + "\n");
+        s.append(N).append("\n");
         for (int i = 0; i < N; i++) {
             for (int j = 0; j < N; j++) {
                 s.append(String.format("%2d ", tiles[convertToCell(i, j)]));
@@ -169,7 +180,7 @@ public class Board {
 
     // all neighboring boards
     public Iterable<Board> neighbors() {
-        Queue<Board> possibleMoves = new Queue<Board>();
+        Queue<Board> possibleMoves = new Queue<>();
         for (short i = 0; i < N; i++) {
             for (short y = 0; y < N; y++) {
                 if (this.tiles[convertToCell(i, y)] == 0) {
@@ -209,8 +220,4 @@ public class Board {
         return possibleMoves;
     }
 
-    // unit tests (not graded)
-    public static void main(String[] args) {
-
-    }
 }

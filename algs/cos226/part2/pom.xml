@@ -27,4 +27,12 @@
         <module>Burrows-Wheeler</module>
     </modules>
 
+    <dependencies>
+        <dependency>
+            <groupId>dev.nklip.javacraft</groupId>
+            <artifactId>cos226-support</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+
 </project>

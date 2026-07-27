@@ -1,4 +1,4 @@
-/****************************************************************************
+/*
  *  Compilation:  javac PercolationVisualizer.java
  *  Execution:    java PercolationVisualizer input.txt
  *  Dependencies: Percolation.java StdDraw.java In.java
@@ -7,30 +7,27 @@
  *  From that file, it
  *
  *    - Reads the grid size N of the percolation system.
- *    - Creates an N-by-N grid of sites (intially all blocked)
+ *    - Creates an N-by-N grid of sites (initially all blocked)
  *    - Reads in a sequence of sites (row i, column j) to open.
  *
  *  After each site is opened, it draws full sites in light blue,
  *  open sites (that aren't full) in white, and blocked sites in black,
- *  with with site (1, 1) in the upper left-hand corner.
+ *  with site (1, 1) in the upper left-hand corner.
  *
  ****************************************************************************/
-
-import org.junit.jupiter.api.Test;
-
 import java.awt.Font;
 
 public class PercolationVisualizer {
 
-    // delay in miliseconds (controls animation speed)
+    // delay in milliseconds (controls animation speed)
     private static final int DELAY = 0;
 
     // draw N-by-N percolation system
     public static void draw(Percolation perc, int N) {
         StdDraw.clear();
         StdDraw.setPenColor(StdDraw.BLACK);
-        StdDraw.setXscale(0-1, N+1);
-        StdDraw.setYscale(0-1, N+1);
+        StdDraw.setXscale(-3, N+3);
+        StdDraw.setYscale(-3, N+3);
         StdDraw.filledSquare(N/2.0, N/2.0, N/2.0);
 
         // draw N-by-N grid
@@ -62,48 +59,29 @@ public class PercolationVisualizer {
 
     }
 
-    @Test
-    public void testFile5() {
-        //In in = new In("input10-no.txt"); // input file
-        In in = new In("greeting57.txt"); // input file
-        //In in = new In("heart25.txt"); // input file
-        //In in = new In("wayne98.txt"); // input file
-        int N = in.readInt();         // N-by-N percolation system
+    static void main(String[] args) {
+        String filename = "greeting57.txt";
+        if (args != null && args.length > 0) {
+            filename = args[0];
+        }
+        In in = ResourceFiles.open(PercolationVisualizer.class, filename); // input file
+        int N = in.readInt(); // N-by-N percolation system
 
         // turn on animation mode
         StdDraw.show(0);
 
         // repeatedly read in sites to open and draw resulting system
-        Percolation perc = new Percolation(N);
-        draw(perc, N); // just black square
+        Percolation percolation = new Percolation(N);
+        draw(percolation, N); // just black square
         StdDraw.show(DELAY);
         while (!in.isEmpty()) {
             int i = in.readInt();
             int j = in.readInt();
-            perc.open(i, j);
-            draw(perc, N);
+            percolation.open(i, j);
+            draw(percolation, N);
             StdDraw.show(DELAY);
         }
         StdDraw.show(6000);
     }
 
-    /*public static void main(String[] args) {
-        In in = new In(args[0]);      // input file
-        int N = in.readInt();         // N-by-N percolation system
-
-        // turn on animation mode
-        StdDraw.show(0);
-
-        // repeatedly read in sites to open and draw resulting system
-        Percolation perc = new Percolation(N);
-        draw(perc, N);
-        StdDraw.show(DELAY);
-        while (!in.isEmpty()) {
-            int i = in.readInt();
-            int j = in.readInt();
-            perc.open(i, j);
-            draw(perc, N);
-            StdDraw.show(DELAY);
-        }
-    }*/
 }

@@ -11,16 +11,24 @@
     </parent>
 
     <artifactId>part1</artifactId>
-	<packaging>pom</packaging>
+    <packaging>pom</packaging>
 
-	<description>https://www.coursera.org/princeton</description>
+    <description>https://www.coursera.org/princeton</description>
 
-	<modules>
+    <modules>
         <module>Percolation</module>
         <module>Queues</module>
         <module>Collinear</module>
         <module>8Puzzle</module>
-        <module>KDTree</module>
+        <module>KdTree</module>
     </modules>
+
+    <dependencies>
+        <dependency>
+            <groupId>dev.nklip.javacraft</groupId>
+            <artifactId>cos226-support</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
 
 </project>

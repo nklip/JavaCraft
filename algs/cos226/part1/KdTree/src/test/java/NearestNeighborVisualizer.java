@@ -2,36 +2,35 @@
  *  Compilation:  javac NearestNeighborVisualizer.java
  *  Execution:    java NearestNeighborVisualizer input.txt
  *  Dependencies: PointSET.java KdTree.java Point2D.java In.java StdDraw.java
- *
+ * <p>
  *  Read points from a file (specified as a command-line argument) and
  *  draw to standard draw. Highlight the closest point to the mouse.
- *
+ * <p>
  *  The nearest neighbor according to the brute-force algorithm is drawn
  *  in red; the nearest neighbor using the kd-tree algorithm is drawn in blue.
  *
  *************************************************************************/
-
 public class NearestNeighborVisualizer {
 
-    public static void main(String[] args) {
-        String filename = "circle100.txt";
+    @SuppressWarnings("InfiniteLoopStatement")
+    static void main(String[] args) {
+        String filename = "circle10.txt";
         if (args != null && args.length > 0) {
             filename = args[0];
         }
 
-        In in = new In(filename);
+        In in = ResourceFiles.open(NearestNeighborVisualizer.class, filename);
 
         StdDraw.show(0);
 
         // initialize the two data structures with point from standard input
-        PointSET brute = new PointSET();
-        KdTree kdtree = new KdTree();
+        //SpatialPointSet spsImpl = new PointSET();
+        SpatialPointSet spsImpl = new KdTree();
         while (!in.isEmpty()) {
             double x = in.readDouble();
             double y = in.readDouble();
             Point2D p = new Point2D(x, y);
-            kdtree.insert(p);
-            brute.insert(p);
+            spsImpl.insert(p);
         }
 
         while (true) {
@@ -45,22 +44,20 @@ public class NearestNeighborVisualizer {
 
                 Point2D query = new Point2D(x, y);
 
-                // draw all of the points
+                // draw all the points
                 StdDraw.clear();
                 StdDraw.setPenColor(StdDraw.BLACK);
                 StdDraw.setPenRadius(.01);
-                kdtree.draw();
-                brute.draw();
+                spsImpl.draw();
 
                 // draw in red the nearest neighbor (using brute-force algorithm)
                 StdDraw.setPenRadius(.03);
                 StdDraw.setPenColor(StdDraw.RED);
-                brute.nearest(query).draw();
                 StdDraw.setPenRadius(.02);
 
                 // draw in blue the nearest neighbor (using kd-tree algorithm)
                 StdDraw.setPenColor(StdDraw.BLUE);
-                kdtree.nearest(query).draw();
+                spsImpl.nearest(query).draw();
                 StdDraw.show(0);
                 StdDraw.show(40);
                 //break;

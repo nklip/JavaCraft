@@ -13,4 +13,29 @@
 
     <artifactId>8Puzzle</artifactId>
 
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!--
+                        Surefire enables assertions by default, and algs4's MinPQ runs
+                        `assert isMinHeap()` after every insert and delMin.
+                        That check is an O(n) scan, which turns this A* search quadratic:
+                        puzzle31 goes from 52 ms to 136 s.
+                        Worse, once a solve passes 20 seconds Solver.tryToSolve
+                        swaps in an inadmissible comparator and starts returning non-optimal
+                        move counts, so the results become wrong as well as slow.
+
+                        The assertion belongs to the third-party library, not to this module's
+                        code (no source here uses the `assert` keyword), so disabling it costs
+                        no coverage of our own invariants.
+                    -->
+                    <enableAssertions>false</enableAssertions>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
 </project>

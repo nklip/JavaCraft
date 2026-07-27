@@ -1,23 +1,22 @@
 import java.util.Comparator;
 
 public class Solver {
-    private final Comparator<SearchNode> hammingComparator = new HammingComparator();
-    private final Comparator<SearchNode> manhattanComparator = new ManhattanComparator();
     private final Comparator<SearchNode> manhattanAndHammingComparator = new ManhattanAndHammingComparator();
 
     private MinPQ<SearchNode> pq;
-    private MinPQ<SearchNode> pqTwin;
+    private final MinPQ<SearchNode> pqTwin;
 
     private SearchNode goal = null;
     private boolean solvable = true;
 
     /**
      * find a solution to the initial board (using the A* algorithm)
-     * @param initial
      */
     public Solver(Board initial) {
-        pq = new MinPQ<SearchNode>(manhattanComparator);
-        pqTwin = new MinPQ<SearchNode>(hammingComparator);
+        Comparator<SearchNode> manhattanComparator = new ManhattanComparator();
+        pq = new MinPQ<>(manhattanComparator);
+        Comparator<SearchNode> hammingComparator = new HammingComparator();
+        pqTwin = new MinPQ<>(hammingComparator);
 
         SearchNode initNode = new SearchNode(null, initial, (short) 0);
         pq.insert(initNode);
@@ -25,14 +24,17 @@ public class Solver {
         tryToSolve();
     }
 
-    private class HammingComparator implements Comparator<SearchNode> {
+    // package-private rather than private so the comparators and the nodes they order can be
+    // unit tested directly; ManhattanAndHammingComparator is otherwise only reachable after a
+    // solve has run for 20 seconds
+    static class HammingComparator implements Comparator<SearchNode> {
         public int compare(SearchNode n1, SearchNode n2) {
             return n1.board.hamming()
                     - n2.board.hamming();
         }
     }
 
-    private class ManhattanComparator implements Comparator<SearchNode> {
+    static class ManhattanComparator implements Comparator<SearchNode> {
         public int compare(SearchNode n1, SearchNode n2) {
             return n1.board.manhattan()
                     + n1.moves
@@ -41,7 +43,7 @@ public class Solver {
         }
     }
 
-    private class ManhattanAndHammingComparator implements Comparator<SearchNode> {
+    static class ManhattanAndHammingComparator implements Comparator<SearchNode> {
         public int compare(SearchNode n1, SearchNode n2) {
             return n1.board.manhattan()
                     + n1.moves
@@ -53,35 +55,7 @@ public class Solver {
     }
 
     // we cannot move prev and moves values to Board class
-    private class SearchNode {
-        private SearchNode prev;
-        private Board board;
-        private short moves;
-
-        public SearchNode(SearchNode p, Board b, short m) {
-            prev = p;
-            board = b;
-            moves = m;
-        }
-
-        public boolean equals(Object y) {
-            if (y == this) {
-                return true;
-            }
-            if (y == null) {
-                return false;
-            }
-            if (y.getClass() != this.getClass()) {
-                return false;
-            }
-
-            SearchNode that = (SearchNode) y;
-            if (that.board.equals(board)) {
-                return true;
-            }
-            return false;
-        }
-
+    record SearchNode(SearchNode prev, Board board, short moves) {
     }
 
     private void tryToSolve() {
@@ -90,8 +64,8 @@ public class Solver {
         while (true) {
             if (!isChangedComparator) {
                 if (((System.currentTimeMillis() - startTime) / 1000) > 20) {
-                    MinPQ<SearchNode> tempPq = new MinPQ<SearchNode>(manhattanAndHammingComparator);
-                    while (pq.size() > 0) {
+                    MinPQ<SearchNode> tempPq = new MinPQ<>(manhattanAndHammingComparator);
+                    while (!pq.isEmpty()) {
                         tempPq.insert(pq.delMin());
                     }
                     pq = tempPq;
@@ -107,7 +81,7 @@ public class Solver {
 
             for (Board board : node.board.neighbors()) {
                 SearchNode n = new SearchNode(node, board, (short) (node.moves + 1));
-                if (n.equals(node.prev)) {
+                if (node.prev != null && board.equals(node.prev.board)) {
                     continue;
                 }
 
@@ -126,8 +100,8 @@ public class Solver {
 
             for (Board board : twinNode.board.neighbors()) {
 
-                SearchNode n = new SearchNode(node, board, (short) (node.moves + 1));
-                if (n.equals(twinNode.prev)) {
+                SearchNode n = new SearchNode(twinNode, board, (short) (twinNode.moves + 1));
+                if (twinNode.prev != null && board.equals(twinNode.prev.board)) {
                     continue;
                 }
 
@@ -154,14 +128,14 @@ public class Solver {
     }
 
     /**
-     * @return sequence of boards in a shortest solution; null if no solution
+     * @return sequence of boards in the shortest solution; null if no solution
      */
     public Iterable<Board> solution() {
         if (goal == null) {
             return null;
         }
 
-        Stack<Board> stack = new Stack<Board>();
+        Stack<Board> stack = new Stack<>();
         SearchNode node = goal;
         stack.push(node.board);
         while (node.prev != null) {
@@ -173,23 +147,16 @@ public class Solver {
     }
 
     /**
-     * solve a slider puzzle 
-     * @param args
+     * solve a slider puzzle
      */
-    public static void main(String[] args) {
-        //String pathname = "puzzle04.txt";
-        //String pathname = "puzzle4x4-78.txt";
-        //String pathname = "puzzle36.txt";
+    static void main(String[] args) {
         String pathname = "puzzle46.txt";
-        //String pathname = "puzzle49.txt";
-        //String pathname = "puzzle4x4-unsolvable.txt";
-        //String pathname = "puzzle4x4-hard2.txt";
         if (args != null && args.length > 0) {
             pathname = args[0];
         }
 
         // create initial board from file
-        In in = new In(pathname);
+        In in = ResourceFiles.open(Solver.class, pathname);
         int N = in.readInt();
         int[][] blocks = new int[N][N];
         for (int i = 0; i < N; i++) {

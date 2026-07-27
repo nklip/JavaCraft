@@ -2,7 +2,7 @@
  *  Compilation:  javac RectHV.java
  *  Execution:    java RectHV
  *  Dependencies: Point2D.java
- *
+ * <p>
  *  Implementation of 2D axis-aligned rectangle.
  *
  *************************************************************************/
@@ -46,12 +46,12 @@ public class RectHV {
         StdDraw.line(xmin, ymax, xmin, ymin);
     }
 
-    // distance from p to closest point on this axis-aligned rectangle
+    // distance from p to the closest point on this axis-aligned rectangle
     public double distanceTo(Point2D p) {
         return Math.sqrt(this.distanceSquaredTo(p));
     }
 
-    // distance squared from p to closest point on this axis-aligned rectangle
+    // distance squared from p to the closest point on this axis-aligned rectangle
     public double distanceSquaredTo(Point2D p) {
         double dx = 0.0, dy = 0.0;
         if      (p.x() < xmin) dx = p.x() - xmin;
@@ -63,11 +63,12 @@ public class RectHV {
 
     // does this axis-aligned rectangle contain p?
     public boolean contains(Point2D p) {
-        return (p.x() >= xmin) && (p.x() <= xmax)
-                && (p.y() >= ymin) && (p.y() <= ymax);
+        return  (p.x() >= xmin) && (p.x() <= xmax) &&
+                (p.y() >= ymin) && (p.y() <= ymax);
     }
 
     // are the two axis-aligned rectangles equal?
+    @Override
     public boolean equals(Object y) {
         if (y == this) return true;
         if (y == null) return false;
@@ -76,11 +77,19 @@ public class RectHV {
         if (this.xmin != that.xmin) return false;
         if (this.ymin != that.ymin) return false;
         if (this.xmax != that.xmax) return false;
-        if (this.ymax != that.ymax) return false;
-        return true;
+        return this.ymax == that.ymax;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = Double.hashCode(xmin);
+        result = 31 * result + Double.hashCode(ymin);
+        result = 31 * result + Double.hashCode(xmax);
+        return 31 * result + Double.hashCode(ymax);
     }
 
     // return a string representation of this axis-aligned rectangle
+    @Override
     public String toString() {
         return "[" + xmin + ", " + xmax + "] x [" + ymin + ", " + ymax + "]";
     }

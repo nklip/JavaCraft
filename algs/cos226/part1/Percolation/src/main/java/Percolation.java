@@ -9,7 +9,7 @@ public class Percolation {
     private final int size;
     private final int virUpperCell;
     private final int virBottomCell;
-    private boolean []grid;
+    private final boolean[] grid;
     private final WeightedQuickUnionUF quickUnionUF;
     private final WeightedQuickUnionUF quickPercolate;
     private boolean isPercolated;
@@ -119,10 +119,8 @@ public class Percolation {
     }
 
     private boolean isOutOfBorderCase(int i, int j) {
-        if (i <= 0 || j <= 0 || i > size || j > size) { // border cases
-            return true;
-        }
-        return false;
+        // border cases
+        return i <= 0 || j <= 0 || i > size || j > size;
     }
 
 }

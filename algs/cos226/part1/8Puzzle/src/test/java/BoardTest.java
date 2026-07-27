@@ -1,7 +1,8 @@
-
-import java.util.Iterator;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author Lipatov Nikita
@@ -78,13 +79,49 @@ public class BoardTest {
     }
 
     @Test
+    public void testRejectsUnsupportedDimensions() {
+        Assertions.assertThrows(IllegalArgumentException.class, () -> new Board(new int[1][1]));
+        Assertions.assertThrows(IllegalArgumentException.class, () -> new Board(new int[128][128]));
+    }
+
+    @Test
+    public void testEqualBoardsHaveEqualHashCodes() {
+        Board board = new Board(blocks3());
+        Board equalBoard = new Board(blocks3());
+
+        Assertions.assertEquals(board, equalBoard);
+        Assertions.assertEquals(board.hashCode(), equalBoard.hashCode());
+    }
+
+    @Test
+    public void testEqualsRejectsSelfNullOtherTypesAndOtherDimensions() {
+        Board board = new Board(blocks3());
+        Assertions.assertNotNull(board);
+
+        Board smaller = new Board(new int[][]{
+                {1, 2},
+                {3, 0}
+        });
+        Assertions.assertNotEquals(board, smaller);
+    }
+
+    @Test
+    public void testEqualsDistinguishesBoardsOfTheSameDimension() {
+        Board board = new Board(blocks3());
+        Board different = new Board(blocksCorner1());
+
+        Assertions.assertNotEquals(board, different);
+    }
+
+    @Test
     public void testToString() {
         Board board = new Board(blocks3());
-        Assertions.assertEquals(
-                "3\n" +
-                        " 8  1  3 \n" +
-                        " 4  0  2 \n" +
-                        " 7  6  5 \n",
+        Assertions.assertEquals("""
+                        3
+                         8  1  3\s
+                         4  0  2\s
+                         7  6  5\s
+                        """,
                 board.toString()
         );
     }
@@ -130,6 +167,7 @@ public class BoardTest {
         Board board = new Board(blocks);
         Assertions.assertEquals(0, board.hamming());
         Assertions.assertEquals(0, board.manhattan());
+        Assertions.assertTrue(board.isGoal());
     }
 
     @Test
@@ -213,43 +251,24 @@ public class BoardTest {
     public void testTwin() {
         Board board = new Board(blocks3());
         Board twin = board.twin();
-        Assertions.assertFalse(board.equals(twin));
-        twin = board.twin();
-        Assertions.assertFalse(board.equals(twin));
-        twin = board.twin();
-        Assertions.assertFalse(board.equals(twin));
-        twin = board.twin();
-        Assertions.assertFalse(board.equals(twin));
-        twin = board.twin();
-        Assertions.assertFalse(board.equals(twin));
-        twin = board.twin();
-        Assertions.assertFalse(board.equals(twin));
-
-
-        /*
-        long sumTime = 0;
-        for(int attempt = 0; attempt < 100; attempt++) {
-            long startTime = System.currentTimeMillis();
-            for(int i = 0; i < 100000; i++) {
-                twin = board.twin();
-                Assertions.assertFalse(board.equals(twin));
-            }
-            long endTime = System.currentTimeMillis();
-            sumTime += (endTime - startTime);
-        }
-        System.out.println("Average dif time = " + (sumTime / 100 ));
-        */
-
+        Assertions.assertNotEquals(board, twin);
+        Assertions.assertEquals(board.twin(), twin);
     }
 
     @Test
     public void testNeighbors() {
-        Board board = new Board(blocksCorner2());
-        Iterator<Board> moves = board.neighbors().iterator();
-        while(moves.hasNext()) {
-            Board move = moves.next();
-            System.out.println(move.toString());
-        }
+        Board cornerOneBoard = new Board(blocksCorner1());
+        List<Board> cornerOneMoves = new ArrayList<>();
+        cornerOneBoard.neighbors().forEach(cornerOneMoves::add);
+
+        Board cornerTwoBoard = new Board(blocksCorner2());
+        List<Board> cornerTwoMoves = new ArrayList<>();
+        cornerTwoBoard.neighbors().forEach(cornerTwoMoves::add);
+
+        Assertions.assertEquals(2, cornerOneMoves.size());
+        Assertions.assertEquals(2, cornerTwoMoves.size());
+        Assertions.assertTrue(cornerOneMoves.stream().noneMatch(cornerOneBoard::equals));
+        Assertions.assertTrue(cornerTwoMoves.stream().noneMatch(cornerTwoBoard::equals));
     }
 
     @Test
@@ -347,7 +366,7 @@ public class BoardTest {
         Board initial = new Board(blocks);
         Board twin1 = initial.twin();
         Board twin2 = initial.twin();
-        Assertions.assertTrue(twin1.equals(twin2));
+        Assertions.assertEquals(twin1, twin2);
     }
 
 
@@ -362,7 +381,7 @@ public class BoardTest {
 
         Board initial = new Board(blocks);
         Board twin1 = initial.twin();
-        Assertions.assertFalse(twin1.equals(initial));
+        Assertions.assertNotEquals(twin1, initial);
     }
 
 

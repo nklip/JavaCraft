@@ -3,7 +3,7 @@
  */
 public class PercolationStats {
 
-    private double[] u;
+    private final double[] u;
 
     // perform T independent experiments on an N-by-N grid
     public PercolationStats(int N, int T) {
@@ -54,7 +54,7 @@ public class PercolationStats {
     }
 
     // test client (described below)
-    public static void main(String[] args) {
+    static void main(String[] args) {
         int T = 200; // default value
         int N = 200; // default value
 

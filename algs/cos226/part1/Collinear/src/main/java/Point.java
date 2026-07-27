@@ -34,6 +34,7 @@ public class Point implements Comparable<Point> {
     }
 
     // return string representation of this point
+    @Override
     public String toString() {
         /* DO NOT MODIFY */
         return "(" + x + ", " + y + ")";
@@ -43,9 +44,8 @@ public class Point implements Comparable<Point> {
      * The compareTo() method should compare points by their y-coordinates, breaking
      * ties by their x-coordinates. Formally, the invoking point (x0, y0) is less
      * than the argument point (x1, y1) if and only if either y0 < y1 or if y0 = y1 and x0 < x1.
-     * @param that
-     * @return
      */
+    @Override
     public int compareTo(Point that) {
         /* YOUR CODE HERE */
         if ((this.y < that.y) || ((this.y == that.y) && (this.x < that.x))) {
@@ -63,8 +63,6 @@ public class Point implements Comparable<Point> {
      * Treat the slope of a horizontal line segment as positive zero;
      * treat the slope of a vertical   line segment as positive infinity;
      * treat the slope of a degenerate line segment (between a point and itself) as negative infinity.
-     * @param that
-     * @return
      */
     public double slopeTo(Point that) {
         /* YOUR CODE HERE */
@@ -97,13 +95,7 @@ public class Point implements Comparable<Point> {
             double psq = Point.this.slopeTo(q);
             double psr = Point.this.slopeTo(r);
 
-            if (psq > psr) {
-                return 1;
-            } else if (psq == psr) {
-                return 0;
-            } else {
-                return -1;
-            }
+            return Double.compare(psq, psr);
         }
 
     }

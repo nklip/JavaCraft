@@ -1,11 +1,13 @@
-import java.util.Iterator;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Objects;
 
 /**
+ * This algorithm improves searches by pruning spatial regions, typically much faster than O(n).
+ *
  * @author Lipatov Nikita
  */
-public class KdTree {
+public class KdTree implements SpatialPointSet {
     private static final boolean IS_VERTICAL = true;
     private static final int IS_RIGHT =  1;
     private static final int IS_LEFT  = -1;
@@ -16,21 +18,19 @@ public class KdTree {
     private Point2D nearest;
     private double shortestWay = 2.0;
 
-    public KdTree() {
-    }
-
+    @Override
     public boolean isEmpty() {
-        if (root == null) {
-            return true;
-        }
-        return false;
+        return root == null;
     }
 
+    @Override
     public int size() {
         return size;
     }
 
+    @Override
     public void insert(Point2D p) {
+        Objects.requireNonNull(p, "point");
         if (isEmpty()) {
             root = new Node(p, new RectHV(0, 0, 1, 1));
             size++;
@@ -56,7 +56,7 @@ public class KdTree {
     }
 
     private static RectHV createRectHV(Node root, boolean isVertical, int order) {
-        RectHV rect = null;
+        RectHV rect;
         if (isVertical) {
             if (IS_LEFT == order) {
                 rect = new RectHV(root.rect.xmin(), root.rect.ymin(), root.p.x(), root.rect.ymax());
@@ -109,7 +109,9 @@ public class KdTree {
         }
     }
 
+    @Override
     public boolean contains(Point2D p) {
+        Objects.requireNonNull(p, "point");
         return contains(root, p, IS_VERTICAL);
     }
 
@@ -128,8 +130,11 @@ public class KdTree {
         return false;
     }
 
+    @Override
     public void draw() {
-        draw(root, IS_VERTICAL);
+        if (!isEmpty()) {
+            draw(root, IS_VERTICAL);
+        }
     }
 
     private static void draw(Node parent, boolean isVertical) {
@@ -154,33 +159,43 @@ public class KdTree {
         }
     }
 
+    @Override
     public Iterable<Point2D> range(RectHV rectHV) {
-        final List<Point2D> rangePoints = new ArrayList<Point2D>();
+        Objects.requireNonNull(rectHV, "rectangle");
+        final List<Point2D> rangePoints = new ArrayList<>();
         if (!isEmpty()) {
             range(rangePoints, root, rectHV, IS_VERTICAL);
         }
-        return new Iterable<Point2D>() {
-            public Iterator<Point2D> iterator() {
-                return rangePoints.iterator();
-            }
-        };
+        return rangePoints;
     }
 
+    /**
+     * A node whose rectangle misses the query prunes its whole subtree, because a child's
+     * rectangle is always contained in its parent's.
+     * <p>
+     * There is deliberately no duplicate check on {@code list}. The traversal reaches every node
+     * at most once and {@code insert} keeps the tree free of equal points, so a point can never be
+     * offered twice - and the {@code List.contains} scan that used to guard against it made
+     * {@code range} quadratic in the number of points it reports.
+     */
     private static void range(List<Point2D> list, Node parent, RectHV rect, boolean isVertical) {
-        if (!list.contains(parent.p) && parent.rect.intersects(rect)) {
-            if (rect.contains(parent.p)) {
-                list.add(parent.p);
-            }
-            if (parent.left != null) {
-                range(list, parent.left,  rect, !isVertical);
-            }
-            if (parent.right != null) {
-                range(list, parent.right, rect, !isVertical);
-            }
+        if (!parent.rect.intersects(rect)) {
+            return;
+        }
+        if (rect.contains(parent.p)) {
+            list.add(parent.p);
+        }
+        if (parent.left != null) {
+            range(list, parent.left,  rect, !isVertical);
+        }
+        if (parent.right != null) {
+            range(list, parent.right, rect, !isVertical);
         }
     }
 
+    @Override
     public Point2D nearest(Point2D p) {
+        Objects.requireNonNull(p, "point");
         shortestWay = 2.0;
         nearest = null;
 
@@ -211,25 +226,15 @@ public class KdTree {
     }
 
     private static class Node {
-        private Point2D p;      // the point
-        private RectHV rect;    // the axis-aligned rectangle corresponding to this node
+        private final Point2D p;      // the point
+        private final RectHV rect;    // the axis-aligned rectangle corresponding to this node
         private Node left;      // the left/bottom subtree
         private Node right;     // the right/top subtree
 
-        public Node(Point2D p) {
-            this.p = p;
-        }
-
-        public Node(Point2D p, RectHV rect) {
+        private Node(Point2D p, RectHV rect) {
             this.p = p;
             this.rect = rect;
         }
     }
-
-    // unit testing of the methods (optional)
-    public static void main(String[] args) {
-
-    }
-
 
 }

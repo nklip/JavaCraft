@@ -8,12 +8,11 @@ import java.util.Comparator;
  */
 public class PointTest {
 
-
     @Test
     public void testSlopeToNoDibByZero() {
         Point it = new Point(1, 1);
         Point that = new Point(1, 1);
-        it.slopeTo(that);
+        Assertions.assertEquals(Double.NEGATIVE_INFINITY, it.slopeTo(that));
     }
 
     @Test
@@ -118,9 +117,7 @@ public class PointTest {
         Point q1 = new Point(-1, 3);
         Point q2 = new Point(-1, -3);
 
-        Comparator comparator = it.SLOPE_ORDER;
-
-        int compare = comparator.compare(q1, q2);
-
+        Comparator<Point> comparator = it.SLOPE_ORDER;
+        Assertions.assertTrue(comparator.compare(q1, q2) < 0);
     }
 }
