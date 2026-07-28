@@ -8,10 +8,10 @@ import java.util.Objects;
 
 /**
  * Locates COS226 data files independently of the process working directory.
- *
- * <p>Assignment programs keep their sample data in each consumer module's
- * {@code src/test/resources}. The anchor identifies that consumer module; using this support
- * class as the anchor would incorrectly search relative to the support artifact itself.
+ * <p>
+ * Assignment programs keep their sample data in each consumer module's {@code src/test/resources}.
+ * The anchor identifies that consumer module;
+ * Warning: Using this support class as the anchor would incorrectly search relative to the support artifact itself.
  */
 public final class ResourceFiles {
 
@@ -24,8 +24,7 @@ public final class ResourceFiles {
     }
 
     /**
-     * Opens a file supplied as an explicit path, a consumer-module fixture name, or a classpath
-     * resource.
+     * Opens a file supplied as an explicit path, a consumer-module fixture name, or a classpath resource.
      *
      * @param anchor class loaded from the module whose resources should be searched
      * @param filename file name or path to open
@@ -33,17 +32,55 @@ public final class ResourceFiles {
      * @throws IllegalArgumentException if the file cannot be found
      */
     public static In open(Class<?> anchor, String filename) {
-        Objects.requireNonNull(anchor, "anchor");
-        Objects.requireNonNull(filename, "filename");
-        if (filename.isBlank()) {
-            throw new IllegalArgumentException("filename must not be blank");
-        }
+        requireUsableArguments(anchor, filename);
 
         List<String> tried = new ArrayList<>();
+        Path found = locateOnDisk(anchor, filename, tried);
+        if (found != null) {
+            return new In(found.toFile());
+        }
+
+        // a classpath resource that is not a plain file, such as an entry inside a jar
+        URL resource = anchor.getResource(resourceName(filename));
+        if (resource != null) {
+            return new In(resource);
+        }
+
+        throw notFound(filename, tried);
+    }
+
+    /**
+     * Finds a file the same way {@link #open(Class, String)} does, but hands back its location
+     * rather than a reader, for the callers that need to pass a path or a {@code File} to
+     * something else - {@code Picture} being the one that comes up in these assignments.
+     *
+     * @param anchor class loaded from the module whose resources should be searched
+     * @param filename file name or path to locate
+     * @return the absolute path of the file
+     * @throws IllegalArgumentException if the file cannot be found on disk
+     */
+    public static Path resolve(Class<?> anchor, String filename) {
+        requireUsableArguments(anchor, filename);
+
+        List<String> tried = new ArrayList<>();
+        Path found = locateOnDisk(anchor, filename, tried);
+        if (found != null) {
+            return found.toAbsolutePath().normalize();
+        }
+
+        throw notFound(filename, tried);
+    }
+
+    /**
+     * @param tried collects every location inspected, so a failure can say where it looked
+     * @return the file, or {@code null} when nothing on disk matches. The classpath is searched
+     *         last and only counts here when the resource is a real file rather than a jar entry.
+     */
+    private static Path locateOnDisk(Class<?> anchor, String filename, List<String> tried) {
         Path asGiven = Path.of(filename).normalize();
         tried.add(asGiven.toAbsolutePath().normalize().toString());
         if (isReadableFile(asGiven)) {
-            return new In(asGiven.toFile());
+            return asGiven;
         }
 
         Path fixtures = fixtureDirectory(anchor);
@@ -54,18 +91,40 @@ public final class ResourceFiles {
             Path candidate = fixtures.resolve(fixtureRelativePath).normalize();
             tried.add(candidate.toString());
             if (isReadableFile(candidate)) {
-                return new In(candidate.toFile());
+                return candidate;
             }
         }
 
-        String resourceName = filename.startsWith("/") ? filename : "/" + filename;
+        String resourceName = resourceName(filename);
         tried.add("classpath:" + resourceName);
         URL resource = anchor.getResource(resourceName);
-        if (resource != null) {
-            return new In(resource);
+        if (resource != null && "file".equals(resource.getProtocol())) {
+            try {
+                Path candidate = Path.of(resource.toURI());
+                if (isReadableFile(candidate)) {
+                    return candidate;
+                }
+            } catch (URISyntaxException | RuntimeException e) {
+                return null;
+            }
         }
+        return null;
+    }
 
-        throw new IllegalArgumentException(
+    private static void requireUsableArguments(Class<?> anchor, String filename) {
+        Objects.requireNonNull(anchor, "anchor");
+        Objects.requireNonNull(filename, "filename");
+        if (filename.isBlank()) {
+            throw new IllegalArgumentException("filename must not be blank");
+        }
+    }
+
+    private static String resourceName(String filename) {
+        return filename.startsWith("/") ? filename : "/" + filename;
+    }
+
+    private static IllegalArgumentException notFound(String filename, List<String> tried) {
+        return new IllegalArgumentException(
                 "Could not find resource file '" + filename + "'. Tried: "
                         + String.join(", ", tried)
         );

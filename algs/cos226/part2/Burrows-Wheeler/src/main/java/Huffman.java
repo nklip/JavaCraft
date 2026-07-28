@@ -19,7 +19,7 @@ public class Huffman {
         // is the node a leaf node?
         private boolean isLeaf() {
             assert (left == null && right == null) || (left != null && right != null);
-            return (left == null && right == null);
+            return left == null;
         }
 
         // compare, based on frequency
@@ -28,17 +28,21 @@ public class Huffman {
         }
     }
 
-
     // compress bytes from standard input and write to standard output
     public static void compress() {
+        compress(new BinaryIn(System.in), new BinaryOut(System.out));
+    }
+
+    static void compress(BinaryIn binaryIn, BinaryOut binaryOut) {
         // read the input
-        String s = BinaryStdIn.readString();
+        String s = binaryIn.isEmpty() ? "" : binaryIn.readString();
         char[] input = s.toCharArray();
 
         // tabulate frequency counts
         int[] freq = new int[R];
-        for (int i = 0; i < input.length; i++)
-            freq[input[i]]++;
+        for (char c : input) {
+            freq[c]++;
+        }
 
         // build Huffman trie
         Node root = buildTrie(freq);
@@ -48,37 +52,40 @@ public class Huffman {
         buildCode(st, root, "");
 
         // print trie for decoder
-        writeTrie(root);
+        writeTrie(root, binaryOut);
 
         // print number of bytes in original uncompressed message
-        BinaryStdOut.write(input.length);
+        binaryOut.write(input.length);
 
         // use Huffman code to encode input
-        for (int i = 0; i < input.length; i++) {
-            String code = st[input[i]];
+        for (char c : input) {
+            String code = st[c];
             for (int j = 0; j < code.length(); j++) {
                 if (code.charAt(j) == '0') {
-                    BinaryStdOut.write(false);
-                }
-                else if (code.charAt(j) == '1') {
-                    BinaryStdOut.write(true);
-                }
-                else throw new IllegalStateException("Illegal state");
+                    binaryOut.write(false);
+                } else if (code.charAt(j) == '1') {
+                    binaryOut.write(true);
+                } else throw new IllegalStateException("Illegal state");
             }
         }
 
         // close output stream
-        BinaryStdOut.close();
+        binaryOut.close();
     }
 
     // build the Huffman trie given frequencies
     private static Node buildTrie(int[] freq) {
 
         // initialze priority queue with singleton trees
-        MinPQ<Node> pq = new MinPQ<Node>();
+        MinPQ<Node> pq = new MinPQ<>();
         for (char i = 0; i < R; i++)
             if (freq[i] > 0)
                 pq.insert(new Node(i, freq[i], null, null));
+
+        if (pq.isEmpty()) {
+            pq.insert(new Node('\0', 0, null, null));
+            pq.insert(new Node('\1', 0, null, null));
+        }
 
         // special case in case there is only one character with a nonzero frequency
         if (pq.size() == 1) {
@@ -96,17 +103,16 @@ public class Huffman {
         return pq.delMin();
     }
 
-
     // write bitstring-encoded trie to standard output
-    private static void writeTrie(Node x) {
+    private static void writeTrie(Node x, BinaryOut binaryOut) {
         if (x.isLeaf()) {
-            BinaryStdOut.write(true);
-            BinaryStdOut.write(x.ch, 8);
+            binaryOut.write(true);
+            binaryOut.write(x.ch, 8);
             return;
         }
-        BinaryStdOut.write(false);
-        writeTrie(x.left);
-        writeTrie(x.right);
+        binaryOut.write(false);
+        writeTrie(x.left, binaryOut);
+        writeTrie(x.right, binaryOut);
     }
 
     // make a lookup table from symbols and their encodings
@@ -120,40 +126,40 @@ public class Huffman {
         }
     }
 
-
     // expand Huffman-encoded input from standard input and write to standard output
     public static void expand() {
+        expand(new BinaryIn(System.in), new BinaryOut(System.out));
+    }
 
+    static void expand(BinaryIn binaryIn, BinaryOut binaryOut) {
         // read in Huffman trie from input stream
-        Node root = readTrie();
+        Node root = readTrie(binaryIn);
 
         // number of bytes to write
-        int length = BinaryStdIn.readInt();
+        int length = binaryIn.readInt();
 
         // decode using the Huffman trie
         for (int i = 0; i < length; i++) {
             Node x = root;
             while (!x.isLeaf()) {
-                boolean bit = BinaryStdIn.readBoolean();
+                boolean bit = binaryIn.readBoolean();
                 if (bit) x = x.right;
                 else     x = x.left;
             }
-            BinaryStdOut.write(x.ch, 8);
+            binaryOut.write(x.ch, 8);
         }
-        BinaryStdOut.close();
+        binaryOut.close();
     }
 
-
-    private static Node readTrie() {
-        boolean isLeaf = BinaryStdIn.readBoolean();
+    private static Node readTrie(BinaryIn binaryIn) {
+        boolean isLeaf = binaryIn.readBoolean();
         if (isLeaf) {
-            return new Node(BinaryStdIn.readChar(), -1, null, null);
+            return new Node(binaryIn.readChar(), -1, null, null);
         }
         else {
-            return new Node('\0', -1, readTrie(), readTrie());
+            return new Node('\0', -1, readTrie(binaryIn), readTrie(binaryIn));
         }
     }
-
 
     public static void main(String[] args) {
         if      (args[0].equals("-")) compress();

@@ -1,34 +1,55 @@
 import java.util.ArrayList;
 import java.util.List;
-import java.util.HashMap;
-import java.util.TreeMap;
-import java.util.TreeSet;
 
 /**
  * Shortest ancestral path (SAP)
+ * <p>
+ * Complexity notation:
+ * {@code V} and {@code E} are the digraph's vertex and edge counts,
+ * {@code S} is the total number of vertices supplied by two iterable arguments, and
+ * {@code Q} is the number of queries processed by the test client.
+ *
  * @author Lipatov Nikita
  */
 public class SAP {
-    private Digraph digraph;
-    private SAPCacheManager manager;
+    private final Digraph digraph;
+    private int cachedV;
+    private int cachedW;
+    private SAPCache cachedQuery;
 
-    // constructor takes a digraph (not necessarily a DAG) (directed acyclic graph)
+    /**
+     * Required time complexity: {@code O(V + E)} in the worst case.
+     * Actual time complexity: {@code O(V + E)}.
+     */
     public SAP(Digraph g) {
+        if (g == null) {
+            throw new NullPointerException("Digraph must not be null");
+        }
         digraph = new Digraph(g);
-        manager = new SAPCacheManager();
     }
 
-    // length of shortest ancestral path between v and w; -1 if no such path
+    /**
+     * Required time complexity: {@code O(V + E)} in the worst case.
+     * Actual worst-case time complexity: {@code O(V + E)}; a repeated or reversed cached query
+     * takes {@code O(1)}.
+     */
     public int length(int v, int w) {
         return getSapCache(v, w).length;
     }
 
-    // a common ancestor of v and w that participates in a shortest ancestral path; -1 if no such path
+    /**
+     * Required time complexity: {@code O(V + E)} in the worst case.
+     * Actual worst-case time complexity: {@code O(V + E)}; a repeated or reversed cached query
+     * takes {@code O(1)}.
+     */
     public int ancestor(int v, int w) {
         return getSapCache(v, w).ancestor;
     }
 
-    // length of shortest ancestral path between any vertex in v and any vertex in w; -1 if no such path
+    /**
+     * Required time complexity: {@code O(V + E)} in the worst case.
+     * Actual time complexity: {@code O(V + E + S)}.
+     */
     public int length(Iterable<Integer> v, Iterable<Integer> w) {
         SAPCache cache = getSapCache(v, w);
         if (cache == null) {
@@ -37,7 +58,10 @@ public class SAP {
         return cache.length;
     }
 
-    // a common ancestor that participates in shortest ancestral path; -1 if no such path
+    /**
+     * Required time complexity: {@code O(V + E)} in the worst case.
+     * Actual time complexity: {@code O(V + E + S)}.
+     */
     public int ancestor(Iterable<Integer> v, Iterable<Integer> w) {
         SAPCache cache = getSapCache(v, w);
         if (cache == null) {
@@ -46,116 +70,108 @@ public class SAP {
         return cache.ancestor;
     }
 
+    /**
+     * Runs one breadth-first search from each set of source vertices and returns their shortest
+     * common ancestor.
+     *
+     * @return the shortest ancestral path, or {@code null} when the source sets have no common
+     *         ancestor
+     */
     private SAPCache getSapCache(Iterable<Integer> v, Iterable<Integer> w) {
         if (v == null || w == null) {
-            throw new NullPointerException();
+            throw new NullPointerException("Vertices must not be null");
         }
-        TreeMap<Integer, SAPCache> map = new TreeMap<Integer, SAPCache>();
-        for (Integer vI : v) {
-            for (Integer wI : w) {
-                SAPCache cache = getSapCache(vI, wI);
-                map.put(cache.length, cache);
+        List<Integer> verticesV = validatedVertices(v);
+        List<Integer> verticesW = validatedVertices(w);
+        BreadthFirstDirectedPaths fromV = new BreadthFirstDirectedPaths(digraph, verticesV);
+        BreadthFirstDirectedPaths fromW = new BreadthFirstDirectedPaths(digraph, verticesW);
+        SAPCache shortest = null;
+        for (int vertex = 0; vertex < digraph.V(); vertex++) {
+            if (!fromV.hasPathTo(vertex) || !fromW.hasPathTo(vertex)) {
+                continue;
+            }
+
+            int length = fromV.distTo(vertex) + fromW.distTo(vertex);
+            if (shortest == null || length < shortest.length) {
+                shortest = new SAPCache(vertex, length);
             }
         }
-        if (map.size() > 0) {
-            return map.firstEntry().getValue();
-        }
-        return null;
+        return shortest;
     }
 
     private SAPCache getSapCache(int v, int w) {
-        if (manager.isExist(v, w)) {
-            return manager.get(v, w);
+        validateVertex(v);
+        validateVertex(w);
+        if (cachedQuery != null
+                && ((cachedV == v && cachedW == w) || (cachedV == w && cachedW == v))) {
+            return cachedQuery;
         }
 
         BreadthFirstDirectedPaths bfdV = new BreadthFirstDirectedPaths(digraph, v);
         BreadthFirstDirectedPaths bfdW = new BreadthFirstDirectedPaths(digraph, w);
 
-        List<Integer> ancestors = new ArrayList<Integer>();
+        int shortestLength = -1;
+        int ancestor = -1;
         for (int i = 0; i < digraph.V(); i++) {
-            if (bfdV.hasPathTo(i) && bfdW.hasPathTo(i)) {
-                ancestors.add(i);
+            if (!bfdV.hasPathTo(i) || !bfdW.hasPathTo(i)) {
+                continue;
+            }
+
+            int length = bfdV.distTo(i) + bfdW.distTo(i);
+            if (shortestLength == -1 || length < shortestLength) {
+                shortestLength = length;
+                ancestor = i;
             }
         }
 
-        Integer shortestLength = -1;
-        Integer ancestor = -1;
-        TreeSet<Integer> lengths = new TreeSet<Integer>();
-        for (Integer tempAncestor : ancestors) {
-            lengths.add(bfdV.distTo(tempAncestor) + bfdW.distTo(tempAncestor));
-            if (ancestor == -1 || lengths.first() < shortestLength) {
-                shortestLength = lengths.first();
-                ancestor = tempAncestor;
-            }
-        }
-
-        manager.add(v, w, ancestor, shortestLength);
-
-        return manager.get(v, w);
+        cachedV = v;
+        cachedW = w;
+        cachedQuery = new SAPCache(ancestor, shortestLength);
+        return cachedQuery;
     }
 
-    private static class SAPCache {
-        private int v;
-        private int w;
-        private int ancestor;
-        private int length;
-
-        @Override
-        public int hashCode() {
-            int result = v;
-            result = 31 * result + w;
-            return result;
+    private List<Integer> validatedVertices(Iterable<Integer> vertices) {
+        if (vertices == null) {
+            throw new NullPointerException("Vertices must not be null");
         }
 
-        public boolean equals(Object sapCache) {
-            if (sapCache == null) {
-                return false;
+        List<Integer> validated = new ArrayList<>();
+        for (Integer vertex : vertices) {
+            if (vertex == null) {
+                throw new NullPointerException("Vertex must not be null");
             }
-            if (sapCache instanceof SAPCache) {
-                SAPCache that = (SAPCache) sapCache;
-                if (this.v == that.v && this.w == that.w) {
-                    return true;
-                }
-            }
-            return false;
+            validateVertex(vertex);
+            validated.add(vertex);
+        }
+        return validated;
+    }
+
+    private void validateVertex(int vertex) {
+        if (vertex < 0 || vertex >= digraph.V()) {
+            throw new IndexOutOfBoundsException("Vertex is outside the prescribed range: " + vertex);
         }
     }
 
-    private static class SAPCacheManager {
-        private final HashMap<SAPCache, SAPCache> caches = new HashMap<SAPCache, SAPCache>();
+    private static final class SAPCache {
+        private final int ancestor;
+        private final int length;
 
-        public void add(int v, int w, int ancestor, int length) {
-            SAPCache sapCache = new SAPCache();
-            sapCache.v = v;
-            sapCache.w = w;
-            sapCache.ancestor = ancestor;
-            sapCache.length = length;
-
-            caches.put(sapCache, sapCache);
-        }
-
-        public boolean isExist(int v, int w) {
-            SAPCache sapCache = new SAPCache();
-            sapCache.v = v;
-            sapCache.w = w;
-            return caches.containsKey(sapCache);
-        }
-
-        public SAPCache get(int v, int w) {
-            SAPCache sapCache = new SAPCache();
-            sapCache.v = v;
-            sapCache.w = w;
-            return caches.get(sapCache);
+        private SAPCache(int ancestor, int length) {
+            this.ancestor = ancestor;
+            this.length = length;
         }
     }
 
-    // do unit testing of this class
-    public static void main(String[] args) {
+    /**
+     * Required time complexity: not specified; this is the assignment test client.
+     * Actual time complexity: {@code O((Q + 1) * (V + E))}.
+     */
+    static void main(String[] args) {
         String path = "digraph1.txt";
         if (args != null && args.length > 0) {
             path = args[0];
         }
-        In in = new In(path);
+        In in = ResourceFiles.open(SAP.class, path);
         Digraph G = new Digraph(in);
         SAP sap = new SAP(G);
         while (!StdIn.isEmpty()) {

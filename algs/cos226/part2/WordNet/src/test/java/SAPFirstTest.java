@@ -1,3 +1,5 @@
+import java.util.Arrays;
+import java.util.List;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -9,7 +11,7 @@ public class SAPFirstTest {
     @Test
     public void testDigrapth1() {
         String path = "digraph1.txt";
-        In in = new In(path);
+        In in = ResourceFiles.open(SAPFirstTest.class, path);
         Digraph G = new Digraph(in);
         SAPFirst sap = new SAPFirst(G);
 
@@ -50,7 +52,7 @@ public class SAPFirstTest {
     @Test
     public void testDigrapth2() {
         String path = "digraph2.txt";
-        In in = new In(path);
+        In in = ResourceFiles.open(SAPFirstTest.class, path);
         Digraph G = new Digraph(in);
         SAPFirst sap = new SAPFirst(G);
 
@@ -93,14 +95,14 @@ public class SAPFirstTest {
     @Test
     public void testDigrapth3() {
         String path = "digraph3.txt";
-        In in = new In(path);
+        In in = ResourceFiles.open(SAPFirstTest.class, path);
         Digraph G = new Digraph(in);
         SAPFirst sap = new SAPFirst(G);
 
         Assertions.assertEquals(1, sap.ancestor(1, 4));
         Assertions.assertEquals(2, sap.ancestor(2, 5));
         Assertions.assertEquals(3, sap.ancestor(3, 6));
-        Assertions.assertEquals(11, sap.ancestor(7, 13)); // dif SAP has 8
+        Assertions.assertEquals(8, sap.ancestor(7, 13));
         Assertions.assertEquals(11, sap.ancestor(10, 13));
         Assertions.assertEquals(11, sap.ancestor(11, 13));
         Assertions.assertEquals(12, sap.ancestor(12, 13));
@@ -109,7 +111,7 @@ public class SAPFirstTest {
         Assertions.assertEquals(3, sap.length(1, 4));
         Assertions.assertEquals(3, sap.length(2, 5));
         Assertions.assertEquals(3, sap.length(3, 6));
-        Assertions.assertEquals(7, sap.length(7, 13)); // dif SAP has 6
+        Assertions.assertEquals(6, sap.length(7, 13));
         Assertions.assertEquals(4, sap.length(10, 13));
         Assertions.assertEquals(3, sap.length(11, 13));
         Assertions.assertEquals(4, sap.length(12, 13));
@@ -120,7 +122,7 @@ public class SAPFirstTest {
             Assertions.assertEquals(1, sap.ancestor(1, 4));
             Assertions.assertEquals(2, sap.ancestor(2, 5));
             Assertions.assertEquals(3, sap.ancestor(3, 6));
-            Assertions.assertEquals(11, sap.ancestor(7, 13)); // SAP has 8
+            Assertions.assertEquals(8, sap.ancestor(7, 13)); // SAP has 8
             Assertions.assertEquals(11, sap.ancestor(10, 13));
             Assertions.assertEquals(11, sap.ancestor(11, 13));
             Assertions.assertEquals(12, sap.ancestor(12, 13));
@@ -129,7 +131,7 @@ public class SAPFirstTest {
             Assertions.assertEquals(3, sap.length(1, 4));
             Assertions.assertEquals(3, sap.length(2, 5));
             Assertions.assertEquals(3, sap.length(3, 6));
-            Assertions.assertEquals(7, sap.length(7, 13)); // dif SAP has 6
+            Assertions.assertEquals(6, sap.length(7, 13));
             Assertions.assertEquals(4, sap.length(10, 13));
             Assertions.assertEquals(3, sap.length(11, 13));
             Assertions.assertEquals(4, sap.length(12, 13));
@@ -140,7 +142,7 @@ public class SAPFirstTest {
     @Test
     public void testDigrapth4() {
         String path = "digraph4.txt";
-        In in = new In(path);
+        In in = ResourceFiles.open(SAPFirstTest.class, path);
         Digraph G = new Digraph(in);
         SAPFirst sap = new SAPFirst(G);
 
@@ -166,5 +168,72 @@ public class SAPFirstTest {
             Assertions.assertEquals(5, sap.length(3, 0));
             Assertions.assertEquals(3, sap.length(4, 8));
         }
+    }
+
+    /**
+     * The {@code Iterable} overloads answer -1 when either side is empty, because there is no
+     * vertex to start from. {@code WordNet} always passes a non-empty synset set, so nothing else
+     * reaches that path.
+     */
+    @Test
+    public void testTheIterableOverloadsHandleEmptyAndNullSets() {
+        SAPFirst sap = new SAPFirst(new Digraph(ResourceFiles.open(SAPFirstTest.class, "digraph1.txt")));
+
+        Assertions.assertEquals(-1, sap.length(List.of(), List.of(1)));
+        Assertions.assertEquals(-1, sap.ancestor(List.of(), List.of(1)));
+        Assertions.assertEquals(-1, sap.length(List.of(3), List.of()));
+        Assertions.assertEquals(-1, sap.ancestor(List.of(3), List.of()));
+
+        // every cross pair here is reachable, so the set answer is the best of them: 3 and 9 both
+        // reach 5, at one and two steps
+        Assertions.assertEquals(3, sap.length(List.of(3, 9), List.of(11, 12)));
+        Assertions.assertEquals(5, sap.ancestor(List.of(3, 9), List.of(11, 12)));
+        Assertions.assertEquals(1, sap.length(List.of(3, 9), List.of(7, 8)));
+        Assertions.assertEquals(3, sap.ancestor(List.of(3, 9), List.of(7, 8)));
+
+        Assertions.assertThrows(IllegalArgumentException.class, () -> sap.length(null, List.of(1)));
+        Assertions.assertThrows(IllegalArgumentException.class, () -> sap.ancestor(List.of(1), null));
+    }
+
+    @Test
+    public void testRejectsInvalidArguments() {
+        Digraph digraph = new Digraph(ResourceFiles.open(SAPFirstTest.class, "digraph1.txt"));
+        SAPFirst sap = new SAPFirst(digraph);
+
+        Assertions.assertThrows(IllegalArgumentException.class, () -> new SAPFirst(null));
+        Assertions.assertThrows(IllegalArgumentException.class, () -> sap.length(-1, 0));
+        Assertions.assertThrows(IllegalArgumentException.class, () -> sap.ancestor(0, digraph.V()));
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> sap.length(Arrays.asList(1, null), List.of(2)));
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> sap.ancestor(List.of(1), List.of(digraph.V())));
+    }
+
+    @Test
+    public void testConstructorDefensivelyCopiesDigraph() {
+        Digraph digraph = new Digraph(3);
+        SAPFirst sap = new SAPFirst(digraph);
+
+        digraph.addEdge(0, 2);
+
+        Assertions.assertEquals(-1, sap.length(0, 2));
+        Assertions.assertEquals(-1, sap.ancestor(0, 2));
+    }
+
+    /**
+     * Vertex 6 of digraph1 is isolated, so any pairing that involves it has no common ancestor.
+     * Those pairings have to be skipped rather than counted: their length of -1 is smaller than
+     * every real length, so treating them as candidates would make one unreachable pairing decide
+     * the answer for the whole cross product. Both sides here reach vertex 0, two steps apart.
+     */
+    @Test
+    public void testAnUnreachablePairingDoesNotDecideTheAnswer() {
+        SAPFirst sap = new SAPFirst(new Digraph(ResourceFiles.open(SAPFirstTest.class, "digraph1.txt")));
+
+        Assertions.assertEquals(-1, sap.length(List.of(6), List.of(0)));
+        Assertions.assertEquals(2, sap.length(List.of(3, 9, 7, 1), List.of(11, 12, 2, 6)));
+        Assertions.assertEquals(0, sap.ancestor(List.of(3, 9, 7, 1), List.of(11, 12, 2, 6)));
     }
 }

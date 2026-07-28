@@ -1,27 +1,30 @@
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.StringTokenizer;
-import java.util.TreeMap;
+import java.util.*;
 
 /**
  * @author Lipatov Nikita
+ * <p>
+ * Complexity notation: {@code N} is the number of teams.
+ * The flow network has {@code V = O(N^2)} vertices and {@code E = O(N^2)} edges.
+ * As directed by the assignment analysis, max-flow is treated as {@code O(V * E^2) = O(N^6)}.
  */
 public class BaseballElimination {
 
-    private TreeMap<Integer, Team> intToTeams;
-    private TreeMap<String,  Team> teams;
-    private int [][]grid;
+    private final TreeMap<Integer, Team> intToTeams;
+    private final TreeMap<String, Team> teams;
+    private final int[][] grid;
 
-    // create a baseball division from given filename in format specified below
+    /**
+     * Required time complexity: not specified by the assignment.
+     * Actual time complexity: {@code O(N^2)}.
+     */
     public BaseballElimination(String filename) {
         int teamsCount = 0;
-        In teamsFile = new In(filename);
+        In teamsFile = ResourceFiles.open(BaseballElimination.class, filename);
         if (teamsFile.hasNextLine()) {
             teamsCount = Integer.parseInt(teamsFile.readLine());
         }
-        intToTeams = new TreeMap<Integer, Team>();
-        teams = new TreeMap<String, Team>();
+        intToTeams = new TreeMap<>();
+        teams = new TreeMap<>();
         grid = new int[teamsCount][teamsCount];
 
         // teams parsing
@@ -60,27 +63,55 @@ public class BaseballElimination {
         }
     }
 
-    // number of teams
+    static void main(String[] args) {
+        String filename = "teams4.txt";
+        if (args != null && args.length > 0) {
+            filename = args[0];
+        }
+        BaseballElimination division = new BaseballElimination(filename);
+        for (String team : division.teams()) {
+            if (division.isEliminated(team)) {
+                StdOut.print(team + " is eliminated by the subset R = { ");
+                for (String t : division.certificateOfElimination(team)) {
+                    StdOut.print(t + " ");
+                }
+                StdOut.println("}");
+            } else {
+                StdOut.println(team + " is not eliminated");
+            }
+        }
+    }
+
+    /**
+     * Required time complexity: not specified by the assignment.
+     * Actual time complexity: {@code O(1)}.
+     */
     public int numberOfTeams() {
         return teams.size();
     }
 
-    // all teams
+    /**
+     * Required time complexity: not specified by the assignment.
+     * Actual time complexity: {@code O(N log N)}.
+     */
     public Iterable<String> teams() {
-        List<Team> sortableTeams = new ArrayList(teams.size());
-        for (String key: teams.keySet()) {
+        List<Team> sortableTeams = new ArrayList<>(teams.size());
+        for (String key : teams.keySet()) {
             sortableTeams.add(teams.get(key));
         }
 
         Collections.sort(sortableTeams);
-        List<String> sortableTeamNames = new ArrayList<String>(teams.size());
+        List<String> sortableTeamNames = new ArrayList<>(teams.size());
         for (Team team : sortableTeams) {
             sortableTeamNames.add(team.name);
         }
         return sortableTeamNames;
     }
 
-    // number of wins for given team
+    /**
+     * Required time complexity: not specified by the assignment.
+     * Actual time complexity: {@code O(log N)}.
+     */
     public int wins(String team) {
         if (!teams.containsKey(team)) {
             throw new IllegalArgumentException("Such " + team + " team doesn't exist!");
@@ -88,7 +119,10 @@ public class BaseballElimination {
         return teams.get(team).wins;
     }
 
-    // number of losses for given team
+    /**
+     * Required time complexity: not specified by the assignment.
+     * Actual time complexity: {@code O(log N)}.
+     */
     public int losses(String team) {
         if (!teams.containsKey(team)) {
             throw new IllegalArgumentException("Such " + team + " team doesn't exist!");
@@ -97,7 +131,10 @@ public class BaseballElimination {
         return teams.get(team).losses;
     }
 
-    // number of remaining games for given team
+    /**
+     * Required time complexity: not specified by the assignment.
+     * Actual time complexity: {@code O(log N)}.
+     */
     public int remaining(String team) {
         if (!teams.containsKey(team)) {
             throw new IllegalArgumentException("Such " + team + " team doesn't exist!");
@@ -105,7 +142,10 @@ public class BaseballElimination {
         return teams.get(team).toPlay;
     }
 
-    // number of remaining games between team1 and team2
+    /**
+     * Required time complexity: not specified by the assignment.
+     * Actual time complexity: {@code O(log N)}.
+     */
     public int against(String teamName1, String teamName2) {
         if (!teams.containsKey(teamName1)) {
             throw new IllegalArgumentException("Such " + teamName1 + " team doesn't exist!");
@@ -120,13 +160,16 @@ public class BaseballElimination {
         return grid[teamPosition1][teamPosition2];
     }
 
-    // is given team eliminated?
+    /**
+     * Required time complexity: not specified; the assignment asks students to analyze it.
+     * Actual worst-case time complexity: {@code O(N^6)}.
+     */
     public boolean isEliminated(String team) {
         if (!teams.containsKey(team)) {
             throw new IllegalArgumentException("Such " + team + " team doesn't exist!");
         }
         Iterable<String> result = certificateOfElimination(team);
-        return (result != null) ? true : false;
+        return result != null;
     }
 
     private boolean isEliminated(FlowNetwork flowNetwork, int sourceVertex) {
@@ -143,14 +186,17 @@ public class BaseballElimination {
         return false;
     }
 
-    // subset R of teams that eliminates given team; null if not eliminated
+    /**
+     * Required time complexity: not specified; the assignment asks students to analyze it.
+     * Actual worst-case time complexity: {@code O(N^6)}.
+     */
     public Iterable<String> certificateOfElimination(String team) {
         if (!teams.containsKey(team)) {
             throw new IllegalArgumentException("Such " + team + " team doesn't exist!");
         }
         Team sourceTeam = teams.get(team);
 
-        List<String> teamNames = new ArrayList<String>();
+        List<String> teamNames = new ArrayList<>();
 
         // trivial elimination
         trivialElimination(teamNames, sourceTeam);
@@ -169,10 +215,9 @@ public class BaseballElimination {
     }
 
     /**
-     * Trivial elimination.
-     * If the maximum number of games team x can win is less than the number of wins of some other team i,
-     * then team x is trivially eliminated (as is Montreal in the example above).
-     * That is, if w[x] + r[x] < w[i], then team x is mathematically eliminated.
+     * Trivial elimination. If the maximum number of games team x can win is less than the number of wins of some other
+     * team i, then team x is trivially eliminated (as is Montreal in the example above). That is, if w[x] + r[x] <
+     * w[i], then team x is mathematically eliminated.
      */
     private void trivialElimination(List<String> teamNames, Team sourceTeam) {
         int maxPossibleResult = sourceTeam.wins + sourceTeam.toPlay;
@@ -187,13 +232,12 @@ public class BaseballElimination {
     }
 
     /**
-     * Nontrivial elimination.
-     * Otherwise, we create a flow network and solve a maxflow problem in it.
-     * In the network, feasible integral flows correspond to outcomes of the remaining schedule.
-     * There are vertices corresponding to teams (other than team x) and to remaining divisional games (not involving team x).
-     * Intuitively, each unit of flow in the network corresponds to a remaining game.
-     * As it flows through the network from s to t, it passes from a game vertex, say between teams i and j, then
-     * through one of the team vertices i or j, classifying this game as being won by that team.
+     * Nontrivial elimination. Otherwise, we create a flow network and solve a maxflow problem in it. In the network,
+     * feasible integral flows correspond to outcomes of the remaining schedule. There are vertices corresponding to
+     * teams (other than team x) and to remaining divisional games (not involving team x). Intuitively, each unit of
+     * flow in the network corresponds to a remaining game. As it flows through the network from s to t, it passes from
+     * a game vertex, say between teams i and j, then through one of the team vertices i or j, classifying this game as
+     * being won by that team.
      */
     private void nonTrivialElimination(List<String> teamNames, Team sourceTeam) {
         int countGamesVertices = (teams.size() * teams.size() - teams.size()) / 2;
@@ -240,7 +284,7 @@ public class BaseballElimination {
 
                 // We connect each game vertex i-j with the two opposing team vertices to ensure that one of the
                 // two teams earns a win. We do not need to restrict the amount of flow on such edges.
-                FlowEdge winEdge  = new FlowEdge(headVertex, countGamesVertices + row + 1, value);
+                FlowEdge winEdge = new FlowEdge(headVertex, countGamesVertices + row + 1, value);
                 FlowEdge lossEdge = new FlowEdge(headVertex, countGamesVertices + row + plusPrefix + 1, value);
                 flowNetwork.addEdge(winEdge);
                 flowNetwork.addEdge(lossEdge);
@@ -256,17 +300,17 @@ public class BaseballElimination {
         // vertex i to the sink vertex with capacity w[x] + r[x] - w[i].
         for (int teams = 0; teams < numberOfTeams(); teams++) {
             int teamN = countGamesVertices + teams + 1;
-            Team team = intToTeams.get(Integer.valueOf(teams));
+            Team team = intToTeams.get(teams);
 
             int valueToTarget = sourceTeam.wins + sourceTeam.toPlay - team.wins;
-            valueToTarget = (valueToTarget > 0) ? valueToTarget : 0;
+            valueToTarget = Math.max(valueToTarget, 0);
             FlowEdge edgeToTarget = new FlowEdge(teamN, targetVertex, valueToTarget);
             flowNetwork.addEdge(edgeToTarget);
         }
         return flowNetwork;
     }
 
-    private class Team implements Comparable<Team> {
+    private static class Team implements Comparable<Team> {
         private int id;
         private String name;
         private int wins;
@@ -274,40 +318,8 @@ public class BaseballElimination {
         private int toPlay;
 
         public int compareTo(Team team) {
-            if (this.id > team.id) {
-                return 1;
-            } else if (this.id == team.id) {
-                return 0;
-            } else {
-                return -1;
-            }
+            return Integer.compare(this.id, team.id);
         }
 
-    }
-
-    public static void main(String[] args)
-    {
-        String filename = "teams4.txt";
-        if (args != null && args.length > 0)
-        {
-            filename = args[0];
-        }
-        BaseballElimination division = new BaseballElimination(filename);
-        for (String team : division.teams())
-        {
-            if (division.isEliminated(team))
-            {
-                StdOut.print(team + " is eliminated by the subset R = { ");
-                for (String t : division.certificateOfElimination(team))
-                {
-                    StdOut.print(t + " ");
-                }
-                StdOut.println("}");
-            }
-            else
-            {
-                StdOut.println(team + " is not eliminated");
-            }
-        }
     }
 }

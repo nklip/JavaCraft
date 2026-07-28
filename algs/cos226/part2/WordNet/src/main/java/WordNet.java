@@ -1,20 +1,36 @@
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.HashSet;
-import java.util.HashMap;
 import java.util.StringTokenizer;
 
 /**
  * @author Lipatov Nikita
+ * <p>
+ * Complexity notation:
+ * {@code I} is the total input size,
+ * {@code N} is the number of distinct nouns,
+ * {@code V} is the number of synsets,
+ * {@code E} is the number of hypernym edges, and
+ * {@code L} is the total length of the noun arguments to a method.
  */
 public class WordNet {
     private Digraph digraph;
-    private SAP sap;
-    private final Map<Integer, String> idToSynset = new HashMap<Integer, String>();
-    private final Map<String, Set<Integer>> nouns = new HashMap<String, Set<Integer>>(); // The number of nouns in synsets.txt is 119,188.
+    private final SAP sap;
+    private final Map<Integer, String> idToSynset = new HashMap<>();
+    private final Map<String, Set<Integer>> nouns = new HashMap<>(); // The number of nouns in synsets.txt is 119,188.
+    private final Set<String> nounView = Collections.unmodifiableSet(nouns.keySet());
 
-    // constructor takes the name of the two input files
+    /**
+     * Required time complexity: {@code O(I log I)} or better.
+     * Actual time complexity: {@code O(I + V + E)} expected; the hash-table worst case is
+     * {@code O(I log N + V + E)}.
+     */
     public WordNet(String synsets, String hypernyms) {
+        if (synsets == null || hypernyms == null) {
+            throw new NullPointerException("Input file names must not be null");
+        }
         parseSynsets(synsets);
         parseHypernyms(hypernyms);
 
@@ -25,8 +41,8 @@ public class WordNet {
     }
 
     private void parseSynsets(String synsets) {
-        In synsetIn = new In(synsets);
-        String oneLine = null;
+        In synsetIn = ResourceFiles.open(WordNet.class, synsets);
+        String oneLine;
         while (synsetIn.hasNextLine()) {
             oneLine = synsetIn.readLine();
             StringTokenizer oneSynsetTokenizer = new StringTokenizer(oneLine, ",");
@@ -43,26 +59,20 @@ public class WordNet {
                     String synonym = synonymTokenizer.nextToken();
                     Set<Integer> ids = nouns.get(synonym);
                     if (null == ids) {
-                        ids = new HashSet<Integer>();
+                        ids = new HashSet<>();
                     }
                     ids.add(synsetId);
                     nouns.put(synonym, ids);
                 }
             }
-            /*
-            String description = null;
-            if (oneSynsetTokenizer.hasMoreTokens()) {
-                description = oneSynsetTokenizer.nextToken();
-            }
-            */
         }
     }
 
     private void parseHypernyms(String hypernyms) {
-        In hypernymIn = new In(hypernyms);
+        In hypernymIn = ResourceFiles.open(WordNet.class, hypernyms);
         digraph = new Digraph(idToSynset.size());
 
-        String oneLine = null;
+        String oneLine;
         while (hypernymIn.hasNextLine()) {
             oneLine = hypernymIn.readLine();
             StringTokenizer oneHypernymTokenizer = new StringTokenizer(oneLine, ",");
@@ -102,24 +112,34 @@ public class WordNet {
         }
     }
 
-    // returns all WordNet nouns
+    /**
+     * Required time complexity: not specified by the assignment.
+     * Actual time complexity: {@code O(1)} to return the precomputed view.
+     */
     public Iterable<String> nouns() {
-        return nouns.keySet();
+        return nounView;
     }
 
-    // is the word a WordNet noun?
+    /**
+     * Required time complexity: {@code O(log N)} or better.
+     * Actual time complexity: {@code O(L)} expected for hashing; the hash-table worst case is
+     * {@code O(L + log N)}.
+     */
     public boolean isNoun(String word) {
         if (word == null) {
-            throw new NullPointerException();
+            throw new NullPointerException("Word must not be null");
         }
-        if (nouns.containsKey(word)) {
-            return true;
-        }
-        return false;
+        return nouns.containsKey(word);
     }
 
-    // distance between nounA and nounB (defined below)
+    /**
+     * Required time complexity: {@code O(V + E)} in the worst case.
+     * Actual time complexity: {@code O(L + V + E)} expected.
+     */
     public int distance(String nounA, String nounB) {
+        if (nounA == null || nounB == null) {
+            throw new NullPointerException("Nouns must not be null");
+        }
         if (!isNoun(nounA) || !isNoun(nounB)) {
             throw new IllegalArgumentException("Both words must be nouns!");
         }
@@ -128,9 +148,14 @@ public class WordNet {
         return sap.length(setA, setB);
     }
 
-    // a synset (second field of synsets.txt) that is the common ancestor of nounA and nounB
-    // in a shortest ancestral path (defined below)
+    /**
+     * Required time complexity: {@code O(V + E)} in the worst case.
+     * Actual time complexity: {@code O(L + V + E)} expected.
+     */
     public String sap(String nounA, String nounB) {
+        if (nounA == null || nounB == null) {
+            throw new NullPointerException("Nouns must not be null");
+        }
         if (!isNoun(nounA) || !isNoun(nounB)) {
             throw new IllegalArgumentException("Both words must be nouns!");
         }
@@ -140,8 +165,12 @@ public class WordNet {
         return idToSynset.get(ancestor);
     }
 
-    // do unit testing of this class
+    /**
+     * Required time complexity: not specified; this is the assignment test client.
+     * Actual time complexity: {@code O(I + V + E)} expected.
+     */
     public static void main(String[] args) {
-
+        WordNet wordNet = new WordNet(args[0], args[1]);
+        StdOut.printf("nouns = %d%n", wordNet.nouns.size());
     }
 }

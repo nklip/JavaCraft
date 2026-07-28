@@ -1,8 +1,8 @@
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Deque;
 import java.util.List;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.TreeSet;
 
 /**
  * Shortest ancestral path (SAP)
@@ -10,340 +10,220 @@ import java.util.TreeSet;
  * @author Lipatov Nikita
  */
 public class SAPFirst {
-    private Digraph digraph;
-    private SAPCacheManager manager;
+    private final Digraph digraph;
+    private int cachedV;
+    private int cachedW;
+    private SAPCache cachedQuery;
 
     // constructor takes a digraph (not necessarily a DAG) (directed acyclic graph)
-    public SAPFirst(Digraph G) {
-        digraph = G;
-        manager = new SAPCacheManager();
+    public SAPFirst(Digraph g) {
+        if (g == null) {
+            throw new IllegalArgumentException("Digraph must not be null");
+        }
+        digraph = new Digraph(g);
     }
 
     // length of shortest ancestral path between v and w; -1 if no such path
     public int length(int v, int w) {
-        if (manager.isExist(v, w)) {
-            return manager.get(v, w).length;
-        }
-
-        int ancestor = ancestor(v, w);
-        return length(ancestor, v, w);
+        return shortestAncestralPath(v, w).length;
     }
 
-    private int length(int ancestor, int v, int w) {
-        if (ancestor == -1) {
-            return ancestor;
-        } else {
-            int leftLength  = bypassLength(0, ancestor, v);
-            int rightLength = bypassLength(0, ancestor, w);
-
-            manager.add(v, w, ancestor, leftLength + rightLength);
-
-            return leftLength + rightLength;
-        }
-    }
-
-    private int bypassLength(Integer length, int ancestor, int temp) {
-        if (ancestor == temp) {
-            return length;
-        }
-        Iterator<Integer> tempI = digraph.adj(temp).iterator();
-        List<Integer> currentRoots = new ArrayList<Integer>();
-        List<Integer> futureRoots  = new ArrayList<Integer>();
-        Integer currentTemp = null;
-        while (tempI.hasNext()) {
-            currentTemp = tempI.next();
-            if (ancestor == temp) {
-                return length + 1;
-            }
-            currentRoots.add(currentTemp);
-        }
-        int result = -1;
-        while(true) {
-            for (Integer rootTemp : currentRoots) {
-                result = length(length + 1, ancestor, futureRoots, rootTemp);
-                if (result != -1) {
-                    return result;
-                }
-            }
-            if (futureRoots.size() == 0) {
-                break;
-            } else {
-                currentRoots.clear();
-                currentRoots.addAll(futureRoots);
-            }
-            length++;
-        }
-        return -1;
-    }
-
-    private int length(int length, int ancestor, List<Integer> roots, Integer temp) {
-        roots.remove(temp);
-        if (ancestor == temp) {
-            return length;
-        }
-        Iterator<Integer> vI = digraph.adj(temp).iterator();
-        Integer cycleTemp = null;
-        while (vI.hasNext()) {
-            cycleTemp = vI.next();
-            roots.add(cycleTemp);
-        }
-        return -1;
-    }
-
-    // a common ancestor of v and w that participates in a shortest ancestral path; -1 if no such path
+    // a common ancestor of v and w that participates in the shortest ancestral path; -1 if no such path
     public int ancestor(int v, int w) {
-        if (manager.isExist(v, w)) {
-            return manager.get(v, w).ancestor;
-        }
-        if (v == w) {
-            manager.add(v, w, v, 0);
-
-            return v;
-        }
-        Iterator<Integer> vI = digraph.adj(v).iterator();
-        Iterator<Integer> wI = digraph.adj(w).iterator();
-        List<Integer> ancestors = new ArrayList<Integer>(digraph.E() + digraph.V());
-
-        ancestors.add(v);
-        ancestors.add(w);
-
-        List<Integer> ancestorsV = new ArrayList<Integer>();
-        List<Integer> ancestorsW = new ArrayList<Integer>();
-
-        Integer temp = null;
-        while (vI.hasNext()) {
-            temp = vI.next();
-            if (!ancestors.contains(temp)) {
-                ancestors.add(temp);
-            } else {
-                manager.add(v, w, temp.intValue(), length(temp.intValue(), v, w));
-
-                return temp.intValue();
-            }
-            ancestorsV.add(temp);
-        }
-
-        while (wI.hasNext()) {
-            temp = wI.next();
-            if (!ancestors.contains(temp)) {
-                ancestors.add(temp);
-            } else {
-                manager.add(v, w, temp.intValue(), length(temp.intValue(), v, w));
-
-                return temp.intValue();
-            }
-            ancestorsW.add(temp);
-        }
-
-        boolean isLeftActive  = (ancestorsV.size() != 0) ? true : false;
-        boolean isRightActive = (ancestorsW.size() != 0) ? true : false;
-        int leftResult  = -1;
-        int rightResult = -1;
-        while (true) {
-            if (isLeftActive) {
-                leftResult = ancestor(ancestors, ancestorsV);
-                if (ancestorsV.size() == 0) {
-                    isLeftActive = false;
-                }
-            }
-            if (isRightActive) {
-                rightResult = ancestor(ancestors, ancestorsW);
-                if (ancestorsW.size() == 0) {
-                    isRightActive = false;
-                }
-            }
-            if (leftResult != -1 || rightResult != -1) {
-                if (leftResult != -1 && rightResult != -1) {
-                    int leftLeftLength   = bypassLength(0, leftResult, v);
-                    int leftRightLength  = bypassLength(0, leftResult, w);
-                    int rightLeftLength  = bypassLength(0, rightResult, v);
-                    int rightRightLength = bypassLength(0, rightResult, w);
-                    if (leftLeftLength + leftRightLength > rightLeftLength + rightRightLength) {
-                        manager.add(v, w, rightResult, rightLeftLength + rightRightLength);
-
-                        return rightResult;
-                    } else if (leftLeftLength + leftRightLength < rightLeftLength + rightRightLength) {
-                        manager.add(v, w, leftResult, leftLeftLength + leftRightLength);
-
-                        return leftResult;
-                    } else {
-                        if (leftResult < rightResult) {
-                            return leftResult;
-                        } else {
-                            return rightResult;
-                        }
-                    }
-                } else if (leftResult != -1) {
-                    int leftLeftLength   = bypassLength(0, leftResult, v);
-                    int leftRightLength  = bypassLength(0, leftResult, w);
-                    manager.add(v, w, leftResult, leftLeftLength + leftRightLength);
-
-                    return leftResult;
-                } else if (rightResult != -1) {
-                    int rightLeftLength  = bypassLength(0, rightResult, v);
-                    int rightRightLength = bypassLength(0, rightResult, w);
-                    manager.add(v, w, rightResult, rightLeftLength + rightRightLength);
-
-                    return rightResult;
-                } else {
-                    manager.add(v, w, -1, -1);
-
-                    return -1;
-                }
-            }
-            if (!isLeftActive && !isRightActive) {
-                break;
-            }
-        }
-        manager.add(v, w, -1, -1);
-
-        return -1;
+        return shortestAncestralPath(v, w).ancestor;
     }
 
-    private int ancestor(List<Integer> ancestors, List<Integer> certainSideAncestors) {
-        List<Integer> newCertainSideAncestors = new ArrayList<Integer>();
-        for (Integer root : certainSideAncestors) {
-            Iterator<Integer> digraphI = digraph.adj(root.intValue()).iterator();
-            while (digraphI.hasNext()) {
-                Integer temp = digraphI.next();
-                if (ancestors.contains(temp)) {
-                    return temp.intValue();
+    /**
+     * @return the smallest total any still-undiscovered common ancestor could have
+     *
+     * <p>A vertex that has not been found yet is missing from at least one side, so it is at least
+     * one step beyond that side's frontier - and could be sitting on the other side's start
+     * vertex, contributing nothing there. That makes the bound one more than the shallower
+     * <em>active</em> frontier, not the sum of the two: a vertex reached cheaply from one side may
+     * still be reached late from the other, and stopping on the sum would miss it.
+     */
+    private static int lowerBoundOnWhatIsLeft(
+            Deque<Integer> frontierV, Deque<Integer> frontierW, int levelV, int levelW) {
+        if (frontierV.isEmpty()) {
+            return levelW + 1;
+        }
+        if (frontierW.isEmpty()) {
+            return levelV + 1;
+        }
+        return Math.min(levelV, levelW) + 1;
+    }
+
+    /**
+     * Searches from both ends at once, one level at a time, and stops as soon as no unexplored
+     * vertex could beat what has already been found.
+     *
+     * <p>This is what makes the class worth keeping alongside {@code SAP}, which runs two complete
+     * breadth-first searches over the whole digraph for every query. Here each side only grows
+     * until nothing undiscovered could even match the best total found so far. The search runs one
+     * level past the point where it could still improve, so that every vertex achieving the best
+     * total has been seen and the tie between them can be settled the same way {@code SAP} settles
+     * it. On a large hierarchy most queries stop after a few levels.
+     *
+     * <p>Stopping at the <em>first</em> vertex reached from both sides would be wrong, which is
+     * the trap the earlier version fell into: the first meeting is not necessarily the cheapest
+     * one, so the search has to keep going until the bound above is reached. Each side also tracks
+     * its own visited vertices - sharing one set makes a vertex reached twice from the same side
+     * look like a meeting point, and leaves nothing to stop a walk going round a cycle forever.
+     */
+    private SAPCache shortestAncestralPath(int v, int w) {
+        validateVertex(v);
+        validateVertex(w);
+        if (cachedQuery != null
+                && ((cachedV == v && cachedW == w) || (cachedV == w && cachedW == v))) {
+            return cachedQuery;
+        }
+
+        int[] fromV = new int[digraph.V()];
+        int[] fromW = new int[digraph.V()];
+        Arrays.fill(fromV, -1);
+        Arrays.fill(fromW, -1);
+
+        Deque<Integer> frontierV = new ArrayDeque<>();
+        Deque<Integer> frontierW = new ArrayDeque<>();
+        fromV[v] = 0;
+        frontierV.add(v);
+        fromW[w] = 0;
+        frontierW.add(w);
+
+        int shortest = Integer.MAX_VALUE;
+        int ancestor = -1;
+        if (v == w) {
+            shortest = 0;
+            ancestor = v;
+        }
+
+        int levelV = 0;
+        int levelW = 0;
+        while (!frontierV.isEmpty() || !frontierW.isEmpty()) {
+            if (lowerBoundOnWhatIsLeft(frontierV, frontierW, levelV, levelW) > shortest) {
+                break; // nothing undiscovered can match, let alone beat, what is already found
+            }
+
+            boolean expandV = !frontierV.isEmpty() && (frontierW.isEmpty() || levelV <= levelW);
+            int[] near = expandV ? fromV : fromW;
+            int[] far = expandV ? fromW : fromV;
+            Deque<Integer> frontier = expandV ? frontierV : frontierW;
+            int level = expandV ? levelV : levelW;
+
+            Deque<Integer> next = new ArrayDeque<>();
+            for (int vertex : frontier) {
+                for (int adjacent : digraph.adj(vertex)) {
+                    if (near[adjacent] >= 0) {
+                        continue; // already reached from this side
+                    }
+                    near[adjacent] = level + 1;
+                    next.add(adjacent);
+                    if (far[adjacent] < 0) {
+                        continue;
+                    }
+                    int total = near[adjacent] + far[adjacent];
+                    // ties are broken on the lowest vertex, which is what SAP settles on when it
+                    // scans every vertex in order, so the two agree on the exact ancestor
+                    if (total < shortest || (total == shortest && adjacent < ancestor)) {
+                        shortest = total;
+                        ancestor = adjacent;
+                    }
                 }
-                ancestors.add(temp);
-                newCertainSideAncestors.add(temp);
+            }
+
+            if (expandV) {
+                frontierV = next;
+                levelV++;
+            } else {
+                frontierW = next;
+                levelW++;
             }
         }
-        certainSideAncestors.clear();
-        certainSideAncestors.addAll(newCertainSideAncestors);
-        return -1;
+
+        cachedV = v;
+        cachedW = w;
+        cachedQuery = new SAPCache(ancestor, ancestor == -1 ? -1 : shortest);
+        return cachedQuery;
     }
 
     // length of shortest ancestral path between any vertex in v and any vertex in w; -1 if no such path
     public int length(Iterable<Integer> v, Iterable<Integer> w) {
-        Iterator<Integer> vI = v.iterator();
-        Iterator<Integer> wI = w.iterator();
-        List<Integer> vL = new ArrayList<Integer>();
-        List<Integer> wL = new ArrayList<Integer>();
-        Integer temp = null;
-        while (vI.hasNext()) {
-            temp = vI.next();
-            vL.add(temp);
-        }
-
-        while (wI.hasNext()) {
-            temp = wI.next();
-            wL.add(temp);
-        }
-
-        TreeSet<Integer> lengths = new TreeSet<Integer>();
-        for (Integer vLI : vL) {
-            for (Integer wLI : wL) {
-                lengths.add(length(vLI, wLI));
-            }
-        }
-        if (lengths.size() > 0) {
-            return lengths.first();
-        }
-        return -1;
+        return shortestAncestralPath(v, w)[0];
     }
 
-    // a common ancestor that participates in shortest ancestral path; -1 if no such path
+    // a common ancestor that participates in the shortest ancestral path; -1 if no such path
     public int ancestor(Iterable<Integer> v, Iterable<Integer> w) {
-        Iterator<Integer> vI = v.iterator();
-        Iterator<Integer> wI = w.iterator();
-        List<Integer> vL = new ArrayList<Integer>();
-        List<Integer> wL = new ArrayList<Integer>();
-        Integer temp = null;
-        while (vI.hasNext()) {
-            temp = vI.next();
-            vL.add(temp);
-        }
-
-        while (wI.hasNext()) {
-            temp = wI.next();
-            wL.add(temp);
-        }
-
-        TreeSet<Integer> ancestors = new TreeSet<Integer>();
-        for (Integer vLI : vL) {
-            for (Integer wLI : wL) {
-                ancestors.add(ancestor(vLI, wLI));
-            }
-        }
-        if (ancestors.size() > 0) {
-            return ancestors.first();
-        }
-        return -1;
+        return shortestAncestralPath(v, w)[1];
     }
 
-    private static class SAPCache {
-        private int v;
-        private int w;
-        private int ancestor;
-        private int length;
+    /**
+     * Runs one breadth-first search from each set of source vertices and finds their shortest
+     * common ancestor.
+     *
+     * @return {@code {length, ancestor}}, both -1 when the source sets have no common ancestor
+     */
+    private int[] shortestAncestralPath(Iterable<Integer> v, Iterable<Integer> w) {
+        List<Integer> verticesV = validatedVertices(v);
+        List<Integer> verticesW = validatedVertices(w);
+        BreadthFirstDirectedPaths fromV = new BreadthFirstDirectedPaths(digraph, verticesV);
+        BreadthFirstDirectedPaths fromW = new BreadthFirstDirectedPaths(digraph, verticesW);
+        int shortestLength = -1;
+        int shortestAncestor = -1;
+        for (int vertex = 0; vertex < digraph.V(); vertex++) {
+            if (!fromV.hasPathTo(vertex) || !fromW.hasPathTo(vertex)) {
+                continue;
+            }
 
-        @Override
-        public int hashCode() {
-            int result = v;
-            result = 31 * result + w;
-            return result;
+            int length = fromV.distTo(vertex) + fromW.distTo(vertex);
+            if (shortestLength < 0 || length < shortestLength) {
+                shortestLength = length;
+                shortestAncestor = vertex;
+            }
+        }
+        return new int[]{shortestLength, shortestAncestor};
+    }
+
+    private List<Integer> validatedVertices(Iterable<Integer> vertices) {
+        if (vertices == null) {
+            throw new IllegalArgumentException("Vertices must not be null");
         }
 
-        public boolean equals(Object sapCache) {
-            if (sapCache == null) {
-                return false;
+        List<Integer> validated = new ArrayList<>();
+        for (Integer vertex : vertices) {
+            if (vertex == null) {
+                throw new IllegalArgumentException("Vertex must not be null");
             }
-            if (sapCache instanceof SAPCache) {
-                SAPCache that = (SAPCache) sapCache;
-                if (this.v == that.v && this.w == that.w) {
-                    return true;
-                }
-            }
-            return false;
+            validateVertex(vertex);
+            validated.add(vertex);
+        }
+        return validated;
+    }
+
+    private void validateVertex(int vertex) {
+        if (vertex < 0 || vertex >= digraph.V()) {
+            throw new IllegalArgumentException("Vertex is outside the prescribed range: " + vertex);
         }
     }
 
-    private static class SAPCacheManager {
-        private final HashMap<SAPCache, SAPCache> caches = new HashMap<SAPCache, SAPCache>();
+    private static final class SAPCache {
+        private final int ancestor;
+        private final int length;
 
-        public void clear() {
-            caches.clear();
-        }
-
-        public void add(int v, int w, int ancestor, int length) {
-            SAPCache sapCache = new SAPCache();
-            sapCache.v = v;
-            sapCache.w = w;
-            sapCache.ancestor = ancestor;
-            sapCache.length = length;
-
-            caches.put(sapCache, sapCache);
-        }
-
-        public boolean isExist(int v, int w) {
-            SAPCache sapCache = new SAPCache();
-            sapCache.v = v;
-            sapCache.w = w;
-            return caches.containsKey(sapCache);
-        }
-
-        public SAPCache get(int v, int w) {
-            SAPCache sapCache = new SAPCache();
-            sapCache.v = v;
-            sapCache.w = w;
-            return caches.get(sapCache);
+        private SAPCache(int ancestor, int length) {
+            this.ancestor = ancestor;
+            this.length = length;
         }
     }
 
     // do unit testing of this class
-    public static void main(String[] args) {
+    static void main(String[] args) {
         String path = "digraph1.txt";
         if (args != null && args.length > 0) {
             path = args[0];
         }
-        In in = new In(path);
+        In in = ResourceFiles.open(SAPFirst.class, path);
         Digraph G = new Digraph(in);
-        SAP sap = new SAP(G);
+        SAPFirst sap = new SAPFirst(G);
         while (!StdIn.isEmpty()) {
             int v = StdIn.readInt();
             int w = StdIn.readInt();

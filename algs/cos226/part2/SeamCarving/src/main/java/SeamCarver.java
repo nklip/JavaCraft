@@ -2,6 +2,8 @@ import java.awt.Color;
 
 /**
  * @author Lipatov Nikita
+ * <p>
+ * Complexity notation: {@code W} is the current picture width and {@code H} is its height.
  */
 public class SeamCarver {
 
@@ -12,42 +14,68 @@ public class SeamCarver {
     private double [][]distTo;
     private int [][]edgeTo;
 
-    // create a seam carver object based on the given picture
+    /**
+     * Required time complexity: {@code O(W * H)} in the worst case.
+     * Actual time complexity: {@code O(W * H)}.
+     */
     public SeamCarver(Picture picture) {
+        if (picture == null) {
+            throw new IllegalArgumentException("picture must not be null");
+        }
         this.picture = picture;
 
-        energy = new double[height()][width()];
+        int pictureHeight = picture.height();
+        int pictureWidth = picture.width();
+        energy = new double[pictureHeight][pictureWidth];
 
         // 2d energy array using the energy()
-        for (int row = 0; row < height(); row++) { // rows
-            for (int col = 0; col < width(); col++) { // columns
-                energy[row][col] = energy(col, row);
+        for (int row = 0; row < pictureHeight; row++) { // rows
+            for (int col = 0; col < pictureWidth; col++) { // columns
+                energy[row][col] = calculateEnergy(col, row, pictureWidth, pictureHeight);
             }
         }
     }
 
-    // current picture
+    /**
+     * Required time complexity: {@code O(W * H)} or better in the worst case.
+     * Actual time complexity: {@code O(1)}.
+     */
     public Picture picture() {
         return picture;
     }
 
-    // width of current picture
+    /**
+     * Required time complexity: {@code O(1)} in the worst case.
+     * Actual time complexity: {@code O(1)}.
+     */
     public int width() {
         return picture.width();
     }
 
-    // height of current picture
+    /**
+     * Required time complexity: {@code O(1)} in the worst case.
+     * Actual time complexity: {@code O(1)}.
+     */
     public int height() {
         return picture.height();
     }
 
-    // energy of pixel at column x and row y
+    /**
+     * Required time complexity: {@code O(1)} in the worst case.
+     * Actual time complexity: {@code O(1)}.
+     */
     public double energy(int col, int row) {
-        if (col < 0 || col > width() - 1 || row < 0 || row > height() - 1) {
+        int pictureWidth = width();
+        int pictureHeight = height();
+        if (col < 0 || col >= pictureWidth || row < 0 || row >= pictureHeight) {
             throw new IndexOutOfBoundsException();
         }
 
-        if (col + 1 >= width() || col <= 0 || row + 1 >= height() || row <= 0) {
+        return calculateEnergy(col, row, pictureWidth, pictureHeight);
+    }
+
+    private double calculateEnergy(int col, int row, int pictureWidth, int pictureHeight) {
+        if (col + 1 >= pictureWidth || col == 0 || row + 1 >= pictureHeight || row == 0) {
             return BORDER_ENERGY;
         }
 
@@ -73,9 +101,15 @@ public class SeamCarver {
              + Math.pow(Math.abs(colorDown.getGreen() - colorUp.getGreen()), 2.0);
     }
 
-    // sequence of indices for vertical seam
+    /**
+     * Required time complexity: {@code O(W * H)} in the worst case.
+     * Actual time complexity: {@code O(W * H)}.
+     */
     public int[] findVerticalSeam() {
         int []seam = new int[height()];
+        if (height() == 1 || width() == 1) {
+            return seam;
+        }
 
         // distTo and edgeTo should calculate each time
         distTo = new double[height()][width()];
@@ -101,24 +135,21 @@ public class SeamCarver {
             }
         }
 
-        // find best cell
-        int bestX = width() - 1;
-        double best = distTo[height() - 2][bestX];
-        for (int col = 0; col < width(); col++) {
-            if (distTo[height() - 2][col] < best) {
-                best = distTo[height() - 2][col];
+        // find the best cell in the final row
+        int bestX = 0;
+        double best = distTo[height() - 1][bestX];
+        for (int col = 1; col < width(); col++) {
+            if (distTo[height() - 1][col] < best) {
+                best = distTo[height() - 1][col];
                 bestX = col;
             }
         }
 
-        // build seam
-        seam[height() - 1] = bestX - 1;
-        seam[height() - 2] = bestX;
-        int gap = edgeTo[height() - 2][bestX];
-        for (int row = height() - 3; row >= 0; row--) {
-            bestX = bestX + gap;
-            seam[row] = bestX;
-            gap = edgeTo[row][bestX];
+        // build seam by following predecessors
+        seam[height() - 1] = bestX;
+        for (int row = height() - 1; row > 0; row--) {
+            bestX += edgeTo[row][bestX];
+            seam[row - 1] = bestX;
         }
 
         return seam;
@@ -155,9 +186,15 @@ public class SeamCarver {
         }
     }
 
-    // sequence of indices for horizontal seam
+    /**
+     * Required time complexity: {@code O(W * H)} in the worst case.
+     * Actual time complexity: {@code O(W * H)}.
+     */
     public int[] findHorizontalSeam() {
         int []seam = new int[width()];
+        if (width() == 1 || height() == 1) {
+            return seam;
+        }
 
         // distTo and edgeTo should calculate each time
         distTo = new double[height()][width()];
@@ -183,24 +220,21 @@ public class SeamCarver {
             }
         }
 
-        // find best cell
-        int bestY = width() - 1;
-        double best = distTo[0][bestY];
-        for (int row = 0; row < height(); row++) { // rows
-            if (distTo[row][width() - 2] < best) {
-                best = distTo[row][width() - 2];
+        // find the best cell in the final column
+        int bestY = 0;
+        double best = distTo[bestY][width() - 1];
+        for (int row = 1; row < height(); row++) { // rows
+            if (distTo[row][width() - 1] < best) {
+                best = distTo[row][width() - 1];
                 bestY = row;
             }
         }
 
-        // build seam
-        seam[width() - 1] = bestY - 1;
-        seam[width() - 2] = bestY;
-        int gap = edgeTo[bestY][width() - 2];
-        for (int col = width() - 3; col >= 0; col--) {
-            bestY = bestY + gap;
-            seam[col] = bestY;
-            gap = edgeTo[bestY][col];
+        // build seam by following predecessors
+        seam[width() - 1] = bestY;
+        for (int col = width() - 1; col > 0; col--) {
+            bestY += edgeTo[bestY][col];
+            seam[col - 1] = bestY;
         }
 
         return seam;
@@ -237,30 +271,38 @@ public class SeamCarver {
         }
     }
 
-    // remove vertical seam from current picture
+    /**
+     * Required time complexity: {@code O(W * H)} in the worst case.
+     * Actual time complexity: {@code O(W * H)}.
+     */
     public void removeVerticalSeam(int[] seam) {
+        if (seam == null) {
+            throw new NullPointerException("seam must not be null");
+        }
+        if (height() <= 1) {
+            throw new IllegalArgumentException();
+        }
         if (width() <= 1) {
             throw new IllegalArgumentException();
         }
-
         if (seam.length != height()) {
             throw new IllegalArgumentException();
         }
 
         Picture result = new Picture(width() - 1, height());
         for (int row = 0; row < height(); row++) {
-            int prev = seam[row];
+            int removedColumn = seam[row];
 
-            if (seam[row] < 0 || seam[row] >= width()) {
-                throw new IndexOutOfBoundsException();
+            if (removedColumn < 0 || removedColumn >= width()) {
+                throw new IllegalArgumentException();
             }
 
-            if (seam[row] < prev - 1 || seam[row] > prev + 1) {
+            if (row > 0 && Math.abs(removedColumn - seam[row - 1]) > 1) {
                 throw new IllegalArgumentException();
             }
 
             for (int col = 0; col < width() - 1; col++) {
-                if (col < prev) {
+                if (col < removedColumn) {
                     result.set(col, row, picture.get(col, row));
                 } else {
                     result.set(col, row, picture.get(col + 1, row));
@@ -280,30 +322,38 @@ public class SeamCarver {
         }
     }
 
-    // remove horizontal seam from current picture
+    /**
+     * Required time complexity: {@code O(W * H)} in the worst case.
+     * Actual time complexity: {@code O(W * H)}.
+     */
     public void removeHorizontalSeam(int[] seam) {
+        if (seam == null) {
+            throw new NullPointerException("seam must not be null");
+        }
         if (height() <= 1) {
             throw new IllegalArgumentException();
         }
-
+        if (width() <= 1) {
+            throw new IllegalArgumentException();
+        }
         if (seam.length != width()) {
             throw new IllegalArgumentException();
         }
 
         Picture result = new Picture(width(), height() - 1);
         for (int col = 0; col < width(); col++) {
-            int prev = seam[col];
+            int removedRow = seam[col];
 
-            if (seam[col] < 0 || seam[col] >= height()) {
-                throw new IndexOutOfBoundsException();
+            if (removedRow < 0 || removedRow >= height()) {
+                throw new IllegalArgumentException();
             }
 
-            if (seam[col] < prev - 1 || seam[col] > prev + 1) {
+            if (col > 0 && Math.abs(removedRow - seam[col - 1]) > 1) {
                 throw new IllegalArgumentException();
             }
 
             for (int row = 0; row < height() - 1; row++) {
-                if (row < prev) {
+                if (row < removedRow) {
                     result.set(col, row, picture.get(col, row));
                 } else {
                     result.set(col, row, picture.get(col, row + 1));

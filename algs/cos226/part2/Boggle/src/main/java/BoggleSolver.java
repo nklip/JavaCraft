@@ -3,24 +3,40 @@ import java.util.TreeSet;
 
 /**
  * @author Lipatov Nikita
+ * <p>
+ * Complexity notation:
+ * {@code C} is the total number of dictionary characters,
+ * {@code L} is a word length,
+ * {@code B} is the number of board cells,
+ * {@code P} is the number of simple board paths explored, and
+ * {@code W} is the number of words found. {@code P} is exponential in
+ * {@code B} in the worst case.
  */
-public class BoggleSolver
-{
-    private TST<Integer> tst;
+@SuppressWarnings({"RedundantSuppression", "ExplicitToImplicitClassMigration"})
+public class BoggleSolver {
+    private final TST<Integer> tst;
 
-    // Initializes the data structure using the given array of strings as the dictionary.
-    // (You can assume each word in the dictionary contains only the uppercase letters A through Z.)
+    /**
+     * Required time complexity: not specified; the throughput test constructs one solver and
+     * reuses it.
+     * Actual time complexity: {@code O(C)} for the fixed 26-letter alphabet.
+     */
     public BoggleSolver(String[] dictionary) {
-        tst = new TST<Integer>();
+        tst = new TST<>();
         for (int i = 0; i < dictionary.length; i++) {
             tst.put(dictionary[i], i);
         }
     }
 
-    // Returns the set of all valid words in the given Boggle board, as an Iterable.
+    /**
+     * Required time complexity: no asymptotic bound is specified; for full credit the assignment
+     * requires thousands of random Hasbro boards per second.
+     * Actual worst-case time complexity: {@code O(B^2 + P * (C + B + log W))}, because each
+     * {@code TST.keysWithPrefix()} call may enumerate the matching dictionary subtree.
+     */
     public Iterable<String> getAllValidWords(BoggleBoard board) {
 
-        Set<String> words = new TreeSet<String>();
+        Set<String> words = new TreeSet<>();
         for (int row = 0; row < board.rows(); row++) {
             for (int col = 0; col < board.cols(); col++) {
                 boolean[][] visited = new boolean[board.rows()][board.cols()];
@@ -45,7 +61,7 @@ public class BoggleSolver
 
         Iterable<String> prefixes = tst.keysWithPrefix(prefix);
         boolean isPrefixExist = false;
-        for (String tempPrefix : prefixes) {
+        for (String _ : prefixes) {
             isPrefixExist = true;
             break;
         }
@@ -84,17 +100,20 @@ public class BoggleSolver
         visited[row][col] = false;
     }
 
-    // Returns the score of the given word if it is in the dictionary, zero otherwise.
-    // (You can assume the word contains only the uppercase letters A through Z.)
-    /*
-        word length  	  points
-        0–2	              0
-        3–4	              1
-        5	              2
-        6	              3
-        7	              5
-        8+	              11
-    */
+    /**
+     * Required time complexity: not specified by the assignment.
+     * Actual time complexity: {@code O(L)} for the fixed 26-letter alphabet.
+     *
+     * <pre>
+     * word length    points
+     * 0-2            0
+     * 3-4            1
+     * 5              2
+     * 6              3
+     * 7              5
+     * 8+             11
+     * </pre>
+     */
     public int scoreOf(String word) {
         if (word == null) {
             throw new IllegalArgumentException("Word is null!");
@@ -131,10 +150,8 @@ public class BoggleSolver
      Score = 33                                                ...
                                                                TRIES
                                                                Score = 84
-     * @param args
      */
-    public static void main(String[] args)
-    {
+    static void main(String[] args) {
         String dicInputFile = "dictionary-algs4.txt";
         //String gameInputFile = "board4x4.txt";
         String gameInputFile = "board-q.txt";
@@ -144,7 +161,7 @@ public class BoggleSolver
             gameInputFile = args[1];
         }
 
-        In in = new In(dicInputFile);
+        In in = ResourceFiles.open(BoggleSolver.class, dicInputFile);
         String []dictionary = in.readAllStrings();
 
         BoggleSolver solver = new BoggleSolver(dictionary);
@@ -158,4 +175,3 @@ public class BoggleSolver
         StdOut.println("Score = " + score);
     }
 }
-

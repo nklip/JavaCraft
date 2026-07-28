@@ -2,15 +2,15 @@
  *  Compilation:  javac BoggleBoard.java
  *  Execution:    java  BoggleBoard
  *  Dependencies: StdRandom.java In.java StdOut.java
- *
+ * <p>
  *  A data type for Boggle boards.
  *
  *************************************************************************/
-
+@SuppressWarnings("unused")
 public class BoggleBoard {
     private final int M;        // number of rows
     private final int N;        // number of columns
-    private char[][] board;     // the M-by-N array of characters
+    private final char[][] board;     // the M-by-N array of characters
 
     // the 16 Boggle dice (1992 version)
     private static final String[] boggle1992 = {
@@ -79,7 +79,7 @@ public class BoggleBoard {
      * @param filename the name of the file containing the Boggle board
      */
     public BoggleBoard(String filename) {
-        In in = new In(filename);
+        In in = ResourceFiles.open(BoggleBoard.class, filename);
         M = in.readInt();
         N = in.readInt();
         board = new char[M][N];
@@ -90,7 +90,7 @@ public class BoggleBoard {
                     board[i][j] = 'Q';
                 else if (letter.length() != 1)
                     throw new IllegalArgumentException("invalid character: " + letter);
-                else if (alphabet.indexOf(letter) == -1)
+                else if (!alphabet.contains(letter))
                     throw new IllegalArgumentException("invalid character: " + letter);
                 else 
                     board[i][j] = letter.charAt(0);
@@ -180,8 +180,7 @@ public class BoggleBoard {
     /**
      * Unit tests the BoggleBoard data type.
      */
-    public static void main(String[] args) {
-
+    static void main(String[] args) {
         // initialize a 4-by-4 board using Hasbro dice
         StdOut.println("Hasbro board:");
         BoggleBoard board1 = new BoggleBoard();

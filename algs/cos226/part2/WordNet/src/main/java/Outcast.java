@@ -1,22 +1,32 @@
 /**
  * @author Lipatov Nikita
+ * <p>
+ * Complexity notation:
+ * {@code M} is the number of nouns in an input array,
+ * {@code V} and {@code E} are the WordNet digraph's vertex and edge counts, and
+ * {@code I} is the WordNet input size.
  */
 public class Outcast {
-    private WordNet wordNet;
+    private final WordNet wordNet;
 
-    // constructor takes a WordNet object
+    /**
+     * Required time complexity: not specified by the assignment.
+     * Actual time complexity: {@code O(1)}.
+     */
     public Outcast(WordNet wordnet) {
         this.wordNet = wordnet;
     }
 
-    // given an array of WordNet nouns, return an outcast
-    // Given a list of wordnet nouns A1, A2, ..., An, which noun is the least related to the others?
-    // To identify an outcast, compute the sum of the distances between each noun and every other one:
-    // di = dist(Ai, A1) + dist(Ai, A2) + ... + dist(Ai, An)
-    // and return a noun At for which dt is maximum.
+    /**
+     * Given a list of WordNet nouns A1, A2, ..., An, returns the noun least related to the
+     * others.
+     * <p>
+     * Required time complexity: not specified by the assignment.
+     * Actual time complexity: {@code O(M^2 * (V + E))} expected.
+     */
     public String outcast(String[] nouns)  {
         String outcast = null;
-        int max = 0;
+        int max = Integer.MIN_VALUE;
 
         for (String nounA : nouns) {
             int dist = 0;
@@ -33,19 +43,27 @@ public class Outcast {
         return outcast;
     }
 
-    // see test client below
-    // % java Outcast synsets.txt hypernyms.txt outcast5.txt outcast8.txt outcast11.txt
-    // outcast5.txt: table
-    // outcast8.txt: bed
-    // outcast11.txt: potato
-    public static void main(String[] args)  {
+    /**
+     * Required time complexity: not specified; this is the assignment test client.
+     * Actual time complexity:
+     * {@code O(I + V + E)} expected for setup, plus
+     * {@code O(M^2 * (V + E))} per outcast noun array.
+     *
+     * <pre>
+     * % java Outcast synsets.txt hypernyms.txt outcast5.txt outcast8.txt outcast11.txt
+     * outcast5.txt: table
+     * outcast8.txt: bed
+     * outcast11.txt: potato
+     * </pre>
+     */
+    static void main(String[] args)  {
         if (args == null || args.length == 0) {
             args = new String[]{"synsets.txt", "hypernyms.txt", "outcast5.txt", "outcast8.txt", "outcast11.txt"};
         }
         WordNet wordnet = new WordNet(args[0], args[1]);
         Outcast outcast = new Outcast(wordnet);
         for (int t = 2; t < args.length; t++) {
-            In in = new In(args[t]);
+            In in = ResourceFiles.open(Outcast.class, args[t]);
             String[] nouns = in.readAllStrings();
             StdOut.println(args[t] + ": " + outcast.outcast(nouns));
         }

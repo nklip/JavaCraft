@@ -1,53 +1,82 @@
 import java.util.LinkedList;
+import java.util.function.IntConsumer;
 
 /**
  * @author Lipatov Nikita
+ *
+ * <p>Complexity notation: {@code N} is the number of input bytes and {@code R} is the alphabet
+ * size.
  */
 public class MoveToFront {
 
     private static final int R = 256;
 
-    // apply move-to-front encoding, reading from standard input and writing to standard output
-    public static void encode()
-    {
-        String inputString = BinaryStdIn.readString();
-        char[] inputCharsArray = inputString.toCharArray();
+    /**
+     * Required time complexity: {@code O(R * N)} or better in the worst case and
+     * {@code O(N + R)} or better in practice for typical transformed English text.
+     * Actual time complexity: {@code O(R + R * N)} in the worst case and {@code O(N + R)}
+     * when accessed ranks stay near the front.
+     */
+    public static void encode() {
+        String input = BinaryStdIn.isEmpty() ? "" : BinaryStdIn.readString();
+        encode(input, character -> BinaryStdOut.write((char) character, 8));
+        BinaryStdOut.close();
+    }
 
+    static void encode(BinaryIn binaryIn, BinaryOut binaryOut) {
+        String input = binaryIn.isEmpty() ? "" : binaryIn.readString();
+        encode(input, character -> binaryOut.write((char) character, 8));
+        binaryOut.close();
+    }
+
+    private static void encode(String input, IntConsumer characterOutput) {
         // Store the list of chars.
-        LinkedList<Integer> storeList = new LinkedList<Integer>();
+        LinkedList<Integer> storeList = new LinkedList<>();
         for (int i = 0; i < R; i++) {
             storeList.add(i);
         }
         // Check whether the char is in the list.
-        for (int i = 0; i < inputCharsArray.length; i++) {
-            int index = storeList.indexOf((int) inputCharsArray[i]);
-            BinaryStdOut.write((char) index, 8);
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            int index = storeList.indexOf((int) c);
+            characterOutput.accept(index);
             int remObj = storeList.remove(index);
-            storeList.add(0, remObj);
+            storeList.addFirst(remObj);
         }
+    }
 
+    /**
+     * Required time complexity: {@code O(R * N)} or better in the worst case and
+     * {@code O(N + R)} or better in practice for typical transformed English text.
+     * Actual time complexity: {@code O(R + R * N)} in the worst case and {@code O(N + R)}
+     * when encoded ranks stay near the front.
+     */
+    public static void decode() {
+        String input = BinaryStdIn.isEmpty() ? "" : BinaryStdIn.readString();
+        decode(input, character -> BinaryStdOut.write((char) character, 8));
         BinaryStdOut.close();
     }
 
-    // apply move-to-front decoding, reading from standard input and writing to standard output
-    public static void decode()
-    {
-        String inputString = BinaryStdIn.readString();
-        char[] inputCharArray = inputString.toCharArray();
+    static void decode(BinaryIn binaryIn, BinaryOut binaryOut) {
+        String input = binaryIn.isEmpty() ? "" : binaryIn.readString();
+        decode(input, character -> binaryOut.write((char) character, 8));
+        binaryOut.close();
+    }
 
-        LinkedList<Integer> storeList = new LinkedList<Integer>();
+    private static void decode(String input, IntConsumer characterOutput) {
+        LinkedList<Integer> storeList = new LinkedList<>();
         for (int i = 0; i < R; i++) {
             storeList.add(i);
         }
 
-        for (int i = 0; i < inputCharArray.length; i++) {
-            int index = storeList.remove((int) inputCharArray[i]);
-            storeList.add(0, index);
-            BinaryStdOut.write((char) index, 8);
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            int index = storeList.remove(c);
+            storeList.addFirst(index);
+            characterOutput.accept(index);
         }
 
         // Total, worst, R*N, Best, N
-        BinaryStdOut.close();
     }
 
     /**
@@ -67,11 +96,12 @@ public class MoveToFront {
      ER:
      ABRACADABRA!
 
+     * <p>
+     * Required time complexity: {@code O(R * N)} or better in the worst case and
+     * {@code O(N + R)} or better for typical transformed English text.
+     * Actual worst-case time complexity: {@code O(R + R * N)} for either mode.
      */
-    // if args[0] is '-', apply move-to-front encoding
-    // if args[0] is '+', apply move-to-front decoding
-    public static void main(String[] args)
-    {
+    static void main(String[] args) {
         if (args != null && args.length >= 1) {
             String arg = args[0];
             if (arg.equals("-")) {
