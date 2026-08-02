@@ -163,6 +163,7 @@ That split keeps repositories focused on SQL execution and keeps presentation lo
 | `openflights-kafka-consumer` | typed Kafka listeners, persistence orchestration, placeholder repair |
 | `openflights-app` | admin/operational HTTP endpoints for persisted data |
 | `openflights-testing` | Cucumber end-to-end tests with Testcontainers |
+| [openflights-verification](openflights-verification/README.md) | Aggregate JaCoCo report for unit and Cucumber E2E coverage |
 
 For the full runtime and data-model breakdown, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -171,6 +172,16 @@ For the full runtime and data-model breakdown, see [ARCHITECTURE.md](ARCHITECTUR
 
 `openflights-testing` runs end-to-end Cucumber scenarios with Testcontainers and uses the same route
 topic partition count and route consumer concurrency as the normal runtime configuration.
+
+The Cucumber suite is named `CucumberIT` and runs with Maven Failsafe during `verify`.
+Surefire continues to run the calculator and timing-tracker `*Test` classes during `test`;
+the two lifecycles write separate `jacoco.exec` and `jacoco-it.exec` files for aggregation.
+
+Run the suite and build the combined coverage report from the repository root:
+
+```bash
+mvn -pl microservices/openflights/openflights-verification -am clean verify
+```
 
 The full-ingestion Cucumber scenario currently expects the final PostgreSQL dataset to reach:
 

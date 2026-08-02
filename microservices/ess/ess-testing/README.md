@@ -26,7 +26,7 @@ Testcontainers starts a real Elasticsearch container automatically — no manual
 
 ```bash
 # run all Cucumber integration tests
-mvn -pl microservices/ess/ess-testing test
+mvn -pl microservices/ess/ess-testing -am verify
 ```
 
 To regenerate a dataset JSON file, run the corresponding downloader as a `main` class:
@@ -200,17 +200,22 @@ HTTP endpoint against the Testcontainers ES instance.
 Run all integration tests (requires Docker):
 
 ```bash
-mvn -pl microservices/ess/ess-testing test
+mvn -pl microservices/ess/ess-testing -am verify
 ```
+
+The Cucumber suite is named `CucumberIT` and runs with Maven Failsafe during
+`integration-test` and `verify`. `mvn test` still runs the downloader unit tests but
+intentionally stops before Cucumber. Failsafe results are written to
+`target/failsafe-reports/`, and E2E coverage data is written to `target/jacoco-it.exec`.
 
 Run a specific feature by tag:
 
 ```bash
-mvn -pl microservices/ess/ess-testing test -Dcucumber.filter.tags="@Fuzzy"
-mvn -pl microservices/ess/ess-testing test -Dcucumber.filter.tags="@Wildcard"
-mvn -pl microservices/ess/ess-testing test -Dcucumber.filter.tags="@Span"
-mvn -pl microservices/ess/ess-testing test -Dcucumber.filter.tags="@Interval"
-mvn -pl microservices/ess/ess-testing test -Dcucumber.filter.tags="@All"
+mvn -pl microservices/ess/ess-testing -am verify -Dcucumber.filter.tags="@Fuzzy"
+mvn -pl microservices/ess/ess-testing -am verify -Dcucumber.filter.tags="@Wildcard"
+mvn -pl microservices/ess/ess-testing -am verify -Dcucumber.filter.tags="@Span"
+mvn -pl microservices/ess/ess-testing -am verify -Dcucumber.filter.tags="@Interval"
+mvn -pl microservices/ess/ess-testing -am verify -Dcucumber.filter.tags="@All"
 ```
 
 Run unit tests for the downloaders only (no Docker needed):

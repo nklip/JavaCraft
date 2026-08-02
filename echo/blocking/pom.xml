@@ -16,6 +16,7 @@
         <module>blocking-client</module>
         <module>blocking-server</module>
         <module>blocking-testing</module>
+        <module>blocking-verification</module>
     </modules>
 
     <dependencies>

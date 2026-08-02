@@ -22,6 +22,7 @@
         <module>openflights-kafka-consumer</module>
         <module>openflights-kafka-producer</module>
         <module>openflights-testing</module>
+        <module>openflights-verification</module>
     </modules>
 
 

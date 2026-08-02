@@ -99,6 +99,7 @@ Runtime notes:
 | `ess-app.service.ranking` | read-side ranking queries over the `posts` index |
 | `ess-app.config` | Elasticsearch client creation, retry/backoff transport, security, scheduler defaults |
 | `ess-testing` | Cucumber scenarios, downloader support, and Testcontainers-based integration coverage |
+| `ess-verification` | reactor-only aggregate JaCoCo report for ESS unit and E2E execution data |
 
 Key classes:
 

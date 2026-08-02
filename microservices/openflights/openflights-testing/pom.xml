@@ -12,6 +12,14 @@
 
     <artifactId>openflights-testing</artifactId>
 
+    <properties>
+        <!--
+            Failsafe resolves @{jacoco.it.argLine} after JaCoCo prepares the integration agent.
+            The empty default also keeps -Djacoco.skip=true a valid JVM command line.
+        -->
+        <jacoco.it.argLine/>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>dev.nklip.javacraft</groupId>
@@ -140,10 +148,83 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${maven-surefire-plugin.version}</version>
                 <configuration>
+                    <!-- Keep calculator and timing-tracker unit tests in the test phase. -->
                     <includes>
-                        <include>**/CucumberRunner.java</include>
                         <include>**/*Test.java</include>
                     </includes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco-maven-plugin.version}</version>
+                <executions>
+                    <!--
+                        openflights-testing has no src/main classes, so its inherited local report
+                        would be empty. Keep the unit agent enabled because its *Test classes can
+                        still exercise production dependencies; openflights-verification maps both
+                        unit and E2E execution data to those production classes.
+                    -->
+                    <execution>
+                        <id>jacoco-report</id>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>jacoco-prepare-integration-agent</id>
+                        <phase>pre-integration-test</phase>
+                        <goals>
+                            <goal>prepare-agent-integration</goal>
+                        </goals>
+                        <configuration>
+                            <!-- Keep Cucumber data separate from the unit-test jacoco.exec file. -->
+                            <propertyName>jacoco.it.argLine</propertyName>
+                            <!-- Replace stale data so every Maven invocation is reproducible. -->
+                            <append>false</append>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <!--
+                    These scenarios run Kafka and PostgreSQL containers through the full ingestion
+                    path, so they belong to Failsafe's integration-test/verify lifecycle.
+                -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>${maven-failsafe-plugin.version}</version>
+                <dependencies>
+                    <!-- Keep Failsafe's launcher aligned with the JUnit 6 test dependencies. -->
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-commons</artifactId>
+                        <version>${junit6.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-engine</artifactId>
+                        <version>${junit6.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-launcher</artifactId>
+                        <version>${junit6.version}</version>
+                    </dependency>
+                </dependencies>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <!-- Preserve the root Mockito agent while adding the separate JaCoCo IT agent. -->
+                    <argLine>${test.jvm.args} ${mockito.agent.argLine} @{jacoco.it.argLine}</argLine>
+                    <!-- Fail loudly if the default *IT discovery convention stops working. -->
+                    <failIfNoTests>true</failIfNoTests>
                 </configuration>
             </plugin>
         </plugins>

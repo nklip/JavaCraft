@@ -1,4 +1,5 @@
 # Socket Server (Blocking)
+<sub>[Back to Echo](../README.md#echo-clientserver-implementations)</sub>
 
 Socket server using <b>blocking I/O</b> that demonstrates a simple client/server application in Java.
 
@@ -17,6 +18,7 @@ With blocking I/O, when a client makes a request to connect with the server, the
 - [blocking-testing](blocking-testing/README.md): Cucumber scenarios split into:
   - `blocking.feature` (functional, edge-case, high-load)
   - `blocking-benchmark.feature` (performance benchmarks + summary)
+- [blocking-verification](blocking-verification/README.md): aggregate JaCoCo report for client/server unit and E2E coverage.
 
 ## Cucumber Performance Benchmark
 
@@ -25,27 +27,27 @@ and are designed to run in separate fresh JVM processes:
 
 1. PlatformServer + PlatformThreadClient:
 ```bash
-mvn -pl echo/blocking/blocking-testing -am test -Dcucumber.filter.tags='@Performance and @ServerPlatform and @ClientPlatform'
+mvn -pl echo/blocking/blocking-testing -am verify -Dcucumber.filter.tags='@Performance and @ServerPlatform and @ClientPlatform'
 ```
 
 2. PlatformServer + VirtualThreadClient:
 ```bash
-mvn -pl echo/blocking/blocking-testing -am test -Dcucumber.filter.tags='@Performance and @ServerPlatform and @ClientVirtual'
+mvn -pl echo/blocking/blocking-testing -am verify -Dcucumber.filter.tags='@Performance and @ServerPlatform and @ClientVirtual'
 ```
 
 3. VirtualServer + PlatformThreadClient:
 ```bash
-mvn -pl echo/blocking/blocking-testing -am test -Dcucumber.filter.tags='@Performance and @ServerVirtual and @ClientPlatform'
+mvn -pl echo/blocking/blocking-testing -am verify -Dcucumber.filter.tags='@Performance and @ServerVirtual and @ClientPlatform'
 ```
 
 4. VirtualServer + VirtualThreadClient:
 ```bash
-mvn -pl echo/blocking/blocking-testing -am test -Dcucumber.filter.tags='@Performance and @ServerVirtual and @ClientVirtual'
+mvn -pl echo/blocking/blocking-testing -am verify -Dcucumber.filter.tags='@Performance and @ServerVirtual and @ClientVirtual'
 ```
 
 5. Final comparison (reads persisted benchmark summaries from `target/performance-results`):
 ```bash
-mvn -pl echo/blocking/blocking-testing -am test -Dcucumber.filter.tags='@PerformanceSummary'
+mvn -pl echo/blocking/blocking-testing -am verify -Dcucumber.filter.tags='@PerformanceSummary'
 ```
 
 The benchmark flow includes warmups (not measured), 3 measured runs, and prints average/median comparison.

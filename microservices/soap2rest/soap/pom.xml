@@ -12,6 +12,14 @@
     <artifactId>soap2rest-soap</artifactId>
     <packaging>jar</packaging>
 
+    <properties>
+        <!--
+            Failsafe resolves @{jacoco.it.argLine} after JaCoCo prepares the integration agent.
+            The empty default also keeps -Djacoco.skip=true a valid JVM command line.
+        -->
+        <jacoco.it.argLine/>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>dev.nklip.javacraft</groupId>
@@ -129,16 +137,90 @@
                     </execution>
                 </executions>
             </plugin>
-            <!-- makes cucumber tests run in maven -->
             <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco-maven-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>jacoco-prepare-integration-agent</id>
+                        <phase>pre-integration-test</phase>
+                        <goals>
+                            <goal>prepare-agent-integration</goal>
+                        </goals>
+                        <configuration>
+                            <!-- Keep Cucumber data separate until both test phases have completed. -->
+                            <propertyName>jacoco.it.argLine</propertyName>
+                            <append>false</append>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>jacoco-merge-unit-and-integration-data</id>
+                        <phase>post-integration-test</phase>
+                        <goals>
+                            <goal>merge</goal>
+                        </goals>
+                        <configuration>
+                            <fileSets>
+                                <fileSet>
+                                    <directory>${project.build.directory}</directory>
+                                    <includes>
+                                        <include>jacoco.exec</include>
+                                        <include>jacoco-it.exec</include>
+                                    </includes>
+                                </fileSet>
+                            </fileSets>
+                            <destFile>${project.build.directory}/jacoco-merged.exec</destFile>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <!-- Replace the test-phase report with combined unit and Cucumber coverage during verify. -->
+                        <id>jacoco-report-merged</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                        <configuration>
+                            <dataFile>${project.build.directory}/jacoco-merged.exec</dataFile>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <!-- SOAP Cucumber scenarios exercise the Spring SOAP facade through HTTP and WireMock. -->
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>${maven-surefire-plugin.version}</version>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>${maven-failsafe-plugin.version}</version>
+                <dependencies>
+                    <!-- Keep Failsafe's launcher aligned with the JUnit 6 test dependencies. -->
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-commons</artifactId>
+                        <version>${junit6.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-engine</artifactId>
+                        <version>${junit6.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-launcher</artifactId>
+                        <version>${junit6.version}</version>
+                    </dependency>
+                </dependencies>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
                 <configuration>
-                    <includes>
-                        <include>**/*Test.java</include>
-                        <include>**/CucumberRunner.java</include>
-                    </includes>
+                    <argLine>${test.jvm.args} ${mockito.agent.argLine} @{jacoco.it.argLine}</argLine>
+                    <!-- CucumberIT matches Failsafe defaults; fail instead of silently running zero scenarios. -->
+                    <failIfNoTests>true</failIfNoTests>
                 </configuration>
             </plugin>
         </plugins>

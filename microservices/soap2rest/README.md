@@ -75,12 +75,12 @@ From the repository root:
 
 Run REST tests:
 ```bash
-mvn -pl soap2rest/rest-app -am test
+mvn -pl soap2rest/rest-app -am verify
 ```
 
 Run SOAP tests:
 ```bash
-mvn -pl soap2rest/soap -am test
+mvn -pl soap2rest/soap -am verify
 ```
 
 ## 6. Run

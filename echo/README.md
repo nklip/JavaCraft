@@ -39,7 +39,7 @@ Numbers below come from each submodule's final benchmark summary examples.
 ## How To Re-run Final Summaries
 
 ```bash
-mvn -pl echo/blocking/blocking-testing -am test -Dcucumber.filter.tags='@PerformanceSummary'
-mvn -pl echo/netty/netty-testing -am test -Dcucumber.filter.tags='@PerformanceSummary'
-mvn -pl echo/selector/selector-testing -am test -Dcucumber.filter.tags='@PerformanceSummary'
+mvn -pl echo/blocking/blocking-testing -am verify -Dcucumber.filter.tags='@PerformanceSummary'
+mvn -pl echo/netty/netty-testing -am verify -Dcucumber.filter.tags='@PerformanceSummary'
+mvn -pl echo/selector/selector-testing -am verify -Dcucumber.filter.tags='@PerformanceSummary'
 ```

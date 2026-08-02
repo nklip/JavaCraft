@@ -14,12 +14,13 @@
     <packaging>pom</packaging>
 
     <modules>
-        <module>events</module>
-        <module>api</module>
-        <module>app</module>
-        <module>scenarios</module>
-        <module>dashboard</module>
-        <module>testing</module>
+        <module>ewrs-events</module>
+        <module>ewrs-api</module>
+        <module>ewrs-app</module>
+        <module>ewrs-scenarios</module>
+        <module>ewrs-dashboard</module>
+        <module>ewrs-testing</module>
+        <module>ewrs-verification</module>
     </modules>
 
     <dependencies>

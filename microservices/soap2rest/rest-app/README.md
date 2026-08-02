@@ -127,7 +127,7 @@ From repository root:
 
 Run all module tests:
 ```bash
-mvn -pl soap2rest/rest-app -am test
+mvn -pl soap2rest/rest-app -am verify
 ```
 
 Notes:

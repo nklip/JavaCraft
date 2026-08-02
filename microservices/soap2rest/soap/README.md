@@ -133,12 +133,12 @@ From repository root:
 
 Run all SOAP tests:
 ```bash
-mvn -pl soap2rest/soap -am test
+mvn -pl soap2rest/soap -am verify
 ```
 
 Run only cucumber scenarios:
 ```bash
-mvn -pl soap2rest/soap -Dtest=cucumber.dev.nklip.javacraft.soap2rest.soap.CucumberRunner test
+mvn -pl soap2rest/soap -Dit.test=dev.nklip.javacraft.soap2rest.soap.cucumber.CucumberIT verify
 ```
 
 ## 8. Test Strategy

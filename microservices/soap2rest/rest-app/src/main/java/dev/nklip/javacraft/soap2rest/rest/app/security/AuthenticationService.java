@@ -1,15 +1,15 @@
 package dev.nklip.javacraft.soap2rest.rest.app.security;
 
 import jakarta.servlet.http.HttpServletRequest;
-import java.io.File;
+import java.io.BufferedReader;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.AuthorityUtils;
-import org.springframework.util.ResourceUtils;
 
 public class AuthenticationService {
 
@@ -45,8 +45,13 @@ public class AuthenticationService {
     }
 
     private static Set<String> loadApiKeys() throws IOException {
-        File file = ResourceUtils.getFile("classpath:api.keys");
-        return Set.copyOf(Files.readAllLines(Paths.get(file.getAbsolutePath())));
+        ClassPathResource resource = new ClassPathResource("api.keys");
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8)
+        )) {
+            // Classpath resources may live inside the packaged JAR during Failsafe and at runtime.
+            return Set.copyOf(reader.lines().toList());
+        }
     }
 
 }

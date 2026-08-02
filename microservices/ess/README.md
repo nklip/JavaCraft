@@ -11,7 +11,7 @@ integration coverage lives in `ess-testing`.
 
 **Stack:** Spring Boot, Elasticsearch, Kibana, Spring Security, Swagger/OpenAPI, Cucumber
 
-**Docs:** [ARCHITECTURE.md](ARCHITECTURE.md) · [ess-api](ess-api/README.md) · [ess-app](ess-app/README.md) · [ess-testing](ess-testing/README.md)
+**Docs:** [ARCHITECTURE.md](ARCHITECTURE.md) · [ess-api](ess-api/README.md) · [ess-app](ess-app/README.md) · [ess-testing](ess-testing/README.md) · [ess-verification](ess-verification/README.md)
 
 ## Contents
 1. [Quick Start](#1-quick-start)
@@ -82,6 +82,7 @@ Full endpoint details and payload examples live in [ess-app → API Reference](e
 | [ess-api](ess-api/README.md) | Shared DTOs, enums, validation annotations, API constants |
 | [ess-app](ess-app/README.md) | Spring Boot runtime: controllers, services, Elasticsearch client config, scheduler |
 | [ess-testing](ess-testing/README.md) | Cucumber integration tests, downloader utilities, dataset-oriented test support |
+| [ess-verification](ess-verification/README.md) | Aggregate JaCoCo report for unit and Cucumber E2E coverage |
 
 ## 3. API Surface
 <sub>[Back to top](#elastic-search-service-ess)</sub>
@@ -178,7 +179,10 @@ mvn -pl microservices/ess/ess-api test
 mvn -pl microservices/ess/ess-app test
 
 # Cucumber + Testcontainers integration tests
-mvn -pl microservices/ess/ess-testing test
+mvn -pl microservices/ess/ess-testing -am verify
+
+# Combined unit and E2E coverage report
+mvn -pl microservices/ess/ess-verification -am clean verify
 ```
 
 See module-specific docs for more detail:
@@ -186,3 +190,4 @@ See module-specific docs for more detail:
 - [ess-api → Models / Validation](ess-api/README.md)
 - [ess-app → Tests](ess-app/README.md#9-tests)
 - [ess-testing → Tests](ess-testing/README.md#5-tests)
+- [ess-verification → Aggregate coverage](ess-verification/README.md)

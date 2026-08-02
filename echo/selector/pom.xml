@@ -16,6 +16,7 @@
         <module>selector-client</module>
         <module>selector-server</module>
         <module>selector-testing</module>
+        <module>selector-verification</module>
     </modules>
 
     <dependencies>

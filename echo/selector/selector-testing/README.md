@@ -1,4 +1,5 @@
 # selector-testing
+<sub>[Back to Selector](../README.md)</sub>
 
 ## Module purpose
 
@@ -50,31 +51,36 @@ Summary step:
 
 Runner:
 
-- `dev.nklip.javacraft.echo.selector.CucumberRunner`
+- `dev.nklip.javacraft.echo.selector.CucumberIT`
 
 Reports:
 
 - `target/cucumber-reports/cucumber.html`
 - `target/cucumber-reports/cucumber.json`
+- `target/failsafe-reports/` (Failsafe test results)
+- `target/jacoco-it.exec` (E2E execution data consumed by `selector-verification`)
+
+These are system-level tests, so Maven Failsafe runs them in the `integration-test` and
+`verify` phases. Use `mvn verify`; `mvn test` intentionally stops before the E2E suite.
 
 ## Execute from project root
 
 Run full suite for this module:
 
 ```bash
-mvn -pl echo/selector/selector-testing -am test
+mvn -pl echo/selector/selector-testing -am verify
 ```
 
 Run only benchmark scenario:
 
 ```bash
-mvn -pl echo/selector/selector-testing -am test -Dcucumber.filter.tags='@Performance'
+mvn -pl echo/selector/selector-testing -am verify -Dcucumber.filter.tags='@Performance'
 ```
 
 Run only benchmark summary:
 
 ```bash
-mvn -pl echo/selector/selector-testing -am test -Dcucumber.filter.tags='@PerformanceSummary'
+mvn -pl echo/selector/selector-testing -am verify -Dcucumber.filter.tags='@PerformanceSummary'
 ```
 
 If `@PerformanceSummary` runs before benchmark results exist, it fails by design.

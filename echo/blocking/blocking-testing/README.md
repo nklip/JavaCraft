@@ -1,4 +1,5 @@
 # blocking-testing
+<sub>[Back to Blocking](../README.md)</sub>
 
 ## Module purpose
 
@@ -65,43 +66,48 @@ During benchmark message loops, step definitions temporarily suppress `System.ou
 
 ## How tests are run
 
-Runner: `dev.nklip.javacraft.echo.blocking.CucumberRunner`
+Runner: `dev.nklip.javacraft.echo.blocking.CucumberIT`
 
 Reports generated to:
 
 - `target/cucumber-reports/cucumber.html`
 - `target/cucumber-reports/cucumber.json`
+- `target/failsafe-reports/` (Failsafe test results)
+- `target/jacoco-it.exec` (E2E execution data consumed by `blocking-verification`)
+
+These are system-level tests, so Maven Failsafe runs them in the `integration-test` and
+`verify` phases. Use `mvn verify`; `mvn test` intentionally stops before the E2E suite.
 
 ## Execute from project root
 
 Run full cucumber suite for this module:
 
 ```bash
-mvn -pl echo/blocking/blocking-testing -am test
+mvn -pl echo/blocking/blocking-testing -am verify
 ```
 
 Run only functional virtual scenarios:
 
 ```bash
-mvn -pl echo/blocking/blocking-testing -am test -Dcucumber.filter.tags='@Virtual and not @Performance and not @PerformanceSummary'
+mvn -pl echo/blocking/blocking-testing -am verify -Dcucumber.filter.tags='@Virtual and not @Performance and not @PerformanceSummary'
 ```
 
 Run only functional platform scenarios:
 
 ```bash
-mvn -pl echo/blocking/blocking-testing -am test -Dcucumber.filter.tags='@Platform and not @Performance and not @PerformanceSummary'
+mvn -pl echo/blocking/blocking-testing -am verify -Dcucumber.filter.tags='@Platform and not @Performance and not @PerformanceSummary'
 ```
 
 Run one benchmark combination example (PlatformServer + PlatformThreadClient):
 
 ```bash
-mvn -pl echo/blocking/blocking-testing -am test -Dcucumber.filter.tags='@Performance and @ServerPlatform and @ClientPlatform'
+mvn -pl echo/blocking/blocking-testing -am verify -Dcucumber.filter.tags='@Performance and @ServerPlatform and @ClientPlatform'
 ```
 
 After running all 4 `@Performance` combinations, run final comparison:
 
 ```bash
-mvn -pl echo/blocking/blocking-testing -am test -Dcucumber.filter.tags='@PerformanceSummary'
+mvn -pl echo/blocking/blocking-testing -am verify -Dcucumber.filter.tags='@PerformanceSummary'
 ```
 
 If `@PerformanceSummary` is run before benchmark result files exist, the test fails by design.

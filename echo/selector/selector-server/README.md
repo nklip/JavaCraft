@@ -1,4 +1,5 @@
 # selector-server
+<sub>[Back to Selector](../README.md)</sub>
 
 ## Module purpose
 

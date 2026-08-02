@@ -12,6 +12,11 @@
     <artifactId>gui</artifactId>
     <packaging>jar</packaging>
 
+    <properties>
+        <!-- Swing dialog tests are timing-sensitive when classes are instrumented. -->
+        <jacoco.skip>true</jacoco.skip>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>dev.nklip.javacraft</groupId>
@@ -78,12 +83,17 @@
                 </executions>
             </plugin>
             <plugin>
-                <!-- Keep GUI tests without the global Mockito javaagent; this module uses subclass mock maker -->
+                <!--
+                    Keep GUI tests without the parent's Mockito startup agent.
+                    JaCoCo remains wired so jacoco.skip above is the only coverage gate:
+                    the default skips instrumentation,
+                    while -Djacoco.skip=false genuinely enables it.
+                -->
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${maven-surefire-plugin.version}</version>
                 <configuration>
-                    <argLine>${test.jvm.args}</argLine>
+                    <argLine>${test.jvm.args} @{jacoco.argLine}</argLine>
                 </configuration>
             </plugin>
         </plugins>

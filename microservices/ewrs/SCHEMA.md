@@ -13,7 +13,7 @@ It complements:
 
 The authoritative DDL still lives in Liquibase:
 
-- [db.changelog-001-initial.yaml](app/src/main/resources/db/changelog/db.changelog-001-initial.yaml)
+- [db.changelog-001-initial.yaml](ewrs-app/src/main/resources/db/changelog/db.changelog-001-initial.yaml)
 
 ## Contents
 1. [Schema roles](#1-schema-roles)
@@ -49,7 +49,7 @@ Important rule:
 
 ### `event_store`
 
-Defined in [db.changelog-001-initial.yaml](app/src/main/resources/db/changelog/db.changelog-001-initial.yaml).
+Defined in [db.changelog-001-initial.yaml](ewrs-app/src/main/resources/db/changelog/db.changelog-001-initial.yaml).
 
 Purpose:
 
@@ -97,7 +97,7 @@ Important constraints and indexes:
 
 ### `budget_reference`
 
-Defined in [db.changelog-001-initial.yaml](app/src/main/resources/db/changelog/db.changelog-001-initial.yaml).
+Defined in [db.changelog-001-initial.yaml](ewrs-app/src/main/resources/db/changelog/db.changelog-001-initial.yaml).
 
 Purpose:
 
@@ -128,7 +128,7 @@ Important constraints:
 
 ### `work_request_projection`
 
-Defined in [db.changelog-001-initial.yaml](app/src/main/resources/db/changelog/db.changelog-001-initial.yaml).
+Defined in [db.changelog-001-initial.yaml](ewrs-app/src/main/resources/db/changelog/db.changelog-001-initial.yaml).
 
 Purpose:
 
@@ -171,7 +171,7 @@ Important constraints and indexes:
 
 ### `budget_projection`
 
-Defined in [db.changelog-001-initial.yaml](app/src/main/resources/db/changelog/db.changelog-001-initial.yaml).
+Defined in [db.changelog-001-initial.yaml](ewrs-app/src/main/resources/db/changelog/db.changelog-001-initial.yaml).
 
 Purpose:
 
@@ -205,7 +205,7 @@ Important constraints:
 
 ### `projection_checkpoint`
 
-Defined in [db.changelog-001-initial.yaml](app/src/main/resources/db/changelog/db.changelog-001-initial.yaml).
+Defined in [db.changelog-001-initial.yaml](ewrs-app/src/main/resources/db/changelog/db.changelog-001-initial.yaml).
 
 Purpose:
 
@@ -238,7 +238,7 @@ Important constraints:
 
 ### `work_request_id_seq`
 
-Defined in [db.changelog-001-initial.yaml](app/src/main/resources/db/changelog/db.changelog-001-initial.yaml).
+Defined in [db.changelog-001-initial.yaml](ewrs-app/src/main/resources/db/changelog/db.changelog-001-initial.yaml).
 
 Purpose:
 

@@ -1,4 +1,5 @@
 # Netty Echo (Non-blocking I/O)
+<sub>[Back to Echo](../README.md#echo-clientserver-implementations)</sub>
 
 Demonstrates a client/server echo application built on Netty.
 
@@ -36,6 +37,7 @@ This project uses line-delimited frames with string decoder/encoder handlers on 
 - [netty-client](netty-client/README.md): Netty client implementation and client-side tests.
 - [netty-server](netty-server/README.md): Netty server lifecycle and protocol handling.
 - [netty-testing](netty-testing/README.md): Cucumber functional/load/benchmark scenarios.
+- [netty-verification](netty-verification/README.md): aggregate JaCoCo report for client/server unit and E2E coverage.
 
 ## Cucumber Performance Benchmark
 
@@ -43,12 +45,12 @@ Performance scenarios are implemented in `netty-testing/src/test/resources/featu
 
 1. NettyServer + NettyClient benchmark:
 ```bash
-mvn -pl echo/netty/netty-testing -am test -Dcucumber.filter.tags='@Performance'
+mvn -pl echo/netty/netty-testing -am verify -Dcucumber.filter.tags='@Performance'
 ```
 
 2. Final summary (reads persisted benchmark summary from `target/performance-results`):
 ```bash
-mvn -pl echo/netty/netty-testing -am test -Dcucumber.filter.tags='@PerformanceSummary'
+mvn -pl echo/netty/netty-testing -am verify -Dcucumber.filter.tags='@PerformanceSummary'
 ```
 
 The benchmark flow includes warmups (not measured), 3 measured runs, and prints average/median metrics.
@@ -72,4 +74,3 @@ The benchmark flow includes warmups (not measured), 3 measured runs, and prints 
 
 - Results are environment-specific (CPU, OS scheduler, JVM version, background load).
 - Compare benchmark numbers only on the same machine and runtime configuration.
-

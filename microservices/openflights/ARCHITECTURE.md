@@ -80,6 +80,7 @@ flowchart LR
 | `openflights-kafka-consumer` | `openflights-kafka-consumer` | typed Kafka listeners, persistence orchestration, placeholder recovery for out-of-order references | `openflights-api`, `openflights-jpa` |
 | `openflights-app` | `openflights-app` | admin HTTP endpoints and SQL cleanup operations | `openflights-jpa` |
 | `openflights-testing` | `openflights-testing` | Cucumber end-to-end tests with Testcontainers | producer, consumer, app |
+| `openflights-verification` | `openflights-verification` | reactor-only aggregate JaCoCo report for unit and E2E coverage | all production modules plus execution data from `openflights-testing` |
 
 ```mermaid
 graph TD

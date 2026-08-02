@@ -101,6 +101,7 @@ flowchart LR
 | `ewrs/scenarios` | `ewrs-scenarios` | standalone scenario/load driver that calls `ewrs-app` over HTTP for deterministic flows and seeded demo data             | `ewrs-api`, Spring Boot, SpringDoc |
 | `ewrs/dashboard` | `ewrs-dashboard` | standalone read-only visualizer over EWRS projections and event history with Thymeleaf + ECharts                         | `ewrs-api`, Spring Boot, Thymeleaf, PostgreSQL |
 | `ewrs/testing` | `ewrs-testing` | Testcontainers PostgreSQL, Cucumber scenarios, live projection/SSE verification through the scenario driver and core API | `ewrs-app`, `ewrs-api`, `ewrs-scenarios`, Spring Boot Test, Cucumber |
+| `ewrs/verification` | `ewrs-verification` | reactor-only aggregate JaCoCo report for production-module unit, integration, and E2E coverage | all EWRS production modules plus execution data from `ewrs-testing` |
 
 ```mermaid
 graph TD

@@ -1,4 +1,5 @@
 # Non-blocking I/O
+<sub>[Back to Echo](../README.md#echo-clientserver-implementations)</sub>
 
 Demonstrates how to write a simple client/server application using just a single thread in Java.
 
@@ -15,6 +16,7 @@ Java NIO has a class called “Selector” that allows a single thread to examin
 - [selector-client](selector-client/README.md): non-blocking client and message sender/listener flow.
 - [selector-server](selector-server/README.md): selector-based single-thread server implementation.
 - [selector-testing](selector-testing/README.md): Cucumber functional, load, and benchmark scenarios.
+- [selector-verification](selector-verification/README.md): aggregate JaCoCo report for client/server unit and E2E coverage.
 
 ## Cucumber Performance Benchmark
 
@@ -22,12 +24,12 @@ Performance scenarios are implemented in `selector-testing/src/test/resources/fe
 
 1. SelectorServer + SelectorClient benchmark:
 ```bash
-mvn -pl echo/selector/selector-testing -am test -Dcucumber.filter.tags='@Performance'
+mvn -pl echo/selector/selector-testing -am verify -Dcucumber.filter.tags='@Performance'
 ```
 
 2. Final summary (reads persisted benchmark summary from `target/performance-results`):
 ```bash
-mvn -pl echo/selector/selector-testing -am test -Dcucumber.filter.tags='@PerformanceSummary'
+mvn -pl echo/selector/selector-testing -am verify -Dcucumber.filter.tags='@PerformanceSummary'
 ```
 
 The benchmark flow includes warmups (not measured), 3 measured runs, and prints average/median metrics.

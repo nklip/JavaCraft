@@ -1,4 +1,5 @@
 # blocking-server
+<sub>[Back to Blocking](../README.md)</sub>
 
 ## Module purpose
 
@@ -70,4 +71,3 @@ Run from your IDE using one of these main classes:
 - `virtual.dev.nklip.javacraft.echo.blocking.server.VirtualServerApplication`
 
 Optional CLI argument: port number (default `8075`).
-

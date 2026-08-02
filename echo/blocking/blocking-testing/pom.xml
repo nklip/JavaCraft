@@ -12,6 +12,14 @@
     <artifactId>blocking-testing</artifactId>
     <packaging>jar</packaging>
 
+    <properties>
+        <!--
+            Failsafe resolves @{jacoco.it.argLine} late, after JaCoCo prepares the agent.
+            Keep an empty default so -Djacoco.skip=true still leaves a valid JVM command line.
+        -->
+        <jacoco.it.argLine/>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>dev.nklip.javacraft</groupId>
@@ -76,15 +84,88 @@
                     <skip>true</skip>
                 </configuration>
             </plugin>
-            <!-- makes cucumber tests run in maven -->
             <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco-maven-plugin.version}</version>
+                <executions>
+                    <!--
+                        This module has neither production classes nor Surefire *Test classes, so
+                        the inherited unit agent cannot collect useful data and its local report
+                        can only say "missing classes directory". blocking-verification owns the
+                        useful report and maps this module's E2E data to client/server classes.
+                    -->
+                    <execution>
+                        <id>jacoco-prepare-agent</id>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>jacoco-report</id>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>jacoco-prepare-integration-agent</id>
+                        <phase>pre-integration-test</phase>
+                        <goals>
+                            <goal>prepare-agent-integration</goal>
+                        </goals>
+                        <configuration>
+                            <!-- Keep E2E data separate from unit-test jacoco.exec files. -->
+                            <propertyName>jacoco.it.argLine</propertyName>
+                            <!-- A clean result per Maven invocation prevents stale coverage. -->
+                            <append>false</append>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <!--
+                    These scenarios start a real server and exercise it through real clients,
+                    so they are integration tests. Failsafe runs them during `verify`, after the
+                    packages exist, and still executes post-integration-test cleanup when a test
+                    fails; Surefire's `test` phase is reserved for fast unit tests.
+                -->
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>${maven-surefire-plugin.version}</version>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>${maven-failsafe-plugin.version}</version>
+                <dependencies>
+                    <!-- Keep Failsafe's launcher aligned with the JUnit 6 test dependencies. -->
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-commons</artifactId>
+                        <version>${junit6.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-engine</artifactId>
+                        <version>${junit6.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-launcher</artifactId>
+                        <version>${junit6.version}</version>
+                    </dependency>
+                </dependencies>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
                 <configuration>
-                    <includes>
-                        <include>**/CucumberRunner.java</include>
-                    </includes>
+                    <argLine>${test.jvm.args} @{jacoco.it.argLine}</argLine>
+                    <!--
+                        CucumberIT follows Failsafe's default *IT naming convention, so no
+                        custom include is needed. Fail explicitly if discovery ever breaks;
+                        a successful build that ran zero E2E tests would be misleading.
+                    -->
+                    <failIfNoTests>true</failIfNoTests>
                 </configuration>
             </plugin>
         </plugins>

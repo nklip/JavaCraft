@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>dev.nklip.javacraft</groupId>
+        <artifactId>ewrs</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <groupId>dev.nklip.javacraft.ewrs</groupId>
+    <artifactId>ewrs-testing</artifactId>
+
+    <properties>
+        <!--
+            Failsafe resolves @{jacoco.it.argLine} after JaCoCo prepares the integration agent.
+            The empty default also keeps -Djacoco.skip=true a valid JVM command line.
+        -->
+        <jacoco.it.argLine/>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>dev.nklip.javacraft.ewrs</groupId>
+            <artifactId>ewrs-app</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>dev.nklip.javacraft.ewrs</groupId>
+            <artifactId>ewrs-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>dev.nklip.javacraft.ewrs</groupId>
+            <artifactId>ewrs-scenarios</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.cucumber</groupId>
+            <artifactId>cucumber-spring</artifactId>
+            <version>${cucumber.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.cucumber</groupId>
+            <artifactId>cucumber-java</artifactId>
+            <version>${cucumber.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.cucumber</groupId>
+            <artifactId>cucumber-junit-platform-engine</artifactId>
+            <version>${cucumber.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-suite</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>rest-assured</artifactId>
+            <version>${rest-assured.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.maven</groupId>
+            <artifactId>maven-model</artifactId>
+            <version>${maven-model.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- Boot 4 moved TestRestTemplate out of spring-boot-test-autoconfigure into this module -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-resttestclient</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- TestRestTemplateTestAutoConfiguration needs Boot's RestTemplateBuilder,
+             which spring-boot-resttestclient does not pull in itself -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-restclient</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven-surefire-plugin.version}</version>
+                <configuration>
+                    <!-- Keep the standalone integration tests currently named *Test in test. -->
+                    <includes>
+                        <include>**/*Test.java</include>
+                    </includes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco-maven-plugin.version}</version>
+                <executions>
+                    <!--
+                        ewrs-testing has no src/main classes, so its inherited local report would
+                        be empty. Keep the unit agent enabled because its *Test classes can still
+                        exercise production dependencies; ewrs-verification maps both unit and E2E
+                        execution data to those production classes.
+                    -->
+                    <execution>
+                        <id>jacoco-report</id>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>jacoco-prepare-integration-agent</id>
+                        <phase>pre-integration-test</phase>
+                        <goals>
+                            <goal>prepare-agent-integration</goal>
+                        </goals>
+                        <configuration>
+                            <!-- Keep Cucumber data separate from the unit-test jacoco.exec file. -->
+                            <propertyName>jacoco.it.argLine</propertyName>
+                            <!-- Replace stale data so every Maven invocation is reproducible. -->
+                            <append>false</append>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <!--
+                    These scenarios run EWRS against PostgreSQL through real HTTP boundaries,
+                    so they belong to Failsafe's integration-test/verify lifecycle.
+                -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>${maven-failsafe-plugin.version}</version>
+                <dependencies>
+                    <!-- Keep Failsafe's launcher aligned with the JUnit 6 test dependencies. -->
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-commons</artifactId>
+                        <version>${junit6.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-engine</artifactId>
+                        <version>${junit6.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-launcher</artifactId>
+                        <version>${junit6.version}</version>
+                    </dependency>
+                </dependencies>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <!-- Preserve the root Mockito agent while adding the separate JaCoCo IT agent. -->
+                    <argLine>${test.jvm.args} ${mockito.agent.argLine} @{jacoco.it.argLine}</argLine>
+                    <!-- Fail loudly if the default *IT discovery convention stops working. -->
+                    <failIfNoTests>true</failIfNoTests>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

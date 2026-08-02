@@ -16,6 +16,7 @@
         <module>ess-api</module>
         <module>ess-app</module>
         <module>ess-testing</module>
+        <module>ess-verification</module>
     </modules>
 
 </project>

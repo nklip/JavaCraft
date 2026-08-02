@@ -12,7 +12,7 @@ Initially created in 2016 and rebuilt in-place as an event-sourced work request 
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the detailed runtime view, module map, and projection flow.<br/>
 See [SCHEMA.md](SCHEMA.md) for the SQL tables, sequence, and how each part of the schema is used.<br/>
-See [dashboard/README.md](dashboard/README.md) for the Thymeleaf + ECharts visualization module.
+See [ewrs-dashboard/README.md](ewrs-dashboard/README.md) for the Thymeleaf + ECharts visualization module.
 
 ## Contents
 1. [Quick Start](#1-quick-start)
@@ -31,19 +31,19 @@ See [dashboard/README.md](dashboard/README.md) for the Thymeleaf + ECharts visua
 Start the local EWRS database:
 
 ```bash
-docker compose -f ewrs/compose.yaml up -d
+docker compose -f microservices/ewrs/compose.yaml up -d
 ```
 
 Stop it with:
 
 ```bash
-docker compose -f ewrs/compose.yaml down
+docker compose -f microservices/ewrs/compose.yaml down
 ```
 
 If you want a clean reset of the persisted Docker volume:
 
 ```bash
-docker compose -f ewrs/compose.yaml down -v
+docker compose -f microservices/ewrs/compose.yaml down -v
 ```
 
 Local database settings:
@@ -57,7 +57,7 @@ Local database settings:
 Run the Spring Boot app from the repo root:
 
 ```bash
-mvn -f ewrs/app/pom.xml spring-boot:run
+mvn -f microservices/ewrs/ewrs-app/pom.xml spring-boot:run
 ```
 
 On startup ewrs connects to PostgreSQL, validates the schema, and applies the Liquibase changelog.
@@ -67,7 +67,7 @@ On startup ewrs connects to PostgreSQL, validates the schema, and applies the Li
 Run the standalone scenario/load driver from the repo root:
 
 ```bash
-mvn -f ewrs/scenarios/pom.xml spring-boot:run
+mvn -f microservices/ewrs/ewrs-scenarios/pom.xml spring-boot:run
 ```
 
 By default it targets the core EWRS app at `http://localhost:8053`.
@@ -77,7 +77,7 @@ By default it targets the core EWRS app at `http://localhost:8053`.
 Run the standalone read-only dashboard after `ewrs-app` has initialized the shared EWRS schema:
 
 ```bash
-mvn -f ewrs/dashboard/pom.xml spring-boot:run
+mvn -f microservices/ewrs/ewrs-dashboard/pom.xml spring-boot:run
 ```
 
 The dashboard reads the same PostgreSQL tables as `ewrs-app`, so the easiest local path is:
@@ -161,7 +161,7 @@ curl -N http://localhost:8053/api/v1/projections/stream
 ## 2. Module layout
 <sub>[Back to top](#event-sourced-work-request-service)</sub>
 
-`ewrs` now expands into six modules:
+`ewrs` now expands into seven modules:
 
 - `ewrs-events`
   preserved event kernel with workflow events, notifier, subscriptions, and `EventsMonitor`
@@ -171,10 +171,12 @@ curl -N http://localhost:8053/api/v1/projections/stream
   Spring Boot service with the event store, command handling, projections, replay, and OpenAPI
 - `ewrs-scenarios`
   standalone scenario/load driver that calls `ewrs-app` over HTTP for demos and deterministic data generation
-- `ewrs-dashboard`
+- [ewrs-dashboard](ewrs-dashboard/README.md)
   standalone Thymeleaf + ECharts visualizer that reads EWRS projections and event history directly from PostgreSQL
 - `ewrs-testing`
   Testcontainers + Cucumber/JUnit end-to-end coverage that exercises both the core API and the scenario driver
+- [ewrs-verification](ewrs-verification/README.md)
+  aggregate JaCoCo report for production-module unit, integration, and Cucumber E2E coverage
 
 `ewrs-simulator` is no longer the runtime module. Its old random pipeline is retired from the active build.
 
@@ -259,6 +261,16 @@ Testing is split by responsibility:
 - `ewrs-testing`
   end-to-end HTTP/SSE verification with Testcontainers PostgreSQL, calling the scenario driver the same way a manual user would
 
+The Cucumber suite is named `CucumberIT` and runs with Maven Failsafe during `verify`.
+Surefire continues to run the standalone `*Test` classes during `test`; the two lifecycles
+write separate `jacoco.exec` and `jacoco-it.exec` files for aggregation.
+
+Run the Cucumber suite and build the combined coverage report from the repository root:
+
+```bash
+mvn -pl microservices/ewrs/ewrs-verification -am clean verify
+```
+
 ## 7. Related docs
 <sub>[Back to top](#event-sourced-work-request-service)</sub>
 
@@ -266,5 +278,5 @@ Testing is split by responsibility:
   runtime topology, module map, write side, read side, and projection flow
 - [SCHEMA.md](SCHEMA.md)
   SQL table-level documentation for `event_store`, projections, reference data, and projector checkpointing
-- [dashboard/README.md](dashboard/README.md)
+- [ewrs-dashboard/README.md](ewrs-dashboard/README.md)
   module-specific quick start for the Thymeleaf + ECharts dashboard, including its page and JSON endpoints

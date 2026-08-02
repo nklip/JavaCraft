@@ -29,16 +29,16 @@ In addition to Cucumber scenarios, unit tests cover:
 
 ## Test architecture
 
-- `CucumberRunner` runs feature tests on JUnit Platform with Cucumber.
+- `CucumberIT` runs feature tests on JUnit Platform with Cucumber.
 - `CucumberSpringConfiguration` boots a minimal Spring context for Cucumber steps.
 - `BMIStepDefinition` maps Gherkin steps to `BMIService` calls.
 
 ## How to run tests
 
-Run all tests (unit + Cucumber):
+Run all tests (Surefire unit tests + Failsafe Cucumber scenarios):
 
 ```bash
-mvn -pl bdd test
+mvn -pl bdd verify
 ```
 
 Run only unit tests:
@@ -50,7 +50,7 @@ mvn -pl bdd -Dtest='*Test' test
 Run only Cucumber scenarios:
 
 ```bash
-mvn -pl bdd -Dtest=CucumberRunner test
+mvn -pl bdd -Dit.test=CucumberIT verify
 ```
 
 ## Expected output
@@ -67,9 +67,10 @@ For Cucumber runs, feature steps are printed in the console and reports are gene
 - `bdd/target/cucumber-reports/cucumber.html`
 - `bdd/target/cucumber-reports/cucumber.json`
 
-Surefire unit-test reports are generated at:
+Maven test reports are generated at:
 
 - `bdd/target/surefire-reports/`
+- `bdd/target/failsafe-reports/`
 
 ## IDEA troubleshooting
 

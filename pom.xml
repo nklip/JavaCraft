@@ -18,6 +18,8 @@
         <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
         <maven-dependency-plugin.version>3.11.0</maven-dependency-plugin.version>
         <maven-deploy-plugin.version>3.1.4</maven-deploy-plugin.version>
+        <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
+        <maven-failsafe-plugin.version>3.5.6</maven-failsafe-plugin.version>
         <maven-install-plugin.version>3.1.4</maven-install-plugin.version>
         <maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
         <maven-shade-plugin.version>3.6.2</maven-shade-plugin.version>
@@ -29,6 +31,7 @@
         <jaxb2-maven-plugin.version>4.1.0</jaxb2-maven-plugin.version>
         <versions-maven-plugin.version>2.21.0</versions-maven-plugin.version>
         <!-- 3rd party plugins -->
+        <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
         <jaxws-maven-plugin.version>4.0.5</jaxws-maven-plugin.version>
         <frontend-maven-plugin.version>2.0.1</frontend-maven-plugin.version>
 
@@ -101,6 +104,24 @@
         <mockito.agent.argLine>
             -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
         </mockito.agent.argLine>
+
+        <!--
+            JaCoCo's prepare-agent writes the agent's -javaagent flag into this property.
+
+            It deliberately does NOT use JaCoCo's default property name (argLine): Surefire's
+            <argLine> is configured explicitly below, and an explicit <argLine> wins over the
+            argLine *property*, so the default wiring would silently produce empty coverage
+            data. Naming the property here and referencing it from Surefire's <argLine>
+            keeps the Mockito agent and the JaCoCo agent on the same command line.
+
+            The empty default matters for the same reason test.jvm.args has one: with
+            -Djacoco.skip=true prepare-agent never runs, and without a default the raw
+            placeholder would reach the forked JVM and every test would fail to start.
+
+            Because of that default, Surefire must reference this as @{jacoco.argLine} rather
+            than ${jacoco.argLine} — see the comment on Surefire's <argLine> below.
+        -->
+        <jacoco.argLine/>
 
         <!--
             The -DallowMajorUpdates=true flag on the command line does not override
@@ -245,7 +266,14 @@
                     </dependency>
                 </dependencies>
                 <configuration>
-                    <argLine>${test.jvm.args} ${mockito.agent.argLine}</argLine>
+                    <!--
+                        @{jacoco.argLine} is Surefire's late-replacement syntax, not a typo for ${...}.
+                        Maven interpolates ${...} while building the model, which is before
+                        jacoco:prepare-agent runs, so ${jacoco.argLine} would freeze to the empty
+                        default in <properties> and the agent would never attach. @{...} is resolved by
+                        Surefire itself, at execution time, against the property prepare-agent set.
+                    -->
+                    <argLine>${test.jvm.args} ${mockito.agent.argLine} @{jacoco.argLine}</argLine>
                     <systemPropertyVariables>
                         <tc.image.elasticsearch>${tc.image.elasticsearch}</tc.image.elasticsearch>
                         <tc.image.artemis>${tc.image.artemis}</tc.image.artemis>
@@ -253,6 +281,89 @@
                         <tc.image.postgresql>${tc.image.postgresql}</tc.image.postgresql>
                     </systemPropertyVariables>
                 </configuration>
+            </plugin>
+
+            <plugin>
+                <!--
+                    Fails the build early and with a readable message when the local toolchain
+                    cannot produce the artifacts this reactor describes, instead of surfacing it
+                    as an obscure compiler or plugin error deep into a 70+ module build.
+
+                    Deliberately NOT enabled yet: dependencyConvergence and requireUpperBoundDeps.
+                    Both currently fail against the Spring Boot dependency graph, so turning them
+                    on belongs in its own change where the conflicts can be resolved properly.
+                -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>${maven-enforcer-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>enforce-build-environment</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireMavenVersion>
+                                    <version>[3.9.0,)</version>
+                                </requireMavenVersion>
+                                <!-- Compiling with <release>25</release> needs a JDK that knows release 25. -->
+                                <requireJavaVersion>
+                                    <version>[${java.release},)</version>
+                                </requireJavaVersion>
+                                <!-- Catches a dependency declared twice in one pom, where the second silently wins. -->
+                                <banDuplicatePomDependencyVersions/>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <!--
+                    Coverage measurement only: report, no <check> thresholds. CLAUDE.md asks for
+                    100% coverage of new lines, but a gate applied across every existing module at
+                    once would just fail the build everywhere, so the numbers come first.
+
+                    Per-module HTML/XML reports land in target/site/jacoco after `mvn test`.
+                -->
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco-maven-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>jacoco-prepare-agent</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                        <configuration>
+                            <!-- See the jacoco.argLine property comment above for why this is renamed. -->
+                            <propertyName>jacoco.argLine</propertyName>
+                            <!--
+                                JaCoCo 0.8.15 appends to an existing jacoco.exec by default.
+                                Replacing it makes each plain `mvn test` report only that invocation
+                                instead of accumulating stale coverage from earlier runs.
+
+                                This assumes a single forked test JVM per module. A future module
+                                using multiple forks must override this or use separate destination
+                                files so one fork does not overwrite another fork's coverage.
+                            -->
+                            <append>false</append>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <!--
+                            Bound to `test` rather than the plugin's default `verify` so the report
+                            is produced by the per-module `mvn test` loop CLAUDE.md prescribes.
+                        -->
+                        <id>jacoco-report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
 
             <plugin>
