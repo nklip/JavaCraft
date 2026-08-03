@@ -139,9 +139,8 @@
         <module>algs</module>
         <module>blueprints</module>
         <module>echo</module>
-        <module>mathparser</module>
+        <module>gui</module>
         <module>microservices</module>
-        <module>tic-tac-toe</module>
         <module>vfs</module>
         <module>xlspaceship</module>
     </modules>

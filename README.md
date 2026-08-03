@@ -3,9 +3,8 @@
 * [algs](algs/README.md) - Algorithms
 * [blueprints](blueprints/README.md) - Architectural blueprints
 * [echo](echo/README.md) - Different Server types
-* [mathparser](mathparser/README.md) - Complex Math parser with GUI
+* [gui](gui/README.md) - Swing desktop applications (Math parser, Tic-tac-toe)
 * [microservices](microservices/README.md) - Microservices
-* [tic-tac-toe](tic-tac-toe/README.md) - Tic-tac-toe game with GUI
 * [vfs](vfs/README.md) - Virtual File Server
 * [xlspaceship](xlspaceship/README.md) - Battleship game
 
@@ -21,8 +20,9 @@ mvn -pl <module> test
 The report lands in `<module>/target/site/jacoco/` — open `index.html` for the browsable
 view, or read `jacoco.csv` / `jacoco.xml` for tooling.
 
-`mathparser/gui` opts out because instrumenting its Swing classes makes its real-window
-tests timing-sensitive. Its dependency, `mathparser/parser`, still produces coverage.
+`gui/mathparser/parser-gui` opts out because instrumenting its Swing classes makes its
+real-window tests timing-sensitive. Its dependency, `gui/mathparser/parser`, still
+produces coverage.
 
 To run tests without the coverage agent:
 
