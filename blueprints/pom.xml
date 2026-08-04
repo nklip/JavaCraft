@@ -15,6 +15,7 @@
     <modules>
         <module>bdd</module>
         <module>modules</module>
+        <module>quarkus-weather</module>
         <module>xsd2model</module>
     </modules>
 

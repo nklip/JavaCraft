@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>dev.nklip.javacraft</groupId>
+        <artifactId>blueprints</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>quarkus-weather</artifactId>
+    <packaging>jar</packaging>
+
+    <properties>
+        <!--
+            Qute's @CheckedTemplate binds template parameters by name, and javac only records
+            those with -parameters. Set here rather than in the root pom so the other modules
+            keep their current bytecode. Without it the build fails at augmentation with
+            "Parameter names not recorded".
+        -->
+        <maven.compiler.parameters>true</maven.compiler.parameters>
+
+        <!--
+            The Quarkus Maven extension injects test JVM parameters through an `argLine` project
+            property, which it can only do if Surefire's argLine references @{argLine}. The root
+            pom sets argLine explicitly and does not, so without the override below Quarkus warns
+            "we will not be able to inject JVM parameters automatically".
+
+            The empty default is needed for the same reason jacoco.argLine has one: when the
+            extension does not set the property, an unresolved placeholder would otherwise reach
+            the forked JVM.
+        -->
+        <argLine/>
+    </properties>
+
+    <!--
+        The Quarkus BOM is imported here rather than in the root pom on purpose. Quarkus manages
+        Jackson, Netty and JUnit, so a global import would compete with the root pom's deliberate
+        JUnit -> Netty -> Spring Boot ordering. A child dependencyManagement entry is the nearest
+        definition, so it wins inside this module and is invisible everywhere else.
+    -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.quarkus.platform</groupId>
+                <artifactId>quarkus-bom</artifactId>
+                <version>${quarkus.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- Jakarta REST implementation serving the single HTML endpoint. -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest</artifactId>
+        </dependency>
+        <!-- Qute server-side templating, wired into the REST layer. -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest-qute</artifactId>
+        </dependency>
+        <!-- Declarative HTTP client + Jackson binding for the Open-Meteo JSON. -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest-client-jackson</artifactId>
+        </dependency>
+
+        <!-- Renamed from quarkus-junit5 in Quarkus 3.31; the old coordinate still resolves via
+             a relocation stub but warns on every build. -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!--
+            The quarkus-jacoco extension is deliberately absent. It records coverage only for
+            @QuarkusTest classes, so the plain unit tests here contributed nothing and the report
+            understated the module badly (87% when the truth was higher). The root pom's standard
+            agent sees both kinds of test, because Quarkus runs @QuarkusTest in the same JVM.
+        -->
+        <dependency>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>rest-assured</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>${mockito.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!--
+            The standalone artifact shades its own Jetty. The thin `wiremock` jar expects Jetty 11
+            on the classpath, which Quarkus does not provide, and fails at startup with
+            "Jetty 11 is not present". The soap2rest modules use standalone for the same reason.
+        -->
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <version>${wiremock.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <!--
+                    Quarkus resolves injection and builds its application model at build time
+                    rather than by reflection at startup. That augmentation step is this plugin's
+                    `build` goal, which is why the module needs it and a Spring Boot module does not.
+                -->
+                <groupId>io.quarkus</groupId>
+                <artifactId>quarkus-maven-plugin</artifactId>
+                <version>${quarkus.version}</version>
+                <extensions>true</extensions>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>build</goal>
+                            <goal>generate-code</goal>
+                            <goal>generate-code-tests</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <!--
+                    Repeats the root pom's argLine and appends @{argLine} so the Quarkus extension
+                    can contribute JVM parameters. Overriding argLine replaces the inherited value
+                    wholesale, so the Mockito agent and JaCoCo agent have to be carried over too —
+                    dropping either would silently break mocking or coverage for this module.
+                -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven-surefire-plugin.version}</version>
+                <configuration>
+                    <!--suppress UnresolvedMavenProperty, because maven can actually resolve it -->
+                    <argLine>${test.jvm.args} ${mockito.agent.argLine} @{jacoco.argLine} @{argLine}</argLine>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

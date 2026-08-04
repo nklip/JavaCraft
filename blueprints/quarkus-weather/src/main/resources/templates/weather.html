@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Weather — Glasgow, Samara, Nha Trang</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg: #f4f6f8;
+            --card: #ffffff;
+            --text: #1b1f24;
+            --muted: #5c6672;
+            --line: #dde3ea;
+            --warn: #a8471c;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #14181d;
+                --card: #1d2229;
+                --text: #e8ecf1;
+                --muted: #9aa5b1;
+                --line: #2b323b;
+                --warn: #e0a080;
+            }
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 2.5rem 1.25rem;
+            background: var(--bg);
+            color: var(--text);
+            font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        }
+
+        main { max-width: 60rem; margin: 0 auto; }
+
+        h1 { margin: 0 0 .25rem; font-size: 1.6rem; }
+
+        .subtitle { margin: 0 0 2rem; color: var(--muted); font-size: .95rem; }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+            gap: 1.25rem;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: .75rem;
+            padding: 1.25rem;
+        }
+
+        .city { margin: 0; font-size: 1.15rem; font-weight: 600; }
+
+        .country { margin: .1rem 0 1rem; color: var(--muted); font-size: .85rem; }
+
+        .temp {
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+            font-size: 2.1rem;
+            font-weight: 650;
+            margin-bottom: .2rem;
+        }
+
+        .icon { font-size: 1.9rem; line-height: 1; }
+
+        .condition { color: var(--muted); margin-bottom: 1rem; }
+
+        dl {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: .3rem 1rem;
+            margin: 0;
+            font-size: .9rem;
+        }
+
+        dt { color: var(--muted); }
+
+        dd { margin: 0; text-align: right; }
+
+        .observed {
+            margin-top: 1rem;
+            padding-top: .75rem;
+            border-top: 1px solid var(--line);
+            color: var(--muted);
+            font-size: .8rem;
+        }
+
+        .unavailable { color: var(--warn); }
+
+        footer { margin-top: 2.5rem; color: var(--muted); font-size: .8rem; }
+
+        a { color: inherit; }
+    </style>
+</head>
+<body>
+<main>
+    <h1>Current weather</h1>
+    <p class="subtitle">Live observations from Open-Meteo. Each city shows its own local time.</p>
+
+    <section class="cards">
+        {#for forecast in forecasts}
+        <article class="card">
+            <p class="city">{forecast.city.name}</p>
+            <p class="country">{forecast.city.country}</p>
+
+            {#if forecast.available}
+            <div class="temp">
+                <span class="icon">{forecast.snapshot.condition.icon}</span>
+                <span>{forecast.snapshot.temperatureCelsius.oneDecimal} °C</span>
+            </div>
+            <p class="condition">{forecast.snapshot.condition.description}</p>
+
+            <dl>
+                <dt>Humidity</dt>
+                <dd>{forecast.snapshot.relativeHumidityPercent} %</dd>
+                <dt>Wind</dt>
+                <dd>{forecast.snapshot.windSpeedKmh.oneDecimal} km/h</dd>
+            </dl>
+
+            <p class="observed">Observed {forecast.snapshot.observedAt.display} local time</p>
+            {#else}
+            <p class="unavailable">{forecast.failureReason}</p>
+            {/if}
+        </article>
+        {/for}
+    </section>
+
+    <footer>
+        Weather data by <a href="https://open-meteo.com/">Open-Meteo</a>, licensed CC BY 4.0.
+    </footer>
+</main>
+</body>
+</html>

@@ -45,6 +45,15 @@
         <!-- springdoc is not Boot-managed; the 3.x line is the one built against Boot 4 -->
         <springdoc-openapi-starter-webmvc-ui.version>3.0.3</springdoc-openapi-starter-webmvc-ui.version>
 
+        <!--
+            Quarkus powers the blueprints/quarkus-weather showcase and nothing else. Only the
+            version lives here: its BOM is imported inside that module, deliberately NOT in the
+            dependencyManagement block below. Quarkus manages Jackson, Netty and JUnit too, so
+            importing it globally would fight the JUnit/Netty/Spring Boot alignment every other
+            module depends on. Keeping it module-local means the blast radius is one module.
+        -->
+        <quarkus.version>3.38.0</quarkus.version>
+
         <!-- jakarta / xml -->
         <jakarta.jws-api.version>3.0.0</jakarta.jws-api.version>
         <jakarta.xml.bind-api.version>4.0.5</jakarta.xml.bind-api.version>
