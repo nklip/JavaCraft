@@ -53,6 +53,8 @@
             module depends on. Keeping it module-local means the blast radius is one module.
         -->
         <quarkus.version>3.38.0</quarkus.version>
+        <!-- Official Anthropic SDK, used by the quarkus-weather showcase only. -->
+        <anthropic-java.version>2.34.0</anthropic-java.version>
 
         <!-- jakarta / xml -->
         <jakarta.jws-api.version>3.0.0</jakarta.jws-api.version>

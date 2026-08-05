@@ -8,7 +8,67 @@
 * [vfs](vfs/README.md) - Virtual File Server
 * [xlspaceship](xlspaceship/README.md) - Battleship game
 
+## Contents
+1. [Dependency management](#dependency-management)
+2. [Secrets and local environment](#secrets-and-local-environment)
+3. [Test coverage](#test-coverage)
+
+## Dependency management
+<sub>[Back to top](#micro-java-samples)</sub>
+
+### Overview of dependencies
+
+```bash
+mvn dependency:tree
+```
+
+### To find unused dependencies
+```bash
+mvn dependency:analyze
+```
+
+### To see new dependencies without snapshots, prereleases, or major upgrades
+```bash
+mvn versions:display-dependency-updates -DprocessDependencyManagement=false -DprocessDependencyManagementTransitive=false
+```
+
+### To see new dependencies including major upgrades
+```bash
+mvn versions:display-dependency-updates -DallowMajorUpdates=true -DprocessDependencyManagement=false -DprocessDependencyManagementTransitive=false
+```
+
+
+## Secrets and local environment
+<sub>[Back to top](#micro-java-samples)</sub>
+
+Most modules need no credentials. The ones that do read them from **environment variables** —
+never from a file in the repo. Committed configuration only ever holds a reference, e.g.
+`anthropic.api-key=${ANTHROPIC_API_KEY:}`.
+
+The recommended way to set them locally is [direnv](https://direnv.net/):
+
+```bash
+brew install direnv          # then hook it into your shell: direnv hook --help
+cp .envrc.example .envrc     # fill in the values
+direnv allow
+```
+
+`.envrc.example` lists every variable the repo understands and is committed; `.envrc` is
+gitignored.
+
+> [!NOTE]
+> A per-module `.env` also works, but only if you launch from that module's directory —
+> frameworks read `.env` from the **process working directory**, and this repo is normally
+> driven from the root. `mvn -pl <module> quarkus:dev` runs with the module as its working
+> directory, while `java -jar <module>/target/…` from the root does not, so no single `.env`
+> location covers both. An exported variable takes precedence over `.env` and works either way,
+> which is why direnv is the recommendation.
+
+Never commit a key. If one is ever pushed, **rotate it first** — rewriting history does not
+un-leak it.
+
 ## Test coverage
+<sub>[Back to top](#micro-java-samples)</sub>
 
 JaCoCo is wired into the root pom, so any `mvn test` run also produces a coverage report
 for the modules it built, except modules that explicitly opt out.
@@ -53,25 +113,3 @@ mvn -pl microservices/ewrs/ewrs-verification -am clean verify
 mvn -pl microservices/openflights/openflights-verification -am clean verify
 ```
 
-## Dependency management
-
-### Overview of dependencies
-
-```bash
-mvn dependency:tree
-```
-
-### To find unused dependencies
-```bash
-mvn dependency:analyze
-```
-
-### To see new dependencies without snapshots, prereleases, or major upgrades
-```bash
-mvn versions:display-dependency-updates -DprocessDependencyManagement=false -DprocessDependencyManagementTransitive=false
-```
-
-### To see new dependencies including major upgrades
-```bash
-mvn versions:display-dependency-updates -DallowMajorUpdates=true -DprocessDependencyManagement=false -DprocessDependencyManagementTransitive=false
-```

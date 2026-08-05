@@ -68,3 +68,17 @@ build/
 
 ### Claude ###
 .claude
+
+### Secrets ###
+# API keys live in the environment, never in the repo. The .example files document the
+# required variable names and are the only ones of these that are committed.
+.env
+.env.*
+!.env.example
+.envrc
+.envrc.*
+!.envrc.example
+.direnv/
+**/secrets/
+*.pem
+*.p12

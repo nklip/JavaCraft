@@ -97,6 +97,139 @@
         footer { margin-top: 2.5rem; color: var(--muted); font-size: .8rem; }
 
         a { color: inherit; }
+
+        /* ---- Claude assistant panel ---- */
+
+        .assistant {
+            margin-top: 2rem;
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: .75rem;
+            padding: 1.25rem;
+        }
+
+        .assistant-head {
+            display: flex;
+            align-items: flex-start;
+            gap: .9rem;
+        }
+
+        .assistant-title { margin: 0; font-weight: 600; }
+
+        .assistant-note { margin: .15rem 0 0; color: var(--muted); font-size: .85rem; }
+
+        .assistant-note code {
+            font-size: .8rem;
+            padding: .05rem .3rem;
+            border-radius: .25rem;
+            background: var(--bg);
+        }
+
+        /* The switch is a styled checkbox so it stays keyboard-operable. */
+        .switch {
+            position: relative;
+            flex: 0 0 auto;
+            width: 2.6rem;
+            height: 1.5rem;
+            margin-top: .1rem;
+        }
+
+        .switch input {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            cursor: pointer;
+        }
+
+        .track {
+            position: absolute;
+            inset: 0;
+            border-radius: 999px;
+            background: var(--line);
+            transition: background .15s ease;
+            pointer-events: none;
+        }
+
+        .track::after {
+            content: "";
+            position: absolute;
+            top: .18rem;
+            left: .2rem;
+            width: 1.14rem;
+            height: 1.14rem;
+            border-radius: 50%;
+            background: var(--card);
+            transition: transform .15s ease;
+        }
+
+        .switch input:checked + .track { background: #3d7f4e; }
+
+        .switch input:checked + .track::after { transform: translateX(1.05rem); }
+
+        .switch input:focus-visible + .track { outline: 2px solid currentColor; outline-offset: 2px; }
+
+        .switch input:disabled { cursor: not-allowed; }
+
+        .switch input:disabled + .track { opacity: .45; }
+
+        .assistant-body { margin-top: 1.1rem; }
+
+        #claude-form { display: flex; gap: .6rem; }
+
+        #claude-question {
+            flex: 1 1 auto;
+            min-width: 0;
+            padding: .55rem .7rem;
+            font: inherit;
+            font-size: .95rem;
+            color: var(--text);
+            background: var(--bg);
+            border: 1px solid var(--line);
+            border-radius: .45rem;
+        }
+
+        #claude-submit {
+            flex: 0 0 auto;
+            padding: .55rem 1.1rem;
+            font: inherit;
+            font-size: .95rem;
+            font-weight: 600;
+            color: #fff;
+            background: #3d7f4e;
+            border: 0;
+            border-radius: .45rem;
+            cursor: pointer;
+        }
+
+        #claude-submit:disabled { opacity: .6; cursor: progress; }
+
+        .answer {
+            margin-top: .9rem;
+            padding: .8rem .9rem;
+            border-radius: .45rem;
+            background: var(--bg);
+            border: 1px solid var(--line);
+            font-size: .92rem;
+            white-space: pre-wrap;
+        }
+
+        .answer-pending { color: var(--muted); }
+
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip: rect(0 0 0 0);
+            white-space: nowrap;
+        }
+
+        .answer-refused,
+        .answer-failed,
+        .answer-disabled,
+        .answer-invalid { color: var(--warn); }
     </style>
 </head>
 <body>
@@ -132,9 +265,46 @@
         {/for}
     </section>
 
+    <section class="assistant">
+        <div class="assistant-head">
+            <label class="switch" for="claude-toggle">
+                <input type="checkbox" id="claude-toggle" disabled>
+                <span class="track"></span>
+            </label>
+            <div>
+                <p class="assistant-title">Ask Claude</p>
+                {#if assistantEnabled}
+                <p class="assistant-note">Questions are answered from the observations above — Claude is given this page's data, not asked to recall the weather.</p>
+                {#else}
+                <p class="assistant-note">Unavailable: no <code>ANTHROPIC_API_KEY</code> is configured. Add it to the repository <code>.envrc</code> and restart to enable this panel.</p>
+                {/if}
+            </div>
+        </div>
+
+        {#if assistantEnabled}
+        <div class="assistant-body" id="claude-body" hidden>
+            <form id="claude-form">
+                <label class="visually-hidden" for="claude-question">Your weather question</label>
+                <input id="claude-question" type="text" maxlength="500" autocomplete="off"
+                       placeholder="Which of the three cities needs an umbrella today?">
+                <button type="submit" id="claude-submit">Ask</button>
+            </form>
+            <div id="claude-answer" class="answer" hidden></div>
+        </div>
+        {/if}
+    </section>
+
     <footer>
         Weather data by <a href="https://open-meteo.com/">Open-Meteo</a>, licensed CC BY 4.0.
     </footer>
 </main>
+<!--
+    The version query invalidates the previously cached script immediately. The no-store response
+    configured in application.properties prevents later deployments from mixing this HTML with an
+    older script that cannot enable the deliberately disabled toggle.
+    IntelliJ cannot map Quarkus META-INF/resources files to their runtime web-root URLs.
+-->
+<!--suppress HtmlUnknownTarget -->
+<script src="/assistant.js?v=2" defer></script>
 </body>
 </html>

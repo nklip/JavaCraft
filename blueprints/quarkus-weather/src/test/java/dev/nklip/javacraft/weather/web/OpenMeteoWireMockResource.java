@@ -50,8 +50,12 @@ public class OpenMeteoWireMockResource implements QuarkusTestResourceLifecycleMa
         stubCity(Cities.SAMARA, okJson(SAMARA_BODY));
         stubCity(Cities.NHA_TRANG, aResponse().withStatus(503));
 
-        // Point the REST client at the stub instead of api.open-meteo.com.
-        return Map.of("quarkus.rest-client.open-meteo.url", server.baseUrl());
+        // Keep both remote integrations hermetic. The blank key wins over a developer key
+        // inherited from direnv and is normalized to the supported unconfigured state; tests
+        // for the configured assistant replace the bean with Mockito.
+        return Map.of(
+                "quarkus.rest-client.open-meteo.url", server.baseUrl(),
+                "anthropic.api-key", " ");
     }
 
     private void stubCity(

@@ -1,0 +1,24 @@
+# Copy to .envrc, fill in, then run `direnv allow`.
+#
+# Why this rather than a .env file: Quarkus (and most frameworks) read .env from the
+# *process working directory*, so a .env only works when you happen to launch from the
+# directory holding it. In this repo that is ambiguous — `mvn -pl <module> quarkus:dev`
+# runs with the module as its working directory, while `java -jar <module>/target/...`
+# from the repo root runs with the root. No single .env location covers both.
+#
+# direnv sidesteps the question: it exports these into your shell when you cd into the
+# repo, so the variables are present however you launch — dev mode, a jar, your IDE,
+# from any directory. An exported variable also takes precedence over a .env file.
+#
+# Install: brew install direnv, then hook it into your shell (see `direnv hook --help`).
+
+# --- blueprints/quarkus-weather -------------------------------------------------
+# Optional. Without it the weather dashboard still runs; only the "Ask Claude" panel
+# is disabled, with an explanation on the page.
+export ANTHROPIC_API_KEY=""
+
+# Prefer sourcing from a secret manager so no plaintext key is ever written to disk:
+#
+#   export ANTHROPIC_API_KEY="$(op read op://Private/anthropic/credential)"   # 1Password
+#   export ANTHROPIC_API_KEY="$(pass show anthropic/api-key)"                 # pass
+#   export ANTHROPIC_API_KEY="$(security find-generic-password -s anthropic -w)"  # macOS Keychain

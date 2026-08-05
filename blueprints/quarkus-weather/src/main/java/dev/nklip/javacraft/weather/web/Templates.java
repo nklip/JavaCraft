@@ -18,6 +18,12 @@ public class Templates {
     private Templates() {
     }
 
-    /** Renders {@code templates/weather.html}. */
-    public static native TemplateInstance weather(List<CityWeather> forecasts);
+    /**
+     * Renders {@code templates/weather.html}.
+     *
+     * @param assistantEnabled whether an Anthropic API key is configured; drives whether the
+     *                         Claude toggle is interactive or greyed out with an explanation
+     */
+    public static native TemplateInstance weather(
+            List<CityWeather> forecasts, boolean assistantEnabled);
 }

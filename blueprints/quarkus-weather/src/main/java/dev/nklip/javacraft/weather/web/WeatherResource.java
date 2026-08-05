@@ -1,5 +1,6 @@
 package dev.nklip.javacraft.weather.web;
 
+import dev.nklip.javacraft.weather.assistant.ClaudeWeatherAssistant;
 import dev.nklip.javacraft.weather.service.WeatherService;
 import io.quarkus.qute.TemplateInstance;
 import jakarta.inject.Inject;
@@ -13,15 +14,17 @@ import jakarta.ws.rs.core.MediaType;
 public class WeatherResource {
 
     private final WeatherService weatherService;
+    private final ClaudeWeatherAssistant assistant;
 
     @Inject
-    public WeatherResource(WeatherService weatherService) {
+    public WeatherResource(WeatherService weatherService, ClaudeWeatherAssistant assistant) {
         this.weatherService = weatherService;
+        this.assistant = assistant;
     }
 
     @GET
     @Produces(MediaType.TEXT_HTML)
     public TemplateInstance index() {
-        return Templates.weather(weatherService.currentWeather());
+        return Templates.weather(weatherService.currentWeather(), assistant.configured());
     }
 }

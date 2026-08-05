@@ -64,10 +64,28 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-rest-qute</artifactId>
         </dependency>
+        <!--
+            Server-side JSON binding for the /api/ask endpoint. Distinct from
+            quarkus-rest-client-jackson below, which only covers outbound client calls —
+            without this the endpoint answers 415 Unsupported Media Type.
+        -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest-jackson</artifactId>
+        </dependency>
         <!-- Declarative HTTP client + Jackson binding for the Open-Meteo JSON. -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-rest-client-jackson</artifactId>
+        </dependency>
+        <!--
+            Official Anthropic SDK. Version pinned here rather than the root pom: it is used by
+            this module alone, and the Quarkus BOM above does not manage it.
+        -->
+        <dependency>
+            <groupId>com.anthropic</groupId>
+            <artifactId>anthropic-java</artifactId>
+            <version>${anthropic-java.version}</version>
         </dependency>
 
         <!-- Renamed from quarkus-junit5 in Quarkus 3.31; the old coordinate still resolves via
@@ -86,6 +104,13 @@
         <dependency>
             <groupId>io.rest-assured</groupId>
             <artifactId>rest-assured</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- @InjectMock, so a @QuarkusTest can exercise the configured-assistant path
+             without a real API key. Renamed from quarkus-junit5-mockito in Quarkus 3.31. -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit-mockito</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
