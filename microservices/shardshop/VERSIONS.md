@@ -5,8 +5,9 @@ selections, checksums, image digests, sources, and review deadlines are now in
 [versions.lock.yaml](versions.lock.yaml). Step **0.1 is Done**: kind 1.36.4 is selected under the user-authorized fallback,
 and Canonical OpenJDK 25 JDK/JRE images are pinned and smoke-tested.
 The inventory is complete; deployment readiness still requires later milestones.
-Infrastructure remains uninstalled and its runtime audit incomplete. Recheck upstream
-information before implementation and version changes.
+Docker Desktop is updated, and the kind node image's advisory findings are
+accepted for the local, loopback-only lab. Recheck upstream information before
+implementation and version changes.
 
 Use **LTS releases where available and maintained stable GA releases elsewhere**.
 Choose the longest remaining support window within the compatible stable set.
@@ -34,14 +35,14 @@ digests monthly and before deployment. [OpenJDK 25](https://jdk.java.net/25/),
 | PostgreSQL, including ledger and backup tools | **18.6**, then maintained 18.x updates | PostgreSQL 18 maintenance ends **2030-11-14**. Use the same major in Kubernetes and Testcontainers; keep `pg_dump`/restore tools aligned. [Version policy](https://www.postgresql.org/support/versioning/) |
 | Spring Boot | **4.1.1** and its matching dependencies BOM | 4.1.x OSS support ends **2027-07-31**. Supported stable branch upgrades are required; Boot's commercial dates are not the community entitlement. Java 25 is supported. [Lifecycle](https://api.spring.io/projects/spring-boot/generations/4.1.x), [Java compatibility](https://docs.spring.io/spring-boot/system-requirements.html) |
 | Maven | Command-line `mvn`; inherited repository minimum **3.9.0** (verified with 3.9.16) | Maintained stable 3.9 series, no promised multi-year fixed-version LTS. Review future GA releases; exclude Maven 4 release candidates. [Release history](https://maven.apache.org/docs/history.html) |
-| Kubernetes and kubectl | **Kubernetes 1.36.4**, user-authorized kind fallback; **kubectl 1.36.5** | 1.36 maintenance ends **2027-06-28**. This is the newest series supported by the selected CNPG release; match kubectl to the server minor. [Patch lifecycle](https://kubernetes.io/releases/patch-releases/), [release artifacts](https://github.com/kubernetes/kubernetes/releases) |
+| Kubernetes and kubectl | **Kubernetes 1.36.4**, user-authorized kind fallback; **kubectl 1.36.x** from the user's `PATH` | 1.36 maintenance ends **2027-06-28**. This is the newest series supported by the selected CNPG release; match kubectl to the server minor. [Patch lifecycle](https://kubernetes.io/releases/patch-releases/), [release artifacts](https://github.com/kubernetes/kubernetes/releases) |
 | CloudNativePG | **1.30.1**, current maintained patch | 1.30.x supports Kubernetes 1.34-1.36 and PostgreSQL 14-18, with EOL approximately **December 2026**. Its short lifecycle requires operator upgrades. Kubernetes 1.37 is only tested, not supported by this operator version. [Support matrix](https://cloudnative-pg.io/docs/1.30/supported_releases/), [release](https://cloudnative-pg.io/releases/cloudnative-pg-1-30.1-released/) |
-| kind | **0.33.0** | Stable local-development tool with no fixed LTS term. Explicitly choose a compatible 1.36 node image; its default 1.37 image does not meet the CNPG matrix. [Release and node images](https://github.com/kubernetes-sigs/kind/releases/tag/v0.33.0) |
+| kind | **0.33.0** tested; `kind` from the user's `PATH` | Stable local-development tool with no fixed LTS term. Explicitly choose a compatible 1.36 node image; its default 1.37 image does not meet the CNPG matrix. [Release and node images](https://github.com/kubernetes-sigs/kind/releases/tag/v0.33.0) |
 | RabbitMQ | **4.3.6**, maintained GA patches and subsequent supported series | Community support ends **2026-11-30**. This is a rolling-support exception, not LTS; no newer stable series is listed at review time. Native quorum delayed retry requires 4.3+. [Support timeline](https://www.rabbitmq.com/release-information), [retry feature](https://www.rabbitmq.com/docs/quorum-queues#delayed-retry) |
 | Erlang/OTP | **27.3.4.17**, bundled by the selected official RabbitMQ image | This corrects the draft's 28.x assumption. OTP 27 is supported by RabbitMQ 4.3.6; upgrade the broker/runtime image together. No fixed-date LTS is assumed. [Compatibility](https://www.rabbitmq.com/docs/which-erlang), [immutable image recipe](https://github.com/docker-library/rabbitmq/blob/a2d49841fbcf81713cf0e1c279facbce545e2292/4.3/ubuntu/Dockerfile), [OTP security policy](https://github.com/erlang/otp/security) |
 | PostgreSQL/operator image OS | Vendor-maintained **Debian 13 (trixie)** images | Full support through **2028-08-09**, Debian LTS through **2030-06-30**, subject to package/architecture coverage. The database/operator support window can expire first. [CNPG image baseline](https://cloudnative-pg.io/docs/1.30/release_notes/v1.30/), [Debian lifecycle](https://www.debian.org/releases/trixie/) |
 | Application image OS | **Canonical OpenJDK 25** on **Ubuntu 26.04 LTS (resolute)**; `ubuntu/jdk` and `ubuntu/jre` stable tracks, pinned by digest | Canonical advertises these tracks through **May 2031**. Native ARM64 build/runtime checks passed on Java **25.0.4.1**. Requalify new digests monthly; the runtime is shell-free and final images must explicitly select a non-root user. [JDK support](https://hub.docker.com/r/ubuntu/jdk), [JRE support](https://hub.docker.com/r/ubuntu/jre) |
-| Host container runtime and node internals | Docker Desktop **4.92.0** for macOS arm64; node internals updated with kind | The observed host runs 4.69.0 and must be updated before step 1.1. The selected installer checksum is recorded; nothing was installed. Docker has rolling support, not fixed-version LTS. Full bundled-component inventory remains a prerequisite to cluster qualification. [Release notes](https://docs.docker.com/desktop/release-notes/), [macOS support](https://docs.docker.com/desktop/setup/install/mac-install/), [kind base-image contract](https://kind.sigs.k8s.io/docs/design/base-image/) |
+| Host container runtime and node internals | Docker Desktop **4.92.0** for macOS arm64; node internals updated with kind | The host now runs 4.92.0 after checksum/signature verification; its component versions are recorded in the lock. Its containerd 2.3.5 and the node image have advisory findings, accepted for the local lab. Docker has rolling support, not fixed-version LTS. [Release notes](https://docs.docker.com/desktop/release-notes/), [macOS support](https://docs.docker.com/desktop/setup/install/mac-install/), [kind base-image contract](https://kind.sigs.k8s.io/docs/design/base-image/) |
 
 The lock records OCI index and native **linux/arm64** manifest/config digests for
 all seven selected images, including kind and the Canonical OpenJDK JDK/JRE pair.
@@ -285,3 +286,21 @@ no prereleases.
 Scoped plugin overrides replace prerelease Sisu/BeanShell transitives and fix the
 advisories named in the parent POM. Application dependencies still follow the
 Boot BOM. No business behavior, containers or unrelated reactor builds were added.
+
+### Step 1.1 verification record
+
+The host update from Docker Desktop 4.69.0 to selected **4.92.0** completed on
+2026-09-28. The official installer matched its lock checksum, the installed app
+passed signature/notarization checks, and the running engine plus bundled
+components were inventoried. The kind and kubectl releases recorded in the lock
+also matched their checksums and ran natively; both now come from the user's
+`PATH`.
+
+The pinned kind node yielded 160 OS packages and a 597-package Scout inventory.
+Its advisory scan found 155 distinct advisories (10 critical, 42 high), with
+primary-source confirmation of installed versions preceding security fixes.
+The host bundle also contains affected containerd 2.3.5. These findings were
+accepted on 2026-09-28 for the loopback-only, disposable lab.
+`HOST-RUNTIME-UPDATE` is resolved. On 2026-09-28 the cluster booted with three
+Ready nodes on Kubernetes 1.36.4, and local-path storage provisioned a volume;
+see PLAN step 1.1 for the evidence.

@@ -431,7 +431,8 @@ images:
     source_refs:
     - kind_release
     verification: Raw OCI index/arm64 manifest/config hashes verified; index matches
-      the kind 0.33.0 release. No cluster boot performed.
+      the kind 0.33.0 release. Cluster booted on 2026-09-28 with three Ready nodes
+      on v1.36.4.
 candidates: {}
 installation_artifacts:
   cnpg_manifest:
@@ -454,7 +455,8 @@ tools:
     url: https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-darwin-arm64
     sha256: 0c8c7dbe5e23594a198b786c4bc13dacc101fa6196b0cb0b23a1ca44e61f4b4f
     checksum_url: https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-darwin-arm64.sha256sum
-    verification: Published checksum fetched; executable not downloaded or run.
+    verification: Downloaded executable matched published SHA-256; kind version reports
+      v0.33.0 go1.26.7 darwin/arm64. Tested version; kind comes from the user's PATH.
     support_refs:
     - kind
   kubectl:
@@ -466,7 +468,8 @@ tools:
         url: https://dl.k8s.io/release/v1.36.5/bin/darwin/arm64/kubectl
         sha256: c5850a4a6b9469b26cce47c1ab456285f58e308283dcdf72b4ddda3db49b0ec0
         checksum_url: https://dl.k8s.io/release/v1.36.5/bin/darwin/arm64/kubectl.sha256
-        verification: Published checksum fetched; executable not downloaded or run.
+        verification: Downloaded executable matched published SHA-256; client reports
+          v1.36.5 go1.26.8 darwin/arm64. Tested version; kubectl comes from the user's PATH.
         purpose: Host administration
       linux_arm64:
         url: https://dl.k8s.io/release/v1.36.5/bin/linux/arm64/kubectl
@@ -500,8 +503,9 @@ tools:
     url: https://desktop.docker.com/mac/main/arm64/240144/Docker.dmg
     sha256: e513bbfeca246165595e2f17cabf6579936f36057f3f4fb689c619e6aac6d188
     checksum_url: https://desktop.docker.com/mac/main/arm64/240144/checksums.txt
-    verification: Official release/checksum metadata; installer not downloaded or
-      run.
+    verification: Installer bytes matched locked SHA-256; official installer completed.
+      Installed app passed codesign deep/strict verification and spctl notarization
+      assessment; running engine reports Docker Desktop 4.92.0 (240144).
     support_refs:
     - docker_desktop
     source_refs:
@@ -509,13 +513,19 @@ tools:
     - docker_macos
     observed_host:
       macos: 26.6.2
-      docker_desktop: 4.69.0
-      docker_engine: 29.4.0
-      containerd: 2.2.1
-      runc: 1.3.4
-      verification: Read local docker version output; no changes made.
-    required_action: Update host to the selected release and record its full runtime
-      inventory before step 1.1. Existing 4.69.0 is not the selected pin.
+      docker_desktop: 4.92.0
+      docker_engine: 29.8.0
+      containerd: 2.3.5
+      runc: 1.5.1
+      kernel: 7.0.12-linuxkit
+      buildkit: 0.33.0
+      buildx: 0.37.1
+      compose: 5.5.1
+      docker_init: 0.19.0
+      verification: Running docker version/info, builder and CLI inventory after update;
+        app component manifest retained separately from observed runtime versions.
+    required_action: Host version update complete. Track containerd CVE-2026-53493
+      separately; the selected vendor bundle contains affected containerd 2.3.5.
 vendor_bundles:
   rabbitmq:
     image_ref: rabbitmq
@@ -532,18 +542,22 @@ vendor_bundles:
     buildx: 0.37.1
     source_refs:
     - docker_desktop
-    verification: Release notes only. Remaining bundled versions must be inventoried
-      after the host update.
+    verification: Installed and inventoried on 2026-09-28; versions are recorded under
+      tools.docker_desktop. Advisory findings are accepted for the local lab.
   kind_node:
     debian: '13'
     containerd: 2.3.4
     runc: 1.4.3
     crictl: 1.36.0
     cni_plugins: 1.9.1
-    fuse_overlayfs: 2.1.7
+    fuse_overlayfs: 1.14-1+b1
+    fuse_overlayfs_binary_banner: 1.13-dev
     source: https://github.com/kubernetes-sigs/kind/blob/v0.33.0/images/base/Dockerfile
-    verification: Release source recipe only. Not independently installed pins; full
-      image/SBOM and running cluster inventory pending.
+    verification: Native digest-pinned image execution confirms Debian 13.6, containerd,
+      runc, crictl and Kubernetes versions; Scout SBOM identifies CNI plugins 1.9.1.
+      dpkg-query identifies fuse-overlayfs 1.14-1+b1 (binary banner 1.13-dev),
+      correcting the source-recipe assumption. The advisory scan is summarized under
+      unresolved SBOM-AND-RUNTIME; its findings are accepted for the local lab.
     image_ref: kind_node
 maven:
   version_policy: Explicit GA plugin pins; exclude metadata entries for Maven 4 beta
@@ -990,19 +1004,23 @@ unresolved:
     Plugin security overrides fix the advisories named in pom.xml and replace prereleases.
 - id: SBOM-AND-RUNTIME
   blocks:
-  - '1.1'
   - '3.9'
   status: pending_planned_step
-  finding: Step 0.3 supplies Maven dependency/plugin/processor/test-agent SBOMs and
-    advisory results. Image OS packages, bundled node/broker/Maven/JDK components
-    and infrastructure runtime qualification are still incomplete.
-  resolution: Complete image/bundled-component inventories and advisory/signature
-    checks before cluster and image qualification. Do not infer support from enclosing
-    BOM/JDK. Maven evidence boundaries are in scope.inventory_boundary.
+  finding: Node inventory and advisory scan completed on 2026-09-28 (Docker Scout
+    1.20.3); 160 OS binary packages; 597 indexed packages; 155 distinct advisories
+    (10 critical, 42 high, 28 medium, 66 low, 9 unspecified), including containerd
+    CVE-2026-53493. Broker/Maven/JDK/final application image qualification remains
+    separate.
+  resolution: Node findings accepted by the user on 2026-09-28 for the loopback-only,
+    disposable local lab; recheck when the kind node image changes. Complete the
+    application image inventories and advisory checks in step 3.9. Do not infer
+    support from enclosing BOM/JDK. Maven boundaries remain unchanged.
 - id: HOST-RUNTIME-UPDATE
   blocks:
   - '1.1'
-  status: pending_planned_step
-  finding: Observed Docker Desktop 4.69.0 differs from selected 4.92.0.
-  resolution: Update and verify the host runtime in the cluster-bootstrap prerequisite
-    check; no installation was performed by this audit.
+  status: resolved
+  finding: Docker Desktop 4.69.0 differed from selected 4.92.0.
+  resolution: Checksum-verified official installer updated the host to 4.92.0; signed
+    app and running engine verified. Runtime component versions are recorded under
+    tools.docker_desktop. This clears the version mismatch only; the bundled
+    containerd advisory is tracked under SBOM-AND-RUNTIME.

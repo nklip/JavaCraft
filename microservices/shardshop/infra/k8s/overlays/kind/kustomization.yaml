@@ -1,0 +1,6 @@
+# kind-specific settings (storage class, anti-affinity strictness) are patched here
+# as later steps add resources to the base.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base

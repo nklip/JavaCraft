@@ -120,3 +120,37 @@ and `sbom.xml` to that application's `target/audit/`. The SBOM goal needs Maven
 online mode; with `-o` it is skipped with a warning. Unit coverage is under
 `target/site/jacoco`; integration coverage uses `jacoco-it.exec` and
 `target/site/jacoco-it`. `-Djacoco.skip=true` works for both runners.
+
+## Local Kubernetes cluster (step 1.1)
+
+The lab runs on kind. Take `docker`, `kind`, and `kubectl` from your `PATH`, like
+Maven; this project never downloads or pins tool binaries. It was tested with
+Docker Desktop 4.92.0, kind 0.33.0, and kubectl 1.36 (for example, `brew install
+kind kubectl`). The node image's advisories were reviewed on 2026-09-28 and
+accepted for this loopback-only, disposable lab.
+
+[`infra/kind.yaml`](infra/kind.yaml) defines one control plane and two workers on
+the digest-pinned Kubernetes 1.36.4 node image, with the API server on 127.0.0.1.
+Manifests follow the [portability rules](PLAN.md#portability-beyond-kind): a
+common base in `infra/k8s/base/` and the kind overlay in `infra/k8s/overlays/kind/`.
+
+Create or reuse the cluster from the repository root:
+
+```bash
+bash microservices/shardshop/scripts/up.sh
+```
+
+It creates the `shardshop` cluster if it does not exist, waits for all nodes to be
+Ready, and applies the kind overlay, which creates the `shardshop` namespace with
+the `restricted` Pod Security label. kind adds the `kind-shardshop` context to
+`~/.kube/config` and selects it; the script passes that context on every command
+and never deletes a cluster, namespace, or volume. Check the result:
+
+```bash
+kubectl --context kind-shardshop get nodes
+kubectl --context kind-shardshop get storageclass
+kubectl --context kind-shardshop get namespace shardshop --show-labels
+```
+
+`kind delete cluster --name shardshop` removes the whole lab, including its
+storage; kind storage is disposable and is not a backup.
