@@ -17,6 +17,7 @@
         <module>ewrs</module>
         <module>linker</module>
         <module>openflights</module>
+        <module>shardshop</module>
         <module>soap2rest</module>
     </modules>
 

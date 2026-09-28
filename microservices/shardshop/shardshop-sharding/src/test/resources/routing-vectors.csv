@@ -1,0 +1,16 @@
+# Golden vectors for routing contract version 2:
+# shard = unsigned big-endian SHA-256 of the decimal ID, modulo 3 (0 shard-a, 1 shard-b, 2 shard-c).
+# Expected shards were computed independently of ShardRouter (Python hashlib, shasum and
+# Java BigInteger) on 2026-09-28; never regenerate them with the code under test.
+# Seven digests have the most significant bit set, so a signed interpretation fails.
+# Columns: name, id, expected shard
+minimum positive ID,1,shard-a
+maximum signed long ID,9223372036854775807,shard-c
+above 2^53 (not exact as an IEEE-754 double),9007199254740993,shard-c
+"offset 210000000000 ms, generator 1, sequence 0",880803840000004096,shard-c
+"offset 210000000000 ms, generator 1, sequence 1",880803840000004097,shard-b
+"offset 210000000000 ms, generator 1, sequence 158",880803840000004254,shard-c
+"offset 210000000000 ms, generator 1, sequence 203",880803840000004299,shard-c
+"offset 210000000000 ms, generator 1, sequence 336",880803840000004432,shard-a
+"offset 210000000000 ms, generator 1, sequence 509",880803840000004605,shard-a
+"offset 210000000000 ms, generator 1023, sequence 4095",880803840004194303,shard-a

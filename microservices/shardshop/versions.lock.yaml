@@ -1,0 +1,1008 @@
+# Dated artifact inventory is complete; deployment qualification has separate milestones.
+---
+schema_version: 1
+project: shardshop
+checked_on: '2026-09-28'
+review_by: '2026-10-28'
+status: complete
+deployment_ready: false
+scope:
+  host_platform: darwin/arm64
+  container_platform: linux/arm64
+  policy: Community LTS where available; otherwise compatible maintained GA with regular
+    upgrades.
+  verification: Official release metadata, support matrices, OCI manifests/configs,
+    and Maven artifacts checked. Six module builds, unit/integration configuration
+    and executed plugin goals qualified in step 0.3.
+    OpenJDK container build/runtime smoke checks passed. No cluster or signature
+    verification performed.
+  date_inheritance: Unless overridden, entries use checked_on/review_by above; support_refs
+    resolve into support_policies and source_refs into sources.
+  inventory_boundary: The audit Maven profile writes effective POMs, application/test
+    dependency trees, plugin classpaths and SBOMs to each application's target/audit.
+    Shaded contents, general dynamic providers, Maven/JDK bundled libraries and
+    image OS packages remain outside this Maven inventory.
+  pin_usage: Use digest references for images, never tag alone. Artifact hashes are
+    inventory evidence, not build-time checks; the ShardShop POMs carry the selected
+    Maven versions.
+  image_verification: Downloaded raw OCI index, linux/arm64 manifest and config; independently
+    recomputed all three SHA-256 digests. Selected OpenJDK layers were pulled for
+    native ARM64 checks; other image layers and infrastructure runtime remain unqualified.
+  selection_status: Selected Maven pins are applied only to ShardShop. Infrastructure
+    remains undeployed. Historical step 0.1 artifact evidence is in VERSIONS.md.
+sources:
+  openjdk_25: https://jdk.java.net/25/
+  openjdk_archive: https://jdk.java.net/archive/
+  openjdk_images: https://github.com/docker-library/openjdk#deprecated
+  postgresql: https://www.postgresql.org/support/versioning/
+  spring_boot: https://api.spring.io/projects/spring-boot/generations/4.1.x
+  spring_boot_requirements: https://docs.spring.io/spring-boot/system-requirements.html
+  maven_plugins: https://maven.apache.org/plugins/
+  kubernetes: https://kubernetes.io/releases/patch-releases/
+  kubernetes_release: https://api.github.com/repos/kubernetes/kubernetes/releases/tags/v1.36.5
+  kubernetes_stable: https://dl.k8s.io/release/stable-1.36.txt
+  kind: https://github.com/kubernetes-sigs/kind/releases/tag/v0.33.0
+  kind_release: https://api.github.com/repos/kubernetes-sigs/kind/releases/tags/v0.33.0
+  cnpg: https://cloudnative-pg.io/docs/1.30/supported_releases/
+  cnpg_images: https://github.com/cloudnative-pg/postgres-containers
+  rabbitmq: https://www.rabbitmq.com/release-information
+  erlang: https://www.rabbitmq.com/docs/which-erlang
+  otp_policy: https://github.com/erlang/otp/security
+  rabbitmq_recipe: https://github.com/docker-library/rabbitmq/blob/a2d49841fbcf81713cf0e1c279facbce545e2292/4.3/ubuntu/Dockerfile
+  ubuntu: https://ubuntu.com/about/release-cycle
+  debian: https://www.debian.org/releases/trixie/index.en.html
+  docker_desktop: https://docs.docker.com/desktop/release-notes/
+  docker_macos: https://docs.docker.com/desktop/setup/install/mac-install/
+  jacoco: https://www.jacoco.org/jacoco/trunk/doc/changes.html
+  cyclonedx: https://github.com/CycloneDX/cyclonedx-maven-plugin/releases/tag/cyclonedx-maven-plugin-2.9.3
+  snowflake: https://github.com/phxql/snowflake-id/blob/v0.0.2/pom.xml
+  rabbitmq_management_recipe: https://github.com/docker-library/rabbitmq/blob/a2d49841fbcf81713cf0e1c279facbce545e2292/4.3/ubuntu/management/Dockerfile
+  canonical_jdk: https://hub.docker.com/r/ubuntu/jdk
+  canonical_jre: https://hub.docker.com/r/ubuntu/jre
+  canonical_java_rocks: https://ubuntu.com/developers/docs/tutorials/java-advanced/rocks-use/
+support_policies:
+  openjdk_25:
+    model: user_selected_local_baseline
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    source_refs:
+    - openjdk_25
+    - openjdk_archive
+    eol: null
+    note: OpenJDK 25 selected by the user without a vendor or exact-patch build
+      restriction. No vendor LTS entitlement or fixed support horizon is assumed.
+      Qualify updates and maintenance of the selected artifacts before deployment.
+  canonical_openjdk_25_26_04:
+    model: canonical_maintained_stable
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    source_refs:
+    - canonical_jdk
+    - canonical_jre
+    - canonical_java_rocks
+    supported_through: 2031-05
+    eol: null
+    note: Canonical publishes support until May 2031 for both 25-26.04 stable image
+      tracks. Month precision only; no commercial subscription or SLA assumed.
+      Requalify updated digests monthly and before deployment.
+  postgresql_18:
+    model: community_major
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    source_refs:
+    - postgresql
+    eol: '2030-11-14'
+    upgrade_before: '2030-11-14'
+  spring_boot_4_1:
+    model: community_branch
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    source_refs:
+    - spring_boot
+    - spring_boot_requirements
+    eol: '2027-07-31'
+    upgrade_before: '2027-07-31'
+  kubernetes_1_36:
+    model: community_minor
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    source_refs:
+    - kubernetes
+    eol: '2027-06-28'
+    upgrade_before: '2027-06-28'
+  cnpg_1_30:
+    model: community_branch
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    source_refs:
+    - cnpg
+    eol: null
+    eol_approximate: 2026-12
+    upgrade_by: '2026-11-30'
+    note: Conservative project deadline ahead of approximate upstream EOL. Recheck
+      exact date monthly.
+  rabbitmq_4_3:
+    model: community_branch
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    source_refs:
+    - rabbitmq
+    eol: '2026-11-30'
+    qualify_successor_by: '2026-11-15'
+    upgrade_before: '2026-11-30'
+  erlang_vendor_bundle:
+    model: community_rolling
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    source_refs:
+    - erlang
+    - otp_policy
+    eol: null
+    note: No published fixed EOL; matrix supports selected OTP 27 for RabbitMQ 4.3.6.
+      Update through the vendor broker image.
+  ubuntu_26_04:
+    model: standard_lts
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    source_refs:
+    - ubuntu
+    standard_security_through: 2031-05
+    eol: null
+    note: Month precision as published; paid ESM excluded.
+  ubuntu_24_04:
+    model: standard_lts
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    source_refs:
+    - ubuntu
+    standard_security_through: 2029-05
+    eol: null
+    note: Vendor RabbitMQ base; do not independently rebase the broker. Paid ESM excluded.
+  debian_13:
+    model: community_lts
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    source_refs:
+    - debian
+    full_support_ends: '2028-08-09'
+    lts_ends: '2030-06-30'
+    note: LTS has reduced architecture/package coverage. Image vendor and component
+      lifecycles also apply.
+  kind:
+    model: maintained_stable
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    source_refs:
+    - kind
+    eol: null
+    note: No published fixed EOL; upstream maintenance checked on 2026-09-28. Local
+      development only.
+  build_plugins:
+    model: maintained_stable
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    source_refs:
+    - maven_plugins
+    eol: null
+    note: No published fixed EOL; per-artifact upstream metadata checked on 2026-09-28.
+      No inherited JDK/Boot LTS claim.
+  docker_desktop:
+    model: rolling_stable
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    source_refs:
+    - docker_desktop
+    - docker_macos
+    eol: null
+    note: No fixed-version LTS. macOS current and previous two major releases supported.
+  snowflake_exception:
+    model: user_selected_exception
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    source_refs:
+    - snowflake
+    eol: null
+    note: 0.0.2 is a pre-1.0 release published 2023-01-15 with no published LTS or
+      future maintenance commitment. Review releases/advisories monthly; qualify on
+      Java 25 in steps 0.3 and 3.3.
+compatibility:
+  java:
+    version: '25'
+    build_range: '[25,)'
+    observed_runtime_version: 25+36-3489
+    verified_build_jdks:
+    - 25+36-3489
+    - 26.0.2
+    support_refs:
+    - openjdk_25
+    release: '25'
+    vendor_restricted: false
+    patch_restricted: false
+    preview_enabled: false
+  spring_boot:
+    version: 4.1.1
+    support_refs:
+    - spring_boot_4_1
+    java_25_supported: true
+    minimum_maven: 3.6.3
+    source_refs:
+    - spring_boot_requirements
+  cloudnative_pg:
+    version: 1.30.1
+    support_refs:
+    - cnpg_1_30
+    supported_kubernetes_minors:
+    - '1.34'
+    - '1.35'
+    - '1.36'
+    supported_postgresql_majors:
+    - '14'
+    - '15'
+    - '16'
+    - '17'
+    - '18'
+    selected_postgresql: '18.6'
+    source_refs:
+    - cnpg
+  kubernetes:
+    version: 1.36.4
+    support_refs:
+    - kubernetes_1_36
+    source_refs:
+    - kubernetes_release
+    - kubernetes_stable
+    kind_node_image: docker.io/kindest/node@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+    current_patch_observed: 1.36.5
+    current_patch_published_at: '2026-09-23T18:58:18Z'
+    selection_exception: 'KIND-1.36.5: user-authorized 1.36.4 fallback; recheck availability
+      monthly.'
+  kind:
+    version: 0.33.0
+    support_refs:
+    - kind
+    default_node_kubernetes: 1.37.0
+    default_node_compatible: false
+    source_refs:
+    - kind
+    - kind_release
+    selected_node_kubernetes: 1.36.4
+    selected_image_ref: kind_node
+    current_patch_exception_authorized: true
+  rabbitmq:
+    version: 4.3.6
+    erlang_otp: 27.3.4.17
+    support_refs:
+    - rabbitmq_4_3
+    - erlang_vendor_bundle
+    source_refs:
+    - erlang
+    - rabbitmq_recipe
+    note: Corrects draft OTP 28.x assumption. Use the supported runtime actually bundled
+      by the official image; no custom Erlang upgrade.
+images:
+  cnpg_operator:
+    version: 1.30.1
+    purpose: operator
+    support_refs:
+    - cnpg_1_30
+    - debian_13
+    tag_observed: ghcr.io/cloudnative-pg/cloudnative-pg:1.30.1
+    reference: ghcr.io/cloudnative-pg/cloudnative-pg@sha256:923c267ec29636db3bee20f993d0ec4973fa22998e1adad37da79e4d32b5bc07
+    index_digest: sha256:923c267ec29636db3bee20f993d0ec4973fa22998e1adad37da79e4d32b5bc07
+    linux_arm64_digest: sha256:9a10dd7d7466310d5d543f618478cb905093cfc7a5463b538f449da626660083
+    linux_arm64_config_digest: sha256:eaca429ffff79a7e7be1cf77d51250c5b9701d8ee0173b98c0f6e02f5a6db428
+    manifest_url: https://ghcr.io/v2/cloudnative-pg/cloudnative-pg/manifests/sha256:923c267ec29636db3bee20f993d0ec4973fa22998e1adad37da79e4d32b5bc07
+    config_url: https://ghcr.io/v2/cloudnative-pg/cloudnative-pg/blobs/sha256:eaca429ffff79a7e7be1cf77d51250c5b9701d8ee0173b98c0f6e02f5a6db428
+    base_image_observed: gcr.io/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
+  postgresql_cnpg:
+    version: '18.6'
+    purpose: three CNPG shard pairs; also the ledger if provisioned as a CNPG singleton
+    support_refs:
+    - postgresql_18
+    - debian_13
+    tag_observed: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie
+    reference: ghcr.io/cloudnative-pg/postgresql@sha256:28d95c3797e8ec648b240a48745f700ecb7a307b91c8b1fbb3ad83e5b25a3048
+    index_digest: sha256:28d95c3797e8ec648b240a48745f700ecb7a307b91c8b1fbb3ad83e5b25a3048
+    linux_arm64_digest: sha256:e2560ffb5caec3ad7f45d6ab298e074c9c4afc09e93fb727322b9fd1563aac2d
+    linux_arm64_config_digest: sha256:a198bd4f12da4b32c16925145f11d1c7f95b30357a1442d9ac621ca8af40f894
+    manifest_url: https://ghcr.io/v2/cloudnative-pg/postgresql/manifests/sha256:28d95c3797e8ec648b240a48745f700ecb7a307b91c8b1fbb3ad83e5b25a3048
+    config_url: https://ghcr.io/v2/cloudnative-pg/postgresql/blobs/sha256:a198bd4f12da4b32c16925145f11d1c7f95b30357a1442d9ac621ca8af40f894
+    variant: standard
+    source_revision: def4f476400e5f83c8a605f877ffa2e05d3db1c7
+    source_refs:
+    - cnpg_images
+    note: Uses maintained standard variant, not deprecated system image. Planned pg_dump
+      backup does not require bundled Barman.
+  postgresql_test:
+    version: '18.6'
+    purpose: Testcontainers; standalone ledger if not managed by CNPG
+    support_refs:
+    - postgresql_18
+    - debian_13
+    tag_observed: docker.io/library/postgres:18.6-trixie
+    reference: docker.io/library/postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+    index_digest: sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+    linux_arm64_digest: sha256:f4fcd2b983483177b15d72d94fb3614736211554f7cac5c2cc54a05c75110b90
+    linux_arm64_config_digest: sha256:d8a40176c29aa0c7a20a19f85ddddc47f72d8d6789a7a86a21f3713e71fb4ad6
+    manifest_url: https://registry-1.docker.io/v2/library/postgres/manifests/sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+    config_url: https://registry-1.docker.io/v2/library/postgres/blobs/sha256:d8a40176c29aa0c7a20a19f85ddddc47f72d8d6789a7a86a21f3713e71fb4ad6
+    version_environment_observed:
+    - GOSU_VERSION=1.19
+    - PG_MAJOR=18
+    - PG_VERSION=18.6-1.pgdg13+2
+  rabbitmq:
+    version: 4.3.6
+    purpose: broker and broker integration tests
+    support_refs:
+    - rabbitmq_4_3
+    - erlang_vendor_bundle
+    - ubuntu_24_04
+    tag_observed: docker.io/library/rabbitmq:4.3.6-management
+    reference: docker.io/library/rabbitmq@sha256:cdf40d8cb363d145e377ed88d59696a42386ffe54b30125f10eb128b862eea95
+    index_digest: sha256:cdf40d8cb363d145e377ed88d59696a42386ffe54b30125f10eb128b862eea95
+    linux_arm64_digest: sha256:fe9009076fc11578b8b02ff62ea246e2c224c4972c73aa803f32791342e3d447
+    linux_arm64_config_digest: sha256:6fc2c1102eeb2ad1cc1c8a2b9daf0ec23a5005a9d88280fe08c059bf73ec9f4f
+    manifest_url: https://registry-1.docker.io/v2/library/rabbitmq/manifests/sha256:cdf40d8cb363d145e377ed88d59696a42386ffe54b30125f10eb128b862eea95
+    config_url: https://registry-1.docker.io/v2/library/rabbitmq/blobs/sha256:6fc2c1102eeb2ad1cc1c8a2b9daf0ec23a5005a9d88280fe08c059bf73ec9f4f
+    version_environment_observed:
+    - RABBITMQ_VERSION=4.3.6
+  application_jre:
+    version: 25.0.4.1
+    purpose: OpenJDK 25 runtime base for the six applications
+    support_refs:
+    - canonical_openjdk_25_26_04
+    - ubuntu_26_04
+    tag_observed: docker.io/ubuntu/jre:25-26.04_stable
+    reference: docker.io/ubuntu/jre@sha256:3e921054481a0208daca2194e7982a14063771be914851eae06754a8e6890bab
+    index_digest: sha256:3e921054481a0208daca2194e7982a14063771be914851eae06754a8e6890bab
+    linux_arm64_digest: sha256:de7e4b425dcf72144fc2d7c8cab02e92770da468803a97dffbbeac82843ce051
+    linux_arm64_config_digest: sha256:06efc59d38010f0c99d9e0a3c6b4ed93d20f9bbbd676b17604b4060cff37ba61
+    manifest_url: https://registry-1.docker.io/v2/ubuntu/jre/manifests/sha256:3e921054481a0208daca2194e7982a14063771be914851eae06754a8e6890bab
+    config_url: https://registry-1.docker.io/v2/ubuntu/jre/blobs/sha256:06efc59d38010f0c99d9e0a3c6b4ed93d20f9bbbd676b17604b4060cff37ba61
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    status: verified_selected
+    source_refs:
+    - canonical_jre
+    - canonical_java_rocks
+    java_runtime_version: 25.0.4.1+1-1-26.04.4-Ubuntu
+    java_home: "/usr/lib/jvm/java-25-openjdk-arm64"
+    ubuntu_version: 26.04.1
+    entrypoint_observed:
+    - "/usr/bin/pebble"
+    - enter
+    verification: Raw OCI index/arm64 manifest/config hashes verified and selected
+      layers pulled by digest. Native ARM64 execution passed.
+    image_version_label_observed: 25-edge
+    image_user_observed: ''
+    note: 'The stable tag carries a 25-edge label, but executed Java is
+      GA 25.0.4.1. All six JARs passed with UID/GID 584792, network disabled and read-only
+      root. Shell-free runtime: use a Java/native launcher and explicitly configure
+      non-root execution.'
+  build_jdk:
+    version: 25.0.4.1
+    purpose: OpenJDK 25 container build/test JDK
+    support_refs:
+    - canonical_openjdk_25_26_04
+    - ubuntu_26_04
+    tag_observed: docker.io/ubuntu/jdk:25-26.04_stable
+    reference: docker.io/ubuntu/jdk@sha256:fd8e1a6f0f4e453ef6e0b703c7657989a03874e9019f1c3f48ad93d0267c0369
+    index_digest: sha256:fd8e1a6f0f4e453ef6e0b703c7657989a03874e9019f1c3f48ad93d0267c0369
+    linux_arm64_digest: sha256:9973a61338508c533c769f706e52639f79c68b914098f3578b73ac9494b4b1fc
+    linux_arm64_config_digest: sha256:3b80edf5f11ae5b78b2873b7644c9c4857263cd1a27b968d0df7e31d0ea932a9
+    manifest_url: https://registry-1.docker.io/v2/ubuntu/jdk/manifests/sha256:fd8e1a6f0f4e453ef6e0b703c7657989a03874e9019f1c3f48ad93d0267c0369
+    config_url: https://registry-1.docker.io/v2/ubuntu/jdk/blobs/sha256:3b80edf5f11ae5b78b2873b7644c9c4857263cd1a27b968d0df7e31d0ea932a9
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    status: verified_selected
+    source_refs:
+    - canonical_jdk
+    - canonical_java_rocks
+    java_runtime_version: 25.0.4.1+1-1-26.04.4-Ubuntu
+    java_home: "/usr/lib/jvm/java-25-openjdk-arm64"
+    ubuntu_version: 26.04.1
+    entrypoint_observed:
+    - "/usr/bin/pebble"
+    - enter
+    verification: Raw OCI index/arm64 manifest/config hashes verified and selected
+      layers pulled by digest. Native ARM64 execution passed.
+    note: Product clean verify with unit/integration tests passed using the checksum-verified
+      Maven 3.9.16 distribution. This minimal JDK base does not include Maven; supply
+      Maven in step 3.9.
+  kind_node:
+    version: 1.36.4
+    purpose: kind nodes for the ShardShop local cluster
+    support_refs:
+    - kubernetes_1_36
+    - kind
+    - debian_13
+    tag_observed: docker.io/kindest/node:v1.36.4
+    reference: docker.io/kindest/node@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+    index_digest: sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+    linux_arm64_digest: sha256:10210eabcf5dc4b585756bbd3f7fbb60cc0a12a252f28aeba269d93e0070c025
+    linux_arm64_config_digest: sha256:7ea3e6957929c3fb38ee5639c8ed47502d522a94ef2a4b41f90a3eefd001c1dd
+    manifest_url: https://registry-1.docker.io/v2/kindest/node/manifests/sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+    config_url: https://registry-1.docker.io/v2/kindest/node/blobs/sha256:7ea3e6957929c3fb38ee5639c8ed47502d522a94ef2a4b41f90a3eefd001c1dd
+    checked_on: '2026-09-28'
+    review_by: '2026-10-28'
+    status: verified_selected
+    selection: 'User-authorized 1.36.4 fallback after rechecking 1.36.5: registry
+      returns 404 MANIFEST_UNKNOWN.'
+    source_refs:
+    - kind_release
+    verification: Raw OCI index/arm64 manifest/config hashes verified; index matches
+      the kind 0.33.0 release. No cluster boot performed.
+candidates: {}
+installation_artifacts:
+  cnpg_manifest:
+    version: 1.30.1
+    url: https://github.com/cloudnative-pg/cloudnative-pg/releases/download/v1.30.1/cnpg-1.30.1.yaml
+    sha256: 37237f145d8138256ea25ae830f87759255665ff08f8d552fdd8224a5ec032fb
+    published_checksum_url: null
+    checksum_file_inspected: https://github.com/cloudnative-pg/cloudnative-pg/releases/download/v1.30.1/cnpg-1.30.1-checksums.txt
+    verification: SHA-256 computed from the official release YAML download. The release
+      checksum file covers CLI archives, not this YAML; no upstream checksum comparison
+      or signature verification claimed for it.
+    support_refs:
+    - cnpg_1_30
+    required_transform: Step 1.2 must replace the tag-only operator image with images.cnpg_operator.reference
+      and check the rendered manifest.
+tools:
+  kind:
+    version: 0.33.0
+    platform: darwin/arm64
+    url: https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-darwin-arm64
+    sha256: 0c8c7dbe5e23594a198b786c4bc13dacc101fa6196b0cb0b23a1ca44e61f4b4f
+    checksum_url: https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-darwin-arm64.sha256sum
+    verification: Published checksum fetched; executable not downloaded or run.
+    support_refs:
+    - kind
+  kubectl:
+    version: 1.36.5
+    support_refs:
+    - kubernetes_1_36
+    artifacts:
+      darwin_arm64:
+        url: https://dl.k8s.io/release/v1.36.5/bin/darwin/arm64/kubectl
+        sha256: c5850a4a6b9469b26cce47c1ab456285f58e308283dcdf72b4ddda3db49b0ec0
+        checksum_url: https://dl.k8s.io/release/v1.36.5/bin/darwin/arm64/kubectl.sha256
+        verification: Published checksum fetched; executable not downloaded or run.
+        purpose: Host administration
+      linux_arm64:
+        url: https://dl.k8s.io/release/v1.36.5/bin/linux/arm64/kubectl
+        sha256: 88fc1aca8fd0c1b44fe379f67c39bd6858bdfc50241dc55775f84d0f5b31da3a
+        checksum_url: https://dl.k8s.io/release/v1.36.5/bin/linux/arm64/kubectl.sha256
+        verification: Published checksum fetched; executable not downloaded or run.
+        purpose: Future generator-allocation launcher image; verify before copying
+          into image.
+  host_jdk:
+    release_name: jdk-25+36
+    archive: openjdk-25_macos-aarch64_bin.tar.gz
+    url: https://download.java.net/java/GA/jdk25/bd75d5f9689641da8e1daabeccb5528b/36/GPL/openjdk-25_macos-aarch64_bin.tar.gz
+    sha256: 2006337bf326fdfdf6117081751ba38c1c8706d63419ecac7ff102ff7c776876
+    checksum_url: https://download.java.net/java/GA/jdk25/bd75d5f9689641da8e1daabeccb5528b/36/GPL/openjdk-25_macos-aarch64_bin.tar.gz.sha256
+    version: 25+36
+    observed_runtime_version: 25+36-3489
+    platform: darwin/arm64
+    support_refs:
+    - openjdk_25
+    source_refs:
+    - openjdk_archive
+    verification: Official OpenJDK archive/checksum metadata. The archive was not
+      downloaded during this change; the existing SDKMAN 25-open installation
+      reports OpenJDK Runtime Environment 25+36-3489 and was used for skeleton checks.
+    note: Reference archive for reproducibility, not a vendor or exact-patch Maven
+      constraint. Any OpenJDK 25 installation can be selected through JAVA_HOME.
+  docker_desktop:
+    version: 4.92.0
+    released_on: '2026-09-21'
+    platform: darwin/arm64
+    url: https://desktop.docker.com/mac/main/arm64/240144/Docker.dmg
+    sha256: e513bbfeca246165595e2f17cabf6579936f36057f3f4fb689c619e6aac6d188
+    checksum_url: https://desktop.docker.com/mac/main/arm64/240144/checksums.txt
+    verification: Official release/checksum metadata; installer not downloaded or
+      run.
+    support_refs:
+    - docker_desktop
+    source_refs:
+    - docker_desktop
+    - docker_macos
+    observed_host:
+      macos: 26.6.2
+      docker_desktop: 4.69.0
+      docker_engine: 29.4.0
+      containerd: 2.2.1
+      runc: 1.3.4
+      verification: Read local docker version output; no changes made.
+    required_action: Update host to the selected release and record its full runtime
+      inventory before step 1.1. Existing 4.69.0 is not the selected pin.
+vendor_bundles:
+  rabbitmq:
+    image_ref: rabbitmq
+    erlang_otp: 27.3.4.17
+    ubuntu: '24.04'
+    source_refs:
+    - rabbitmq_recipe
+    - rabbitmq_management_recipe
+    verification: Official immutable Dockerfile and image config/history. Runtime
+      execution pending.
+  docker_desktop_target:
+    tool_ref: docker_desktop
+    containerd: 2.3.5
+    buildx: 0.37.1
+    source_refs:
+    - docker_desktop
+    verification: Release notes only. Remaining bundled versions must be inventoried
+      after the host update.
+  kind_node:
+    debian: '13'
+    containerd: 2.3.4
+    runc: 1.4.3
+    crictl: 1.36.0
+    cni_plugins: 1.9.1
+    fuse_overlayfs: 2.1.7
+    source: https://github.com/kubernetes-sigs/kind/blob/v0.33.0/images/base/Dockerfile
+    verification: Release source recipe only. Not independently installed pins; full
+      image/SBOM and running cluster inventory pending.
+    image_ref: kind_node
+maven:
+  version_policy: Explicit GA plugin pins; exclude metadata entries for Maven 4 beta
+    plugins and Boot milestones. Install/deploy are pinned lifecycle plugins, not
+    authorization to publish artifacts.
+  runtime_qualification: Six independent clean verify builds with integration/audit
+    profiles passed on Maven 3.9.16 / OpenJDK 25. Executed goals, providers, agents
+    and SBOM generation qualified; unused goals remain unqualified.
+  override_review: pom.xml comments name the advisory each plugin override fixes.
+  plugin_dependency_overrides:
+    org.apache.maven.plugins:maven-resources-plugin:
+      org.eclipse.sisu:org.eclipse.sisu.plexus: "1.1.0"
+      org.eclipse.sisu:org.eclipse.sisu.inject: "1.1.0"
+      org.codehaus.plexus:plexus-utils: "3.6.2"
+    org.apache.maven.plugins:maven-clean-plugin:
+      org.codehaus.plexus:plexus-utils: "4.1.0"
+    org.apache.maven.plugins:maven-dependency-plugin:
+      commons-beanutils:commons-beanutils: "1.11.0"
+    org.apache.maven.plugins:maven-help-plugin:
+      org.jsoup:jsoup: "1.23.2"
+    org.apache.maven.plugins:maven-enforcer-plugin:
+      org.apache.maven.enforcer:enforcer-rules: "3.6.3"
+    org.jacoco:jacoco-maven-plugin:
+      org.codehaus.plexus:plexus-utils: "3.6.2"
+    org.cyclonedx:cyclonedx-maven-plugin:
+      org.cyclonedx:cyclonedx-core-java: "11.0.1"
+      com.fasterxml.jackson.core:jackson-core: "2.22.3"
+      com.fasterxml.jackson.core:jackson-databind: "2.22.3"
+      com.fasterxml.jackson.core:jackson-annotations: "2.22"
+      com.fasterxml.jackson.dataformat:jackson-dataformat-xml: "2.22.3"
+      com.fasterxml.jackson.dataformat:jackson-dataformat-yaml: "2.22.3"
+    org.springframework.boot:spring-boot-maven-plugin:
+      org.codehaus.plexus:plexus-utils: "3.6.2"
+      org.apache.commons:commons-lang3: "3.20.0"
+  plugin_dependency_exclusions:
+    org.apache.maven.plugins:maven-enforcer-plugin:
+    - org.apache-extras.beanshell:bsh
+  plugin_override_artifacts:
+    com.fasterxml.jackson.core:jackson-annotations:2.22: {"sha256":"21ddb598807d3a51a876704eb979d9296e1c6a6f47ab1826ff88c6d6a127a2d0","artifact_url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar","upstream_checksum":{"algorithm":"sha256","value":"21ddb598807d3a51a876704eb979d9296e1c6a6f47ab1826ff88c6d6a127a2d0","url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar.sha256"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
+    com.fasterxml.jackson.core:jackson-core:2.22.3: {"sha256":"8a501126a385b25841915d839508f8a66e2a0dbc8a6709d055ef3b3e852b094c","artifact_url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-core/2.22.3/jackson-core-2.22.3.jar","upstream_checksum":{"algorithm":"sha256","value":"8a501126a385b25841915d839508f8a66e2a0dbc8a6709d055ef3b3e852b094c","url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-core/2.22.3/jackson-core-2.22.3.jar.sha256"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
+    com.fasterxml.jackson.core:jackson-databind:2.22.3: {"sha256":"556db5439e206114346043f68d200497dc96a0bca62a360a81784092ebd0e0a9","artifact_url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.22.3/jackson-databind-2.22.3.jar","upstream_checksum":{"algorithm":"sha256","value":"556db5439e206114346043f68d200497dc96a0bca62a360a81784092ebd0e0a9","url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.22.3/jackson-databind-2.22.3.jar.sha256"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
+    com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.22.3: {"sha256":"8b99f4a11761246f2d721f02d2865dcca32dd8101082ebfbc3c16133b6c0d3e0","artifact_url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformat-xml/2.22.3/jackson-dataformat-xml-2.22.3.jar","upstream_checksum":{"algorithm":"sha256","value":"8b99f4a11761246f2d721f02d2865dcca32dd8101082ebfbc3c16133b6c0d3e0","url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformat-xml/2.22.3/jackson-dataformat-xml-2.22.3.jar.sha256"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
+    com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.3: {"sha256":"2bcbc3b9abaefbeba11409b9e30ec35ed7071a61a47c8c2a9c688e40e45b90f9","artifact_url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.22.3/jackson-dataformat-yaml-2.22.3.jar","upstream_checksum":{"algorithm":"sha256","value":"2bcbc3b9abaefbeba11409b9e30ec35ed7071a61a47c8c2a9c688e40e45b90f9","url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.22.3/jackson-dataformat-yaml-2.22.3.jar.sha256"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
+    commons-beanutils:commons-beanutils:1.11.0: {"sha256":"9e44ba68ec9a3f21286fa2a8bbb003b735c0f69101bb43144b79f4f8aaa74709","artifact_url":"https://repo.maven.apache.org/maven2/commons-beanutils/commons-beanutils/1.11.0/commons-beanutils-1.11.0.jar","upstream_checksum":{"algorithm":"sha1","value":"ac03ea606d13de04c2e4508227680faff151f491","url":"https://repo.maven.apache.org/maven2/commons-beanutils/commons-beanutils/1.11.0/commons-beanutils-1.11.0.jar.sha1"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
+    org.apache.commons:commons-lang3:3.20.0: {"sha256":"69e5c9fa35da7a51a5fd2099dfe56a2d8d32cf233e2f6d770e796146440263f4","artifact_url":"https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.20.0/commons-lang3-3.20.0.jar","upstream_checksum":{"algorithm":"sha1","value":"65897b3e5731220962e659e001904af3c3cbeba9","url":"https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.20.0/commons-lang3-3.20.0.jar.sha1"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
+    org.apache.maven.enforcer:enforcer-rules:3.6.3: {"sha256":"24bad9159ed9af932488bad1be042471a170a5bc822bfc8f7b29f3c297c1e138","artifact_url":"https://repo.maven.apache.org/maven2/org/apache/maven/enforcer/enforcer-rules/3.6.3/enforcer-rules-3.6.3.jar","upstream_checksum":{"algorithm":"sha1","value":"10055ea71dbb2e98434e0a4192a64f3506abf524","url":"https://repo.maven.apache.org/maven2/org/apache/maven/enforcer/enforcer-rules/3.6.3/enforcer-rules-3.6.3.jar.sha1"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
+    org.codehaus.plexus:plexus-utils:3.6.2: {"sha256":"7c2cdf8b4a02a2ee3f0514b8d74ad5eb6e2365eeb073a5cabd6f2d61d8f871df","artifact_url":"https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-utils/3.6.2/plexus-utils-3.6.2.jar","upstream_checksum":{"algorithm":"sha256","value":"7c2cdf8b4a02a2ee3f0514b8d74ad5eb6e2365eeb073a5cabd6f2d61d8f871df","url":"https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-utils/3.6.2/plexus-utils-3.6.2.jar.sha256"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
+    org.codehaus.plexus:plexus-utils:4.1.0: {"sha256":"6a2fe69e98301882bb2bb05afe36414eb82d6f7c63299cccdb2dc02b4358a968","artifact_url":"https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-utils/4.1.0/plexus-utils-4.1.0.jar","upstream_checksum":{"algorithm":"sha256","value":"6a2fe69e98301882bb2bb05afe36414eb82d6f7c63299cccdb2dc02b4358a968","url":"https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-utils/4.1.0/plexus-utils-4.1.0.jar.sha256"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
+    org.cyclonedx:cyclonedx-core-java:11.0.1: {"sha256":"989348cc6d385629a3ccb735d450b0f0f022167cb702c2fcb0e6f2bdd989dde7","artifact_url":"https://repo.maven.apache.org/maven2/org/cyclonedx/cyclonedx-core-java/11.0.1/cyclonedx-core-java-11.0.1.jar","upstream_checksum":{"algorithm":"sha256","value":"989348cc6d385629a3ccb735d450b0f0f022167cb702c2fcb0e6f2bdd989dde7","url":"https://repo.maven.apache.org/maven2/org/cyclonedx/cyclonedx-core-java/11.0.1/cyclonedx-core-java-11.0.1.jar.sha256"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
+    org.eclipse.sisu:org.eclipse.sisu.inject:1.1.0: {"sha256":"f3edea5119c91be496e3ff55948fa16c89cdbacf9c2e74bdc9fafda1a3faba20","artifact_url":"https://repo.maven.apache.org/maven2/org/eclipse/sisu/org.eclipse.sisu.inject/1.1.0/org.eclipse.sisu.inject-1.1.0.jar","upstream_checksum":{"algorithm":"sha256","value":"f3edea5119c91be496e3ff55948fa16c89cdbacf9c2e74bdc9fafda1a3faba20","url":"https://repo.maven.apache.org/maven2/org/eclipse/sisu/org.eclipse.sisu.inject/1.1.0/org.eclipse.sisu.inject-1.1.0.jar.sha256"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
+    org.eclipse.sisu:org.eclipse.sisu.plexus:1.1.0: {"sha256":"7ebc52738567e0450b6857a404a147639533d35c38a5ba42e4c5ab2910c6df94","artifact_url":"https://repo.maven.apache.org/maven2/org/eclipse/sisu/org.eclipse.sisu.plexus/1.1.0/org.eclipse.sisu.plexus-1.1.0.jar","upstream_checksum":{"algorithm":"sha256","value":"7ebc52738567e0450b6857a404a147639533d35c38a5ba42e4c5ab2910c6df94","url":"https://repo.maven.apache.org/maven2/org/eclipse/sisu/org.eclipse.sisu.plexus/1.1.0/org.eclipse.sisu.plexus-1.1.0.jar.sha256"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
+    org.jsoup:jsoup:1.23.2: {"sha256":"e9d8c856856680427f096d156f02a414289985c930998fcb519ce5be39b42003","artifact_url":"https://repo.maven.apache.org/maven2/org/jsoup/jsoup/1.23.2/jsoup-1.23.2.jar","upstream_checksum":{"algorithm":"sha256","value":"e9d8c856856680427f096d156f02a414289985c930998fcb519ce5be39b42003","url":"https://repo.maven.apache.org/maven2/org/jsoup/jsoup/1.23.2/jsoup-1.23.2.jar.sha256"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
+  plugins:
+    org.apache.maven.plugins:maven-compiler-plugin:
+      version: 3.16.0
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-compiler-plugin/3.16.0/maven-compiler-plugin-3.16.0.jar
+      sha256: f2a6a4668dd833cfe559dd345929196e7b61ed13f6c03f8e087ffba3d85be807
+      published_checksum:
+        algorithm: sha1
+        value: e67c90746d33690dceb30dba40946643d414bb94
+        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-compiler-plugin/3.16.0/maven-compiler-plugin-3.16.0.jar.sha1
+      metadata_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-compiler-plugin/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - build_plugins
+      declared_minimum_java: '1.8'
+      declared_minimum_maven: 3.6.3
+      requirements_source: META-INF/maven/plugin.xml inside the hashed JAR
+    org.apache.maven.plugins:maven-surefire-plugin:
+      version: 3.6.0
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-surefire-plugin/3.6.0/maven-surefire-plugin-3.6.0.jar
+      sha256: 07117c7456920c14b9d3bdb9b1e82fbcb2fc5004ff2a3bd19c8fc6d25d6f15bb
+      published_checksum:
+        algorithm: sha1
+        value: 852ab54e50b02f6d0880d2c36eb911cb4e37aa86
+        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-surefire-plugin/3.6.0/maven-surefire-plugin-3.6.0.jar.sha1
+      metadata_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-surefire-plugin/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - build_plugins
+      declared_minimum_java: '1.8'
+      declared_minimum_maven: 3.6.3
+      requirements_source: META-INF/maven/plugin.xml inside the hashed JAR
+    org.apache.maven.plugins:maven-failsafe-plugin:
+      version: 3.6.0
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-failsafe-plugin/3.6.0/maven-failsafe-plugin-3.6.0.jar
+      sha256: d75b10ff6dce52f47ec02105c3c0e5325737a8ea842b010c25daa9d9a497e640
+      published_checksum:
+        algorithm: sha1
+        value: 8a1ff33ed398f9e68337e00a3a34e009a7bb260d
+        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-failsafe-plugin/3.6.0/maven-failsafe-plugin-3.6.0.jar.sha1
+      metadata_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-failsafe-plugin/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - build_plugins
+      declared_minimum_java: '1.8'
+      declared_minimum_maven: 3.6.3
+      requirements_source: META-INF/maven/plugin.xml inside the hashed JAR
+    org.apache.maven.plugins:maven-resources-plugin:
+      version: 3.5.0
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-resources-plugin/3.5.0/maven-resources-plugin-3.5.0.jar
+      sha256: 2c923c63a197565a3e78f2b16d762d0f49bb83250dd2b1e6286704ea0f447060
+      published_checksum:
+        algorithm: sha1
+        value: 3348d34e5cb5269481cd1a5df2ea9d0175883832
+        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-resources-plugin/3.5.0/maven-resources-plugin-3.5.0.jar.sha1
+      metadata_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-resources-plugin/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - build_plugins
+      declared_minimum_java: '1.8'
+      declared_minimum_maven: 3.6.3
+      requirements_source: META-INF/maven/plugin.xml inside the hashed JAR
+    org.apache.maven.plugins:maven-jar-plugin:
+      version: 3.5.1
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-jar-plugin/3.5.1/maven-jar-plugin-3.5.1.jar
+      sha256: c83db6059be3fec9a4a68a0e226caefaa944663008617c697e087444415181d5
+      published_checksum:
+        algorithm: sha1
+        value: 1e87a31c06fd249c0e711342b39e8429dba65c50
+        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-jar-plugin/3.5.1/maven-jar-plugin-3.5.1.jar.sha1
+      metadata_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-jar-plugin/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - build_plugins
+      declared_minimum_java: '1.8'
+      declared_minimum_maven: 3.6.3
+      requirements_source: META-INF/maven/plugin.xml inside the hashed JAR
+    org.apache.maven.plugins:maven-clean-plugin:
+      version: 3.5.0
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-clean-plugin/3.5.0/maven-clean-plugin-3.5.0.jar
+      sha256: a15977e3457ff8cd803c1a37e1e53aad76e4609cd23bbca8e8f783e5c78e5fa8
+      published_checksum:
+        algorithm: sha1
+        value: 595c5901d9ef83b178de38dcea97e7a1f2964b4e
+        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-clean-plugin/3.5.0/maven-clean-plugin-3.5.0.jar.sha1
+      metadata_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-clean-plugin/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - build_plugins
+      declared_minimum_java: '1.8'
+      declared_minimum_maven: 3.6.3
+      requirements_source: META-INF/maven/plugin.xml inside the hashed JAR
+    org.apache.maven.plugins:maven-install-plugin:
+      version: 3.2.0
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-install-plugin/3.2.0/maven-install-plugin-3.2.0.jar
+      sha256: 6fd9d26eb6f473d123f6138bf54d5bae80466a84dab95ab5017590c010621e35
+      published_checksum:
+        algorithm: sha1
+        value: 8dc8fc4afbb68d06167fdca045a58bc87c473c4e
+        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-install-plugin/3.2.0/maven-install-plugin-3.2.0.jar.sha1
+      metadata_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-install-plugin/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - build_plugins
+      declared_minimum_java: '1.8'
+      declared_minimum_maven: 3.6.3
+      requirements_source: META-INF/maven/plugin.xml inside the hashed JAR
+    org.apache.maven.plugins:maven-deploy-plugin:
+      version: 3.2.0
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-deploy-plugin/3.2.0/maven-deploy-plugin-3.2.0.jar
+      sha256: 7e467636a998a377c76163e2891b79d274b7d6886834a29f74089aade68af4aa
+      published_checksum:
+        algorithm: sha1
+        value: 9c3660dea8adb854a60309a45e45d6d29b8a253c
+        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-deploy-plugin/3.2.0/maven-deploy-plugin-3.2.0.jar.sha1
+      metadata_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-deploy-plugin/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - build_plugins
+      declared_minimum_java: '1.8'
+      declared_minimum_maven: 3.6.3
+      requirements_source: META-INF/maven/plugin.xml inside the hashed JAR
+    org.apache.maven.plugins:maven-dependency-plugin:
+      version: 3.11.0
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-dependency-plugin/3.11.0/maven-dependency-plugin-3.11.0.jar
+      sha256: e37a8fc9ff47435cc6bda257a4501cf79626c8115610ba33c77775ce23b4c3b7
+      published_checksum:
+        algorithm: sha1
+        value: 7451abfa599596cf15d2c57ce8234547476961ff
+        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-dependency-plugin/3.11.0/maven-dependency-plugin-3.11.0.jar.sha1
+      metadata_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-dependency-plugin/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - build_plugins
+      declared_minimum_java: '1.8'
+      declared_minimum_maven: 3.6.3
+      requirements_source: META-INF/maven/plugin.xml inside the hashed JAR
+    org.apache.maven.plugins:maven-help-plugin:
+      version: 3.5.2
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-help-plugin/3.5.2/maven-help-plugin-3.5.2.jar
+      sha256: fe53082c6c51b9b4778f4dfe3e9810c18e995c34b0780c30b73fb2a156c90c03
+      published_checksum:
+        algorithm: sha1
+        value: fa4c7035dcd5c5d297e20d7f8a8ffb84371b8885
+        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-help-plugin/3.5.2/maven-help-plugin-3.5.2.jar.sha1
+      metadata_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-help-plugin/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - build_plugins
+      declared_minimum_java: '1.8'
+      declared_minimum_maven: 3.6.3
+      requirements_source: META-INF/maven/plugin.xml inside the hashed JAR
+    org.apache.maven.plugins:maven-enforcer-plugin:
+      version: 3.6.3
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-enforcer-plugin/3.6.3/maven-enforcer-plugin-3.6.3.jar
+      sha256: 32347686c513894a2fae96eeb11527883f47b8957850d793ea833646ad954dca
+      published_checksum:
+        algorithm: sha1
+        value: c0c7fbbc5e4da47956045ce91febb4a707e6be51
+        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-enforcer-plugin/3.6.3/maven-enforcer-plugin-3.6.3.jar.sha1
+      metadata_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-enforcer-plugin/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - build_plugins
+      declared_minimum_java: '1.8'
+      declared_minimum_maven: 3.6.3
+      requirements_source: META-INF/maven/plugin.xml inside the hashed JAR
+    org.apache.maven.plugins:maven-toolchains-plugin:
+      version: 3.3.0
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-toolchains-plugin/3.3.0/maven-toolchains-plugin-3.3.0.jar
+      sha256: fd9ad79492e4d5a9cd9b30fa1df0c05518bc54409eb2abf222ba81c2cb717bb5
+      published_checksum:
+        algorithm: sha1
+        value: e381f56f1fcf001c5bedc4374b86d909ef434c93
+        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-toolchains-plugin/3.3.0/maven-toolchains-plugin-3.3.0.jar.sha1
+      metadata_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-toolchains-plugin/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - build_plugins
+      declared_minimum_java: '1.8'
+      declared_minimum_maven: 3.6.3
+      requirements_source: META-INF/maven/plugin.xml inside the hashed JAR
+    org.jacoco:jacoco-maven-plugin:
+      version: 0.8.15
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/org/jacoco/jacoco-maven-plugin/0.8.15/jacoco-maven-plugin-0.8.15.jar
+      sha256: f1b5a734742f99573f99c0af214f63c28156ef47f7467e434a7a1b723cdba9b2
+      published_checksum:
+        algorithm: sha1
+        value: b2b3d900db98ffa7c7b1f66ebe7a02c8f5dfa7f4
+        url: https://repo.maven.apache.org/maven2/org/jacoco/jacoco-maven-plugin/0.8.15/jacoco-maven-plugin-0.8.15.jar.sha1
+      metadata_url: https://repo.maven.apache.org/maven2/org/jacoco/jacoco-maven-plugin/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - build_plugins
+      declared_minimum_java: '8'
+      declared_minimum_maven: '3.0'
+      requirements_source: Published POM; Java bytecode support in official changelog
+      source_refs:
+      - jacoco
+      compatibility_note: Java 25 unit/integration agents qualified in step 0.3;
+        all six application entry points have full line coverage.
+    org.cyclonedx:cyclonedx-maven-plugin:
+      version: 2.9.3
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/org/cyclonedx/cyclonedx-maven-plugin/2.9.3/cyclonedx-maven-plugin-2.9.3.jar
+      sha256: c452d5eebe28bc86bef2e7c72d129f04f60877bef843eac8120f01fb655be293
+      published_checksum:
+        algorithm: sha512
+        value: ec0344ed2ffe62d565aaf936a37140d04c7fffa8669a666be0366cd44eec3195232d79841cdec47030b79068216ac7e1a8c805255758e3d418dae32a4b9b9beb
+        url: https://repo.maven.apache.org/maven2/org/cyclonedx/cyclonedx-maven-plugin/2.9.3/cyclonedx-maven-plugin-2.9.3.jar.sha512
+      metadata_url: https://repo.maven.apache.org/maven2/org/cyclonedx/cyclonedx-maven-plugin/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - build_plugins
+      declared_minimum_java: '1.8'
+      declared_minimum_maven: '3.1'
+      requirements_source: META-INF/maven/plugin.xml inside the hashed JAR
+      source_refs:
+      - cyclonedx
+    org.springframework.boot:spring-boot-maven-plugin:
+      version: 4.1.1
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-maven-plugin/4.1.1/spring-boot-maven-plugin-4.1.1.jar
+      sha256: c8e1a3f44dab037f9ff23d31a1db00e937da5a56c96404d91e83fdc22c13bd56
+      published_checksum:
+        algorithm: sha512
+        value: 3811c0373c64474130ac28623c1110a9824932aad5dbd0fab0e2e40cc4a66d4707f00f9dc5ac7392679fdea99bf99c438f5daf55a496761771b4f97f23f10632
+        url: https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-maven-plugin/4.1.1/spring-boot-maven-plugin-4.1.1.jar.sha512
+      metadata_url: https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-maven-plugin/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - spring_boot_4_1
+      declared_minimum_java: '17'
+      declared_minimum_maven: 3.6.3
+      requirements_source: Spring Boot system requirements
+      source_refs:
+      - spring_boot_requirements
+    org.codehaus.mojo:versions-maven-plugin:
+      version: 2.22.0
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/org/codehaus/mojo/versions-maven-plugin/2.22.0/versions-maven-plugin-2.22.0.jar
+      sha256: 4892b927b299a9fc8607d33e9f8eb387ba5a078ea32089369ec7d8611e6cff29
+      published_checksum:
+        algorithm: sha512
+        value: f15e1b9c9df1b106ed12fde72711beda4e991825fc9178911ba44b8318ea810f9af87053449f5a5954498d8cfdaf88cbdd9d4ca496333389e2a477b43d400885
+        url: https://repo.maven.apache.org/maven2/org/codehaus/mojo/versions-maven-plugin/2.22.0/versions-maven-plugin-2.22.0.jar.sha512
+      metadata_url: https://repo.maven.apache.org/maven2/org/codehaus/mojo/versions-maven-plugin/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - build_plugins
+      declared_minimum_java: '1.8'
+      declared_minimum_maven: 3.6.3
+      requirements_source: META-INF/maven/plugin.xml inside the hashed JAR
+    org.codehaus.mojo:exec-maven-plugin:
+      version: 3.6.4
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/org/codehaus/mojo/exec-maven-plugin/3.6.4/exec-maven-plugin-3.6.4.jar
+      sha256: 0236de326aad257cbbccdf7e4155cde95c5326b49dbd72fe9fbad5268e74ecca
+      published_checksum:
+        algorithm: sha512
+        value: '09308827d8c66dc71418121ce3071bc755211ea0993767a9fe3e0cff421f51b2de4a686067de4542d2f346795fa994989206726b19f12dee847ff10c0b6e5ca2'
+        url: https://repo.maven.apache.org/maven2/org/codehaus/mojo/exec-maven-plugin/3.6.4/exec-maven-plugin-3.6.4.jar.sha512
+      metadata_url: https://repo.maven.apache.org/maven2/org/codehaus/mojo/exec-maven-plugin/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - build_plugins
+      declared_minimum_java: '1.8'
+      declared_minimum_maven: 3.6.3
+      requirements_source: META-INF/maven/plugin.xml inside the hashed JAR
+      activation: Only if inherited execution/profile is retained; do not introduce
+        a new execution just for this pin.
+  artifacts:
+    org.springframework.boot:spring-boot-dependencies:
+      version: 4.1.1
+      extension: pom
+      artifact_url: https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-dependencies/4.1.1/spring-boot-dependencies-4.1.1.pom
+      sha256: 1c929eeccb48f8ee12225e9fec725177170b89575754bd903f184c185db77775
+      published_checksum:
+        algorithm: sha512
+        value: 452f1dad89fce421f9807986e31a9481177b2df611162dd3f6eb7d298bce0d2844f3bf5e96e8511d3a90a6e90e9bdaaebc3bd6d086bfeb6330b08e19515db43b
+        url: https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-dependencies/4.1.1/spring-boot-dependencies-4.1.1.pom.sha512
+      metadata_url: https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-dependencies/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - spring_boot_4_1
+    de.mkammerer.snowflake-id:snowflake-id:
+      version: 0.0.2
+      extension: jar
+      artifact_url: https://repo.maven.apache.org/maven2/de/mkammerer/snowflake-id/snowflake-id/0.0.2/snowflake-id-0.0.2.jar
+      sha256: b17e4093bd1780c23de11106facef1811313119fa7b1803d90c115c5cce788d1
+      published_checksum:
+        algorithm: sha1
+        value: 640a346887f56f8481aa1e129e0d6834f95b4d4c
+        url: https://repo.maven.apache.org/maven2/de/mkammerer/snowflake-id/snowflake-id/0.0.2/snowflake-id-0.0.2.jar.sha1
+      metadata_url: https://repo.maven.apache.org/maven2/de/mkammerer/snowflake-id/snowflake-id/maven-metadata.xml
+      verification: Artifact bytes downloaded and hashed; matched published checksum.
+        No signature check. Step 0.1 did not execute it.
+      support_refs:
+      - snowflake_exception
+  boot_bom_snapshot:
+    source_coordinate: org.springframework.boot:spring-boot-dependencies:4.1.1
+    status: Published BOM properties, not an effective/resolved dependency graph
+    spring_framework: 7.0.9
+    spring_amqp: 4.1.1
+    rabbitmq_java_client: 5.30.0
+    postgresql_jdbc: 42.7.13
+    hikaricp: 7.0.2
+    flyway: 12.4.0
+    jackson_bom: 3.1.5
+    slf4j: 2.0.18
+    logback: 1.5.38
+    junit_jupiter: 6.0.3
+    netty: 4.2.17.Final
+    mockito: 5.23.0
+    testcontainers: 2.0.5
+    lombok: 1.18.46
+unresolved:
+- id: KIND-1.36.5
+  blocks:
+  - '0.1'
+  - '1.1'
+  status: resolved_with_user_authorized_fallback
+  finding: Kubernetes 1.36.5 is GA and current for the selected CNPG-compatible minor.
+    kind 0.33.0 publishes tested 1.36.4; its default 1.37.0 is outside the CNPG support
+    matrix.
+  evidence:
+    checked_on: '2026-09-28'
+    url: https://registry-1.docker.io/v2/kindest/node/manifests/v1.36.5
+    http_status: 404
+    registry_error: MANIFEST_UNKNOWN
+    source_refs:
+    - kubernetes_release
+    - kubernetes_stable
+    - kind
+    - cnpg
+  resolution: User authorized 1.36.4 if 1.36.5 is unavailable. Recheck returned 404
+    on 2026-09-28; verified release digest promoted into images.kind_node. kubectl 1.36.5
+    stays in the same supported minor.
+- id: OPENJDK-25-IMAGES
+  blocks:
+  - '0.1'
+  - '3.9'
+  status: resolved
+  finding: Previous Java image digests needed replacement after selecting OpenJDK 25.
+  evidence:
+    checked_on: '2026-09-28'
+    source_refs:
+    - canonical_jdk
+    - canonical_jre
+    - canonical_java_rocks
+  resolution: Canonical stable OpenJDK 25 / Ubuntu 26.04 JDK and JRE indexes and ARM64
+    manifests/configs verified. Product build/tests and all six runtime JAR smoke
+    checks passed on 2026-09-28.
+- id: EFFECTIVE-MAVEN-GRAPH
+  blocks:
+  - '0.3'
+  status: resolved
+  finding: Root Boot, JUnit and Netty properties, test agents/providers, plugin classpaths
+    and floating test images required scoped qualification.
+  resolution: Boot 4.1.1 BOM and local properties agree; in all six applications the
+    effective POMs match the lock's plugin pins, overrides and test-image digests.
+    Plugin security overrides fix the advisories named in pom.xml and replace prereleases.
+- id: SBOM-AND-RUNTIME
+  blocks:
+  - '1.1'
+  - '3.9'
+  status: pending_planned_step
+  finding: Step 0.3 supplies Maven dependency/plugin/processor/test-agent SBOMs and
+    advisory results. Image OS packages, bundled node/broker/Maven/JDK components
+    and infrastructure runtime qualification are still incomplete.
+  resolution: Complete image/bundled-component inventories and advisory/signature
+    checks before cluster and image qualification. Do not infer support from enclosing
+    BOM/JDK. Maven evidence boundaries are in scope.inventory_boundary.
+- id: HOST-RUNTIME-UPDATE
+  blocks:
+  - '1.1'
+  status: pending_planned_step
+  finding: Observed Docker Desktop 4.69.0 differs from selected 4.92.0.
+  resolution: Update and verify the host runtime in the cluster-bootstrap prerequisite
+    check; no installation was performed by this audit.
