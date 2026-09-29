@@ -23,8 +23,18 @@ retain the deployment qualification gates in the version policy.
 ## 1. Goal and module boundaries
 
 Build a Kubernetes lab that generates product writes, heavy product reads, and
-orders against sharded, replicated PostgreSQL. Record accepted orders in a
-separate ledger database through a RabbitMQ-based saga.
+orders against sharded, replicated PostgreSQL. Capture committed order writes
+using change data capture (CDC) and pass their immutable order information through
+RabbitMQ to `shardshop-ledger`, which records it in a separate ledger database as
+part of the saga.
+
+RabbitMQ supports this pipeline as the message transport: Debezium performs the
+database capture, and its official RabbitMQ sink demonstrates the supported
+integration. RabbitMQ itself does not read PostgreSQL's write-ahead log (WAL).
+See [Debezium Server's RabbitMQ sink](https://debezium.io/documentation/reference/stable/operations/debezium-server.html#debezium-server-rabbitmq-stream-sink-configuration).
+This design embeds Debezium Engine in the existing order relay so it can retain
+the publication bookkeeping and mandatory-routing protocol defined below;
+Kafka and a separate Debezium Server deployment are not required.
 
 There are five top-level Maven modules and six deployable applications. The
 workload module is a POM aggregator containing three applications; product, order,
@@ -35,7 +45,7 @@ only by product and order. PostgreSQL and RabbitMQ are supporting infrastructure
 |---|---|---|---|---|
 | 1 | `shardshop-workload` | Aggregate the three workload applications below | No aggregator pod; one seeder Job and two load Deployments | No database, tables, migrations, or database credentials |
 | 2 | `shardshop-product` | Accept product creation and product reader HTTP requests | Two identical product service pods behind one Kubernetes Service | `catalog.products` in the shared sharded PostgreSQL deployment |
-| 3 | `shardshop-order` | Accept order HTTP requests and coordinate the ledger saga | One order service pod initially | Orders, items, saga state, inbox, and outbox in the same shared deployment |
+| 3 | `shardshop-order` | Accept order HTTP requests, coordinate the saga, and relay captured order-outbox inserts to RabbitMQ | One stateless order service pod initially | Orders, items, saga state, inbox, outbox, and CDC offsets in the same shared deployment |
 | 4 | `shardshop-ledger` | Consume ledger commands and persist order ledger records | One ledger consumer pod plus a separate PostgreSQL pod initially | A dedicated ledger database, inbox, and outbox |
 | 5 | `shardshop-sharding` | Route product and order IDs to shards (section 3) | None; a library inside the product and order services | None |
 
@@ -139,11 +149,12 @@ flowchart LR
 
     subgraph M3["Module 3: order service"]
         OS["Order Kubernetes Service"]
-        O["Order pod: HTTP API, saga coordinator, outbox relay"]
+        O["Order pod: HTTP API and saga coordinator"]
+        CDC["Order pod: Debezium CDC relay<br/>one reader per shard"]
         OS --> O
     end
 
-    PG[("Shared PostgreSQL<br/>3 shards, each with primary + replica")]
+    PG[("Shared PostgreSQL<br/>3 shards, each with primary + 2 replicas")]
     MQ["RabbitMQ: one broker pod<br/>quorum command and result queues"]
 
     subgraph M4["Module 4: ledger"]
@@ -158,7 +169,9 @@ flowchart LR
     P1 -->|"SQL: products"| PG
     P2 -->|"SQL: products"| PG
     O -->|"SQL: products, orders, saga tables"| PG
-    O -->|"RecordOrder command"| MQ
+    PG -->|"Committed order-outbox inserts via WAL"| CDC
+    CDC -->|"RecordOrder command"| MQ
+    CDC -->|"Mark confirmed publication"| PG
     MQ -->|"RecordOrder delivery"| L
     L -->|"LedgerRecorded or LedgerRejected"| MQ
     MQ -->|"Saga result delivery"| O
@@ -167,9 +180,11 @@ flowchart LR
 After seeding, six application pods run: one reader, one order producer, two
 product pods, one order pod, and one ledger consumer pod. The product seeder's
 completed Job pod is separate and consumes no ongoing application CPU. The diagram
-shows both lifecycle phases. The six shared PostgreSQL pods, one ledger PostgreSQL
-pod, **one RabbitMQ broker pod**, and operator/system pods are additional. Outbox
-relays run inside their owning service processes.
+shows both lifecycle phases. The nine shared PostgreSQL pods, one ledger PostgreSQL
+pod, **one RabbitMQ broker pod**, and operator/system pods are additional. The
+order CDC relay runs inside the order service process; the ledger's result-outbox
+relay continues to poll its own database. The order pod stays stateless: each
+shard's CDC offsets live in that shard's database.
 
 Both product pods are stateless and interchangeable. They use the same shard
 mapping and database constraints; pod-local state must not determine correctness.
@@ -194,18 +209,24 @@ flowchart TB
     subgraph SHARED["Shared logical PostgreSQL database"]
         subgraph A["shard-a"]
             ARW["shard-a-rw"] --> AP[("Primary A")]
-            ARO["shard-a-ro"] --> AS[("Replica A")]
-            AP -->|"Physical WAL replication"| AS
+            ARO["shard-a-ro"] --> AS1[("Replica A1")]
+            ARO --> AS2[("Replica A2")]
+            AP -->|"Physical WAL replication"| AS1
+            AP -->|"Physical WAL replication"| AS2
         end
         subgraph B["shard-b"]
             BRW["shard-b-rw"] --> BP[("Primary B")]
-            BRO["shard-b-ro"] --> BS[("Replica B")]
-            BP -->|"Physical WAL replication"| BS
+            BRO["shard-b-ro"] --> BS1[("Replica B1")]
+            BRO --> BS2[("Replica B2")]
+            BP -->|"Physical WAL replication"| BS1
+            BP -->|"Physical WAL replication"| BS2
         end
         subgraph C["shard-c"]
             CRW["shard-c-rw"] --> CP[("Primary C")]
-            CRO["shard-c-ro"] --> CS[("Replica C")]
-            CP -->|"Physical WAL replication"| CS
+            CRO["shard-c-ro"] --> CS1[("Replica C1")]
+            CRO --> CS2[("Replica C2")]
+            CP -->|"Physical WAL replication"| CS1
+            CP -->|"Physical WAL replication"| CS2
         end
     end
 
@@ -219,9 +240,16 @@ flowchart TB
 
 Each shard has the same catalog/ordering schema definitions but different rows.
 A replica copies its own primary; replication does not distribute rows between
-A, B, and C. Use three CloudNativePG clusters with two instances each, as described
-in [PLAN.md](PLAN.md).
-Primary and replica roles can change during failover.
+A, B, and C. Use three CloudNativePG clusters with three instances each, one per
+worker node, as described in [PLAN.md](PLAN.md). Each is a replication quorum: a
+commit is acknowledged once any one of its two standbys has durably flushed it
+(`ANY 1`), so a shard tolerates losing one instance without losing acknowledged
+commits or blocking writes. Quorum-based failover (`failoverQuorum`) promotes a
+standby only when the operator can confirm it holds every synchronously committed
+transaction; otherwise the shard waits for an operator decision. Primary and
+replica roles can change during failover. See
+[CNPG synchronous replication](https://cloudnative-pg.io/docs/1.30/replication/)
+and [quorum-based failover](https://cloudnative-pg.io/docs/1.30/failover/).
 
 ### Identifier generation and representation
 
@@ -360,8 +388,9 @@ missing products. Standby replay can lag behind committed primary writes. See
 [PostgreSQL standby replication](https://www.postgresql.org/docs/current/warm-standby.html).
 
 The replica read profile is strict: it **does not fall back to `-rw`**. CNPG's
-`-ro` Service selects standbys only; with two instances it has no endpoints when
-the only standby is lost or promoted. Fail affected reads with
+`-ro` Service selects standbys only; with three instances it has no endpoints only
+when neither standby is ready, such as when one is down and the other is
+promoted. Fail affected reads with
 `503 READ_REPLICA_UNAVAILABLE` within a four-second server request deadline,
 never `404`. Bound the complete database phase, including pool acquisition,
 connection setup, SQL execution, and any retry, to three seconds in total; every
@@ -375,9 +404,83 @@ distinct. See [CNPG Service roles](https://cloudnative-pg.io/docs/1.30/service_m
 
 Select the shard before opening a transaction, and keep it fixed until commit.
 Order creation, saga state, and its outgoing command commit together on one
-primary. The order relay polls the outbox on every shard. Freeze the hash and
+primary. The order CDC relay captures committed outbox inserts from every shard's
+WAL, rather than polling for unpublished rows. Freeze the hash and
 three-shard mapping: changing the divisor requires a data migration strategy.
 Public APIs expose decimal-string Snowflake business IDs, never shard selectors.
+
+### CDC from shard writes to the ledger
+
+Use the **transactional outbox with log-based CDC** pattern. Each accepted order
+write inserts one `RecordOrder` envelope into `ordering.order_outbox` in the same
+transaction as the order, item snapshots, and saga. That committed insert is the
+captured change. Rollbacks emit no command, and the HTTP handler never publishes
+to RabbitMQ. Capture only this table for the ledger command flow: product seeding,
+raw order/item changes, and saga status updates are not separate ledger commands.
+The outbox supplies a complete business snapshot without downstream joins or
+cross-shard transaction assembly.
+
+- Run one Debezium PostgreSQL connector per shard against its `-rw` Service,
+  using `pgoutput`, `wal_level=logical`, a dedicated publication for
+  `ordering.order_outbox`, and distinct connector, slot, and offset identities.
+  Size replication slots and WAL senders for both physical replication and CDC.
+  Provision publications administratively and disable connector auto-creation.
+  The CDC login has replication permission and only the SQL privileges needed
+  to connect and snapshot that table; it is separate from `order_app` and has
+  no business-table DML or DDL privileges. The relay uses `order_app` for its
+  publication-status update and its offset writes.
+- Embed the connectors through [Debezium Engine](https://debezium.io/documentation/reference/stable/development/engine.html)
+  in the order service's IO layer, with bounded buffers and a batch consumer
+  that explicitly controls record completion. Keep one active reader per shard:
+  PostgreSQL allows only one active consumer per replication slot, and the
+  initial single order pod uses a non-overlapping replacement strategy. Scaling
+  order pods requires explicit per-shard ownership, such as a Kubernetes Lease;
+  the offsets are already shared through each shard's database.
+- On first start, take a consistent snapshot of retained outbox rows and then
+  stream WAL; on restart, resume the saved offsets. Handle snapshot (`r`) and
+  insert (`c`) records as commands, skipping snapshot rows already marked
+  published. Ignore publication-status updates, cleanup deletes, tombstones,
+  and connector control records as business messages. Keep the outbox envelope
+  immutable; only publication metadata may change. Reconciliation inserts a
+  new envelope rather than updating the original payload.
+- Extract the stored envelope, preserving `messageId`, logical IDs, fingerprint,
+  schema version, and all ID fields as canonical decimal JSON strings. Publish
+  it persistently to `ledger.commands` with routing key `ledger.record-order`.
+  Do not send the raw Debezium row-change envelope to the ledger consumer.
+  Preserve source order within each shard; there is no global order across
+  shards, and redelivery still requires the existing idempotency checks.
+- After a publisher confirm with no mandatory return, mark that outbox row
+  published in its shard using the existing service role. Only after that local
+  transaction commits may the batch consumer mark the source record processed
+  and allow its offset to be flushed. Never advance past a failed publication
+  or status update. Use finite publish/SQL timeouts and bounded backoff; on
+  exhaustion, fail that reader. A per-shard supervisor restarts it from its
+  durable position with capped exponential backoff, indefinitely, without
+  affecting other shards or the pod's liveness; alert when a reader stays down
+  or lags past a threshold. A crash before the durable offset checkpoint can
+  redeliver the same `messageId`; it must never generate a new logical command.
+
+Retain the logical slots on shutdown. Store each reader's offsets with
+Debezium's JDBC offset store in a table of its own shard database, so offsets
+replicate, fail over, and are backed up with that shard. Configure and verify
+failover-capable logical slots and their synchronization to both standbys before
+promotion; reconnecting to `-rw` alone does not preserve CDC progress. In both
+durability profiles, logical decoding must not advance beyond WAL the standbys
+have flushed (`synchronized_standby_slots`, which CloudNativePG manages once
+slot synchronization is enabled), so no command is published for a change a
+promoted standby could lack. CloudNativePG lists every standby's slot there, so
+CDC pauses while either standby is unavailable, even though quorum writes
+continue; alert on its lag. See the
+[PostgreSQL connector](https://debezium.io/documentation/reference/stable/connectors/postgresql.html)
+and [PostgreSQL logical-slot failover requirements](https://www.postgresql.org/docs/current/logicaldecoding-explanation.html#LOGICALDECODING-REPLICATION-SLOTS-SYNCHRONIZATION).
+If a slot, offset, or required WAL is lost, stop and reconcile retained outbox
+and permanent saga/ledger state before an explicit resnapshot; never silently
+start at the current WAL position. Detect this by failing on a slot/offset
+mismatch (Debezium's `offset.mismatch.strategy=trust_offset`, never
+`trust_slot`) and on a slot without offsets; the supervisor never restarts a
+reader stopped this way. Pin and qualify Debezium with PostgreSQL,
+the application runtime, and RabbitMQ under [VERSIONS.md](VERSIONS.md) before
+implementation.
 
 ### Migration ownership and database privileges
 
@@ -414,6 +517,14 @@ bypass those limits. Use qualified SQL names and repeat explicit grants for any
 new catalog read surface. This enforces read-only product access at the database.
 Use bounded connection pools per service, pod, and endpoint; account for both
 product pods when budgeting PostgreSQL connections.
+
+The ordering migration owner also provisions CDC access on each shard. It owns
+`ordering.order_outbox` and, with `CREATE` on the database, creates the
+dedicated publication for it. It also creates the offsets table that Debezium's
+JDBC store would otherwise try to create, and grants `order_app` DML on it. The
+separate CDC login gets its replication attribute from a privileged bootstrap
+role, such as a CloudNativePG managed role, plus `CONNECT`, `USAGE` on
+`ordering`, and `SELECT` on `ordering.order_outbox` only.
 
 ## 4. Product generation and read load
 
@@ -454,7 +565,7 @@ sequenceDiagram
     participant Service as Product Kubernetes Service
     participant API as Product pod 1 or 2
     participant Primary as Selected shard primary
-    participant Replica as Its paired replica
+    participant Replica as One of its replicas
 
     Producer->>Service: PUT product with stable productId
     Service->>API: Forward on the connection's selected backend
@@ -486,8 +597,9 @@ sequenceDiagram
 ```
 
 The diagram illustrates replica visibility. The default synchronous durability
-profile waits for the configured standby's durable WAL acknowledgement before
-reporting commit; replica query visibility still waits for WAL replay. The
+profile waits for a durable WAL acknowledgement from any one of the shard's two
+standbys before reporting commit; replica query visibility still waits for WAL
+replay, so a read can reach the standby that has not yet replayed it. The
 separate asynchronous profile omits that commit acknowledgement requirement.
 The product service queries PostgreSQL for every load-test read; caching is
 disabled so the reader exercises the database. Measure request rate, latency,
@@ -567,8 +679,9 @@ deterministic EUR rejection scenario after successful HTTP validation.
 ```mermaid
 sequenceDiagram
     participant Client as Order producer pod
-    participant Order as Order service and relay
+    participant Order as Order service
     participant DB as Selected order shard primary
+    participant CDC as Order service CDC relay for this shard
     participant MQ as RabbitMQ
     participant Ledger as Ledger consumer and relay
     participant LDB as Dedicated ledger database
@@ -582,11 +695,12 @@ sequenceDiagram
     DB-->>Order: Commit
     Order-->>Client: 202 Accepted + status URL
 
-    Order->>DB: Read committed outbox messages
-    DB-->>Order: RecordOrder command
-    Order->>MQ: Publish RecordOrder
-    MQ-->>Order: Publisher confirm
-    Order->>DB: Mark outbox message published
+    DB-->>CDC: WAL: committed RecordOrder outbox insert
+    CDC->>MQ: Publish RecordOrder persistently with mandatory routing
+    MQ-->>CDC: Publisher confirm with no return
+    CDC->>DB: TX: mark outbox message published
+    DB-->>CDC: Commit
+    CDC->>CDC: Mark source record processed, persist offset
     MQ->>Ledger: Deliver RecordOrder
     Ledger->>LDB: TX: deduplicate + ledger entry + RECORDED outcome + result outbox
     LDB-->>Ledger: Commit
@@ -666,8 +780,9 @@ Persist `reconciliation_attempts` and `next_reconciliation_at` on
 `ordering.order_sagas`, initialized to zero and creation time plus 60 seconds.
 The coordinator scans each primary every 30 seconds for eligible `PENDING_LEDGER`
 sagas. Under the saga lock, re-check the state, schedule, and five-attempt limit.
-If there is already an unpublished command, its relay retries that row without
-incrementing the reconciliation counter. Otherwise atomically enqueue another
+If there is already an unpublished command, its CDC reader resumes/retries that
+captured insert without incrementing the reconciliation counter; a reader stopped
+by slot, offset, or WAL loss must be recovered first. Otherwise atomically enqueue another
 `RecordOrder` with a new transport `messageId` but the same logical `commandId`,
 `sagaId`, `orderId`, fingerprint, and immutable snapshot, increment the saga's
 counter, and persist its next eligible time in the same transaction.
@@ -693,14 +808,16 @@ even when the original result outbox row has been cleaned up.
 
 ```mermaid
 sequenceDiagram
-    participant Order as Order coordinator and relay
+    participant Order as Order coordinator
     participant DB as Order shard primary
+    participant CDC as Order service CDC relay for this shard
     participant MQ as RabbitMQ
     participant Ledger as Ledger consumer and relay
     participant LDB as Ledger database
 
     Order->>DB: Find overdue pending saga, commit replay command in outbox
-    Order->>MQ: Republish RecordOrder with stable logical IDs
+    DB-->>CDC: WAL: committed replay outbox insert
+    CDC->>MQ: Publish RecordOrder with stable logical IDs
     MQ->>Ledger: Deliver original or replayed command
     Ledger->>LDB: Look up permanent operation decision
     LDB-->>Ledger: Stored RECORDED or REJECTED outcome
@@ -720,9 +837,10 @@ sequenceDiagram
 ```
 
 Normal publishers in this diagram follow the confirm/mark-published protocol in
-the success flow. Result consumers validate the command, saga, and fingerprint;
-matching terminal outcomes are harmless. Persist conflicting identities or outcomes
-in `ordering.conflicting_results` on the expected order shard, commit, then
+the success flow; the CDC publisher also checkpoints its source position only
+after that protocol succeeds. Result consumers validate the command, saga, and
+fingerprint; matching terminal outcomes are harmless. Persist conflicting
+identities or outcomes in `ordering.conflicting_results` on the expected order shard, commit, then
 acknowledge and alert while preserving the order and saga's saved state.
 
 Both conflict tables store the received envelope, transport/logical IDs,
@@ -733,7 +851,7 @@ records survive transport cleanup and backups. If quarantine persistence fails,
 do not acknowledge: use the bounded retry/DLQ path in section 6. Malformed
 unrouteable envelopes use the source queue's DLQ instead.
 
-### Orders lost during asynchronous failover
+### Orders lost by asynchronous failover or restore
 
 A result for an order absent on a **reachable primary** is different from a
 temporarily unavailable shard. Persist its envelope, logical IDs, fingerprint,
@@ -742,8 +860,8 @@ then acknowledge and alert. The quarantine has no foreign key to `orders` and
 blocks new HTTP creation with that order ID. If the shard is unavailable, use
 bounded broker retries, then DLQ parking and saga reconciliation as specified in
 section 6, instead of declaring the order missing. A long failover can exceed
-the transport retry window, especially while synchronous writes await a new
-streaming standby. For a surviving pending saga with attempts remaining,
+the transport retry window, especially if both standbys are lost and synchronous
+writes block until one returns. For a surviving pending saga with attempts remaining,
 reconciliation regenerates a result after recovery while the old delivery may
 remain parked. A lost order/saga or exhausted budget requires the operator audit
 and explicit replay/restore path below; replaying an old delivery remains safe.
@@ -756,10 +874,13 @@ the re-check described in the validation sequence above.
 Missing orders cannot be discovered by scanning pending sagas alone. After every
 asynchronous-loss drill or shard restore, pause order writes and run an operator
 audit comparing an exported snapshot of permanent ledger decisions with orders
-on all primaries by ID and fingerprint. The audit also finds ledger entries whose
-results were acknowledged before the order was lost. It persists missing or
-mismatched pairs in the same quarantine and reports them; it is privileged
-operational tooling, not cross-database access in either service's runtime.
+on all primaries by ID and fingerprint. After a restore from an older backup, the
+audit also finds ledger entries whose results were acknowledged before the order
+was lost. After an asynchronous-loss drill it should find none: CDC publishes no
+command for WAL the standbys lack (section 3), so a lost order leaves no ledger
+entry. It persists missing or mismatched pairs in the same quarantine and reports
+them; it is privileged operational tooling, not cross-database access in either
+service's runtime.
 
 Restore the order and original saga identity from a verified backup or retained
 creation record, then replay the command/result and clear quarantine only after
@@ -767,8 +888,9 @@ the identities and outcome agree. If the original order cannot be recovered,
 retain the ledger entry and unresolved incident for an explicit business decision.
 Never silently delete a ledger row, fabricate a confirmed order, or treat absence
 as cancellation. Automatic reconciliation repairs missing messages; it cannot
-recover lost database history. These limitations belong to the deliberate
-asynchronous-loss profile, not the synchronous durability acceptance criteria.
+recover lost database history. These limitations belong to shard restores and
+the deliberate asynchronous-loss profile, not the synchronous durability
+acceptance criteria.
 
 ## 6. RabbitMQ and delivery reliability
 
@@ -776,6 +898,9 @@ asynchronous-loss profile, not the synchronous durability acceptance criteria.
 |---|---|---|
 | `RecordOrder` | `ledger.commands` exchange, `ledger.record-order` queue | Ledger module |
 | `LedgerRecorded`, `LedgerRejected` | `order.saga-results` exchange, `order.ledger-results` queue | Order module |
+
+Declare `ledger.commands` as a durable direct exchange and bind
+`ledger.record-order` with the routing key `ledger.record-order` before CDC starts.
 
 Messages carry `messageId`, logical `commandId`, `sagaId`, `orderId`, type, schema
 version, fingerprint, and immutable business data. Results retain command/saga
@@ -858,7 +983,7 @@ seconds of delay plus processing time. The documentation's worked example is
 inconsistent with that formula; scenario 7 must measure rejection counts,
 redelivery timestamps, and the exact delivery-limit boundary on the pinned broker.
 This is a short transient-retry budget. Longer outages, including primary
-failover and the synchronous wait for a replacement standby, are expected to
+failover and a synchronous wait while both standbys are down, are expected to
 park messages in a DLQ. Pending-saga reconciliation then regenerates commands and
 stored results after recovery, subject to its durable five-attempt budget; after
 exhaustion, recovery requires operator replay. Old parked deliveries can remain
@@ -867,6 +992,10 @@ until audited manual replay or resolution. Retry exhaustion never cancels an ord
 - Store outgoing messages in an outbox in the same transaction as their business
   change. Use durable exchanges/queues, persistent messages, publisher confirms,
   and mandatory routing; returned or unconfirmed messages remain unpublished.
+  The order CDC adapter must handle mandatory returns before marking a source
+  record processed: a confirm alone can acknowledge an unroutable message.
+  This is an explicit adapter requirement, not an assumed guarantee of the
+  Debezium Server sink's default settings.
 - Acknowledge consumed messages only after the local transaction commits. A
   publisher confirm means broker acceptance, not completed ledger processing.
   See [RabbitMQ acknowledgements and confirms](https://www.rabbitmq.com/docs/confirms).
@@ -874,7 +1003,8 @@ until audited manual replay or resolution. Retry exhaustion never cancels an ord
   business uniqueness by `orderId`. Serialize each ledger operation. An identical
   duplicate must regenerate its stored result through the outbox, even on an
   inbox hit; it never adds a ledger row or silently drops the result. A crash
-  after publish but before marking an outbox row can produce another delivery.
+  after publish but before marking an outbox row or checkpointing the CDC offset
+  can produce another delivery.
 - For a transient processing failure, use `basic.reject(requeue=true)` so the
   quorum queue increments its failure count and delays redelivery in that same
   queue. RabbitMQ 4.3 `basic.nack` does not increment that count. Do not cycle
@@ -884,7 +1014,8 @@ until audited manual replay or resolution. Retry exhaustion never cancels an ord
   message until its DLQ accepts it. A missing/unavailable destination causes
   retention; retained dead letters consume the source's capacity. Once its finite
   limits are reached, negative publisher confirms make relays retain their
-  database outbox rows as unpublished and back off. Provision/bind the DLQs first
+  database outbox rows as unpublished and back off; order CDC offsets must not
+  advance past those failed publishes. Provision/bind the DLQs first
   and monitor capacity; never downgrade to drop-head or classic dead-lettering.
   See [quorum retry and dead-letter semantics](https://www.rabbitmq.com/docs/quorum-queues).
 - For manual replay, publish the original payload and logical IDs persistently
@@ -892,8 +1023,12 @@ until audited manual replay or resolution. Retry exhaustion never cancels an ord
   only after confirmation with no return. A crash in that gap may duplicate it.
   Retry exhaustion leaves the saga pending; reconciliation follows section 5.
 
-Run relays on all order shards and the ledger database after restart. Monitor
+Resume the CDC readers for all order shards and the ledger result relay after
+restart. Monitor CDC lag, reader restarts, offset checkpoints, replication-slot retained WAL,
 outbox age, queue depth, dead letters, pending saga age, and conflicting results.
+Broker outages can retain WAL as well as outbox rows; set disk/lag alerts and a
+finite WAL retention budget. If that budget invalidates a slot, require the
+explicit recovery procedure in section 3 rather than skipping missing changes.
 Use bounded consumer prefetch and database timeouts. The queue delivery limit
 bounds one transport message's attempts; the coordinator's separate persisted
 limit bounds automatic logical-command reconciliation. Manual replay is explicit.
@@ -914,9 +1049,11 @@ recycle order IDs. An old rejected operation cannot become recorded merely becau
 the ledger's currency allowlist changed.
 
 Transport inbox rows and confirmed-published outbox rows may be cleaned after a
-configured operational window. Reconciliation counters and timestamps belong to
-`ordering.order_sagas` and are unaffected by that cleanup. Never remove
-unpublished outbox rows, unresolved `ordering.orphan_results`,
+configured operational window. For order outboxes, cleanup also requires a durable
+CDC checkpoint past the captured insert; publication time alone is insufficient.
+Keep cleanup deletes out of the command stream. Reconciliation counters and
+timestamps belong to `ordering.order_sagas` and are unaffected by that cleanup.
+Never remove unpublished outbox rows, unresolved `ordering.orphan_results`,
 `ordering.conflicting_results`, or `ledger.conflicting_commands`, or the permanent
 business decisions. An arbitrarily old manual DLQ replay remains safe after
 transport cleanup because operation identity and outcome
@@ -924,17 +1061,21 @@ checks still apply. Backups and restores must preserve those permanent decisions
 
 ## 7. Consistency, tradeoffs, and verification
 
-Sharding distributes data; replication provides a standby for each shard. The
+Sharding distributes data; replication provides two standbys for each shard. The
 product service's two pods scale HTTP handling independently of these database
 roles. The catalog read contract couples product/order schema changes, while the
 ledger has independent storage and eventual consistency with orders.
 
-Asynchronous PostgreSQL replication may lose acknowledged commits on failover.
-An order could disappear after its ledger command has already been delivered;
-outbox/idempotency logic does not repair that loss. Use the asynchronous profile
+Asynchronous PostgreSQL replication may lose acknowledged commits on failover,
+so an accepted order can disappear; outbox/idempotency logic does not repair that
+loss. Because CDC waits for WAL the standbys have flushed, such an order's command
+never reached the ledger. A shard restored from an older backup, however, can lack
+orders whose ledger commands were already delivered. Use the asynchronous profile
 for explicit loss demonstrations. The default saga durability profile requires
-durable synchronous standby acknowledgement and promotion of that synchronized
-standby, accepting blocked writes when it is unavailable. See
+a durable acknowledgement from any one of the shard's two standbys and promotes
+only a standby confirmed to hold every such commit. One lost instance neither
+blocks writes nor loses acknowledged commits; writes block only while both
+standbys are unavailable. See
 [PostgreSQL replication tradeoffs](https://www.postgresql.org/docs/current/warm-standby.html).
 The initial single-instance ledger database and one-broker RabbitMQ deployment
 are availability limits. Durable quorum queues with one member cannot tolerate
@@ -950,7 +1091,7 @@ Acceptance scenarios for implementation:
    observe positive request-counter deltas on both ready product pods within
    120 seconds, then repeat after one pod restarts.
 2. Verify deterministic product/order routing across all three shards and physical
-   replication only within each pair. Independently migrate catalog and ordering
+   replication only within each shard. Independently migrate catalog and ordering
    from `V1` without history collisions on all primaries. Assert `order_app` can
    select products but cannot write catalog data or run DDL, and `product_app`
    cannot access ordering tables. Run the version-2 routing vectors in
@@ -967,33 +1108,46 @@ Acceptance scenarios for implementation:
    payloads separately from identical retries.
 6. Inject crashes before/after database commit, broker confirmation, and consumer
    acknowledgement; verify replay completes the saga without duplicate effects.
+   On each shard, verify a committed order/outbox insert reaches the ledger through
+   WAL capture while a rollback emits nothing. Restart CDC before/after publication
+   marking and offset flush; verify the same message identity and one ledger entry.
+   Cover snapshot-to-stream handoff, ignored metadata updates/deletes, missing
+   command bindings (mandatory return without offset advancement), and failover
+   with synchronized logical slots. Slot/offset/WAL loss must stop capture for
+   explicit recovery; ordinary reconnects must resume without losing a command.
 7. Measure same-queue rejection counts and redelivery timestamps on the pinned
    broker, assert its effective delayed-retry/delivery-limit behavior, and record
-   total time to DLQ parking. Hold a shard unavailable beyond that window, including
-   its synchronous standby-recovery interval, and verify DLQ plus reconciliation
-   is the recovery path. In separate capacity drills, temporarily unbind a DLQ
+   total time to DLQ parking. Hold a shard unavailable beyond that window, for
+   example with both standbys down so synchronous writes block, and verify DLQ
+   plus reconciliation is the recovery path. In separate capacity drills, temporarily unbind a DLQ
    and then test a full DLQ: verify retained source messages reach its limits,
    negative publisher confirms leave outboxes unpublished, and broker-wide alarms
    remain clear. Keep the broker/source running; a single-broker shutdown cannot
    isolate the DLQ. Restore the binding or drain parking safely and verify progress.
    Drop a result and verify replay regenerates the immutable outcome. Delete each
-   confirmed-published replay outbox row between reconciliation attempts, restart
-   the coordinator, and use an injected clock to prove no sixth automatic attempt
-   is enqueued. Recover through explicit manual replay without duplicate ledger
+   confirmed-published and CDC-checkpointed replay outbox row between reconciliation
+   attempts, restart the coordinator, and use an injected clock to prove no sixth
+   automatic attempt is enqueued. Recover through explicit manual replay without duplicate ledger
    effects or changes to terminal decisions. Verify conflicting command/result
    quarantine commits precede acknowledgements and survive transport cleanup.
-8. Remove the only standby: replica-profile reads must return the documented
-   `503` within the four-second server budget and observed before the reader's
-   five-second deadline, without primary fallback, while unaffected shards
-   continue. Restore the standby and verify reads resume through `-ro`. Test
-   a hung standby query as well as absent endpoints; bound the complete database
-   phase to three seconds and assert an HTTP response rather than a client timeout.
-   Test primary promotion separately, including the interval with no `-ro` endpoints.
-   In an asynchronous-loss drill, verify both late results and the operator audit
-   detect orphan ledger records and block ID reuse. Restoring the original order
-   must allow reconciliation. Under the default synchronous profile, verify
-   blocked writes when the required standby is unavailable and preserved saga
-   commits when promoting that synchronized standby.
+8. Remove one standby: replica-profile reads continue through the other, writes
+   continue, and CDC pauses until it returns. Remove both: replica-profile reads
+   must return the documented `503` within the four-second server budget and
+   observed before the reader's five-second deadline, without primary fallback,
+   while unaffected shards continue. Restore the standbys and verify reads resume
+   through `-ro`. Test a hung standby query as well as absent endpoints; bound the
+   complete database phase to three seconds and assert an HTTP response rather
+   than a client timeout. Test primary promotion separately, including any
+   interval with no `-ro` endpoints.
+   In an asynchronous-loss drill, verify that lost acknowledged orders leave no
+   ledger records and that the audit finds none. After restoring a shard from an
+   older backup, verify both late results and the operator audit detect orphan
+   ledger records and block ID reuse; restoring the original order must allow
+   reconciliation. Under the default synchronous profile, verify that writes
+   continue with one standby unavailable and block when both are, that promotion
+   preserves acknowledged saga commits, and that losing the primary together with
+   one standby triggers no automatic promotion when the survivor cannot be
+   confirmed current.
 9. Assert the HTTP validation table: malformed input, missing products, mixed or
    mismatched currencies, unavailable catalog shards, ID conflicts, and unknown
    commit outcomes. Validation failures create no saga/outbox rows; identical
@@ -1017,6 +1171,7 @@ Acceptance scenarios for implementation:
 
 Use unit and contract tests for routing, validation, duplicate handling, stored
 outcome replay, and injected-clock reconciliation schedules. Use PostgreSQL and
-RabbitMQ integration tests for transaction boundaries, privileges, and delivery
-policies, and bounded Kubernetes drills for seeding, traffic, and failover.
+RabbitMQ integration tests for transaction boundaries, privileges, CDC capture
+and checkpoint recovery, and delivery policies, and bounded Kubernetes drills
+for seeding, traffic, and failover.
 Module-scoped build and drill commands are maintained in [PLAN.md](PLAN.md).

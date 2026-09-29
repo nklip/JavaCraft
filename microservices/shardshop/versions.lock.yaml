@@ -296,7 +296,7 @@ images:
     base_image_observed: gcr.io/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
   postgresql_cnpg:
     version: '18.6'
-    purpose: three CNPG shard pairs; also the ledger if provisioned as a CNPG singleton
+    purpose: three three-instance CNPG shard clusters; also the ledger if provisioned as a CNPG singleton
     support_refs:
     - postgresql_18
     - debian_13
@@ -431,8 +431,8 @@ images:
     source_refs:
     - kind_release
     verification: Raw OCI index/arm64 manifest/config hashes verified; index matches
-      the kind 0.33.0 release. Cluster booted on 2026-09-28 with three Ready nodes
-      on v1.36.4.
+      the kind 0.33.0 release. Cluster rebooted on 2026-09-29 with four Ready nodes
+      (three workers) on v1.36.4.
 candidates: {}
 installation_artifacts:
   cnpg_manifest:

@@ -24,7 +24,9 @@ this file so the following instructions and its acceptance condition travel with
 4. Add the behavior and edge/error tests required by the repository instructions.
    Run the affected module's checks; never build the repository root reactor.
    Use real database/broker integration tests where IO matters and bounded polling
-   for Kubernetes checks. Follow the context rules below.
+   for Kubernetes checks. Infrastructure steps are verified by live runs against
+   `kind-shardshop`, recorded as evidence; add scripts only where a step calls for
+   them. Follow the context rules below.
 5. Mark the row **Done** only after its acceptance condition and relevant checks
    pass. Append concise evidence and exact commands to its acceptance cell. Use
    **Blocked** with a concrete reason when completion is prevented; resume as
@@ -55,18 +57,18 @@ Milestone numbers 0-6 remain stable for references from other documents.
 
 | Step / deliverable | Depends on | Status | Acceptance condition | Implementation prompt |
 |---|---|---|---|---|
-| 1.1 Local Kubernetes bootstrap | 0.1 | Done | The host runs the selected Docker Desktop release, and the pinned kind node image's advisories are reviewed; one control plane and two workers are ready; every command targets the `kind-shardshop` context explicitly; startup preserves existing storage and allocator state; manifests follow the §5 portability rules. **2026-09-28 evidence:** Docker Desktop 4.92.0 is installed, and the node image's 155 advisories (10 critical, 42 high) were accepted for this loopback-only, disposable lab. With kind 0.33.0 and kubectl 1.36.3 from `PATH`, `up.sh` created the cluster in 31 seconds: three Ready nodes on v1.36.4 from the pinned digest, the API server on 127.0.0.1, and the default `standard` StorageClass (`rancher.io/local-path`, `WaitForFirstConsumer`). The `shardshop` namespace enforces `restricted` Pod Security: a privileged pod is rejected and a compliant pod is admitted. A second run reused the cluster without recreating nodes, left the namespace unchanged, and kept a probe volume's data and a probe ConfigMap's resource version. **Commands:** `bash microservices/shardshop/scripts/up.sh` (twice), then `kubectl --context kind-shardshop get nodes`, `get storageclass`, and `get namespace shardshop --show-labels`. | Implement step 1.1 of `microservices/shardshop/PLAN.md`: take `docker`, `kind`, and `kubectl` from the user's `PATH`. Add pinned kind configuration, the namespace with `restricted` Pod Security enforcement in the Kustomize base (`infra/k8s/base/`, applied through `infra/k8s/overlays/kind/`), and an idempotent `scripts/up.sh` for `kind-shardshop`, keeping kind-specific settings in `infra/kind.yaml` and that script (§5 portability rules). Check node readiness and the StorageClass. Pass the context explicitly on every command; keep destructive cleanup out of startup. |
-| 1.2 CloudNativePG installation | 1.1 | Planned | The operator runs a release inside its support window, deployed by digest; it and its CRDs are ready, match the Kubernetes support matrix, and can be reapplied without replacing databases. | Implement step 1.2 of `microservices/shardshop/PLAN.md`: first check the CNPG pin against its lock deadline; if it is at or past `upgrade_by`, select and lock the supported successor, repeating the step 0.1 checks for it. Install the release through a repeatable script or pinned manifests, replacing the release manifest's tag-only operator image with the lock's `images.cnpg_operator.reference` digest and checking the rendered manifest. Verify operator readiness and CRD availability with bounded waits, and report compatibility or installation failures clearly. |
-| 1.3 First synchronous shard pair | 1.2 | Planned | `shard-a` has two instances with separate PVCs on different workers; `-rw`/`-ro` roles, WAL streaming, and synchronous commit behavior are verified. | Implement step 1.3 of `microservices/shardshop/PLAN.md`: provision only `shard-a` with two CloudNativePG instances, pair-scoped placement, resource limits, runtime-provided secrets, and the default synchronous profile. Put the `Cluster` in the Kustomize base and the storage class and anti-affinity strictness in the kind overlay; leave `podSecurityContext` unset (§5 portability rules). Add `scripts/verify-topology.sh` to verify roles, replicated writes, storage persistence, and blocked writes when its required standby is absent. |
+| 1.1 Local Kubernetes bootstrap | 0.1 | Done | The host runs the selected Docker Desktop release with at least 12 GB of VM memory, and the pinned kind node image's advisories are reviewed; one control plane and three workers are ready; every command targets the `kind-shardshop` context explicitly; startup preserves existing storage and allocator state; manifests follow the §5 portability rules. **2026-09-29 evidence (redone for the quorum topology):** Docker Desktop 4.92.0 runs with a 12 GB VM (11,945 MiB reported), and the unchanged node image keeps its reviewed advisories (155; 10 critical, 42 high), accepted for this loopback-only, disposable lab. kind v0.33.0 on `PATH` is a go1.27.0 build rather than the lock's official go1.26.7 binary; kubectl is 1.36.3. After the empty two-worker cluster was deleted by hand, `up.sh` created the new one in 39 seconds: four Ready nodes on v1.36.4, all from the pinned digest, the API server on 127.0.0.1, and the default `standard` StorageClass (`rancher.io/local-path`, `WaitForFirstConsumer`). Given a 4 GiB VM, `up.sh` stops with a clear message. The `shardshop` namespace enforces `restricted` Pod Security: a privileged pod is rejected and a compliant pod without a fixed user ID is admitted (server dry run), and a pod running as UID 1000940000 writes to a local-path volume. A second run took 2 seconds, recreated no nodes, left the namespace unchanged, and kept the probe volume's data and a probe ConfigMap's resource version. The idle cluster uses 1.3 GiB (control plane 768 MiB, about 170 MiB per worker). **Commands:** `kind delete cluster --name shardshop` (once, by hand), `bash microservices/shardshop/scripts/up.sh` (twice), then `kubectl --context kind-shardshop get nodes`, `get storageclass`, `get namespace shardshop --show-labels`, and `docker stats --no-stream`. | Implement step 1.1 of `microservices/shardshop/PLAN.md`: take `docker`, `kind`, and `kubectl` from the user's `PATH`. Add pinned kind configuration with one control plane and three workers, the namespace with `restricted` Pod Security enforcement in the Kustomize base (`infra/k8s/base/`, applied through `infra/k8s/overlays/kind/`), and an idempotent `scripts/up.sh` for `kind-shardshop`, keeping kind-specific settings in `infra/kind.yaml` and that script (§5 portability rules). Have `up.sh` fail early when `docker info` reports less than about 11.5 GiB of VM memory (a 12 GB setting reports 11.7 GiB). kind cannot add nodes, so recreate the existing two-worker cluster once by hand, outside `up.sh`. Check node readiness and the StorageClass. Pass the context explicitly on every command; keep destructive cleanup out of startup. |
+| 1.2 CloudNativePG installation | 1.1 | Planned | The operator runs a release inside its support window, deployed by digest; it and its CRDs are ready, match the Kubernetes support matrix, and can be reapplied without replacing databases. | Implement step 1.2 of `microservices/shardshop/PLAN.md` by extending `scripts/up.sh`; add no other scripts, runtime lock parsing, or shell test harnesses. First compare today's date with `support_policies.cnpg_1_30.upgrade_by` and record the result as evidence; only if that date is reached, select and lock the supported successor, repeating the step 0.1 checks with ad hoc commands. Commit the official release YAML unchanged in `infra/k8s/cnpg/` once its SHA-256 matches `installation_artifacts.cnpg_manifest.sha256`, with a `kustomization.yaml` patch that sets both the operator container image and `OPERATOR_IMAGE_NAME` to the literal `images.cnpg_operator.reference`. Have `up.sh` server-side apply that directory before the overlay, then wait with timeouts for the CRDs to be Established and the operator rollout to complete. Check once, as evidence: the rendered output has no tag-only operator reference, the server minor is in `compatibility.cloudnative_pg.supported_kubernetes_minors`, and a second run keeps the CRD UIDs and the operator Deployment's generation. |
+| 1.3 First quorum shard cluster | 1.2 | Planned | `shard-a` has three instances with separate PVCs, one per worker; `-rw`/`-ro` roles, WAL streaming, and quorum commit behavior are verified: writes continue with one standby absent and block with both absent; logical decoding is ready for order CDC, with failover slots synchronized to both standbys and a finite slot WAL budget. | Implement step 1.3 of `microservices/shardshop/PLAN.md`: provision only `shard-a` with three CloudNativePG instances, one per worker, resource limits, runtime-provided secrets, and the default quorum profile: `synchronous` with `method: any`, `number: 1`, `dataDurability: required`, and `failoverQuorum: true`. Prepare it for the architecture's order CDC relay: keep `wal_level=logical`, enable CNPG logical-slot synchronization with `hot_standby_feedback` and `sync_replication_slots`, confirm slot and WAL-sender limits cover physical replication plus CDC, and set a finite `max_slot_wal_keep_size` sized for both CDC and standby outages. Put the `Cluster` in the Kustomize base and the storage class and anti-affinity strictness in the kind overlay; leave `podSecurityContext` unset (§5 portability rules). Add `scripts/verify-topology.sh` to verify roles, replicated writes, storage persistence, writes continuing with one standby absent and blocking with both absent, and that a probe failover slot synchronizes to both standbys before it is dropped. |
 
 ### Milestone 2: Storage, ownership, and migrations
 
 | Step / deliverable | Depends on | Status | Acceptance condition | Implementation prompt |
 |---|---|---|---|---|
-| 2.1 Remaining shard pairs | 1.3 | Planned | Six shared PostgreSQL pods form three independent primary/standby pairs; data replicates only within its pair. Scenario 2 topology checks pass. | Implement step 2.1 of `microservices/shardshop/PLAN.md`: add `shard-b` and `shard-c` using the verified pair configuration and extend `scripts/verify-topology.sh`. Assert three writable primaries, three standbys, pair-local replication, Service endpoints, and independent PVCs. |
-| 2.2 Separate ledger database | 1.3 | Planned | The ledger has its own persistent database and Service, outside the six shared shard pods; restart preserves its data. | Implement step 2.2 of `microservices/shardshop/PLAN.md`: provision the separate single-instance PostgreSQL ledger database with pinned artifacts, resources, PVC, and runtime-provided credentials. Verify connectivity and persistence, and document its single-instance availability limit. |
+| 2.1 Remaining shard clusters | 1.3 | Planned | Nine shared PostgreSQL pods form three independent three-instance quorum clusters; data replicates only within its shard. Scenario 2 topology checks pass. | Implement step 2.1 of `microservices/shardshop/PLAN.md`: add `shard-b` and `shard-c` using the verified cluster configuration and extend `scripts/verify-topology.sh`. Assert three writable primaries, six standbys, shard-local replication, Service endpoints, and independent PVCs, then record measured memory against the §5 budget. |
+| 2.2 Separate ledger database | 1.3 | Planned | The ledger has its own persistent database and Service, outside the nine shared shard pods; restart preserves its data. | Implement step 2.2 of `microservices/shardshop/PLAN.md`: provision the separate single-instance PostgreSQL ledger database with pinned artifacts, resources, PVC, and runtime-provided credentials. Verify connectivity and persistence, and document its single-instance availability limit. |
 | 2.3 Catalog migrations and grants | 0.3, 2.1 | Planned | Catalog migrations validate on every primary with their own history; product runtime can perform required DML but cannot run DDL. | Implement step 2.3 of `microservices/shardshop/PLAN.md`: add the product-owned `catalog.products` migration stream, positive `BIGINT` identifiers, migration owner/runtime roles, and a one-run-per-primary migration mechanism. Configure `catalog.flyway_schema_history`, verify idempotent migration reruns, and test runtime privilege boundaries. |
-| 2.4 Ordering migrations and catalog read grants | 2.3 | Planned | Orders, items, saga counters, inbox/outbox, and both ordering quarantine stores exist on every shard; histories stay separate and `order_app` can only read catalog data. | Implement step 2.4 of `microservices/shardshop/PLAN.md`: add ordering-owned schemas, constraints, migrations, and roles for orders, snapshots, sagas, transport records, orphan results, and conflicting results. Put reconciliation counters on `ordering.order_sagas`. Grant `order_app` catalog reads without writes, and verify migration/history and privilege isolation. |
+| 2.4 Ordering migrations and catalog read grants | 2.3 | Planned | Orders, items, saga counters, inbox/outbox, and both ordering quarantine stores exist on every shard; histories stay separate and `order_app` can only read catalog data; each primary has the dedicated `ordering.order_outbox` publication and CDC offsets table, and the CDC login can replicate and read only the outbox. | Implement step 2.4 of `microservices/shardshop/PLAN.md`: add ordering-owned schemas, constraints, migrations, and roles for orders, snapshots, sagas, transport records, orphan results, and conflicting results. Put reconciliation counters on `ordering.order_sagas`. Grant `order_app` catalog reads without writes. For the architecture's CDC relay, have the ordering migration owner create the dedicated publication for `ordering.order_outbox` and the Debezium JDBC offsets table with `order_app` DML, and add a separate CDC login with replication permission and only connect/snapshot access to the outbox. Verify migration/history and privilege isolation, including the CDC login's lack of DML and DDL. |
 | 2.5 Ledger migrations and permanent decisions | 0.3, 2.2 | Planned | Ledger entries, permanent operation decisions, inbox/outbox, and conflicting-command quarantine have the required identity constraints and separate migration/runtime permissions. | Implement step 2.5 of `microservices/shardshop/PLAN.md`: add the `ledger` migration stream and roles for entries, immutable accepted/rejected operations, transport records, and `ledger.conflicting_commands`. Use positive `BIGINT` identifiers and uniqueness by order/logical identity. Verify the separate history, constraints, and runtime grants. |
 
 ### Milestone 3: Product contracts, IDs, and workloads
@@ -89,35 +91,35 @@ Milestone numbers 0-6 remain stable for references from other documents.
 |---|---|---|---|---|
 | 4.1 Order validation and atomic acceptance | 2.4, 3.4, 3.5 | Planned | PUT/GET, staged 400/409/422/503 precedence, locked re-checks, unknown commits, and atomic order/saga/outbox writes pass scenario 9; catalog IO holds no order connection or lock; provider tests match responses to the order OpenAPI document. | Implement step 4.1 of `microservices/shardshop/PLAN.md`: implement order validation, catalog lookups, request fingerprints, idempotent PUT/GET, and the two short locked checks. Route the order and each product lookup with `shardshop-sharding`. Atomically persist valid orders, snapshots, saga identity, and `RecordOrder` outbox data. Test races, conflicting retries, new-ID failures, and catalog outages using the architecture's precedence. |
 | 4.2 RabbitMQ topology and policies | 1.1, 0.3, 3.1 | Planned | The persistent broker runs a release inside its support window, under the `restricted` Pod Security profile with an arbitrary user ID, and has processing/parking quorum queues, distinct complete source policies, required feature flags, and verified length/byte/retry limits. | Implement step 4.2 of `microservices/shardshop/PLAN.md`: first check the RabbitMQ pin against its lock deadlines; if it is at or past `qualify_successor_by`, select and lock the supported successor with native delayed retry, repeating the step 0.1 checks for it. Deploy the pinned one-broker RabbitMQ/OTP image and provision the exact exchanges, bindings, queues, and per-queue policies in the architecture. Bound source and parking queues, provision DLQs first, and verify effective settings and readiness without substituting TTL retry loops. Verify that the broker starts and keeps its data under an arbitrary user ID (§5 portability rules). |
-| 4.3 Order outbox publisher | 4.1, 4.2 | Planned | All three order shards are polled after restart; confirmed/routed messages become published; returns, nacks, timeouts, and crashes keep safe retry state and stable envelope IDs; published `RecordOrder` envelopes match the order-owned message schema. | Implement step 4.3 of `microservices/shardshop/PLAN.md`: implement the order outbox relay with bounded polling, persistent mandatory publishing, publisher confirms, and finite backoff. Mark a row published only after confirmation without return. Test crash/restart boundaries and duplicate publication without changing a persisted envelope's identity. |
+| 4.3 Order outbox CDC relay | 4.1, 4.2 | Planned | Debezium is pinned and qualified. One reader per shard captures committed outbox inserts, including a first-start snapshot of unpublished rows, and publishes each stored envelope in source order; rollbacks, status updates, and deletes emit no command. Returns, nacks, timeouts, and crashes leave rows unpublished and offsets unadvanced; a failed reader restarts alone with capped backoff and resumes from the offsets in its shard database with stable envelope IDs, while slot or offset loss stops it for explicit recovery; published `RecordOrder` envelopes match the order-owned message schema. | Implement step 4.3 of `microservices/shardshop/PLAN.md`: first pin and qualify Debezium Engine, its PostgreSQL connector, and its JDBC offset store under `VERSIONS.md`, repeating the step 0.1 and 0.3 checks for them and the Kafka Connect artifacts they bring, whose versions Boot also manages. Then embed one engine per shard in the order service's IO layer as the architecture's CDC section specifies: `pgoutput` with the step 2.4 publication and auto-creation disabled, a failover slot, bounded buffers, and per-shard offsets in the step 2.4 table through `order_app`. Use `offset.mismatch.strategy=trust_offset` and refuse to start with a slot but no offsets; Debezium's default detects neither. Supervise each engine: restart it from its offsets with capped exponential backoff, outside pod liveness, but never after slot or offset loss. Publish the stored envelope persistently with mandatory routing and confirms, mark its row published through `order_app`, and only then mark the record processed. Test with real PostgreSQL and RabbitMQ: rollback, snapshot-to-stream handoff, a return without offset advance, restarts before and after marking and offset flush, retry exhaustion restarting only that shard's reader, and slot or offset loss stopping it. |
 | 4.4 Ledger command consumer | 2.5, 3.2, 3.4, 4.2 | Planned | A command commits one immutable decision and result outbox record before acknowledgement; duplicate commands regenerate the saved outcome; conflicts commit quarantine first; commands with invalid IDs are rejected without requeue. | Implement step 4.4 of `microservices/shardshop/PLAN.md`: implement ledger command validation, inbox handling, per-order serialization, USD acceptance/EUR rejection, and permanent operation outcomes. Atomically create ledger state and a result outbox envelope. Test duplicate inbox hits, changed allowlists, conflicting commands, rollback, and acknowledge/reject behavior. |
 | 4.5 Ledger result publisher | 4.4 | Planned | Stored outcomes reach the result queue with preserved logical correlation; each new envelope has a fresh message ID and retransmissions retain it; result envelopes match the ledger-owned message schema. | Implement step 4.5 of `microservices/shardshop/PLAN.md`: implement the ledger outbox relay with mandatory persistent publishing, confirms, bounded retry, and restart recovery. Test returned/unconfirmed deliveries and publish-before-mark crashes. Preserve permanent decision data and distinguish new result envelopes from retransmissions. |
 | 4.6 Order result consumer | 4.3, 4.5 | Planned | Results atomically confirm/cancel the correct order; duplicates are harmless; absent/conflicting results use named quarantine stores; unavailable shards follow retry/DLQ handling; results with invalid IDs are rejected without requeue. | Implement step 4.6 of `microservices/shardshop/PLAN.md`: implement result routing, correlation/fingerprint checks, per-order advisory locking, inbox persistence, and terminal transitions. Commit `ordering.orphan_results` or `ordering.conflicting_results` before acknowledgement when required. Test concurrency with order creation, immutable terminal outcomes, and database failures. |
 | 4.7 Order producer application | 3.4, 3.6, 4.1 | Planned | The HTTP-only producer uses the derived product dataset, selects USD/EUR deterministically, preserves request IDs/payloads, and polls status within bounded deadlines. | Implement step 4.7 of `microservices/shardshop/PLAN.md`: implement `shardshop-order-producer` with bounded rates/concurrency, the currency rule from step 3.2, and one retained Snowflake ID per new order. Test submission failures, unknown outcomes, status polling, and terminal results without SQL access or replacement IDs on retries. |
-| 4.8 Saga deployment and first end-to-end run | 3.9, 4.6, 4.7 | Planned | Order, ledger, and order producer run with the correct launchers and credentials; seeding gates load; scenarios 4 and 5 pass end to end. | Implement step 4.8 of `microservices/shardshop/PLAN.md`: add order/ledger/producer application images and Kubernetes manifests, wiring generator launchers, services, secrets, and the seeding gate. Run bounded USD/EUR traffic and verify CONFIRMED/CANCELLED outcomes, stable retries, exactly-once business effects, and the final six running application pods. |
+| 4.8 Saga deployment and first end-to-end run | 3.9, 4.6, 4.7 | Planned | Order, ledger, and order producer run with the correct launchers and credentials; seeding gates load; a replacement order pod on either worker resumes CDC from the stored offsets; scenarios 4 and 5 pass end to end. | Implement step 4.8 of `microservices/shardshop/PLAN.md`: add order/ledger/producer application images and Kubernetes manifests, wiring generator launchers, services, secrets, and the seeding gate. Give the order pod its CDC login secret and a non-overlapping replacement strategy, and start it only after the broker bindings exist. Run bounded USD/EUR traffic and verify CONFIRMED/CANCELLED outcomes, stable retries, exactly-once business effects, CDC resumption after an order pod replacement, and the final six running application pods. |
 
 ### Milestone 5: Recovery, retention, and backpressure
 
 | Step / deliverable | Depends on | Status | Acceptance condition | Implementation prompt |
 |---|---|---|---|---|
-| 5.1 Durable saga reconciliation | 4.8 | Planned | Lost results recover through stored ledger outcomes; injected-clock checks prove at most five automatic replay enqueues even after restarts and published-row cleanup. | Implement step 5.1 of `microservices/shardshop/PLAN.md`: implement the architecture's reconciliation schedule using counters/timestamps on `ordering.order_sagas`. Atomically advance the attempt and enqueue a new envelope while preserving logical IDs. Test lost messages, existing unpublished rows, cleanup, restarts, and exhausted budgets without cancelling an order. |
-| 5.2 Safe transport cleanup | 5.1 | Planned | Only eligible inbox and confirmed-published outbox rows are removed; permanent decisions, saga identity/counters, unpublished messages, and unresolved quarantine survive. | Implement step 5.2 of `microservices/shardshop/PLAN.md`: add configurable bounded transport-retention jobs in order and ledger modules. Test old duplicate commands/results after cleanup, including a rejected ledger operation after its allowlist changes. Verify every protected business/quarantine record and reconciliation limit remains intact. |
+| 5.1 Durable saga reconciliation | 4.8 | Planned | Lost results recover through stored ledger outcomes; injected-clock checks prove at most five automatic replay enqueues even after restarts and published-row cleanup. | Implement step 5.1 of `microservices/shardshop/PLAN.md`: implement the architecture's reconciliation schedule using counters/timestamps on `ordering.order_sagas`. Atomically advance the attempt and enqueue a new envelope while preserving logical IDs. Test lost messages, existing unpublished rows left to their CDC reader without a new attempt (including while it restarts or is stopped for recovery), cleanup, restarts, and exhausted budgets without cancelling an order. |
+| 5.2 Safe transport cleanup | 5.1 | Planned | Only eligible inbox rows and confirmed-published outbox rows are removed, and order-outbox rows only after a durable CDC checkpoint passes their insert; cleanup deletes never become commands; permanent decisions, saga identity/counters, unpublished messages, and unresolved quarantine survive. | Implement step 5.2 of `microservices/shardshop/PLAN.md`: add configurable bounded transport-retention jobs in order and ledger modules, gating order-outbox deletes on the durable CDC checkpoint. Test old duplicate commands/results after cleanup, including a rejected ledger operation after its allowlist changes. Verify every protected business/quarantine record and reconciliation limit remains intact. |
 | 5.3 DLQ replay tool | 5.2 | Planned | Replay preserves original payload/logical IDs, acknowledges parking only after confirmed routing, and remains safe on repeated failures or crashes. | Implement step 5.3 of `microservices/shardshop/PLAN.md`: add an explicit bounded manual replay tool for both parking queues, guarded to the lab context. Publish persistently with mandatory routing and confirms before acknowledging the parked delivery. Test failed replay, confirm/ack crash gaps, and replay after transport cleanup; never add an automatic DLQ loop. |
-| 5.4 Retry and capacity drills | 5.3 | Planned | Scenario 7 records actual redelivery timing and limit boundaries; long outages use DLQ/reconciliation; missing/full DLQs cause queue rejection while broker-wide alarms remain clear. | Implement step 5.4 of `microservices/shardshop/PLAN.md`: add bounded drills for the pinned broker's reject/retry behavior, long shard outages, unbound DLQs, and full parking queues. Verify negative confirms leave outboxes unpublished, measure actual delays, restore bindings/capacity, and demonstrate progress with reconciliation or explicit replay. |
-| 5.5 Crash recovery and observability | 5.4 | Planned | Scenario 6 passes across commit/publish/ack crash windows; required metrics identify stalled outboxes, sagas, quarantine, queue capacity, and pool/replication pressure. | Implement step 5.5 of `microservices/shardshop/PLAN.md`: add deterministic crash-window integration checks and bounded restart drills for relays and consumers. Complete actionable metrics/logging for recovery and resource pressure without secrets or full payloads. Verify duplicate delivery has no duplicate business effect and failures can be diagnosed from recorded evidence. |
+| 5.4 Retry and capacity drills | 5.3 | Planned | Scenario 7 records actual redelivery timing and limit boundaries; long outages use DLQ/reconciliation; missing/full DLQs cause queue rejection while broker-wide alarms remain clear and CDC offsets hold. | Implement step 5.4 of `microservices/shardshop/PLAN.md`: add bounded drills for the pinned broker's reject/retry behavior, long shard outages, unbound DLQs, and full parking queues. Verify negative confirms leave outboxes unpublished and CDC offsets unadvanced, measure slot-retained WAL against its budget and actual delays, restore bindings/capacity, and demonstrate progress with reconciliation or explicit replay. |
+| 5.5 Crash recovery and observability | 5.4 | Planned | Scenario 6 passes across commit/publish/ack and CDC mark/checkpoint crash windows, with its failover case in step 6.2; slot, offset, or WAL loss stops capture until the explicit recovery; required metrics identify stalled outboxes and CDC readers, sagas, quarantine, queue capacity, and pool/replication pressure. | Implement step 5.5 of `microservices/shardshop/PLAN.md`: add deterministic crash-window integration checks and bounded restart drills for CDC readers, relays, and consumers. Add the architecture's guarded CDC recovery for slot, offset, or WAL loss (reconcile retained outbox and saga/ledger state, then resnapshot explicitly) and verify capture stops rather than skipping. Complete actionable metrics/logging for recovery and resource pressure, including CDC lag, reader restarts, offset checkpoints, and slot-retained WAL, without secrets or full payloads. Verify duplicate delivery has no duplicate business effect and failures can be diagnosed from recorded evidence. |
 
 ### Milestone 6: Read profiles, failover, restore, and operation
 
 | Step / deliverable | Depends on | Status | Acceptance condition | Implementation prompt |
 |---|---|---|---|---|
-| 6.1 Strict replica-read profile | 3.9 | Planned | Stale reads are observable; absent/hung standbys return 503 within four server seconds and before the reader's five-second deadline, without primary fallback. Scenarios 3 and 8 read checks pass. | Implement step 6.1 of `microservices/shardshop/PLAN.md`: add optional product reads through `-ro` with a shared three-second database budget and four-second server deadline. Test lag, absent endpoints, hung queries, promotion gaps, and recovery; keep primary reads as default and record replica failures separately. |
-| 6.2 Synchronous failover drills | 5.5, 6.1 | Planned | Switchover and primary failure promote the synchronized standby, preserve acknowledged saga commits, block writes during standby loss, and leave unrelated shards working. | Implement step 6.2 of `microservices/shardshop/PLAN.md`: add repeatable synchronous switchover, abrupt primary-loss, and standby-recovery drills. Cause failures through the Kubernetes API (force-delete pods, cordon or drain nodes); keep any whole-node stop as a separate kind-only extra (§5 portability rules). Assert actual promotion, safe former-primary rejoin, no dual writable primary, PVC persistence, connection recovery, and the documented DLQ/reconciliation path for outages longer than transport retries. |
+| 6.1 Strict replica-read profile | 3.9 | Planned | Stale reads are observable; reads continue through the remaining standby when one is absent; with no ready standby or a hung query, reads return 503 within four server seconds and before the reader's five-second deadline, without primary fallback. Scenarios 3 and 8 read checks pass. | Implement step 6.1 of `microservices/shardshop/PLAN.md`: add optional product reads through `-ro` with a shared three-second database budget and four-second server deadline. Test lag, one and then both standbys absent, hung queries, promotion gaps, and recovery; keep primary reads as default and record replica failures separately. |
+| 6.2 Synchronous failover drills | 5.5, 6.1 | Planned | Switchover and primary failure promote a standby confirmed to hold every acknowledged commit, preserve acknowledged saga commits, and keep writes flowing through the remaining standby; CDC resumes from the synchronized logical slot without losing a command. One lost standby keeps writes but pauses CDC, both lost block writes, and losing the primary with one standby triggers no automatic promotion; unrelated shards keep working. | Implement step 6.2 of `microservices/shardshop/PLAN.md`: add repeatable synchronous switchover, abrupt primary-loss, and standby-recovery drills. Cause failures through the Kubernetes API (force-delete pods, cordon or drain nodes); keep any whole-node stop as a separate kind-only extra (§5 portability rules). Assert actual promotion, safe former-primary rejoin, no dual writable primary, PVC persistence, connection recovery, CDC resumption from the synchronized failover slot, CDC pausing while either standby is lost and resuming after it returns, no automatic promotion when the primary and one standby are lost together, and the documented DLQ/reconciliation path for outages longer than transport retries. |
 | 6.3 Coordinated backup and isolated restore | 5.3, 6.2 | Planned | Isolated restores retain schema/routing metadata, permanent outcomes, quarantine, and the latest allocator high-water mark; backup artifacts live outside kind. | Implement step 6.3 of `microservices/shardshop/PLAN.md`: add guarded backup/restore scripts with explicit source/target arguments. Quiesce producers and drain work for a baseline dump of all shards and ledger, export broker definitions and dataset/generation metadata, and retain allocator history independently. Verify restored data and reject an unknown or regressed allocator mark. |
-| 6.4 Asynchronous-loss audit and recovery | 6.3 | Planned | Deliberate loss is distinguished from synchronous guarantees; late and previously acknowledged orphan outcomes are quarantined, ID reuse is blocked, and verified restore/replay resolves recoverable cases. | Implement step 6.4 of `microservices/shardshop/PLAN.md`: add the opt-in asynchronous-loss drill and privileged ledger-to-order audit while writes are paused. Compare identities/fingerprints, persist missing/mismatched pairs in the named stores, and test restoration of original order/saga identity before replay and quarantine clearing. Preserve unresolved incidents and permanent ledger decisions. |
-| 6.5 Supported upgrade qualification | 0.3, 1.2 | Planned | Every installed component moves to a supported release before its lock deadline, with the successor choice, compatibility checks, upgrade/recovery procedure, and evidence from the checks that exist at that point recorded. | Implement step 6.5 of `microservices/shardshop/PLAN.md`: recheck `VERSIONS.md` against official sources and qualify available community-supported broker/operator/runtime updates for the components already installed. Run it whenever an installed component approaches its lock deadline, whatever the milestone. Rerun the affected checks that exist at that point (contract, retry, capacity, failover, restore); update pins and support evidence. If a successor is unavailable, record the blocker and deadline rather than inventing a version or passing EOL. |
+| 6.4 Asynchronous-loss audit and recovery | 6.3 | Planned | Deliberate asynchronous loss removes acknowledged orders without creating ledger records; after a restore from an older backup, late and previously acknowledged orphan outcomes are quarantined, ID reuse is blocked, and verified restore/replay resolves recoverable cases. | Implement step 6.4 of `microservices/shardshop/PLAN.md`: add the opt-in asynchronous-loss drill and privileged ledger-to-order audit while writes are paused. Keep logical-slot synchronization on: verify lost acknowledged orders leave no ledger records and CDC resumes from the synchronized slot. Produce orphan outcomes by restoring a shard from an older backup, whose stale offsets stop its CDC reader until the explicit recovery. Compare identities/fingerprints, persist missing/mismatched pairs in the named stores, and test restoration of original order/saga identity before replay and quarantine clearing. Preserve unresolved incidents and permanent ledger decisions. |
+| 6.5 Supported upgrade qualification | 0.3, 1.2 | Planned | Every installed component moves to a supported release before its lock deadline, with the successor choice, compatibility checks, upgrade/recovery procedure, and evidence from the checks that exist at that point recorded. | Implement step 6.5 of `microservices/shardshop/PLAN.md`: recheck `VERSIONS.md` against official sources and qualify available community-supported broker/operator/CDC/runtime updates for the components already installed. Run it whenever an installed component approaches its lock deadline, whatever the milestone. Rerun the affected checks that exist at that point (contract, CDC, retry, capacity, failover, restore); update pins and support evidence. If a successor is unavailable, record the blocker and deadline rather than inventing a version or passing EOL. |
 | 6.6 Complete demo and acceptance run | 6.4, 6.5 | Planned | A fresh lab follows the README without hidden steps; all ten architecture scenarios have commands and passing evidence, including full Snowflake lifecycle checks. | Implement step 6.6 of `microservices/shardshop/PLAN.md`: finish ShardShop's README and guarded startup/verification scripts, assemble a scenario-to-command checklist, and run the complete demo. Verify final pod counts, no workload SQL access, replica/failover recovery, allocation exhaustion/restarts, dataset consistency across workloads, and large-ID round trips. Record limitations and exact affected-module test/drill commands. |
 
-The supported-version gate (milestone 0) and first replicated pair (1.3) must
+The supported-version gate (milestone 0) and first replicated shard (1.3) must
 pass before repeating database infrastructure. The first complete order demo is
 4.8: accepting an order alone is not completion of the saga. Individual recovery
 and failover steps retain their own acceptance gates. Support deadlines take
@@ -134,16 +136,17 @@ infrastructure. [VERSIONS.md](VERSIONS.md) defines the stable-release baseline,
 support windows, library management, and mandatory upgrade gates.
 
 Build ShardShop in `microservices/shardshop` to exercise product read load,
-horizontal sharding, physical replication, order sagas, and Kubernetes failover.
-The APIs expose decimal-string Snowflake business IDs generated with
+horizontal sharding, physical replication, log-based CDC, order sagas, and
+Kubernetes failover. The APIs expose decimal-string Snowflake business IDs generated with
 `de.mkammerer.snowflake-id:snowflake-id`; shard routing stays internal, and there
 is no tenant concept in the API or data model.
 
 
 Use one local Kubernetes cluster and three CloudNativePG `Cluster` resources,
-named `shard-a`, `shard-b`, and `shard-c`, each with `spec.instances: 2`.
-Each resource manages one primary and one physical streaming standby. A single
-resource with six instances would create one primary and five standbys. See
+named `shard-a`, `shard-b`, and `shard-c`, each with `spec.instances: 3`.
+Each resource manages one primary and two physical streaming standbys, with quorum
+synchronous replication (`ANY 1`) and quorum-based failover. A single resource
+with nine instances would create one primary and eight standbys. See
 [CloudNativePG replication](https://cloudnative-pg.io/docs/1.30/replication/).
 
 ```mermaid
@@ -157,9 +160,9 @@ flowchart LR
     A --> P1[("Primary A: catalog + ordering")]
     B --> P3[("Primary B: catalog + ordering")]
     C --> P5[("Primary C: catalog + ordering")]
-    P1 -->|"WAL replication"| P2[("Standby A")]
-    P3 -->|"WAL replication"| P4[("Standby B")]
-    P5 -->|"WAL replication"| P6[("Standby C")]
+    P1 -->|"WAL replication"| P2[("Standbys A1, A2")]
+    P3 -->|"WAL replication"| P4[("Standbys B1, B2")]
+    P5 -->|"WAL replication"| P6[("Standbys C1, C2")]
     O <-->|"Commands / outcomes"| MQ["RabbitMQ: one local broker pod"]
     MQ <-->|"Commands / outcomes"| L["Ledger consumer"]
     L --> DB[("Separate ledger database")]
@@ -172,7 +175,7 @@ still fail. See [CloudNativePG architecture](https://cloudnative-pg.io/docs/1.30
 Optional product reads through `-ro`, including standby failure behavior, follow
 the architecture's replica read profile.
 
-There are six shared PostgreSQL instance pods, plus a separate ledger PostgreSQL
+There are nine shared PostgreSQL instance pods, plus a separate ledger PostgreSQL
 pod and one RabbitMQ broker pod. After the product seeder Job completes, six
 application pods remain running: two product service pods, one order service pod,
 one ledger consumer pod, one product reader pod, and one order producer pod.
@@ -237,7 +240,7 @@ advisory lock, or order connection. Then open a short order transaction, lock an
 re-check existing state/quarantine, and store immutable product/price snapshots
 with the order. There is no cross-shard foreign key, transaction, or
 join. Ledger rows live only in the separate ledger database. Physical replication
-copies each primary's database to its own standby; it does not distribute rows
+copies each primary's database to its own standbys; it does not distribute rows
 between shards.
 
 Freeze the hash and three-shard mapping. Changing `% 3` to `% 4` would misroute
@@ -260,21 +263,22 @@ Follow the dated baseline and lifecycle evidence in [VERSIONS.md](VERSIONS.md).
 |---|---|
 | Java | JDK 25 or newer for build and tests (bytecode targets release 25); OpenJDK 25 application runtime; no vendor or exact-patch restriction |
 | Local Kubernetes | Kubernetes 1.36.x on kind with a digest-pinned node image; `docker`, `kind`, and `kubectl` come from the user's `PATH` (tested with Docker Desktop 4.92.0, kind 0.33.0, and kubectl 1.36) |
-| Node layout | One control-plane node and two worker nodes |
-| Database lifecycle | CloudNativePG 1.30.1 initially, with upgrades before operator EOL; three independent two-instance shard clusters and separate ledger storage |
+| Node layout | One control-plane node and three worker nodes; Docker Desktop VM with at least 12 GB of memory |
+| Database lifecycle | CloudNativePG 1.30.1 initially, with upgrades before operator EOL; three independent three-instance quorum shard clusters and separate ledger storage |
 | Database | PostgreSQL 18, reviewed patch 18.6, with maintained 18.x updates and pinned image digests |
 | Application | Six Spring Boot 4.1.1 applications in the five-module layout; a scoped BOM baseline and supported branch upgrades |
 | Persistence | Explicit JDBC repositories; bounded pools per service, pod, shard, and endpoint |
 | Identifiers | Explicitly pinned `de.mkammerer.snowflake-id:snowflake-id:0.0.2`; decimal strings on the wire and positive `BIGINT` in PostgreSQL; reviewed support-policy exception |
 | Migrations | Boot-managed Flyway core/PostgreSQL module at matching versions, with separate schema/history and migration stream for each owner |
 | Messaging | Stable RabbitMQ 4.3.6 and its supported bundled OTP 27.3.4.17 initially; explicit rolling-support upgrade requirement and the architecture's retry/DLQ contract |
+| Change data capture | Debezium Engine and its PostgreSQL connector (`pgoutput`), embedded in the order service with one reader per shard and offsets in each shard database (JDBC offset store); pinned and qualified under VERSIONS.md in step 4.3 |
 | Libraries | Boot-managed compatible Spring/JDBC/AMQP/Jackson/logging/test libraries; verify upstream maintenance and audit inherited overrides |
 | Build and testing | Command-line Maven (repository minimum 3.9.0), separately pinned GA build plugins, JUnit/Mockito/Testcontainers, and Kubernetes drills |
 
 The support baseline was checked on 2026-09-28. PostgreSQL 18 has multi-year
 maintenance; the OpenJDK 25 selection carries no assumed vendor support horizon.
 OpenJDK container images need qualification after the distribution change.
-Kubernetes, CNPG, RabbitMQ, Boot, and many libraries need regular supported-release upgrades. Recheck sources before implementation and
+Kubernetes, CNPG, RabbitMQ, Debezium, Boot, and many libraries need regular supported-release upgrades. Recheck sources before implementation and
 pin exact artifacts only after compatibility and image-availability verification.
 In particular, kind's default Kubernetes 1.37 image is outside CNPG 1.30's
 supported matrix, and the reviewed kind artifacts lag Kubernetes 1.36's current
@@ -305,18 +309,24 @@ replacement. Do not label these short-lived release lines LTS.
 
 - Use namespace `shardshop` and context `kind-shardshop`; scripts pass the
   context explicitly on every command. Keep the operator installation version explicit.
-- Scope pod anti-affinity to each shard pair and spread its instances across
-  the two workers. Do not require all six shared database pods on separate nodes.
+- Scope pod anti-affinity to each shard cluster and place its three instances on
+  the three workers, one each. Do not require all nine shared database pods on
+  separate nodes.
 - Give every PostgreSQL instance its own PVC; start with 2 GiB each for tiny test
   data. Give RabbitMQ persistent storage as well. Confirm the StorageClass
   provisions volumes on intended nodes. Monitor disk usage because retained WAL
-  can fill a small volume during replica downtime.
+  can fill a small volume during replica or CDC downtime; keep slot retention finite.
 - Start each PostgreSQL instance at 250m CPU request, 512 MiB memory request,
   and 1 GiB memory limit, then measure. Budget separately for six applications,
   the broker, operator, and temporary Jobs; this is not a whole-lab capacity
   guarantee. Account for both product pods when sizing database connections.
+  Give Docker Desktop's VM at least 12 GB of memory: the ten PostgreSQL
+  instances alone request 5 GiB, and the whole lab is estimated at 6-10 GiB in
+  steady state. kind nodes each report the whole VM as capacity, so overcommit
+  shows up as OOM kills or swapping rather than Pending pods. Record measured use
+  after step 2.1 and lower the PostgreSQL limits if the tiny data set allows.
 - Bootstrap secrets at runtime from environment input or generated credentials;
-  commit references only. Separate migration and application permissions.
+  commit references only. Separate migration, application, and CDC permissions.
   Workload apps receive HTTP configuration, never SQL credentials.
 - Precreate `shardshop-snowflake-generators` with its durable allocation counter.
   An entrypoint launcher for order producer, order service, and ledger service
@@ -381,7 +391,9 @@ precedence: local syntax, locked quarantine/existing-order check, catalog
 validation outside the order transaction, then a final locked re-check. Catalog
 unavailability wins over missing products, and mixed item currencies win over
 order/product currency mismatch. Create no state for validation failures.
-`GET` returns the current state or `404` when absent.
+`GET` returns the current state or `404` when absent. The request path never
+publishes: the order service's per-shard CDC relay publishes committed outbox
+inserts, and the ledger's result relay polls its own outbox.
 
 Keep controllers responsible for mapping/validation, services for business logic,
 and repositories for JDBC IO. Domain types stay free of Spring dependencies.
@@ -413,12 +425,12 @@ and stop rollout if any migration fails.
 Implement reconciliation with `reconciliation_attempts` and
 `next_reconciliation_at` on `ordering.order_sagas`: atomically update them while
 inserting each new replay outbox row, with at most five automatic enqueues.
-Existing unpublished-row retries do not consume a new attempt, and published-row
-cleanup cannot reset the budget. Pending sagas re-send the same logical
+CDC retries of an existing unpublished row do not consume a new attempt, and
+published-row cleanup cannot reset the budget. Pending sagas re-send the same logical
 `RecordOrder`, and duplicate commands regenerate the ledger's stored
 outcome through its outbox. Ledger decisions are immutable and retained
 permanently, including rejections, even when inbox/outbox rows are cleaned up.
-Results whose order is absent after asynchronous failover are durably quarantined
+Results whose order is absent from a reachable primary are durably quarantined
 for operator restore/reconciliation. They must not silently succeed, cancel a
 missing order, or create a replacement order. Retry exhaustion never cancels a saga.
 
@@ -431,12 +443,15 @@ retry followed by DLQ parking and reconciliation/operator recovery.
 
 ## 7. Replication and backup policy
 
-Default reliable saga/failure exercises to synchronous replication: require the
-standby's durable acknowledgement and promote only the synchronized standby.
-Accept blocked writes while it is unavailable. The separate asynchronous profile
-is for explicit controlled-loss demonstrations. A promoted asynchronous standby
-can lack an acknowledged order whose command already reached the ledger;
-application idempotency cannot repair that loss. Exercise the missing-order
+Default reliable saga/failure exercises to quorum synchronous replication: require
+a durable acknowledgement from any one of the two standbys, and promote only a
+standby confirmed to hold every such commit. Accept blocked writes while both
+standbys are unavailable. The separate asynchronous profile
+is for explicit controlled-loss demonstrations: a promoted asynchronous standby
+can lack an acknowledged order, and application idempotency cannot repair that
+loss. Logical-slot synchronization stays on in both profiles, so CDC never
+publishes a command for WAL the standbys lack. A restore from an older backup
+can still leave ledger records without their orders; exercise the missing-order
 quarantine/reconciliation path rather than claiming automatic recovery. See
 [PostgreSQL streaming replication](https://www.postgresql.org/docs/current/warm-standby.html)
 and [CloudNativePG synchronous replication](https://cloudnative-pg.io/docs/1.30/replication/).
@@ -448,7 +463,9 @@ are not a globally consistent snapshot: quiesce producers and drain sagas/relays
 for a coordinated baseline backup, or explicitly reconcile restored order and
 ledger state. Preserve permanent ledger operation outcomes in every supported
 backup/restore process. Export broker definitions; database outboxes and
-reconciliation provide replay data, not a cross-system snapshot.
+reconciliation provide replay data, not a cross-system snapshot. Logical dumps
+carry each shard's stale CDC offsets but no replication slot, so a shard
+restored into service needs the explicit CDC recovery.
 
 Preserve the Snowflake epoch/layout, the product dataset configuration version,
 and live generator allocation history along with the recovery metadata. A database
@@ -501,14 +518,14 @@ standby-loss behavior, and the complete Snowflake generation/restart contract.
 Infrastructure checks must also:
 
 1. Use fixed decimal-string Snowflake fixtures with independently calculated A/B/C routes.
-   Verify rows on exactly the expected primary and eventually its paired standby.
+   Verify rows on exactly the expected primary and eventually both of its standbys.
 2. Check `pg_is_in_recovery()` on every instance and `pg_stat_replication` on
    every primary. Confirm three writable shard primaries, rejected writes on
    standbys, each owner's migration version, and effective runtime privileges.
 3. Replace a pod without deleting its PVC and verify persisted records.
 4. Perform controlled switchover and abrupt primary failure drills. Assert actual
    promotion rather than a restart, safe rejoining of the former primary, no two
-   writable primaries in a pair, and continued operation of unrelated shards.
+   writable primaries in a shard, and continued operation of unrelated shards.
    Design drills against the operator's [failover behavior](https://cloudnative-pg.io/docs/1.30/failover/).
 5. Record actual asynchronous loss and synchronous blocked-commit behavior.
    Restore isolated backups and assert schema/routing compatibility plus order,
@@ -518,6 +535,10 @@ Infrastructure checks must also:
    retained allocator history across restore, and no duplicate IDs. Confirm
    that all workloads derive the same dataset IDs, and exact large-ID round trips
    as in scenario 10.
+7. Verify the order CDC relay as in scenario 6: committed inserts reach the
+   ledger through WAL capture, rollbacks emit nothing, readers resume from
+   durable offsets and, after promotion, from synchronized slots, and slot,
+   offset, or WAL loss stops capture for explicit recovery.
 
 The planned commands below run from the repository root after the module,
 profiles, and scripts are implemented. Build only Shardshop or the affected

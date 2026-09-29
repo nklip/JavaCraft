@@ -127,10 +127,13 @@ The lab runs on kind. Take `docker`, `kind`, and `kubectl` from your `PATH`, lik
 Maven; this project never downloads or pins tool binaries. It was tested with
 Docker Desktop 4.92.0, kind 0.33.0, and kubectl 1.36 (for example, `brew install
 kind kubectl`). The node image's advisories were reviewed on 2026-09-28 and
-accepted for this loopback-only, disposable lab.
+accepted for this loopback-only, disposable lab. Give Docker Desktop's VM at least
+12 GB of memory (Settings → Resources); `up.sh` stops early if it has less.
 
-[`infra/kind.yaml`](infra/kind.yaml) defines one control plane and two workers on
-the digest-pinned Kubernetes 1.36.4 node image, with the API server on 127.0.0.1.
+[`infra/kind.yaml`](infra/kind.yaml) defines one control plane and three workers,
+one per instance of each three-instance shard, on the digest-pinned Kubernetes
+1.36.4 node image, with the API server on 127.0.0.1. kind cannot add nodes, so a
+cluster created with fewer workers must be deleted and recreated once.
 Manifests follow the [portability rules](PLAN.md#portability-beyond-kind): a
 common base in `infra/k8s/base/` and the kind overlay in `infra/k8s/overlays/kind/`.
 
