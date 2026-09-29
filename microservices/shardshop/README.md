@@ -121,7 +121,7 @@ online mode; with `-o` it is skipped with a warning. Unit coverage is under
 `target/site/jacoco`; integration coverage uses `jacoco-it.exec` and
 `target/site/jacoco-it`. `-Djacoco.skip=true` works for both runners.
 
-## Local Kubernetes cluster, operator and first shard (steps 1.1–1.3)
+## Local Kubernetes cluster, operator and databases (steps 1.1–2.2)
 
 The lab runs on kind, and everything through the final acceptance run works on
 this one machine; the AWS track with Terraform (PLAN milestone 7) is optional and
@@ -150,9 +150,10 @@ It creates the `shardshop` cluster if it does not exist and waits for all nodes 
 be Ready. It then installs CloudNativePG 1.30.1 from its vendored chart with
 `helm upgrade --install`, waiting up to 3 minutes for the operator, waits up to 180
 seconds for every CRD to be Established, and applies the kind overlay. That creates
-the `shardshop` namespace with the `restricted` Pod Security label and the
-three-instance `shard-a` cluster, and the script waits up to 300 seconds for every
-database cluster to be Ready. A fresh run takes about five minutes, mostly image
+the `shardshop` namespace with the `restricted` Pod Security label, three
+three-instance clusters (`shard-a`, `shard-b`, `shard-c`), and the single-instance
+`ledger-db` cluster. It waits up to 300 seconds for every database cluster to be
+Ready. A fresh run takes about five minutes, mostly image
 pulls; a rerun takes seconds. kind adds the `kind-shardshop` context to
 `~/.kube/config` and selects it; the script passes that context on every command
 and never deletes a cluster, namespace, or volume. Check the result:
@@ -177,15 +178,26 @@ ready for database resources. To upgrade, review the lock's support deadline, th
 vendor and verify the new chart and update `values.yaml` and the lock together;
 a later cloud target installs the same chart and values.
 
-`shard-a` runs PostgreSQL 18.6 with one primary and two standbys, each on a separate
-worker with its own 2 GiB PVC. Its version tag lets CNPG identify PostgreSQL
+Each shard runs PostgreSQL 18.6 with one primary and two standbys, each on a separate
+worker with its own 2 GiB PVC. The nine pods share three workers; anti-affinity is
+scoped to each shard. Each shard is an independent database: physical replication
+never copies rows between shards. The version tag lets CNPG identify PostgreSQL
 upgrades; the accompanying digest pins the image bytes. The base declares the
 database, resources and replication settings; the kind overlay patches every CNPG
 `Cluster` to select `standard` storage and require placement on distinct workers,
 so later shards need no overlay changes. No pod security context is
-hard-coded. CNPG generates the `shard-a-app` Secret at runtime for the
+hard-coded. CNPG generates each shard's `<shard>-app` Secret at runtime for the
 `shardshop_owner` bootstrap role and `shardshop` database. No passwords are committed
 or printed; application and migration roles arrive in steps 2.3–2.4.
+
+Step 2.1 reduces each database's memory limit from 1 GiB to 512 MiB after
+measuring the tiny-data lab; requests stay at 512 MiB and 250m CPU, with a one-CPU
+limit. The nine databases reserve 4.5 GiB in total. This measurement precedes the
+ledger, broker and application workloads: retain the 12 GB VM minimum and
+remeasure under load before treating these limits as a full-lab capacity budget.
+After all three drills on 2026-09-29, the database pods used about 563 MiB of
+working-set memory and the four kind nodes used 2.78 GiB; see PLAN step 2.1 for
+the measurement sources and full verification evidence.
 
 The default quorum waits for durable WAL acknowledgement from any one standby.
 One absent standby leaves writes available; two absent standbys block synchronous
@@ -198,22 +210,69 @@ retain the WAL each standby needs, so a large extra floor only fills the 2 GiB v
 These are not hard disk-usage caps: monitor free space and lag, and recover an
 invalidated slot explicitly after an outage that exceeds the retained WAL budget.
 
-Run the reversible topology drill against this disposable lab:
+Run the reversible topology drill against each shard in this disposable lab:
 
 ```bash
-bash microservices/shardshop/scripts/verify-topology.sh
+for shard in shard-a shard-b shard-c; do
+  bash microservices/shardshop/scripts/verify-topology.sh "$shard" || exit 1
+done
 ```
 
-It drills `shard-a` by default; pass `shard-b` or `shard-c` to drill another shard.
-It checks Service roles, replication, failover-slot synchronization and PVC
-persistence, replaces one standby pod, and temporarily fences one then both
-standbys to observe quorum commits. Reads and writes are disrupted during the
+Each invocation first checks all three writable primaries, six quorum standbys,
+independent database lineages, `-rw`/`-ro` Service endpoints and nine distinct Bound
+PVCs/backing volumes. It then drills the selected shard (`shard-a` by default):
+its golden-vector fixture must reach both standbys, writes on standbys must fail,
+and the probe schema must remain absent from all six peer-shard instances.
+It checks failover-slot synchronization and PVC persistence, replaces one standby
+pod, and temporarily fences one then both standbys to observe quorum commits.
+Reads and writes are disrupted during the
 drill. It restores the standbys and removes its own SQL objects on exit; it never
-deletes a PVC. A ConfigMap prevents concurrent runs. If the process is killed
-without a chance to clean up, first ensure no drill is running, remove the
+deletes a PVC. A global `shardshop-topology-drill` ConfigMap prevents concurrent
+runs across shards, because every run checks the whole topology. If the process
+is killed without a chance to clean up, first ensure no drill is running, remove the
 `cnpg.io/fencedInstances` annotation from the drilled shard, wait for the cluster to
-be Ready, and inspect the probe name in its `<shard>-topology-drill` ConfigMap before
+be Ready, and inspect the `cluster` and `probe` entries in that ConfigMap before
 removing its SQL schema/slot and the ConfigMap.
+
+## Separate ledger database (step 2.2)
+
+[`infra/k8s/base/ledger-db.yaml`](infra/k8s/base/ledger-db.yaml) adds a fourth
+CloudNativePG cluster with one PostgreSQL instance, separate from the nine shard
+pods. It uses the same pinned PostgreSQL image and its own 2 GiB PVC. The kind
+overlay places it on a worker using `standard` storage; `up.sh` creates it and
+waits for readiness alongside the shards. Its 250m CPU/512 MiB memory requests
+and one-CPU/512 MiB limits match the tiny-data baseline. The ten databases now
+request 5 GiB of memory in total; remeasure when workloads arrive.
+
+Connect to database `ledger` through the internal Service
+`ledger-db-rw.shardshop.svc:5432`. CNPG generates `ledger-db-app` at runtime for
+bootstrap owner `ledger_owner`; clients reference its `username` and `password`
+keys without committing or printing the values. TLS clients can mount only
+`ca.crt` from `ledger-db-ca` and use `sslmode=verify-full`. The bootstrap owner
+is for initial provisioning: the ledger schema, migrations and separate runtime
+grants belong to step 2.5. No application is wired to this owner here.
+
+The ledger uses ordinary WAL and local durable commits, with no synchronous
+standby requirement or CDC setup; its planned outbox relay polls its own tables.
+It has **no database failover target**: ledger access stops during pod restarts
+or worker outages. Its PVC preserves data across ordinary pod replacement, but
+local-path storage cannot survive loss of its worker or volume and is not a
+backup. Backup and restore arrive in step 6.3.
+
+Inspect the database and its Service without exposing credentials:
+
+```bash
+kubectl --context kind-shardshop -n shardshop get cluster ledger-db
+kubectl --context kind-shardshop -n shardshop get pods,pvc -l cnpg.io/cluster=ledger-db
+kubectl --context kind-shardshop -n shardshop get service ledger-db-rw
+kubectl --context kind-shardshop -n shardshop get endpointslices -l kubernetes.io/service-name=ledger-db-rw
+```
+
+Step 2.2's live checks use temporary restricted client Jobs, the generated Secret,
+and TLS through that Service. They verify a committed row after replacing the
+ledger pod, unchanged PVC/credential identities and startup reruns, then remove
+their Jobs and SQL probe. The shard topology drill continues to target only the
+nine shard instances. See PLAN step 2.2 for the verification evidence.
 
 `kind delete cluster --name shardshop` removes the whole lab, including its
 storage; kind storage is disposable and is not a backup.

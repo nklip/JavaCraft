@@ -53,9 +53,10 @@ unit/integration checks, and the JRE starts all six skeleton JARs. Final launche
 images, image OS advisory scans and infrastructure behavior remain later
 qualification work. Other CPU architectures require their own qualification.
 
-Use CNPG's maintained `18.6-standard-trixie` image for its clusters and official
-`postgres:18.6-trixie` for Testcontainers or a standalone ledger. The deprecated
-CNPG `system` variant is unnecessary for the planned logical `pg_dump` backups.
+Use CNPG's maintained `18.6-standard-trixie` image for the three shard clusters
+and single-instance ledger, and official `postgres:18.6-trixie` for Testcontainers.
+The deprecated CNPG `system` variant is unnecessary for the planned logical
+`pg_dump` backups.
 The official RabbitMQ image uses **Ubuntu 24.04 LTS** (standard maintenance through
 May 2029); preserve that vendor build. The Ubuntu 26.04 choice applies to the
 application/build images. [CNPG image variants](https://github.com/cloudnative-pg/postgres-containers),

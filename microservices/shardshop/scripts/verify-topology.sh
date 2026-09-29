@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Reversible drills for one shard cluster (default shard-a) in the disposable
+# Check all three shards, then drill one (default shard-a) in the disposable
 # kind-shardshop lab only. Temporarily fences standbys and replaces one standby
-# pod; never deletes PVCs.
+# pod; never deletes PVCs. Run once per shard to exercise every primary.
 set -euo pipefail
 
 usage="Usage: $0 [shard-a|shard-b|shard-c]"
@@ -16,7 +16,7 @@ case "$cluster" in
     *) echo "$usage" >&2; exit 1 ;;
 esac
 selector="cnpg.io/cluster=$cluster,cnpg.io/podRole=instance"
-lock="$cluster-topology-drill"
+lock=shardshop-topology-drill
 probe="topology_probe_$$"
 primary=
 writer=
@@ -32,7 +32,8 @@ sql() {
     local result
     if ! result=$(k exec "$1" -c postgres -- env \
         PGOPTIONS='-c statement_timeout=15000 -c lock_timeout=5000' \
-        psql -X -qAt -v ON_ERROR_STOP=1 -U postgres -d shardshop -c "$2" 2>"$work/sql-stderr"); then
+        psql -X -qAt -v ON_ERROR_STOP=1 -v VERBOSITY="${3:-default}" \
+        -U postgres -d shardshop -c "$2" 2>"$work/sql-stderr"); then
         cat "$work/sql-stderr" >&2
         return 1
     fi
@@ -62,6 +63,68 @@ endpoints() {
 volumes() {
     k get pvc -l "cnpg.io/cluster=$cluster" \
         -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.uid}{" "}{.spec.volumeName}{" "}{.status.phase}{"\n"}{end}' | sort
+}
+verify_shared_topology() {
+    local shard leader pod identity role shard_pods replicas expected all_volumes
+    local claim uid volume phase
+    local identities=() all_claims=() all_uids=() all_pvs=()
+    local primary_count=0 standby_count=0
+    peer_pods=()
+    for shard in shard-a shard-b shard-c; do
+        k wait --for=condition=Ready "cluster/$shard" --timeout=180s
+        k wait --for=condition=Ready pods -l "cnpg.io/cluster=$shard,cnpg.io/podRole=instance" --timeout=180s
+        leader=$(k get cluster "$shard" -o jsonpath='{.status.currentPrimary}')
+        identity=$(sql "$leader" 'SELECT system_identifier FROM pg_control_system()')
+        [[ "$identity" =~ ^[0-9]+$ ]] || fail "$shard has no database system identifier"
+        identities+=("$identity")
+        shard_pods=($(k get pods -l "cnpg.io/cluster=$shard,cnpg.io/podRole=instance" -o jsonpath='{.items[*].metadata.name}'))
+        equal "${#shard_pods[@]}" 3 "$shard instance count"
+        replicas=()
+        for pod in "${shard_pods[@]}"; do
+            [[ "$pod" =~ ^${shard}-[0-9]+$ ]] || fail "Unexpected pod name: $pod"
+            equal "$(sql "$pod" 'SELECT system_identifier FROM pg_control_system()')" "$identity" "$pod replication lineage"
+            role=$(sql "$pod" "SELECT pg_is_in_recovery(), current_setting('transaction_read_only')")
+            if [[ "$pod" == "$leader" ]]; then
+                equal "$role" 'f|off' "$pod writable primary"
+                primary_count=$((primary_count + 1))
+            else
+                equal "$role" 't|on' "$pod read-only standby"
+                replicas+=("$pod")
+                standby_count=$((standby_count + 1))
+            fi
+            all_claims+=("$(k get pod "$pod" -o jsonpath='{.spec.volumes[?(@.name=="pgdata")].persistentVolumeClaim.claimName}')")
+            if [[ "$shard" != "$cluster" ]]; then peer_pods+=("$pod"); fi
+        done
+        equal "${#replicas[@]}" 2 "$shard standby count"
+        expected=$(printf '%s\n' "${replicas[@]}" | sort)
+        await_sql "$leader" "SELECT application_name FROM pg_stat_replication WHERE state='streaming' AND sync_state='quorum' ORDER BY application_name" "$expected"
+        equal "$(sql "$leader" 'SELECT count(*) FROM pg_stat_replication')" 2 "$shard replication connections"
+        equal "$(endpoints "$shard-rw")" "$leader" "$shard read-write Service"
+        equal "$(endpoints "$shard-ro")" "$expected" "$shard read-only Service"
+    done
+    equal "$primary_count" 3 'Shared writable primaries'
+    equal "$standby_count" 6 'Shared standbys'
+    equal "$(printf '%s\n' "${identities[@]}" | sort -u | wc -l | tr -d ' ')" 3 'Independent database lineages'
+    all_volumes=$(k get pvc -l 'cnpg.io/cluster in (shard-a,shard-b,shard-c)' \
+        -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.uid}{" "}{.spec.volumeName}{" "}{.status.phase}{"\n"}{end}')
+    equal "$(printf '%s\n' "$all_volumes" | wc -l | tr -d ' ')" 9 'Shared PVC count'
+    while read -r claim uid volume phase; do
+        equal "$phase" Bound "$claim status"
+        [[ -n "$uid" && -n "$volume" ]] || fail "$claim identity is incomplete"
+        printf '%s\n' "${all_claims[@]}" | grep -Fxq "$claim" || fail "$claim is not attached to a shard instance"
+        all_uids+=("$uid")
+        all_pvs+=("$volume")
+    done <<<"$all_volumes"
+    equal "$(printf '%s\n' "${all_claims[@]}" | sort -u | wc -l | tr -d ' ')" 9 'Distinct pod PVCs'
+    equal "$(printf '%s\n' "${all_uids[@]}" | sort -u | wc -l | tr -d ' ')" 9 'Distinct PVC identities'
+    equal "$(printf '%s\n' "${all_pvs[@]}" | sort -u | wc -l | tr -d ' ')" 9 'Distinct backing volumes'
+    echo 'Verified three writable primaries, six shard-local quorum standbys, role Services and nine independent volumes.'
+}
+verify_isolation() {
+    local pod
+    for pod in "${peer_pods[@]}"; do
+        equal "$(sql "$pod" "SELECT to_regnamespace('$probe') IS NULL")" t "$pod must not contain $cluster probe data"
+    done
 }
 fence() {
     equal "$(current_primary)" "$primary" 'Primary changed during drill'
@@ -107,8 +170,9 @@ trap 'exit 143' TERM
 k wait --for=condition=Ready "cluster/$cluster" --timeout=180s
 existing_fence=$(k get cluster "$cluster" -o jsonpath='{.metadata.annotations.cnpg\.io/fencedInstances}')
 [[ -z "$existing_fence" || "$existing_fence" == '[]' ]] || fail 'Cluster is already fenced; recover it before this drill'
-k create configmap "$lock" --from-literal=probe="$probe"
+k create configmap "$lock" --from-literal=probe="$probe" --from-literal=cluster="$cluster"
 locked=true
+verify_shared_topology
 primary=$(current_primary)
 budget=$(k get cluster "$cluster" -o jsonpath='{.spec.postgresql.parameters.max_slot_wal_keep_size}')
 [[ -n "$budget" && "$budget" != -1 ]] || fail "$cluster must set a finite max_slot_wal_keep_size"
@@ -162,7 +226,15 @@ created=true
 equal "$(sql "$primary" "INSERT INTO $probe.rows VALUES ($fixture, 'initial') RETURNING id::text")" "$fixture" 'Fixture insert'
 for standby in "${standbys[@]}"; do
     await_sql "$standby" "SELECT phase FROM $probe.rows WHERE id=$fixture" initial
+    if sql "$standby" "UPDATE $probe.rows SET phase='forbidden' WHERE id=$fixture" sqlstate >"$work/read-only-result" 2>"$work/read-only-error"; then
+        fail "$standby accepted a write"
+    fi
+    grep -Eq '(^|[[:space:]])25006($|[[:space:]])' "$work/read-only-error" \
+        || { cat "$work/read-only-error" >&2; fail "$standby did not reject the write as read-only"; }
+    equal "$(sql "$standby" "SELECT phase FROM $probe.rows WHERE id=$fixture")" initial 'Rejected write preserved the row'
 done
+verify_isolation
+echo "Verified fixture $fixture stays inside $cluster and its standbys reject writes."
 equal "$(sql "$primary" "SELECT slot_name FROM pg_create_logical_replication_slot('$probe', 'pgoutput', false, false, true)")" "$probe" 'Failover slot creation'
 # An idle slot can retain an older catalog horizon than the standbys. Act as a
 # bounded consumer until both standbys can persist the synchronized slot.
@@ -244,4 +316,6 @@ await_sql "$primary" "SELECT count(*) FROM pg_stat_replication WHERE state='stre
 equal "$(endpoints "$cluster-ro")" "$(printf '%s\n' "${standbys[@]}" | sort)" 'Read-only Service after recovery'
 equal "$(volumes)" "$before_volumes" 'PVC identity after quorum drill'
 equal "$(current_primary)" "$primary" 'Primary after quorum drill'
+verify_isolation
+verify_shared_topology
 echo 'Topology verification passed; both standbys restored. Removing only drill-owned SQL objects.'

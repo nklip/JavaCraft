@@ -1,7 +1,7 @@
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
-  name: shard-a
+  name: shard-c
   namespace: shardshop
 spec:
   instances: 3
@@ -11,7 +11,7 @@ spec:
     initdb:
       database: shardshop
       owner: shardshop_owner
-      # CNPG generates shard-a-app credentials at runtime; never commit passwords.
+      # CNPG generates shard-c-app credentials at runtime; never commit passwords.
   storage:
     size: 2Gi
   resources:

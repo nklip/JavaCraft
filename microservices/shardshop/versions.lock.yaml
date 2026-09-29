@@ -310,7 +310,7 @@ images:
     base_image_observed: gcr.io/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
   postgresql_cnpg:
     version: '18.6'
-    purpose: three three-instance CNPG shard clusters; also the ledger if provisioned as a CNPG singleton
+    purpose: three three-instance CNPG shard clusters and the single-instance ledger database
     support_refs:
     - postgresql_18
     - debian_13
@@ -330,7 +330,7 @@ images:
       Planned pg_dump backup does not require bundled Barman.
   postgresql_test:
     version: '18.6'
-    purpose: Testcontainers; standalone ledger if not managed by CNPG
+    purpose: Testcontainers
     support_refs:
     - postgresql_18
     - debian_13

@@ -3,3 +3,6 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - shard-a.yaml
+  - shard-b.yaml
+  - shard-c.yaml
+  - ledger-db.yaml
