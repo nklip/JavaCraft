@@ -1,6 +1,26 @@
-# kind-specific settings (storage class, anti-affinity strictness) are patched here
-# as later steps add resources to the base.
+# Local storage and placement constraints for the three-worker kind lab.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
+patches:
+  # The target applies this patch to every CNPG Cluster; its own name is ignored.
+  - target:
+      group: postgresql.cnpg.io
+      kind: Cluster
+    patch: |-
+      apiVersion: postgresql.cnpg.io/v1
+      kind: Cluster
+      metadata:
+        name: every-cluster
+      spec:
+        storage:
+          storageClass: standard
+        affinity:
+          podAntiAffinityType: required
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: node-role.kubernetes.io/control-plane
+                      operator: DoesNotExist

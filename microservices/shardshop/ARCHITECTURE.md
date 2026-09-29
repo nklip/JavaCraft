@@ -11,6 +11,14 @@ deadlines, plus the named support-policy exception for the requested
 `de.mkammerer.snowflake-id:snowflake-id` library. The version gate also includes
 repository-inherited dependency overrides.
 
+The primary target is a local kind lab on one machine: every contract, drill, and
+acceptance scenario in this document must run and pass there. A later AWS target
+(EKS provisioned with Terraform, PLAN milestone 7) is optional. It reuses the same
+Kustomize base through its own overlay and the same verified operator Helm charts
+and values, delivers the applications through GitOps, and may add cloud-only
+durability such as S3 backups with WAL archiving and a three-broker RabbitMQ. No
+local behavior or check may depend on a cloud service.
+
 Build and test with JDK 25 or newer (bytecode targets release 25), and run the
 applications on OpenJDK 25. The Maven toolchain uses the installation selected by
 `JAVA_HOME`, without a vendor or exact-patch restriction; preview features remain

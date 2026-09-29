@@ -36,8 +36,9 @@ digests monthly and before deployment. [OpenJDK 25](https://jdk.java.net/25/),
 | Spring Boot | **4.1.1** and its matching dependencies BOM | 4.1.x OSS support ends **2027-07-31**. Supported stable branch upgrades are required; Boot's commercial dates are not the community entitlement. Java 25 is supported. [Lifecycle](https://api.spring.io/projects/spring-boot/generations/4.1.x), [Java compatibility](https://docs.spring.io/spring-boot/system-requirements.html) |
 | Maven | Command-line `mvn`; inherited repository minimum **3.9.0** (verified with 3.9.16) | Maintained stable 3.9 series, no promised multi-year fixed-version LTS. Review future GA releases; exclude Maven 4 release candidates. [Release history](https://maven.apache.org/docs/history.html) |
 | Kubernetes and kubectl | **Kubernetes 1.36.4**, user-authorized kind fallback; **kubectl 1.36.x** from the user's `PATH` | 1.36 maintenance ends **2027-06-28**. This is the newest series supported by the selected CNPG release; match kubectl to the server minor. [Patch lifecycle](https://kubernetes.io/releases/patch-releases/), [release artifacts](https://github.com/kubernetes/kubernetes/releases) |
-| CloudNativePG | **1.30.1**, current maintained patch | 1.30.x supports Kubernetes 1.34-1.36 and PostgreSQL 14-18, with EOL approximately **December 2026**. Its short lifecycle requires operator upgrades. Kubernetes 1.37 is only tested, not supported by this operator version. [Support matrix](https://cloudnative-pg.io/docs/1.30/supported_releases/), [release](https://cloudnative-pg.io/releases/cloudnative-pg-1-30.1-released/) |
+| CloudNativePG | **1.30.1**, current maintained patch, installed from its official Helm chart **0.29.1** | 1.30.x supports Kubernetes 1.34-1.36 and PostgreSQL 14-18, with EOL approximately **December 2026**. Its short lifecycle requires operator upgrades. Kubernetes 1.37 is only tested, not supported by this operator version. [Support matrix](https://cloudnative-pg.io/docs/1.30/supported_releases/), [release](https://cloudnative-pg.io/releases/cloudnative-pg-1-30.1-released/) |
 | kind | **0.33.0** tested; `kind` from the user's `PATH` | Stable local-development tool with no fixed LTS term. Explicitly choose a compatible 1.36 node image; its default 1.37 image does not meet the CNPG matrix. [Release and node images](https://github.com/kubernetes-sigs/kind/releases/tag/v0.33.0) |
+| Helm | **4.3.0** tested; `helm` from the user's `PATH` | Maintained stable 4.x with no fixed LTS term; 4.3.x supports Kubernetes 1.34–1.37, covering the 1.36 lab. It installs only vendored, verified third-party charts, starting with CloudNativePG; a later cloud target reuses the same charts and values. [Version skew](https://helm.sh/docs/topics/version_skew/), [release](https://github.com/helm/helm/releases/tag/v4.3.0) |
 | RabbitMQ | **4.3.6**, maintained GA patches and subsequent supported series | Community support ends **2026-11-30**. This is a rolling-support exception, not LTS; no newer stable series is listed at review time. Native quorum delayed retry requires 4.3+. [Support timeline](https://www.rabbitmq.com/release-information), [retry feature](https://www.rabbitmq.com/docs/quorum-queues#delayed-retry) |
 | Erlang/OTP | **27.3.4.17**, bundled by the selected official RabbitMQ image | This corrects the draft's 28.x assumption. OTP 27 is supported by RabbitMQ 4.3.6; upgrade the broker/runtime image together. No fixed-date LTS is assumed. [Compatibility](https://www.rabbitmq.com/docs/which-erlang), [immutable image recipe](https://github.com/docker-library/rabbitmq/blob/a2d49841fbcf81713cf0e1c279facbce545e2292/4.3/ubuntu/Dockerfile), [OTP security policy](https://github.com/erlang/otp/security) |
 | PostgreSQL/operator image OS | Vendor-maintained **Debian 13 (trixie)** images | Full support through **2028-08-09**, Debian LTS through **2030-06-30**, subject to package/architecture coverage. The database/operator support window can expire first. [CNPG image baseline](https://cloudnative-pg.io/docs/1.30/release_notes/v1.30/), [Debian lifecycle](https://www.debian.org/releases/trixie/) |
@@ -159,8 +160,11 @@ review date. Do not copy the JDK, Boot, or PostgreSQL EOL onto its dependencies.
 Except for the named Snowflake selection above, an unsupported or unmaintained
 dependency needs a compatible maintained version or replacement before adoption.
 Optional additions such as springdoc, Cucumber,
-Helm, metrics servers, or backup plugins must pass the same gate when introduced;
+metrics servers, or backup plugins must pass the same gate when introduced;
 they are not dependencies merely because another repository module uses them.
+Terraform, its AWS provider, and the EKS Kubernetes version are not selected yet:
+PLAN milestone 7 qualifies them under this policy, and the local lab never depends
+on them.
 
 ## 3. Repository inheritance and reproducible pins
 
@@ -236,8 +240,8 @@ registries. The kind candidate was promoted to the selected 1.36.4 fallback;
 Canonical stable OpenJDK images replaced the missing build/runtime selections. Index, arm64 manifest, and config bytes matched
 their SHA-256 digests. The plugin JARs, the Boot BOM and the Snowflake JAR were
 downloaded, hashed, and compared to their published checksum files. The CNPG installer YAML hash was computed from the official release
-download; the upstream checksum file does not include that YAML. Its tag-only
-operator image must be replaced with the locked digest in step 1.2.
+download; the upstream checksum file does not include that YAML. Step 1.2 later
+replaced that YAML with the official chart; see its verification record below.
 Kind, kubectl, and Docker installer checksums came from official metadata;
 those executables/installers were not downloaded or run. The replacement OpenJDK
 25 reference archive checksum comes from its official sidecar; the existing local
@@ -302,5 +306,21 @@ primary-source confirmation of installed versions preceding security fixes.
 The host bundle also contains affected containerd 2.3.5. These findings were
 accepted on 2026-09-28 for the loopback-only, disposable lab.
 `HOST-RUNTIME-UPDATE` is resolved. On 2026-09-28 the cluster booted with three
-Ready nodes on Kubernetes 1.36.4, and local-path storage provisioned a volume;
+Ready nodes on Kubernetes 1.36.4, and local-path storage provisioned a volume. On
+2026-09-29 it was rebuilt with four nodes (three workers) for the quorum topology;
 see PLAN step 1.1 for the evidence.
+
+### Step 1.2 verification record
+
+On 2026-09-29 the CloudNativePG install moved from the release YAML to the
+official Helm chart, so the local lab and a later cloud target share one install
+path. Chart **0.29.1** (operator 1.30.1) is vendored as
+`infra/helm/cnpg/cloudnative-pg-0.29.1.tgz`. Its SHA-256 matched the official
+index digest, the GHCR OCI copy was byte-identical, and cosign verified that copy's
+keyless signature from the cloudnative-pg/charts release workflow, including its
+transparency-log entry. `values.yaml` pins the operator by tag and digest, and the
+chart renders that reference for both the container image and
+`OPERATOR_IMAGE_NAME`. Its 11 CRDs carry `helm.sh/resource-policy: keep`, so
+uninstalling the release cannot delete them or the database clusters that depend on
+them. Helm **4.3.0** runs from the user's `PATH` as a Homebrew build; the lock
+records the official release checksum. See PLAN step 1.2 for the evidence.
