@@ -23,8 +23,12 @@ The user-selected Java baseline is **OpenJDK 25** as a minimum, with no vendor o
 exact-patch restriction for local builds; newer JDKs also work. The installed GA
 build `25+36-3489` and JDK 26.0.2 are verified for the local skeletons. Containers use Canonical's maintained OpenJDK 25 stable
 tracks on Ubuntu 26.04, currently verified as `25.0.4.1+1-1-26.04.4-Ubuntu`.
-Local Maven remains vendor/patch-unrestricted. Review updates and requalify image
-digests monthly and before deployment. [OpenJDK 25](https://jdk.java.net/25/),
+This selection includes Java migration tools: Flyway uses the same Canonical
+JRE, with its Java libraries copied from the official Flyway image; that source
+image's Temurin runtime is not included in the final image. The existing upstream
+OpenJDK `25-open` local installation is unchanged, and Maven still selects the
+JDK through `JAVA_HOME` without a vendor or exact-patch gate. Review updates and
+requalify image digests monthly and before deployment. [OpenJDK 25](https://jdk.java.net/25/),
 [reference downloads](https://jdk.java.net/archive/).
 
 ## 1. Runtime and infrastructure baseline
@@ -42,11 +46,12 @@ digests monthly and before deployment. [OpenJDK 25](https://jdk.java.net/25/),
 | RabbitMQ | **4.3.6**, maintained GA patches and subsequent supported series | Community support ends **2026-11-30**. This is a rolling-support exception, not LTS; no newer stable series is listed at review time. Native quorum delayed retry requires 4.3+. [Support timeline](https://www.rabbitmq.com/release-information), [retry feature](https://www.rabbitmq.com/docs/quorum-queues#delayed-retry) |
 | Erlang/OTP | **27.3.4.17**, bundled by the selected official RabbitMQ image | This corrects the draft's 28.x assumption. OTP 27 is supported by RabbitMQ 4.3.6; upgrade the broker/runtime image together. No fixed-date LTS is assumed. [Compatibility](https://www.rabbitmq.com/docs/which-erlang), [immutable image recipe](https://github.com/docker-library/rabbitmq/blob/a2d49841fbcf81713cf0e1c279facbce545e2292/4.3/ubuntu/Dockerfile), [OTP security policy](https://github.com/erlang/otp/security) |
 | PostgreSQL/operator image OS | Vendor-maintained **Debian 13 (trixie)** images | Full support through **2028-08-09**, Debian LTS through **2030-06-30**, subject to package/architecture coverage. The database/operator support window can expire first. [CNPG image baseline](https://cloudnative-pg.io/docs/1.30/release_notes/v1.30/), [Debian lifecycle](https://www.debian.org/releases/trixie/) |
-| Application image OS | **Canonical OpenJDK 25** on **Ubuntu 26.04 LTS (resolute)**; `ubuntu/jdk` and `ubuntu/jre` stable tracks, pinned by digest | Canonical advertises these tracks through **May 2031**. Native ARM64 build/runtime checks passed on Java **25.0.4.1**. Requalify new digests monthly; the runtime is shell-free and final images must explicitly select a non-root user. [JDK support](https://hub.docker.com/r/ubuntu/jdk), [JRE support](https://hub.docker.com/r/ubuntu/jre) |
+| Application and migration image OS | **Canonical OpenJDK 25** on **Ubuntu 26.04 LTS (resolute)**; `ubuntu/jdk` and `ubuntu/jre` stable tracks, pinned by digest | Canonical advertises these tracks through **May 2031**. Native ARM64 base-image build/runtime checks passed on Java **25.0.4.1**. Requalify derived images separately; the runtime is shell-free and final images must explicitly select a non-root user. [JDK support](https://hub.docker.com/r/ubuntu/jdk), [JRE support](https://hub.docker.com/r/ubuntu/jre) |
+| Schema migrations | **Flyway OSS 13.8.1** libraries on the selected Canonical OpenJDK 25 JRE; local image defined by `infra/images/flyway/Dockerfile`, pinned by manifest digest | The official Flyway image supplies libraries, drivers, configuration and licenses only. Frequent releases have no published fixed EOL; review monthly, first by **2026-10-30**, and requalify the final image and `scripts/migrate.sh` on the lab. It replaces the Boot BOM's Flyway library. [Distribution source](https://hub.docker.com/r/flyway/flyway), [release notes](https://help.red-gate.com/help/flyway-cli13/help_8.aspx?topic=release-notes-and-older-versions/release-notes-for-flyway-engine) |
 | Host container runtime and node internals | Docker Desktop **4.92.0** for macOS arm64 with a 12 GB VM (12 CPUs, 2 GB swap); node internals updated with kind | The host now runs 4.92.0 after checksum/signature verification; its component versions are recorded in the lock. Its containerd 2.3.5 and the node image have advisory findings, accepted for the local lab. Docker has rolling support, not fixed-version LTS. [Release notes](https://docs.docker.com/desktop/release-notes/), [macOS support](https://docs.docker.com/desktop/setup/install/mac-install/), [kind base-image contract](https://kind.sigs.k8s.io/docs/design/base-image/) |
 
 The lock records OCI index and native **linux/arm64** manifest/config digests for
-all seven selected images, including kind and the Canonical OpenJDK JDK/JRE pair.
+the selected upstream images, including kind and the Canonical OpenJDK JDK/JRE pair.
 Use their `reference` fields for deployment pins; tags identify what was reviewed.
 Both Java images execute GA OpenJDK 25.0.4.1; the JDK passes a product build and
 unit/integration checks, and the JRE starts all six skeleton JARs. Final launcher
@@ -59,7 +64,7 @@ The deprecated CNPG `system` variant is unnecessary for the planned logical
 `pg_dump` backups.
 The official RabbitMQ image uses **Ubuntu 24.04 LTS** (standard maintenance through
 May 2029); preserve that vendor build. The Ubuntu 26.04 choice applies to the
-application/build images. [CNPG image variants](https://github.com/cloudnative-pg/postgres-containers),
+application, build and Java migration images. [CNPG image variants](https://github.com/cloudnative-pg/postgres-containers),
 [Ubuntu lifecycle](https://ubuntu.com/about/release-cycle).
 
 The kind 0.33.0 release's tested Kubernetes **1.36.4** image is selected under
@@ -91,7 +96,7 @@ resolved artifact. [Managed coordinates](https://docs.spring.io/spring-boot/appe
 | Spring Framework, MVC, JDBC, transactions, validation, actuator, embedded server | Framework **7.0.9**; use the Boot-managed compatible family, including its managed server and validation libraries |
 | Spring AMQP and RabbitMQ Java client | **4.1.1** and **5.30.0**; verify required reject/confirm behavior against the selected broker |
 | PostgreSQL JDBC and HikariCP | **42.7.13** and **7.0.2**; exercise timeouts, TLS, failover, and pool recovery |
-| Flyway core and PostgreSQL database module | **12.4.0** together; verify PostgreSQL 18 and Java 25 support and use community-available migration features |
+| Flyway core and PostgreSQL database module | The BOM manages **12.4.0**, but no ShardShop module depends on it: migrations run in the pinned Flyway OSS CLI image in section 1 |
 | Jackson, SLF4J, Logback | Jackson 3 **3.1.5**, SLF4J **2.0.18**, Logback **1.5.38**; keep the BOM's coherent dependency set |
 | JUnit, Mockito, Testcontainers | **6.0.3**, **5.23.0**, **2.0.5**; use current maintained compatible releases, and document any justified override |
 | Lombok annotation processor, if retained from the repository configuration | **1.18.46**; processor and dependency must agree and support Java 25 |
@@ -112,8 +117,10 @@ the SBOM, and recheck upstream releases/advisories monthly, first by **2026-10-2
 The tagged POM declares Java 11 minimum, LGPLv3 licensing, and no runtime
 dependencies. Verify Java 25 operation, distribution/license obligations, artifact
 origin, and the generator's concurrency/time behavior before the application
-milestone. Add the dependency only to modules that generate IDs or derive the
-product dataset; receiving an ID does not require a live generator.
+milestone. Add the dependency only to `shardshop-product` and `shardshop-order`,
+the only modules allowed to generate IDs, including deterministic fixture IDs.
+Workloads consume service-issued IDs and ledger consumes order-reserved result
+IDs; neither may depend on Snowflake or access the generator allocator.
 Do not invent a supported successor version or silently substitute a different
 generator library. A critical unresolved defect requires a documented remediation
 before deployment. [Tagged POM](https://github.com/phxql/snowflake-id/blob/v0.0.2/pom.xml),
@@ -325,3 +332,65 @@ chart renders that reference for both the container image and
 uninstalling the release cannot delete them or the database clusters that depend on
 them. Helm **4.3.0** runs from the user's `PATH` as a Homebrew build; the lock
 records the official release checksum. See PLAN step 1.2 for the evidence.
+
+### Current migration runtime
+
+The active migration image is assembled by `infra/images/flyway/Dockerfile` from
+the pinned official Flyway OSS 13.8.1 distribution and pinned Canonical OpenJDK 25
+JRE. Only Flyway's core and PostgreSQL plugin libraries, the PostgreSQL JDBC driver
+and the licenses cross into the final Ubuntu 26.04 image; other database plugins
+and drivers, Azure AD and Netty libraries, the upstream Temurin JRE and Ubuntu
+24.04 base do not.
+The launcher calls Java directly, and the image declares UID/GID 10001.
+
+`scripts/migrate.sh` automatically calls `scripts/build-migration-image.sh` after
+its topology guard. The helper builds the local ARM64 image using Docker Buildx
+with `SOURCE_DATE_EPOCH=0`, loads it into kind, and verifies the pinned CRI manifest
+digest on every node before migration resources can be applied. It can also be
+run separately after cluster provisioning. Docker, Buildx and kind are therefore
+requirements for this local migration workflow; Maven and application artifacts
+are not. Review changed build inputs and the resulting digest together.
+
+The final ARM64 image reports `java.vendor=Ubuntu` and OpenJDK
+`25.0.4.1+1-1-26.04.4-Ubuntu`. A Docker Scout scan of the trimmed image on
+2026-09-30 indexed 74 packages and reported no findings; the earlier untrimmed
+image had 417 packages and 12 findings (4 high, 8 medium), all in copied libraries
+the migrations never used. Recheck the final image on the next Flyway/base
+refresh, by 2026-10-28. The lock records the actual CRI and config digests. The
+historical upstream-image scan below is separate evidence for the superseded image.
+
+### Historical step 2.3 upstream-image verification (superseded)
+
+On 2026-09-30, catalog migrations moved from a custom launcher (Boot-managed Flyway
+12.4.0 in an image built from the product JAR) to the official Flyway OSS CLI image
+**13.8.1**. This earlier runtime selection is superseded by the Canonical OpenJDK
+image above. Step 2.3 changed no Java code, POM or dependency: the migration SQL and
+`flyway.toml` live in `database/`, outside the Maven modules, and the migrations are
+verified on the lab.
+
+Flyway 13 deprecates `initSql`, and an `afterConnect` callback cannot hold a
+`SET ROLE`, because Flyway restores each connection's original role after callbacks.
+The streams therefore pass `-c role=<schema>_owner` in the JDBC `options` property,
+so every session acts as the owner from its first statement and Flyway treats that
+role as the original one.
+
+The former image's raw OCI index, ARM64 manifest and config hashes matched the
+recorded upstream pins. It bundled Temurin Java 25.0.4.1 on Ubuntu 24.04 and
+declared no user; its Job passed restricted Pod Security admission as UID/GID
+10001 with a read-only root filesystem,
+`HOME=/tmp` and telemetry disabled through
+[`REDGATE_DISABLE_TELEMETRY`](https://documentation.red-gate.com/fd/reference/environment-variables/redgate-disable-telemetry-environment-variable).
+Docker Scout indexed 548 packages (150 deb, 397 maven) and reported 31 advisories:
+0 critical, 5 high, 19 medium and 7 low. The high findings affect the bundled SQL
+Server driver, HttpCore 5, jackson-databind and Ubuntu's openssl; the PostgreSQL
+migration path used none of them. They were accepted for that image in the
+loopback-only lab; this acceptance does not transfer to the rebuilt image.
+The former image was 406 MiB, mostly Flyway's own 309 MiB distribution, so its
+Alpine variant would have saved only about 25 MiB.
+Flyway 13.8.1 validated the catalog histories that 12.4.0 wrote without changing them.
+
+A local trial ran the same image and settings against the pinned PostgreSQL 18.6
+test image, with the SQL mounted in a ConfigMap-style folder. It applied V1, reran
+without changes, and failed as expected on checksum drift, runtime credentials and a
+missing schema. A 20-second statement was cancelled at the 15-second limit and
+rolled back.

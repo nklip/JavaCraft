@@ -31,6 +31,9 @@ scope:
   selection_status: Selected Maven pins are applied only to ShardShop. Infrastructure
     remains undeployed. Historical step 0.1 artifact evidence is in VERSIONS.md.
 sources:
+  flyway_docker: https://hub.docker.com/r/flyway/flyway
+  flyway_release_notes: https://help.red-gate.com/help/flyway-cli13/help_8.aspx?topic=release-notes-and-older-versions/release-notes-for-flyway-engine
+  flyway_telemetry: https://documentation.red-gate.com/fd/reference/environment-variables/redgate-disable-telemetry-environment-variable
   openjdk_25: https://jdk.java.net/25/
   openjdk_archive: https://jdk.java.net/archive/
   openjdk_images: https://github.com/docker-library/openjdk#deprecated
@@ -65,6 +68,17 @@ sources:
   canonical_jre: https://hub.docker.com/r/ubuntu/jre
   canonical_java_rocks: https://ubuntu.com/developers/docs/tutorials/java-advanced/rocks-use/
 support_policies:
+  flyway_13:
+    model: maintained_stable
+    checked_on: '2026-09-30'
+    review_by: '2026-10-30'
+    source_refs:
+    - flyway_docker
+    - flyway_release_notes
+    eol: null
+    note: Flyway OSS Edition CLI with frequent releases and no published fixed EOL;
+      13.8.1 was the newest image on 2026-09-30. It replaces the Boot BOM's 12.4.0
+      library for migrations; qualify updates by rerunning scripts/migrate.sh on the lab.
   openjdk_25:
     model: user_selected_local_baseline
     checked_on: '2026-09-28'
@@ -345,6 +359,70 @@ images:
     - GOSU_VERSION=1.19
     - PG_MAJOR=18
     - PG_VERSION=18.6-1.pgdg13+2
+  flyway_cli:
+    version: 13.8.1
+    purpose: owner-only schema migration Jobs on the selected Canonical OpenJDK runtime
+    support_refs:
+    - flyway_13
+    - canonical_openjdk_25_26_04
+    - ubuntu_26_04
+    tag_observed: docker.io/library/shardshop-flyway:13.8.1-openjdk25
+    reference: docker.io/library/shardshop-flyway:13.8.1-openjdk25@sha256:19765ac553684c76f061d5ffb558874a6814951f91e11c6ad8b0d5bef39ce73b
+    linux_arm64_digest: sha256:19765ac553684c76f061d5ffb558874a6814951f91e11c6ad8b0d5bef39ce73b
+    linux_arm64_config_digest: sha256:f6a88d7ea657f4cb3c995ac11841778e2fdad7500dd7889d42cdc3c6ff0fe80a
+    dockerfile: infra/images/flyway/Dockerfile
+    build_script: scripts/build-migration-image.sh
+    build_inputs:
+    - flyway_distribution
+    - application_jre
+    source_date_epoch: 0
+    checked_on: '2026-09-30'
+    review_by: '2026-10-28'
+    java_runtime_version: 25.0.4.1+1-1-26.04.4-Ubuntu
+    java_vendor: Ubuntu
+    ubuntu_version: '26.04.1'
+    image_user_observed: '10001:10001'
+    verification: Native ARM64 CLI and Java runtime checks pass with network disabled,
+      read-only root, no capabilities, no privilege escalation and writable /tmp.
+      The final image copies no upstream JRE. The manifest digest is the CRI digest
+      observed after importing the Docker archive into kind, not Docker's config ID.
+      All three restricted migration Jobs passed on this manifest digest, validating
+      both existing catalog migrations without changes; Cluster/PVC identities stayed
+      unchanged. A repeated cached build produced the same config and manifest digest.
+    advisories: 'Docker Scout on 2026-09-30: 74 packages, no findings. The image
+      copies only Flyway core, its PostgreSQL plugin, the PostgreSQL JDBC driver and
+      licenses; recheck the final image at the next Flyway/base refresh, by 2026-10-28.'
+    note: Locally built and loaded into kind one node at a time. The build helper
+      verifies every node's manifest digest and registers the digest under the Job's
+      repository name. Other build/exporter versions must reproduce that digest or
+      require review and updated pins; cloud deployment needs a registry publication.
+  flyway_distribution:
+    version: 13.8.1
+    purpose: build-only source of Flyway libraries, drivers, configuration and licenses
+    support_refs:
+    - flyway_13
+    - ubuntu_24_04
+    tag_observed: docker.io/flyway/flyway:13.8.1
+    reference: docker.io/flyway/flyway@sha256:6e00e7503a6fd48b12650fc6748088a356009f2aefb60736dc147518629263af
+    index_digest: sha256:6e00e7503a6fd48b12650fc6748088a356009f2aefb60736dc147518629263af
+    linux_arm64_digest: sha256:3f67b3dc7d2455b1ee28cd30319078bd33b0424b37049f6191e6a81c773d18f5
+    linux_arm64_config_digest: sha256:72dbe883d427eccf9ed7658d698ac527a869ed483dc2008046dfe9fe7aff5e31
+    manifest_url: https://registry-1.docker.io/v2/flyway/flyway/manifests/sha256:6e00e7503a6fd48b12650fc6748088a356009f2aefb60736dc147518629263af
+    config_url: https://registry-1.docker.io/v2/flyway/flyway/blobs/sha256:72dbe883d427eccf9ed7658d698ac527a869ed483dc2008046dfe9fe7aff5e31
+    checked_on: '2026-09-30'
+    review_by: '2026-10-30'
+    java_runtime_version: 25.0.4.1+1 (Eclipse Temurin JRE)
+    ubuntu_version: '24.04'
+    image_user_observed: ''
+    verification: Raw index, ARM64 manifest and config SHA-256 verified. Native ARM64
+      Jobs ran as UID 10001 with a read-only root filesystem.
+    advisories: 'Docker Scout on 2026-09-30: 548 packages (150 deb, 397 maven), 31
+      advisories (0 critical, 5 high, 19 medium, 7 low). The highs are in the bundled
+      SQL Server driver, HttpCore 5, jackson-databind and Ubuntu openssl, none on the
+      PostgreSQL migration path; accepted for the loopback-only lab.'
+    note: Runs as root by default, so the Job sets UID/GID 10001, HOME=/tmp and
+      REDGATE_DISABLE_TELEMETRY. The ~309 MiB Flyway distribution dominates the
+      406 MiB of layers; the Alpine variant saves only about 25 MiB.
   rabbitmq:
     version: 4.3.6
     purpose: broker and broker integration tests

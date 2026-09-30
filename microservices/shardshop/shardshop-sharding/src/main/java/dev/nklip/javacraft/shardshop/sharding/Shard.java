@@ -1,23 +1,14 @@
 package dev.nklip.javacraft.shardshop.sharding;
 
 /**
- * The three database shards in routing-index order: 0 is shard-a, 1 is shard-b and 2 is shard-c.
+ * A CloudNativePG cluster name, also used as the prefix of its {@code -rw} and {@code -ro} Services.
+ * The shard inventory's chart schema validates names before they are published.
  */
-public enum Shard {
-    SHARD_A("shard-a"),
-    SHARD_B("shard-b"),
-    SHARD_C("shard-c");
+public record Shard(String clusterName) {
 
-    private final String clusterName;
-
-    Shard(String clusterName) {
-        this.clusterName = clusterName;
-    }
-
-    /**
-     * @return the CloudNativePG cluster name, which also prefixes its {@code -rw} and {@code -ro} Services
-     */
-    public String clusterName() {
-        return clusterName;
+    public Shard {
+        if (clusterName == null || clusterName.isBlank()) {
+            throw new IllegalArgumentException("Shard name must not be blank");
+        }
     }
 }

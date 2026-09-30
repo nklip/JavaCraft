@@ -1,20 +1,24 @@
 #!/usr/bin/env bash
-# Check all three shards, then drill one (default shard-a) in the disposable
+# Check every inventory shard, then drill one (default first shard) in the disposable
 # kind-shardshop lab only. Temporarily fences standbys and replaces one standby
 # pod; never deletes PVCs. Run once per shard to exercise every primary.
+# When: on demand, once up.sh has made the clusters Ready, e.g. after changing cluster
+# settings. It briefly blocks writes on the drilled shard.
 set -euo pipefail
 
-usage="Usage: $0 [shard-a|shard-b|shard-c]"
+source "$(dirname -- "${BASH_SOURCE[0]}")/shards.sh"
+usage="Usage: $0 [shard from infra/shards.yaml]"
 (( $# <= 1 )) || { echo "$usage" >&2; exit 1; }
+load_inventory
 context=kind-shardshop
-cluster=${1:-shard-a}
-# Independent routing fixtures from shardshop-sharding's golden vectors.
-case "$cluster" in
-    shard-a) fixture=880803840000004432 ;;
-    shard-b) fixture=880803840000004097 ;;
-    shard-c) fixture=880803840000004096 ;;
-    *) echo "$usage" >&2; exit 1 ;;
-esac
+cluster=${1:-${shards[0]}}
+found=false
+for shard in "${shards[@]}"; do [[ "$shard" != "$cluster" ]] || found=true; done
+[[ "$found" == true ]] || { echo "$usage" >&2; exit 1; }
+[[ "$instances" == 3 ]] || { echo 'The quorum failure drill requires three instances per shard' >&2; exit 1; }
+# This is a replication probe, not a routing fixture; Java tests verify routing separately.
+fixture=1
+shard_selector=$(IFS=,; echo "${shards[*]}")
 selector="cnpg.io/cluster=$cluster,cnpg.io/podRole=instance"
 lock=shardshop-topology-drill
 probe="topology_probe_$$"
@@ -70,7 +74,7 @@ verify_shared_topology() {
     local identities=() all_claims=() all_uids=() all_pvs=()
     local primary_count=0 standby_count=0
     peer_pods=()
-    for shard in shard-a shard-b shard-c; do
+    for shard in "${shards[@]}"; do
         k wait --for=condition=Ready "cluster/$shard" --timeout=180s
         k wait --for=condition=Ready pods -l "cnpg.io/cluster=$shard,cnpg.io/podRole=instance" --timeout=180s
         leader=$(k get cluster "$shard" -o jsonpath='{.status.currentPrimary}')
@@ -102,12 +106,12 @@ verify_shared_topology() {
         equal "$(endpoints "$shard-rw")" "$leader" "$shard read-write Service"
         equal "$(endpoints "$shard-ro")" "$expected" "$shard read-only Service"
     done
-    equal "$primary_count" 3 'Shared writable primaries'
-    equal "$standby_count" 6 'Shared standbys'
-    equal "$(printf '%s\n' "${identities[@]}" | sort -u | wc -l | tr -d ' ')" 3 'Independent database lineages'
-    all_volumes=$(k get pvc -l 'cnpg.io/cluster in (shard-a,shard-b,shard-c)' \
+    equal "$primary_count" "${#shards[@]}" 'Shared writable primaries'
+    equal "$standby_count" "$(( ${#shards[@]} * (instances - 1) ))" 'Shared standbys'
+    equal "$(printf '%s\n' "${identities[@]}" | sort -u | wc -l | tr -d ' ')" "${#shards[@]}" 'Independent database lineages'
+    all_volumes=$(k get pvc -l "cnpg.io/cluster in ($shard_selector)" \
         -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.uid}{" "}{.spec.volumeName}{" "}{.status.phase}{"\n"}{end}')
-    equal "$(printf '%s\n' "$all_volumes" | wc -l | tr -d ' ')" 9 'Shared PVC count'
+    equal "$(printf '%s\n' "$all_volumes" | wc -l | tr -d ' ')" "$(( ${#shards[@]} * instances ))" 'Shared PVC count'
     while read -r claim uid volume phase; do
         equal "$phase" Bound "$claim status"
         [[ -n "$uid" && -n "$volume" ]] || fail "$claim identity is incomplete"
@@ -115,13 +119,15 @@ verify_shared_topology() {
         all_uids+=("$uid")
         all_pvs+=("$volume")
     done <<<"$all_volumes"
-    equal "$(printf '%s\n' "${all_claims[@]}" | sort -u | wc -l | tr -d ' ')" 9 'Distinct pod PVCs'
-    equal "$(printf '%s\n' "${all_uids[@]}" | sort -u | wc -l | tr -d ' ')" 9 'Distinct PVC identities'
-    equal "$(printf '%s\n' "${all_pvs[@]}" | sort -u | wc -l | tr -d ' ')" 9 'Distinct backing volumes'
-    echo 'Verified three writable primaries, six shard-local quorum standbys, role Services and nine independent volumes.'
+    equal "$(printf '%s\n' "${all_claims[@]}" | sort -u | wc -l | tr -d ' ')" "$(( ${#shards[@]} * instances ))" 'Distinct pod PVCs'
+    equal "$(printf '%s\n' "${all_uids[@]}" | sort -u | wc -l | tr -d ' ')" "$(( ${#shards[@]} * instances ))" 'Distinct PVC identities'
+    equal "$(printf '%s\n' "${all_pvs[@]}" | sort -u | wc -l | tr -d ' ')" "$(( ${#shards[@]} * instances ))" 'Distinct backing volumes'
+    echo "Verified ${#shards[@]} writable primaries, $standby_count shard-local quorum standbys, role Services and $(( ${#shards[@]} * instances )) independent volumes."
 }
 verify_isolation() {
     local pod
+    # A one-shard lab has no peers (empty arrays also trip nounset on Bash 3.2).
+    if (( ${#shards[@]} == 1 )); then return; fi
     for pod in "${peer_pods[@]}"; do
         equal "$(sql "$pod" "SELECT to_regnamespace('$probe') IS NULL")" t "$pod must not contain $cluster probe data"
     done
@@ -167,6 +173,7 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+assert_published_topology
 k wait --for=condition=Ready "cluster/$cluster" --timeout=180s
 existing_fence=$(k get cluster "$cluster" -o jsonpath='{.metadata.annotations.cnpg\.io/fencedInstances}')
 [[ -z "$existing_fence" || "$existing_fence" == '[]' ]] || fail 'Cluster is already fenced; recover it before this drill'

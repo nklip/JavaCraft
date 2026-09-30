@@ -1,0 +1,10 @@
+{{- include "shardshop.validate" . -}}
+{{- if or (eq .Values.render "infrastructure") (eq .Values.render "namespace") }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/part-of: shardshop
+    pod-security.kubernetes.io/enforce: restricted
+{{- end }}

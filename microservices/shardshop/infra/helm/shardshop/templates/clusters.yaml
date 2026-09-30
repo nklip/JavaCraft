@@ -1,0 +1,37 @@
+{{- if eq .Values.render "infrastructure" }}
+{{- range .Values.shards }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .name | quote }}
+  namespace: {{ $.Release.Namespace | quote }}
+spec:
+  instances: {{ $.Values.shard.instances }}
+  {{- include "shardshop.clusterCommon" (dict "root" $ "database" "shardshop" "owner" "shardshop_owner" "affinity" $.Values.shard.affinity) | nindent 2 }}
+  postgresql:
+    synchronous:
+      method: any
+      number: 1
+      dataDurability: required
+      failoverQuorum: true
+    parameters:
+      {{- toYaml $.Values.shard.parameters | nindent 6 }}
+  replicationSlots:
+    highAvailability:
+      enabled: true
+      synchronizeLogicalDecoding: true
+{{- end }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: ledger-db
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  instances: 1
+  {{- include "shardshop.clusterCommon" (dict "root" . "database" "ledger" "owner" "ledger_owner" "affinity" (dict)) | nindent 2 }}
+  postgresql:
+    parameters:
+      {{- toYaml .Values.ledger.parameters | nindent 6 }}
+{{- end }}

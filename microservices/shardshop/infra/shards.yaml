@@ -1,0 +1,6 @@
+# Routing order is part of data ownership. Changing membership or order requires
+# a coordinated reset/reseed in this lab; it is not an online resharding operation.
+shards:
+  - name: shard-a
+  - name: shard-b
+  - name: shard-c

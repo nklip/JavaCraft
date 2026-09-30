@@ -4,23 +4,31 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Objects;
 
 /**
- * Routing contract version 2: a positive Snowflake ID belongs to shard
- * {@code unsignedBigEndian(SHA-256(UTF-8(decimal ID))) mod 3}.
+ * A positive Snowflake ID belongs to the configured shard at index
+ * {@code unsignedBigEndian(SHA-256(UTF-8(decimal ID))) mod shardCount}.
  * <p>
- * The hash and the divisor are frozen; changing either moves existing rows and needs a data migration.
+ * The hash remains routing contract version 2. The topology fixes shard count and ordering
+ * for this router's lifetime; changing either moves existing rows and needs a data migration.
  */
 public final class ShardRouter {
 
-    private static final BigInteger SHARD_COUNT = BigInteger.valueOf(3);
+    private final ShardTopology topology;
+    private final BigInteger shardCount;
+
+    public ShardRouter(ShardTopology topology) {
+        this.topology = Objects.requireNonNull(topology, "Shard topology is required");
+        this.shardCount = BigInteger.valueOf(topology.shards().size());
+    }
 
     public Shard route(long id) {
         if (id <= 0) {
             throw new IllegalArgumentException("Shard routing requires a positive ID, but was " + id);
         }
         byte[] digest = sha256().digest(Long.toString(id).getBytes(StandardCharsets.UTF_8));
-        return Shard.values()[new BigInteger(1, digest).mod(SHARD_COUNT).intValue()];
+        return topology.shards().get(new BigInteger(1, digest).mod(shardCount).intValue());
     }
 
     private static MessageDigest sha256() {

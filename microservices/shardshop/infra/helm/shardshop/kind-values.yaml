@@ -1,0 +1,12 @@
+# Local storage and placement constraints for the three-worker kind lab.
+postgresql:
+  storage:
+    storageClass: standard
+  affinity:
+    podAntiAffinityType: required
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: DoesNotExist

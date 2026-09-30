@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: shardshop
-  labels:
-    app.kubernetes.io/part-of: shardshop
-    # Reject any pod that breaks the restricted Pod Security Standard (PLAN.md section 5).
-    pod-security.kubernetes.io/enforce: restricted

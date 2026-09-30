@@ -1,0 +1,53 @@
+# Render with infra/shards.yaml. This chart only renders manifests; scripts apply them.
+render: infrastructure
+migrationShard: ""
+shards: []
+
+postgresql:
+  image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:28d95c3797e8ec648b240a48745f700ecb7a307b91c8b1fbb3ad83e5b25a3048
+  storage:
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      # Measured tiny-data baseline; remeasure when application load arrives.
+      memory: 512Mi
+  affinity: {}
+
+shard:
+  instances: 3
+  affinity:
+    enablePodAntiAffinity: true
+    topologyKey: kubernetes.io/hostname
+  parameters:
+    synchronous_commit: "on"
+    wal_level: logical
+    hot_standby_feedback: "on"
+    sync_replication_slots: "on"
+    max_replication_slots: "10"
+    max_wal_senders: "10"
+    max_wal_size: 256MB
+    min_wal_size: 80MB
+    max_slot_wal_keep_size: 512MB
+    wal_keep_size: 128MB
+
+ledger:
+  parameters:
+    wal_level: replica
+    max_wal_size: 256MB
+    min_wal_size: 80MB
+    wal_keep_size: "0"
+
+migration:
+  image: docker.io/library/shardshop-flyway:13.8.1-openjdk25@sha256:19765ac553684c76f061d5ffb558874a6814951f91e11c6ad8b0d5bef39ce73b
+  activeDeadlineSeconds: 180
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 256Mi

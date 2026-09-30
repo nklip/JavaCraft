@@ -2,8 +2,8 @@
 
 Status: target architecture.
 
-ShardShop combines product and order workloads, three replicated PostgreSQL
-shards, and an asynchronous order ledger. This document defines its contracts and
+ShardShop combines product and order workloads, an inventory of replicated PostgreSQL
+shards (three initially), and an asynchronous order ledger. This document defines its contracts and
 boundaries; [PLAN.md](PLAN.md) describes implementation milestones and infrastructure.
 All runtimes, libraries, build plugins, and images follow [VERSIONS.md](VERSIONS.md):
 LTS where available, otherwise maintained stable GA releases with explicit upgrade
@@ -14,8 +14,8 @@ repository-inherited dependency overrides.
 The primary target is a local kind lab on one machine: every contract, drill, and
 acceptance scenario in this document must run and pass there. A later AWS target
 (EKS provisioned with Terraform, PLAN milestone 7) is optional. It reuses the same
-Kustomize base through its own overlay and the same verified operator Helm charts
-and values, delivers the applications through GitOps, and may add cloud-only
+shared Helm templates through environment values and the same verified operator
+Helm charts and values, delivers the applications through GitOps, and may add cloud-only
 durability such as S3 backups with WAL archiving and a three-broker RabbitMQ. No
 local behavior or check may depend on a cloud service.
 
@@ -27,6 +27,11 @@ Canonical OpenJDK 25 JDK/JRE images on Ubuntu 26.04 in the version lock. The JRE
 is shell-free; implement the startup allocator launcher as a Java/native executable
 and explicitly configure a non-root container user. Final application images
 retain the deployment qualification gates in the version policy.
+This runtime selection includes Java migration tools. Flyway's final image uses
+the same Canonical JRE, with only libraries, drivers, configuration and licenses
+copied from the pinned upstream Flyway distribution image. Its bundled Temurin
+runtime is not copied. Local Maven continues to use the selected `JAVA_HOME`
+installation, including the existing upstream OpenJDK `25-open` installation.
 
 ## 1. Goal and module boundaries
 
@@ -49,31 +54,41 @@ workload module is a POM aggregator containing three applications; product, orde
 and ledger are the other three applications; `shardshop-sharding` is a library used
 only by product and order. PostgreSQL and RabbitMQ are supporting infrastructure.
 
-| # | Proposed module | Responsibility | Initial deployment | Data ownership |
+No module owns a database schema or ships migrations: schemas, roles and
+migrations belong to the database layer described in section 3, and each service
+connects with its own login role.
+
+**ID ownership constraint:** only `shardshop-product` and `shardshop-order`
+create application IDs. Product creates seller and product IDs; order creates
+buyer, order, saga, command, and message IDs, including IDs reserved for ledger
+results. Workload modules and ledger only consume and reuse service-issued IDs;
+they never generate, derive, or allocate them locally.
+
+| # | Proposed module | Responsibility | Initial deployment | Database access |
 |---|---|---|---|---|
-| 1 | `shardshop-workload` | Aggregate the three workload applications below | No aggregator pod; one seeder Job and two load Deployments | No database, tables, migrations, or database credentials |
-| 2 | `shardshop-product` | Accept product creation and product reader HTTP requests | Two identical product service pods behind one Kubernetes Service | `catalog.products` in the shared sharded PostgreSQL deployment |
-| 3 | `shardshop-order` | Accept order HTTP requests, coordinate the saga, and relay captured order-outbox inserts to RabbitMQ | One stateless order service pod initially | Orders, items, saga state, inbox, outbox, and CDC offsets in the same shared deployment |
-| 4 | `shardshop-ledger` | Consume ledger commands and persist order ledger records | One ledger consumer pod plus a separate PostgreSQL pod initially | A dedicated ledger database, inbox, and outbox |
-| 5 | `shardshop-sharding` | Route product and order IDs to shards (section 3) | None; a library inside the product and order services | None |
+| 1 | `shardshop-workload` | Aggregate the three workload applications below | No aggregator pod; one seeder Job and two load Deployments | None: no tables, migrations, or database credentials |
+| 2 | `shardshop-product` | Accept seller and product creation and product reader HTTP requests | Two identical product service pods behind one Kubernetes Service | Creates and reads sellers and products in schema `catalog` of the shared sharded PostgreSQL deployment |
+| 3 | `shardshop-order` | Accept buyer and order HTTP requests, coordinate the saga including stock reservation, and relay captured order-outbox inserts to RabbitMQ | One stateless order service pod initially | Buyers, orders, items, saga state, inbox, outbox, and CDC offsets in schema `ordering`; reads sellers and products and writes stock reservations and product stock in `catalog` |
+| 4 | `shardshop-ledger` | Consume ledger commands and persist order ledger records | One ledger consumer pod plus a separate PostgreSQL pod initially | Schema `ledger` in a dedicated ledger database: entries, decisions, inbox, and outbox |
+| 5 | `shardshop-sharding` | Route seller and buyer IDs to shards (section 3) | None; a library inside the product and order services | None |
 
 Module 1 contains exactly three independently runnable submodules:
 
 | Submodule | Workload | Deployment |
 |---|---|---|
-| `shardshop-product-seeder` | Seed a fixed product dataset through module 2 over HTTP | Its own Job pod; exits when seeding completes |
+| `shardshop-product-seeder` | Seed a fixed dataset of sellers and their products through module 2 over HTTP | Its own Job pod; exits when seeding completes |
 | `shardshop-product-reader` | Generate many concurrent product reads through module 2 to load the database | Its own Deployment with one pod |
-| `shardshop-order-producer` | Generate orders, submit them to module 3 over HTTP, and observe their status | Its own Deployment with one pod |
+| `shardshop-order-producer` | Create its buyers, generate their orders, submit them to module 3 over HTTP, and observe their status | Its own Deployment with one pod |
 
-Each workload app uses configuration, deterministic fixture IDs, and bounded
-in-memory business state. The order producer's startup launcher also reserves a
-generator ID in the Kubernetes allocator described in section 3. Workload apps
-have no direct SQL connections or persistent tables,
-including inbox/outbox tables. Each has its own request rate, concurrency limit,
-and resource budget. All three derive the same fixed product dataset from their
-own configuration; no manifest file is shared between modules. Dataset size
-chooses a deterministic subset; a retry never generates new product IDs. Dataset
-derivation and live identifier allocation follow section 3.
+Each workload app uses configuration, IDs returned by product/order APIs, and
+bounded in-memory business state. Workloads have no ID generator, Snowflake
+dependency, generator-allocation launcher or allocator permissions. They have no
+direct SQL connections or persistent tables, including inbox/outbox tables. Each
+has its own request rate, concurrency limit, and resource budget. They discover
+the same fixed product dataset through the product API; no manifest file is
+shared between modules. Dataset size chooses a deterministic subset; a retry
+reuses the IDs issued by the owning service. Dataset discovery and service-side
+identifier allocation follow section 3.
 
 ### Workload lifecycle
 
@@ -81,23 +96,29 @@ derivation and live identifier allocation follow section 3.
    and order producer Deployments at zero replicas.
 2. Run `shardshop-product-seeder` as a Job with `restartPolicy: Never`,
    `backoffLimit: 3`, and `activeDeadlineSeconds: 300`. Its idempotent PUTs seed
-   immutable products. It exits successfully only after all products have been
-   acknowledged and verified through primary reads. A retry uses the same IDs.
+   the sellers first, then their products with initial stock, using the IDs
+   obtained from the product service's dataset API. It exits
+   successfully only after every seller and product has been acknowledged and
+   verified through primary reads. A retry uses the same IDs.
 3. The startup script waits for that run's Job `Complete` condition with a
    300-second deadline. A failed Job or deadline stops startup; it never starts
    load against a partially seeded dataset. Only after success does it scale the
    reader and order producer to one replica each. Their startup checks verify the
    same dataset configuration; replica-profile reads may still observe lag.
-4. The baseline performs **no continuous product writes after seeding**. The Job
+4. The baseline performs **no continuous seller or product creation after
+   seeding**; orders change only stock, through reservations. The Job
    stays completed rather than being restarted as a Deployment. Reader and order
    producer run until the scenario controller scales them to zero. Each new run
-   has a new run ID and a fresh seeding gate; a previous Job cannot satisfy it.
+   receives a distinct run name in its deployment configuration and has a fresh
+   seeding gate; a previous Job cannot satisfy it. Workloads do not generate run IDs.
 
 For deterministic saga rejection, seed separate USD and EUR product fixtures.
 The order API accepts any valid single currency matching its products; the ledger
 allowlist is USD in the rejection scenario. Configure `rejected-order-percent=10`.
-Using exactly the SHA-256 input and unsigned big-endian digest interpretation
-specified in section 3, compute `currencyBucket = digestInteger % 100`. Select
+The producer first obtains an order ID from the order service's allocation API.
+Using that returned ID with exactly the SHA-256 input and unsigned big-endian
+digest interpretation specified in section 3, compute
+`currencyBucket = digestInteger % 100`. Select
 EUR-only items when `currencyBucket < rejected-order-percent`, otherwise USD-only
 items. The percentage must be an integer from 0 through 100; the default selects
 approximately 10% of uniformly generated IDs. The order producer's tests fix the
@@ -106,7 +127,7 @@ boundaries with IDs `880803840000004605` (bucket 0), `880803840000004432` (9),
 of the implementation. A retry preserves its items and currency. This
 exercises a ledger business rejection rather than an HTTP validation failure.
 
-Module 2 also handles product creation so the product seeder can populate the
+Module 2 also handles seller and product creation so the product seeder can populate the
 shared database through an application API. Module 4 includes a consumer process:
 the ledger database itself does not consume RabbitMQ messages.
 
@@ -119,7 +140,7 @@ with the code under test. Only product and order depend on it; the ledger and th
 workload apps never see shard routing. Nothing else is shared: each module owns its
 HTTP API, DTO/model classes, JSON handling, validation, persistence types, and test
 data, which keeps release cycles and domain models decoupled. The order service's
-read access to catalog data remains an explicit schema dependency.
+catalog reads and stock reservations remain explicit database grants.
 
 Proposed source layout:
 
@@ -134,6 +155,7 @@ shardshop/
   shardshop-product/
   shardshop-order/
   shardshop-ledger/
+  database/                       # Flyway migration streams, one per schema (section 3)
   infra/                          # Kubernetes, PostgreSQL, RabbitMQ configuration
 ```
 
@@ -203,8 +225,10 @@ database role Services rather than pod addresses.
 
 Modules 2 and 3 share one **logical database deployment**, implemented as three
 independent PostgreSQL shards. They connect to the same `shardshop` database on
-each shard but own separate schemas: `catalog` for products and `ordering` for
-orders and sagas. This is an intentional shared-database boundary for the lab.
+each shard and use separate schemas: `catalog` for sellers, products and stock,
+and `ordering` for buyers, orders and sagas. The database layer owns both schemas; the
+services only hold granted privileges. This is an intentional shared-database
+boundary for the lab.
 
 ```mermaid
 flowchart TB
@@ -261,11 +285,12 @@ and [quorum-based failover](https://cloudnative-pg.io/docs/1.30/failover/).
 
 ### Identifier generation and representation
 
-Generate new application IDs with the explicitly pinned dependency
-`de.mkammerer.snowflake-id:snowflake-id:0.0.2`. Use it for `productId`, `orderId`,
+Generate new application IDs only inside product and order, with the pinned dependency
+`de.mkammerer.snowflake-id:snowflake-id:0.0.2`. Use it for `sellerId`, `productId`, `buyerId`, `orderId`,
 `sagaId`, logical `commandId`, and transport `messageId` wherever a new ID is
-required. Reuse existing correlation/business IDs on retries and generate a fresh
-transport ID only when a new outbox envelope is committed. Item positions can
+required. Reuse existing correlation/business IDs on retries. Order reserves
+both a command's transport ID and its result's transport ID when committing a
+new command envelope; ledger copies the reserved result ID. Item positions can
 remain order-local integers rather than requiring another global ID.
 
 Use an injected, process-scoped `SnowflakeIdGenerator` configured explicitly with
@@ -300,23 +325,27 @@ returns `400 INVALID_REQUEST`, not an uncaught conversion error. Hash the accept
 without modification. IDs are identifiers, not secrets or authorization tokens,
 and generation time/worker bits are not a public business-time ordering contract.
 
-The order producer generates each order ID once before its first PUT and retains
-it with the exact creation payload through bounded retries/status polling. Order
-and ledger services create new saga/command/message IDs with their own generators.
-Product pods and the product reader need no live generator merely to accept/read
-supplied IDs. Do not allocate separate Snowflake IDs for a ledger entry that is
-already uniquely identified by its order ID.
+The order producer obtains each order ID from order before its first PUT and
+retains it with the exact creation payload through bounded retries/status
+polling. Product owns seller/product ID generation; order owns buyer/order and
+saga/command/message ID generation. Ledger has no generator: each `RecordOrder`
+includes an order-generated `resultMessageId`, which ledger uses as its result's
+`messageId`. A duplicate command republishes the same result identity; a new
+reconciliation command carries a newly reserved result ID. Do not allocate a
+separate ID for a ledger entry already uniquely identified by its order ID.
 
 ### Generator identity across processes and restarts
 
-Reserve generator **0** for offline deterministic fixtures. For this finite local
+Reserve generator **0** for deterministic fixtures generated inside product and
+order only, in disjoint timestamp ranges for each entity type. For this finite local
 lab, a named `shardshop-snowflake-generators` ConfigMap keeps a monotonically
 increasing allocation counter for live IDs **1-1023**. A startup launcher reserves
 one fresh ID with a Kubernetes resource-version compare-and-set before **every
-ID-producing JVM start**, including a container restart in the same pod. This
+product or order JVM start**, including a container restart in the same pod. This
 must not run only in an init container. Use the pinned kubectl/tooling and narrow
-RBAC for this one precreated ConfigMap; workload apps still have no SQL credentials
-or database tables. Concurrent starts retry CAS conflicts with a bounded deadline.
+RBAC for this one precreated ConfigMap, granted only to product and order.
+Workload and ledger pods have no allocator access. Concurrent starts retry CAS
+conflicts with a bounded deadline.
 An uncertain reservation burns that slot and obtains another; it never guesses
 or reuses one. The live generator receives its allocation only after success.
 
@@ -339,25 +368,62 @@ existing retry/DLQ path. Workload generation backs off with a bounded budget.
 Once an ID has been assigned to a logical request, transient failures never
 replace it with another ID.
 
-### Reproducible product dataset and routing
+### Service-issued IDs, reproducible datasets, and routing
 
-Derive the fixed product dataset with this same library and layout, generator 0,
-and an injected deterministic millisecond `TimeSource` whose first timestamp is
-above zero. A versioned dataset configuration fixes the timestamp/sequence
-schedule, product count, USD/EUR split, and payload rules; reserve disjoint
-timestamp ranges for future dataset versions. The seeder, reader, and order
-producer each derive the dataset from that configuration instead of generating
-wall-clock IDs or sharing a manifest file, and each app's tests pin the IDs it
-derives. Dataset changes may select subsets but must never assign a different
-product payload to an existing ID. Live generators never use generator 0.
+Product derives the fixed dataset of sellers and products with this same library and
+layout, generator 0, and an injected deterministic millisecond `TimeSource` whose
+first timestamp is above zero. A versioned dataset configuration fixes the
+timestamp/sequence schedule, seller and product counts, each product's seller and
+initial stock, the USD/EUR split, and payload rules; reserve disjoint timestamp
+ranges for future dataset versions. Product exposes a paginated dataset API
+returning those IDs, seller/product relationships and immutable fixture payloads
+for a configured dataset version. Seeder, reader and order producer obtain that
+data over HTTP; they never reimplement the derivation or construct IDs. Dataset
+changes may select subsets but must never assign a different seller or product
+payload to an existing ID. Order similarly derives buyer fixtures in a disjoint
+reserved timestamp range and exposes them through its own dataset API. The
+producer obtains those IDs before creating buyers. The dataset APIs describe
+fixtures; creation still uses the owning service's PUT endpoints. Live
+generators never use generator 0.
 
-Products and orders use the same routing rule with their own Snowflake IDs,
-implemented once in `shardshop-sharding`:
+Before submitting a live order, the producer calls
+`POST /api/v1/buyers/{buyerId}/order-allocations` with its configured run name and
+request ordinal. These are retry coordinates, not application IDs. Order checks
+the buyer and atomically stores a generated order ID under a unique
+`(buyer_id, run_name, request_ordinal)` key on the buyer's shard before returning
+it. Concurrent or retried calls return the same committed ID, including after a
+lost response or process restart. Preserve this mapping for the retained dataset;
+never recycle an allocation. Workload restarts reuse their configured run name
+and ordinals; a new independent run gets a new name from deployment configuration.
+Freeze dataset versions and workload settings for that run. Select the buyer,
+items and quantities deterministically from the configured run name and ordinal
+over the service-returned descriptors, using the returned order ID for currency
+selection. A restart therefore reconstructs the same buyer and creation payload
+without generating IDs or keeping a local database.
+An allocation alone creates no order, saga or outbox. It supplies the ID needed
+for currency selection and the following idempotent PUT.
+The allocation endpoint returns `201` for a new mapping and `200` for a retry,
+`422 BUYER_NOT_FOUND` for an absent buyer, `503 ORDER_STORE_UNAVAILABLE` for an
+unavailable store or unknown commit, and `503 ID_GENERATION_UNAVAILABLE` if a new
+ID cannot be generated. Existing allocations require no new ID generation.
+
+Creation APIs accept only IDs issued for the addressed entity and parent by the
+owning service: product validates its seller/product fixture mapping, order its
+buyer fixture mapping and durable order allocation. Reject an unissued ID or a
+wrong parent with `400 INVALID_REQUEST`. Canonical numeric formatting alone is
+not proof of issuance. Service tests cover issuance and retry behavior; workload
+tests use recorded API responses and assert that IDs are forwarded unchanged.
+
+Sellers and buyers use the same routing rule with their own Snowflake IDs,
+implemented once in `shardshop-sharding`. A seller's products and their stock
+reservations live on the seller's shard, so the catalog routes by `seller_id`. A
+buyer's orders, with their items, sagas and transport records, live on the buyer's
+shard, so ordering routes by `buyer_id`:
 
 ```text
 digestInteger(id) = unsignedBigEndian(SHA-256(UTF-8(canonical decimal Snowflake ID)))
-shard(id) = digestInteger(id) % 3
-0 -> shard-a; 1 -> shard-b; 2 -> shard-c
+shard(id) = deployedShards[digestInteger(id) % deployedShards.size]
+initial deployedShards = [shard-a, shard-b, shard-c]
 ```
 
 Use the validated canonical decimal ID text, with no newline or leading zeros,
@@ -365,29 +431,52 @@ before UTF-8 encoding. Interpret all 32 SHA-256 digest bytes as one unsigned
 256-bit **big-endian** integer: byte 0 is most significant, byte 31 least
 significant. Do not use a signed integer, truncate the digest, or use Java
 `hashCode()`. Currency selection uses this same integer modulo 100, independently
-of the modulo-3 shard result; the order producer implements it with its own code
+of the configured shard result; the order producer implements it with its own code
 and does not depend on `shardshop-sharding`. This is identifier/routing contract **version 2**,
-replacing the previous unreleased draft and its vectors. Keep it immutable once
-implemented. Existing persisted data using another ID/routing contract would
-require an explicit migration; do not silently accept two formats or probe all
-shards as a fallback. Generator IDs are independent of database shard IDs.
+replacing the previous unreleased draft and its vectors. The hash contract stays
+immutable; the initial ordered inventory preserves all version-2 routing vectors.
+`infra/shards.yaml` defines the ordered shard names. Shared Helm templates generate
+all resources and a routing snapshot of the ordered names; its version, the SHA-256
+of the comma-joined UTF-8 names, lets the scripts detect a changed topology. Only
+after every deployed shard passes its migrations does `migrate.sh` publish that
+snapshot as the `shardshop-routing` ConfigMap. The chart schema validates the names.
+Product/order import the ordered names at startup and pass an immutable
+`ShardTopology` to the framework-free router. Missing, empty or duplicate names
+fail startup. All replicas must start with the same snapshot.
+
+Topology membership is not a health check: outages and primary promotion never
+remove shards from the list. Processes do not refresh topology live. Changing
+membership or order reassigns existing IDs; deployment/migration refuse changes
+to a published list until the lab is explicitly reset and reseeded. This is not
+online resharding. Retaining populated data across such a change needs a separate
+migration/cutover protocol; never probe all shards as a fallback. Generator IDs
+are independent of database shard IDs.
 
 | Data | Routing key | Writer / owner |
 |---|---|---|
-| `catalog.products` | `product_id` | Product service; order service has read-only access |
-| `ordering.orders`, `ordering.order_items` | `order_id` | Order service |
-| `ordering.order_sagas`, `ordering.order_outbox`, `ordering.order_inbox` | `order_id` | Order service; colocated with the order |
-| `ordering.orphan_results` | `order_id` | Order service; quarantine for a result whose order is missing |
-| `ordering.conflicting_results` | `order_id` | Order service; quarantine for a result that conflicts with saved identity or outcome |
+| `catalog.sellers` | `seller_id` | Product service |
+| `catalog.products` | the product's `seller_id` | Product service creates them; the order service reads them and updates only `stock` in its reservation transactions |
+| `catalog.stock_reservations` | the product's `seller_id` | Order service, writing reservations and adjusting product stock in the same shard transaction |
+| `ordering.buyers` | `buyer_id` | Order service |
+| `ordering.orders`, `ordering.order_items` | the order's `buyer_id` | Order service |
+| `ordering.order_sagas`, `ordering.order_outbox`, `ordering.order_inbox` | the order's `buyer_id` | Order service; colocated with the order |
+| `ordering.orphan_results` | the order's `buyer_id` | Order service; quarantine for a result whose order is missing |
+| `ordering.conflicting_results` | the order's `buyer_id` | Order service; quarantine for a result that conflicts with saved identity or outcome |
 | `ledger.ledger_entries`, `ledger.ledger_operations`, `ledger.ledger_inbox`, `ledger.ledger_outbox` | No sharding initially | Ledger service, in its separate database |
 | `ledger.conflicting_commands` | No sharding initially | Ledger service; quarantine for a command that conflicts with a permanent decision |
 
 Order items remain on their order's shard even when referenced products live on
-other shards. Resolve product IDs against their primaries before creating the
-order and persist server-derived product/price snapshots in its items. The first
-version treats products as immutable after creation and has no stock reservation,
-payment, or cross-shard transaction. Cross-shard product references have no SQL
-foreign key; the order-to-items foreign key is local to one shard.
+other shards: a buyer on one shard buys from sellers on any shard, and one order
+can mix sellers. Each item names its seller, product and the quantity the buyer
+wants; resolve them against the seller's primary before creating the order and
+persist server-derived product/price snapshots in its items. Product details are
+immutable after creation; only `stock` changes, through the reservation step in
+section 5. There is no payment or cross-shard transaction. Foreign keys stay
+inside one shard (products to sellers, reservations to products, orders to buyers,
+items to orders); cross-shard references from order items to products have none.
+Product and order IDs are unique within a shard by constraint and across shards by
+Snowflake generation, and the API always addresses a product together with its
+seller and an order together with its buyer.
 
 All writes, order validation, order status reads, and saga processing use `-rw`.
 Product reads also use `-rw` by default. An optional load-test profile uses `-ro`
@@ -415,7 +504,9 @@ Order creation, saga state, and its outgoing command commit together on one
 primary. The order CDC relay captures committed outbox inserts from every shard's
 WAL, rather than polling for unpublished rows. Freeze the hash and
 three-shard mapping: changing the divisor requires a data migration strategy.
-Public APIs expose decimal-string Snowflake business IDs, never shard selectors.
+Public APIs expose decimal-string Snowflake business IDs, never shard selectors:
+catalog calls carry the seller ID and order calls the buyer ID, and the services
+derive the shard from them.
 
 ### CDC from shard writes to the ledger
 
@@ -490,61 +581,189 @@ reader stopped this way. Pin and qualify Debezium with PostgreSQL,
 the application runtime, and RabbitMQ under [VERSIONS.md](VERSIONS.md) before
 implementation.
 
-### Migration ownership and database privileges
+### Database change management
 
-| Owner | Flyway `schemas` and `defaultSchema` | Qualified history table | Migration location |
+The database layer, not the services, owns every schema. Changes are either
+declarative Kubernetes resources or versioned SQL migrations: nothing is applied
+by hand, and no step needs a superuser session. The same definitions therefore
+run on the kind lab and on EKS (PLAN milestone 7), where Argo CD applies them.
+
+| Layer | Contents | Defined in | Applied on kind / on EKS |
 |---|---|---|---|
-| Product | `catalog` | `catalog.flyway_schema_history` | Product module's `db/migration/catalog` |
-| Order | `ordering` | `ordering.flyway_schema_history` | Order module's `db/migration/ordering` |
-| Ledger | `ledger`, in its separate database | `ledger.flyway_schema_history` | Ledger module's `db/migration/ledger` |
+| Instances | CNPG `Cluster`s, parameters, storage, database-wide hardening | `infra/helm/shardshop/templates/clusters.yaml` | `up.sh` / Argo CD |
+| Identities | Group roles, login roles, memberships | CNPG `DatabaseRole`s, one template rendered for each inventory entry (`infra/helm/shardshop/templates/databases.yaml`); one password Secret per login role, shared by every shard and referenced by name | `up.sh`, which generates the Secrets / Argo CD, with Secrets synced from AWS Secrets Manager |
+| Containers | Databases, schemas and their owners, CDC publications | CNPG `Database` and `Publication` resources, in the same per-shard template | `up.sh` / Argo CD |
+| Contents | Tables, constraints, indexes, functions, grants | Flyway streams under `database/`, run by Jobs rendered from `infra/helm/shardshop/templates/migration.yaml` | `migrate.sh` / Argo CD `PreSync` hook Jobs |
 
-Each Flyway instance scans only its owner's location and schema, with
-`table=flyway_schema_history`. Both owners can independently have `V1` because
-their histories are separate; neither uses `public.flyway_schema_history`.
-Flyway places history in its configured default schema. See
-[Flyway default schema](https://documentation.red-gate.com/flyway/reference/configuration/flyway-namespace/flyway-default-schema-setting).
+`database/` holds one Flyway stream per schema. Each stream is a folder with its
+SQL files and a `flyway.toml` that fixes the schema, the history table
+`<schema>.flyway_schema_history`, the location, retries, and session timeouts.
+The migration Jobs run Flyway OSS 13.8.1 on the pinned Canonical OpenJDK 25 JRE
+as the stream's migrator. `infra/images/flyway/Dockerfile` assembles this image
+without an application JAR or Maven build and invokes Flyway's main class directly
+because the JRE image has no shell. The image and Jobs select UID/GID 10001.
+After the topology guard, `migrate.sh` calls `scripts/build-migration-image.sh`
+before creating migration resources. That helper builds with Docker Buildx,
+pinned source/runtime images and `SOURCE_DATE_EPOCH=0`, loads the result into kind,
+and checks the CRI manifest digest on every node against the configured image pin.
+This is the local ARM64 delivery path; a future cloud deployment must publish and
+qualify the same final image for its target architecture.
 
-Bootstrap schemas with separate owner/migration roles. Run migration Jobs once
-per owner per primary; disable application-startup migration. Apply catalog
-migrations before order migrations that depend on them, verify each owner's
-version on all shards, and stop rollout on a failure. Owner versions need not
-match each other. Schema changes reach standbys through physical replication.
+The single ordered inventory `infra/shards.yaml` drives the shared chart's
+infrastructure, migration, and routing renders. Shared values carry image pins,
+resource budgets and database defaults; environment values carry storage and
+placement. Scripts snapshot the inventory, enumerate its entries, and never keep
+another shard list. The migration template names the cluster endpoint and CA
+Secret directly; no prefix replacement transformers are needed. Infrastructure
+rendering excludes Jobs and routing publication. Migrations run sequentially under
+a single-run lock and stop on the first failure; only complete success activates
+the routing ConfigMap. Existing resource names and storage identities are retained.
 
-Runtime roles are not schema owners, superusers, or members of migration roles.
-Give `product_app` only the required catalog DML and `order_app` ordering DML.
-The catalog migration owner grants cross-schema reads explicitly on each shard:
-
-```sql
-GRANT USAGE ON SCHEMA catalog TO order_app;
-GRANT SELECT ON TABLE catalog.products TO order_app;
+```text
+database/
+  shard/            # database `shardshop`, applied to every shard primary
+    catalog/        # flyway.toml, V1__catalog.sql, R__catalog_grants.sql
+    ordering/       # step 2.5
+  ledger/
+    ledger/         # database `ledger`, step 2.6
 ```
 
-Grant no catalog writes, DDL, or migration-history access to `order_app`, and no
-ordering access to `product_app`. Revoke inherited/public privileges that would
-bypass those limits. Use qualified SQL names and repeat explicit grants for any
-new catalog read surface. This enforces read-only product access at the database.
-Use bounded connection pools per service, pod, and endpoint; account for both
-product pods when budgeting PostgreSQL connections.
+#### Roles
 
-The ordering migration owner also provisions CDC access on each shard. It owns
-`ordering.order_outbox` and, with `CREATE` on the database, creates the
-dedicated publication for it. It also creates the offsets table that Debezium's
-JDBC store would otherwise try to create, and grants `order_app` DML on it. The
-separate CDC login gets its replication attribute from a privileged bootstrap
-role, such as a CloudNativePG managed role, plus `CONNECT`, `USAGE` on
-`ordering`, and `SELECT` on `ordering.order_outbox` only.
+Privileges belong to group roles that cannot log in; login roles only log in and
+inherit what their groups hold. This is PostgreSQL's role-membership model:
+passwords rotate without touching ownership, and adding a service means one login
+role and its memberships, with no SQL. For the catalog:
+
+| Role | Login | Member of | Rights |
+|---|---|---|---|
+| `catalog_owner` | no | none | Owns schema `catalog`, its objects, and its Flyway history |
+| `catalog_migrator` | yes | `catalog_owner`, without inheriting it | Runs Flyway; `flyway.toml` starts each connection with the `role` option set to `catalog_owner`, so no object belongs to a login |
+| `catalog_reader` | no | none | `SELECT` on sellers and products |
+| `catalog_writer` | no | none | `SELECT` and `INSERT` on sellers and products |
+| `catalog_reserver` | no | none | `SELECT`, `INSERT`, `UPDATE` and `DELETE` on `stock_reservations`, plus `UPDATE (stock)` on `products`; no `TRUNCATE` |
+| `product_app` | yes | `catalog_writer` | Product service |
+| `order_app` | yes | `catalog_reader`, `catalog_reserver`, and the ordering groups (step 2.5) | Order service |
+
+The ordering and ledger streams repeat the pattern with their own owner, migrator
+and groups. The CDC login is a `DatabaseRole` with the replication attribute and
+membership only in a group that may read `ordering.order_outbox`; its publication
+is a CNPG `Publication` resource. The Debezium offsets table belongs to the
+ordering stream, with DML granted to the order service's group.
+
+- Grant only to group roles. Each stream's repeatable `R__<schema>_grants.sql`
+  revokes everything from its groups and grants the complete matrix again, so one
+  reviewed file is the privilege model; Flyway reapplies it whenever it changes.
+  Any functions also revoke `EXECUTE` from `PUBLIC`,
+  which PostgreSQL grants by default.
+- No login role owns objects, runs DDL, or reads a Flyway history, and no service
+  login is a member of an owner role.
+- Database-wide hardening runs once, when a cluster is created
+  (`postInitApplicationSQL`): revoke `TEMPORARY` on the database and all access to
+  schema `public` from `PUBLIC`. `CONNECT` stays with `PUBLIC`; on its own it
+  grants nothing inside a schema.
+- The CNPG bootstrap owner (`shardshop_owner`, `ledger_owner`) owns only its
+  database. Each schema gets its own owner through the `Database` resource.
+
+#### Migrations
+
+- A stream runs as its migrator with `createSchemas=false`: the `Database`
+  resource creates each schema and its owner before any migration runs.
+- A versioned migration is immutable once it is committed; fix forward with a new
+  version. Before that, edit it and reset the lab's schema contents with a one-off
+  `flyway clean`, which the streams otherwise disable. Repeatable migrations hold
+  grants.
+- Every session is bounded: 5-second connect, 30-second socket, 15-second statement
+  and 5-second lock timeouts. Build large indexes with `CREATE INDEX CONCURRENTLY`
+  in a migration marked `executeInTransaction=false`.
+- Shards migrate one at a time, and a failure stops the rollout. Migrations are
+  not atomic across shards, so each change follows expand/contract: add the new
+  form, backfill, switch readers, and drop the old form in a later release, so
+  running code keeps working while shards differ. Run the catalog stream before
+  ordering. Schema changes reach standbys through physical replication.
+- Applications never migrate at startup. Use bounded connection pools per
+  service, pod, and endpoint; account for both product pods when budgeting
+  PostgreSQL connections.
+
+### Catalog: sellers, products, and stock
+
+`catalog.sellers` holds a seller's positive `BIGINT` ID and name.
+`catalog.products` references its seller with a foreign key and carries the name,
+price, currency, `initial_stock` and `stock`, with `0 <= stock <= initial_stock`.
+`catalog.stock_reservations` records one row per order and product, keyed by both
+IDs, with the reserved quantity and its release time. All three live on the
+seller's shard, so their foreign keys stay local.
+
+The order service writes `catalog.stock_reservations` and adjusts product stock
+through Java-managed transactions on the seller's shard. `catalog_reserver` has
+column-level `UPDATE (stock)` on products; `catalog_reader` supplies the reads
+needed for conditional updates. There is no stock trigger. The schema and grants
+are implemented; the Java reservation logic is planned in step 4.9.
+
+- **Reserve** inserts a row with `INSERT … ON CONFLICT (order_id, product_id) DO
+  NOTHING`. Only when a row was inserted, issue `UPDATE catalog.products SET
+  stock = stock - quantity WHERE product_id = … AND stock >= quantity` in the
+  same transaction. A zero-row decrement means insufficient stock after the
+  reservation's product foreign key has succeeded: roll back the reservation
+  insert and report `OUT_OF_STOCK`. A duplicate insert does not decrement again.
+  An unknown product fails the foreign key with SQLSTATE `23503`.
+- **Release** updates an active reservation with `UPDATE … SET released_at = …
+  WHERE … AND released_at IS NULL RETURNING product_id, quantity`. Restore the
+  returned quantity to the product in that same transaction. A repeated release
+  returns no row and restores nothing. Roll back both writes on failure.
+- Reservation identity and quantity are immutable in the application. The Java
+  reservation API does not reactivate or delete reservations; any future such
+  operation must also adjust stock in the same transaction.
+- The order service has no `TRUNCATE` and cannot update sellers or product
+  columns other than `stock`. Product and reservation changes must use the
+  transaction protocol above; grants alone do not enforce that relationship.
+
+`CHECK (stock >= 0)` backs up the conditional decrement. The planned reservation
+flow must keep `stock` equal to `initial_stock` minus active reserved quantities;
+direct SQL can violate that relationship while satisfying the table's checks.
+There is no restock operation yet. Until step 4.9 is implemented, writing a
+reservation alone does not change stock.
+
+**Decision: atomic conditional decrement.** Java issues the conditional stock
+update and the reservation write on the same connection in one shard transaction.
+This is the pattern AWS documents for DynamoDB (an update expression
+with a condition expression, and a request marker in the same write), combined
+with Amazon's client-token idempotency. Optimistic locking with a version column
+is not used: two orders for the same product would conflict and retry even when
+stock covers both, and it would not avoid the row lock that every `UPDATE` takes.
+Reservation writers run at `READ COMMITTED`, PostgreSQL's default, where a
+waiting update rechecks `stock >= quantity` against the newly committed row; at
+`REPEATABLE READ` or `SERIALIZABLE` the second writer would instead fail with
+`40001`. If one product's row ever limits throughput, the upgrade is one row per
+sellable unit, claimed with `SELECT … FOR UPDATE SKIP LOCKED` from a bounded,
+replenished pool, as Shopify describes; the lab does not need it. Sources:
+[DynamoDB condition expressions](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Expressions.ConditionExpressions.html),
+[high-concurrency conditional writes](https://aws.amazon.com/blogs/database/handle-conditional-write-errors-in-high-concurrency-scenarios-with-amazon-dynamodb/),
+[idempotent APIs](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/),
+[Shopify inventory reservations](https://shopify.engineering/scaling-inventory-reservations).
 
 ## 4. Product generation and read load
 
-Proposed HTTP contract:
+Proposed HTTP contract. Product's dataset API issues seller/product fixture IDs
+before these calls; workloads only forward the returned IDs. Creation checks
+issuance and the seller/product association. Data calls route by seller ID:
 
-- `PUT /api/v1/products/{productId}` creates an immutable product. Return `201`
-  on creation, `200` for an identical retry, and `409` for conflicting ID reuse.
-- `GET /api/v1/products/{productId}` returns product information or `404`.
+- `PUT /api/v1/sellers/{sellerId}` creates an immutable seller. Return `201` on
+  creation, `200` for an identical retry, and `409` for conflicting ID reuse.
+- `GET /api/v1/sellers/{sellerId}` returns the seller or `404`.
+- `PUT /api/v1/sellers/{sellerId}/products/{productId}` creates a product with its
+  initial stock. Return `201` on creation, `200` for an identical retry, `409` for
+  conflicting ID reuse, and `422 SELLER_NOT_FOUND` when the seller does not exist.
+  A retry is compared with the stored creation payload, including the initial
+  stock, so later stock changes never turn a retry into a conflict.
+- `GET /api/v1/sellers/{sellerId}/products/{productId}` returns the product with its
+  current stock, or `404`.
 
-Both endpoints validate the canonical positive decimal ID contract before IO;
+All endpoints validate the canonical positive decimal ID contract before IO;
 invalid path/body IDs return `400 INVALID_REQUEST`. Product JSON uses string IDs
-and storage uses `BIGINT`, including any product references in order items.
+and storage uses `BIGINT`, including the seller and product references in order
+items. Stock changes only through the order saga's reservations; no HTTP endpoint
+changes it.
 
 ### HTTP connection policy
 
@@ -575,17 +794,17 @@ sequenceDiagram
     participant Primary as Selected shard primary
     participant Replica as One of its replicas
 
-    Producer->>Service: PUT product with stable productId
+    Producer->>Service: PUT seller, then its products, with stable IDs
     Service->>API: Forward on the connection's selected backend
-    API->>Primary: Insert product or verify identical retry
+    API->>Primary: Insert or verify identical retry on the seller's shard
     Primary-->>API: Commit complete
     API-->>Producer: 201 Created or 200 OK
     Primary-->>Replica: Replicate WAL
 
     loop Configured request rate and bounded concurrency
-        Reader->>Service: GET product by productId
+        Reader->>Service: GET product by sellerId and productId
         Service->>API: Forward on the connection's selected backend
-        API->>API: Derive shard from productId
+        API->>API: Derive shard from sellerId
         alt Default primary reads
             API->>Primary: SELECT product
             Primary-->>API: Product or missing
@@ -620,25 +839,37 @@ Module 3 is the saga coordinator. The workflow uses local database transactions
 and asynchronous commands/results; there is no transaction spanning PostgreSQL,
 RabbitMQ, and the ledger database.
 
-Use `PUT /api/v1/orders/{orderId}` with a stable client-generated Snowflake ID and immutable
-creation payload. The first valid request commits a `PENDING_LEDGER` order and
-returns `202 Accepted`, its ID, and a status URL. An identical retry returns `202`
-while pending or `200` with the existing terminal status; conflicting ID reuse
-returns `409`. Compare a persisted normalized request fingerprint. A retry never
-starts another saga. `GET /api/v1/orders/{orderId}` returns the current status or
-`404`; accepting a request does not yet mean the ledger has recorded it.
+Buyers are created through the order service using its buyer dataset IDs. The
+producer obtains an order ID through the allocation API before constructing the
+order request. Order routes every buyer and order call by the buyer ID:
+
+- `PUT /api/v1/buyers/{buyerId}` creates an immutable buyer: `201` on creation,
+  `200` for an identical retry, `409` for conflicting ID reuse.
+  `GET /api/v1/buyers/{buyerId}` returns the buyer or `404`.
+- `PUT /api/v1/buyers/{buyerId}/orders/{orderId}` places an order with a stable
+  order-service-issued Snowflake ID and immutable creation payload; each item names
+  its `sellerId`, `productId` and the quantity the buyer wants. The first valid
+  request commits a `PENDING_STOCK` order on the buyer's shard and returns
+  `202 Accepted`, its ID, and a status URL. An identical retry returns `202`
+  while pending or `200` with the existing terminal status; conflicting ID reuse
+  returns `409`. Compare a persisted normalized request fingerprint. A retry never
+  starts another saga.
+- `GET /api/v1/buyers/{buyerId}/orders/{orderId}` returns the current status or
+  `404`; accepting a request does not yet mean the ledger has recorded it.
 
 ### Validation and HTTP errors
 
 | Condition | Response | Retry behavior |
 |---|---|---|
 | Noncanonical/out-of-range Snowflake ID, numeric JSON ID, malformed body, empty items, non-positive quantity, invalid currency code | `400 INVALID_REQUEST` | Correct the request |
-| A product is absent on its reachable primary | `422 PRODUCT_NOT_FOUND` | Seed or correct the product ID |
+| Creation ID was not issued by its owning service, or belongs to another parent | `400 INVALID_REQUEST` | Obtain and use the owning service's ID |
+| The buyer does not exist on its reachable primary | `422 BUYER_NOT_FOUND` | Create the buyer first |
+| A product is absent under its seller on the seller's reachable primary | `422 PRODUCT_NOT_FOUND` | Seed or correct the seller and product IDs |
 | Items use different currencies | `422 MIXED_CURRENCIES` | Submit an order in one currency |
 | Order currency differs from an item's product currency | `422 CURRENCY_MISMATCH` | Correct the order currency; no currency conversion |
 | Any required product shard is unavailable or its query times out | `503 CATALOG_UNAVAILABLE` | Bounded backoff with the same order ID and payload |
 | The order shard cannot be reached, including an unknown commit result | `503 ORDER_STORE_UNAVAILABLE` | Retry the same ID and payload; the existing order may already have committed |
-| A new saga/command/message ID cannot be generated after successful validation/state checks | `503 ID_GENERATION_UNAVAILABLE` | Retry the same order ID and payload; no partial saga/outbox commit |
+| A new saga or logical command ID cannot be generated during order acceptance | `503 ID_GENERATION_UNAVAILABLE` | Retry the same order ID and payload; no partial order/saga commit |
 | Existing order ID has a different normalized creation payload | `409 ORDER_ID_CONFLICT` | Do not reuse that ID for different data |
 | Order ID is quarantined after detected data loss | `409 ORDER_RECONCILIATION_REQUIRED` | Operator reconciliation must resolve it |
 
@@ -650,12 +881,15 @@ order:
 2. Open a short transaction on the order primary, take the per-order advisory
    lock, and check unresolved orphan quarantine first: return
    `409 ORDER_RECONCILIATION_REQUIRED` if ID reuse is blocked. Otherwise check
-   the existing order: a different fingerprint returns `409 ORDER_ID_CONFLICT`,
+   that the order allocation belongs to this buyer, then check the existing
+   order: a different fingerprint returns `409 ORDER_ID_CONFLICT`,
    and an identical fingerprint returns its saved status without catalog access.
-   Failure to perform this check returns `503 ORDER_STORE_UNAVAILABLE`. For a
-   new order, release the transaction, lock, and connection before catalog IO.
-3. Resolve all distinct product IDs through their primaries, with bounded
-   concurrency and a shared lookup deadline. No order-shard transaction, advisory
+   A new order whose buyer does not exist returns `422 BUYER_NOT_FOUND`; the buyer
+   lives on the same shard, so this needs no extra IO. Failure to perform these
+   checks returns `503 ORDER_STORE_UNAVAILABLE`. For a new order, release the
+   transaction, lock, and connection before catalog IO.
+3. Resolve all distinct seller and product pairs through their sellers'
+   primaries, with bounded concurrency and a shared lookup deadline. No order-shard transaction, advisory
    lock, or borrowed order connection may be held during these queries. Collect
    outcomes rather than returning whichever lookup finishes first. Within catalog
    validation, any unavailable shard/timeout wins as `503 CATALOG_UNAVAILABLE`,
@@ -670,17 +904,52 @@ order:
    preliminary catalog result. Order-store failure here returns
    `503 ORDER_STORE_UNAVAILABLE`. If still new and validation failed, return the
    selected catalog error without writing state. If valid, atomically insert the
-   order, snapshots, saga, and outbox. Generate the new saga/command/message IDs
-   only in this new-order path; failure gives `503 ID_GENERATION_UNAVAILABLE`
-   without a partial commit. Existing-order retries do not need new IDs. Unique
-   constraints remain the final guard.
+   order, snapshots, and a `PENDING_STOCK` saga; the command outbox follows the
+   stock reservation below. Reuse the allocated order ID; generate saga and
+   logical command IDs only for a new order. Generation failure gives
+   `503 ID_GENERATION_UNAVAILABLE` without a partial commit. Existing-order
+   retries do not need new IDs. Order generates transport/result IDs later, in
+   the transaction inserting the outbox; failure leaves the saga pending for
+   retry. Unique constraints remain the final guard.
 
-Products are immutable in this version, so validated snapshots can be used after
-reacquiring the order lock. No catalog query occurs inside either order
-transaction. Bound advisory-lock acquisition and the write transaction as well.
-Derive amounts from catalog prices and requested quantities; never trust client
-totals. Ledger currency support is a later business decision, allowing the
-deterministic EUR rejection scenario after successful HTTP validation.
+Product details are immutable, so validated snapshots can be used after
+reacquiring the order lock; stock is not part of the snapshot, and the reservation
+step decides it. No catalog query occurs inside either order transaction. Bound
+advisory-lock acquisition and the write transaction as well. Derive amounts from
+catalog prices and requested quantities; never trust client totals. Ledger
+currency support is a later business decision, allowing the deterministic EUR
+rejection scenario after successful HTTP validation.
+
+### Stock reservation
+
+After the order commits, the coordinator reserves every item on its seller's
+primary in a Java-managed transaction: insert a `catalog.stock_reservations` row
+with `INSERT … ON CONFLICT (order_id, product_id) DO NOTHING`, and only for a new
+row perform the conditional stock decrement. Roll back that transaction if the
+stock update affects no row. Process a shard's items in product-ID order when
+they share a transaction, including releases, to avoid inconsistent product lock
+ordering. No order transaction or advisory lock is held during these writes.
+
+- When every item is reserved, one transaction on the order shard moves the saga
+  to `PENDING_LEDGER` and inserts the `RecordOrder` outbox envelope, so the ledger
+  only ever sees orders whose stock is held.
+- When a conditional decrement affects no row, the coordinator reports
+  `OUT_OF_STOCK`, releases any earlier committed reservations, and cancels the
+  order. The ledger never receives it. No trigger-specific SQLSTATE is used.
+- An unavailable catalog shard or an unknown outcome leaves the saga in
+  `PENDING_STOCK`. The coordinator retries with bounded backoff; a retried insert
+  of an existing reservation does nothing, so no second decrement occurs.
+  Infrastructure failure never cancels an order.
+
+Every cancellation after a reservation releases the order's reservations: the
+coordinator commits `CANCELLED` first, then marks each active reservation released
+and restores its quantity in the same transaction on the seller's shard. Only an
+active-to-released transition restores stock. It records completion on the saga
+when all reservations are released, retrying unfinished releases.
+One worker at a time handles a saga's reservations and releases, for example under
+a per-saga lease, so a stale reserve retry never lands after that saga's release.
+Stock never goes below zero: the conditional decrement refuses, and the table's
+check constraint backs it up.
 
 ### Successful order
 
@@ -689,19 +958,27 @@ sequenceDiagram
     participant Client as Order producer pod
     participant Order as Order service
     participant DB as Selected order shard primary
+    participant Catalog as Sellers' shard primaries
     participant CDC as Order service CDC relay for this shard
     participant MQ as RabbitMQ
     participant Ledger as Ledger consumer and relay
     participant LDB as Dedicated ledger database
 
-    Client->>Order: PUT order with stable orderId
+    Client->>Order: Allocate orderId using configured run name and ordinal
+    Order->>DB: TX: persist or recover the buyer's order allocation
+    Order-->>Client: Same service-issued orderId on every retry
+    Client->>Order: PUT order under its buyer, with issued orderId
     Order->>DB: Short TX: lock and check existing order or quarantine
     DB-->>Order: New order, release lock and connection
     Note over Order: Resolve and validate products outside the order transaction
     Order->>DB: New short TX: lock and re-check order or quarantine
-    Order->>DB: TX: order + items + PENDING_LEDGER saga + RecordOrder outbox
+    Order->>DB: TX: order + items + PENDING_STOCK saga
     DB-->>Order: Commit
     Order-->>Client: 202 Accepted + status URL
+    Order->>Catalog: Reserve each item, keyed by order and product
+    Catalog-->>Order: Reserved
+    Order->>DB: TX: saga PENDING_LEDGER + RecordOrder outbox
+    DB-->>Order: Commit
 
     DB-->>CDC: WAL: committed RecordOrder outbox insert
     CDC->>MQ: Publish RecordOrder persistently with mandatory routing
@@ -740,7 +1017,8 @@ database. Module 3 never writes directly to the ledger database.
 A definitive ledger business rejection, such as an unsupported currency, records
 a durable `REJECTED` operation outcome without inserting a ledger entry. The
 coordinator compensates the already committed order creation by marking the order
-and saga `CANCELLED`, retaining their audit history.
+and saga `CANCELLED`, retaining their audit history, and then releases the
+order's stock reservations as described above.
 
 ```mermaid
 sequenceDiagram
@@ -762,13 +1040,17 @@ sequenceDiagram
     Order->>DB: TX: inbox + compensate order and saga to CANCELLED
     DB-->>Order: Commit
     Order->>MQ: Acknowledge result delivery
+    Order->>Order: Release each item's stock reservation, then record the release
 ```
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PENDING_LEDGER: Order and command outbox commit
+    [*] --> PENDING_STOCK: Order and saga commit
+    PENDING_STOCK --> PENDING_LEDGER: Every item reserved / command outbox commit
+    PENDING_STOCK --> CANCELLED: Insufficient stock / release reservations
+    PENDING_STOCK --> PENDING_STOCK: Catalog unavailable, retry
     PENDING_LEDGER --> CONFIRMED: LedgerRecorded
-    PENDING_LEDGER --> CANCELLED: LedgerRejected / compensate creation
+    PENDING_LEDGER --> CANCELLED: LedgerRejected / compensate and release stock
     PENDING_LEDGER --> PENDING_LEDGER: Transient failure or result delayed
     CONFIRMED --> [*]
     CANCELLED --> [*]
@@ -787,11 +1069,13 @@ entry and saga, not deletion of the original ledger row.
 Persist `reconciliation_attempts` and `next_reconciliation_at` on
 `ordering.order_sagas`, initialized to zero and creation time plus 60 seconds.
 The coordinator scans each primary every 30 seconds for eligible `PENDING_LEDGER`
-sagas. Under the saga lock, re-check the state, schedule, and five-attempt limit.
+sagas. The same scan retries `PENDING_STOCK` sagas and unfinished releases with
+bounded backoff; those retries consume no reconciliation attempts. Under the saga lock, re-check the state, schedule, and five-attempt limit.
 If there is already an unpublished command, its CDC reader resumes/retries that
 captured insert without incrementing the reconciliation counter; a reader stopped
 by slot, offset, or WAL loss must be recovered first. Otherwise atomically enqueue another
-`RecordOrder` with a new transport `messageId` but the same logical `commandId`,
+`RecordOrder` with new order-generated transport `messageId` and `resultMessageId`
+but the same logical `commandId`,
 `sagaId`, `orderId`, fingerprint, and immutable snapshot, increment the saga's
 counter, and persist its next eligible time in the same transaction.
 
@@ -806,8 +1090,17 @@ deleted, and retain it with the saga through terminal-state retention and backup
 The ledger looks up the permanent operation decision before short-circuiting on
 an inbox duplicate. For an identical command that already has a decision, it
 **enqueues the stored `LedgerRecorded` or `LedgerRejected` outcome again** in a
-local transaction, with a fresh result `messageId` and the original correlation
-IDs. It does this even if the command's transport `messageId` was seen before.
+local transaction, using the command's reserved `resultMessageId` as its
+`messageId` and preserving the original correlation IDs. It does this even if
+the command's transport `messageId` was seen before. Recreate a cleaned result
+outbox row or mark the existing row pending again; ignoring an insert conflict
+would suppress the replay. Reconstruct the same immutable envelope for that
+result ID, without changing timestamps or payload fields. Advance a durable
+publication-attempt counter, retained through outbox cleanup, and let the
+publisher mark only the attempt it sent, so an older in-flight confirm cannot
+erase a newer replay request. Neither a duplicate nor a replay generates an ID
+in ledger. Transport IDs, including `resultMessageId`, are excluded from the
+business fingerprint and permanent-decision conflict comparison.
 It never reevaluates ledger policy or inserts another entry. Persist a conflicting
 command snapshot/identity in `ledger.conflicting_commands`, commit, then
 acknowledge and alert. Preserve the original decision, without emitting a business
@@ -864,7 +1157,7 @@ unrouteable envelopes use the source queue's DLQ instead.
 A result for an order absent on a **reachable primary** is different from a
 temporarily unavailable shard. Persist its envelope, logical IDs, fingerprint,
 outcome, and audit metadata in `ordering.orphan_results` on the expected shard,
-then acknowledge and alert. The quarantine has no foreign key to `orders` and
+which the result's buyer ID selects, then acknowledge and alert. The quarantine has no foreign key to `orders` and
 blocks new HTTP creation with that order ID. If the shard is unavailable, use
 bounded broker retries, then DLQ parking and saga reconciliation as specified in
 section 6, instead of declaring the order missing. A long failover can exceed
@@ -888,7 +1181,8 @@ was lost. After an asynchronous-loss drill it should find none: CDC publishes no
 command for WAL the standbys lack (section 3), so a lost order leaves no ledger
 entry. It persists missing or mismatched pairs in the same quarantine and reports
 them; it is privileged operational tooling, not cross-database access in either
-service's runtime.
+service's runtime. It also lists stock reservations whose order is missing; they
+are released only after that order's fate is decided.
 
 Restore the order and original saga identity from a verified backup or retained
 creation record, then replay the command/result and clear quarantine only after
@@ -910,10 +1204,14 @@ acceptance criteria.
 Declare `ledger.commands` as a durable direct exchange and bind
 `ledger.record-order` with the routing key `ledger.record-order` before CDC starts.
 
-Messages carry `messageId`, logical `commandId`, `sagaId`, `orderId`, type, schema
-version, fingerprint, and immutable business data. Results retain command/saga
-correlation and the stored outcome. All four ID fields use the same canonical
-decimal-string Snowflake contract. The order ID routes results to its shard.
+Messages carry `messageId`, logical `commandId`, `sagaId`, `orderId`, `buyerId`,
+type, schema version, fingerprint, and immutable business data. Commands also
+carry `resultMessageId`, reserved by order for ledger to copy into the result's
+`messageId`. Results retain command/saga correlation, including the buyer ID,
+and the stored outcome. All ID fields use the same canonical decimal-string
+Snowflake contract and originate in order; ledger never generates them. The
+buyer ID routes results to the order's shard. Order checks that a result uses
+one of the result IDs it reserved for that saga's command envelopes.
 
 The reviewed community baseline is RabbitMQ **4.3.6**, with a pinned image digest
 and the compatible bundled **Erlang/OTP 27.3.4.17** runtime, for native quorum delayed
@@ -1052,7 +1350,8 @@ See [RabbitMQ queue length limits](https://www.rabbitmq.com/docs/maxlength).
 Retain `ledger.ledger_operations` **permanently**, including rejected decisions,
 logical IDs, request fingerprint, immutable snapshot, and result data sufficient
 to regenerate the exact outcome. Ledger entries are also permanent. Retain order
-and saga terminal identities/states, and unresolved quarantine records; never
+and saga terminal identities/states, durable order-allocation mappings, reserved
+result identities, and unresolved quarantine records; never
 recycle order IDs. An old rejected operation cannot become recorded merely because
 the ledger's currency allowlist changed.
 
@@ -1071,8 +1370,9 @@ checks still apply. Backups and restores must preserve those permanent decisions
 
 Sharding distributes data; replication provides two standbys for each shard. The
 product service's two pods scale HTTP handling independently of these database
-roles. The catalog read contract couples product/order schema changes, while the
-ledger has independent storage and eventual consistency with orders.
+roles. The catalog read and reservation contracts couple product/order schema
+changes, while the ledger has independent storage and eventual consistency with
+orders.
 
 Asynchronous PostgreSQL replication may lose acknowledged commits on failover,
 so an accepted order can disappear; outbox/idempotency logic does not repair that
@@ -1098,19 +1398,26 @@ Acceptance scenarios for implementation:
    credentials/tables. With 16 connections and bounded connection lifetimes,
    observe positive request-counter deltas on both ready product pods within
    120 seconds, then repeat after one pod restarts.
-2. Verify deterministic product/order routing across all three shards and physical
-   replication only within each shard. Independently migrate catalog and ordering
-   from `V1` without history collisions on all primaries. Assert `order_app` can
-   select products but cannot write catalog data or run DDL, and `product_app`
-   cannot access ordering tables. Run the version-2 routing vectors in
-   `shardshop-sharding`, including values above 2^53 and signed-long boundary
-   checks, and verify that both services route through it.
+2. Verify deterministic seller/buyer routing across all three shards, with each
+   seller's products and reservations on the seller's shard, each buyer's orders on
+   the buyer's shard, a buyer ordering from sellers on other shards, and physical
+   replication only within each shard. Create schemas through `Database`
+   resources and migrate the catalog and ordering streams without history
+   collisions on all primaries. Assert the role matrix: `order_app` can select
+   sellers and products, write stock reservations without `TRUNCATE`, and update
+   only the `stock` column of products; no other catalog writes or DDL are allowed.
+   `product_app` cannot touch reservations or
+   ordering tables; no login role owns an object. Run the version-2 routing
+   vectors in `shardshop-sharding`, including values above 2^53 and signed-long
+   boundary checks, and verify that both services route through it.
 3. Exercise heavy product reads, primary read-after-write behavior, and explicitly
    stale replica reads under controlled lag.
-4. Verify an accepted order reaches `CONFIRMED` with exactly one ledger row;
-   duplicate HTTP requests and duplicate messages create no additional records.
+4. Verify an accepted order reaches `CONFIRMED` with exactly one ledger row, one
+   reservation per item, and stock reduced exactly once; duplicate HTTP requests
+   and duplicate messages create no additional records.
 5. Use fixed order IDs and EUR-only products selected by the configured rejection
-   share. Verify `202` becomes `CANCELLED` with no ledger entry. Change the ledger
+   share. Verify `202` becomes `CANCELLED` with no ledger entry and that its
+   reservations are released and stock restored. Change the ledger
    allowlist to include EUR, clean transport inbox/outbox rows, and replay the
    old command: the permanent rejected decision must still win. Test conflicting
    payloads separately from identical retries.
@@ -1156,7 +1463,7 @@ Acceptance scenarios for implementation:
    preserves acknowledged saga commits, and that losing the primary together with
    one standby triggers no automatic promotion when the survivor cannot be
    confirmed current.
-9. Assert the HTTP validation table: malformed input, missing products, mixed or
+9. Assert the HTTP validation table: malformed input, unknown buyers, missing products, mixed or
    mismatched currencies, unavailable catalog shards, ID conflicts, and unknown
    commit outcomes. Validation failures create no saga/outbox rows; identical
    retries of an existing order still work with its product shard unavailable.
@@ -1165,17 +1472,32 @@ Acceptance scenarios for implementation:
    Hang catalog IO and prove no order-shard transaction, advisory lock, or borrowed
    order connection spans it. Race that lookup with order creation or quarantine
    and verify the final locked re-check takes precedence over its catalog result.
-10. Verify library generation under concurrent callers, sequence exhaustion, clock
-    failure, and epoch/timestamp boundaries using a controlled `TimeSource`.
+10. Verify product/order library generation under concurrent callers, sequence
+    exhaustion, clock failure, and epoch/timestamp boundaries using a controlled `TimeSource`.
     Concurrent JVM starts, rolling replacements, and container restarts must obtain
     distinct generator allocations. Test lost CAS responses, stale/missing registry,
     and allocation exhaustion without emitting duplicates. Verify registry retention
-    during backup/restore. Rerun seeding with the same dataset configuration and
-    assert identical product IDs/payloads; retries preserve order and correlation
-    IDs. Round-trip large IDs exactly through HTTP, messages, JDBC, and the routing
+    during backup/restore. Rerun service-side dataset generation and seeding with
+    the same configuration and assert identical product IDs/payloads. Workloads
+    obtain IDs only from APIs, have no generator dependency or allocator access,
+    and preserve returned IDs on retries. Lost allocation responses, concurrent
+    requests, and producer restarts return the same order ID; unissued IDs and
+    allocations for another buyer are rejected. Ledger only uses order-reserved
+    result IDs, including duplicate/reconciliation replay after outbox cleanup.
+    Round-trip large IDs exactly through HTTP, messages, JDBC, and the routing
     vectors;
     reject numeric JSON IDs, noncanonical text including LF/CRLF/TAB, and
     out-of-range values before conversion or hashing, with HTTP 400 for invalid IDs.
+11. Race concurrent orders for the same product and verify stock never goes below
+    zero and never oversells. An order that exceeds the remaining stock becomes
+    `CANCELLED` with reason `OUT_OF_STOCK` and never reaches the ledger, and its
+    partial reservations are released. Retried reservations and releases, and a
+    catalog shard outage during reservation, change stock at most once per order
+    and product. Inject failures between the Java reservation and stock writes to
+    prove both roll back together. The Java API exposes no reservation quantity
+    changes, reactivation or deletion, and database `TRUNCATE` is refused. After
+    every supported reserve/release run, each product's `stock` equals its
+    `initial_stock` minus its active reserved quantities.
 
 Use unit and contract tests for routing, validation, duplicate handling, stored
 outcome replay, and injected-clock reconciliation schedules. Use PostgreSQL and

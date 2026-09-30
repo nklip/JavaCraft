@@ -3,6 +3,7 @@ package dev.nklip.javacraft.shardshop.sharding;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvFileSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.MockedStatic;
 
@@ -16,12 +17,41 @@ import static org.mockito.Mockito.mockStatic;
 
 class ShardRouterTest {
 
-    private final ShardRouter router = new ShardRouter();
+    private final ShardRouter router = new ShardRouter(ShardTopology.fromNames("shard-a,shard-b,shard-c"));
 
     @ParameterizedTest(name = "{0}")
     @CsvFileSource(resources = "/routing-vectors.csv")
     void routesGoldenVectors(String name, long id, String expectedShard) {
         assertEquals(expectedShard, router.route(id).clusterName(), name);
+    }
+
+    // Expected indices were calculated with Python hashlib, independently of Java.
+    @ParameterizedTest
+    @CsvSource({
+            "1, 0, 1, 3",
+            "2, 0, 1, 1",
+            "3, 0, 0, 2",
+            "9007199254740993, 0, 1, 1",
+            "9223372036854775807, 0, 1, 1"
+    })
+    void routesOneTwoAndFourShardTopologies(long id, int oneShardIndex, int twoShardIndex, int fourShardIndex) {
+        assertRoute(id, oneShardIndex, "shard-a");
+        assertRoute(id, twoShardIndex, "shard-a,shard-b");
+        assertRoute(id, fourShardIndex, "shard-a,shard-b,shard-c,shard-d");
+    }
+
+    @Test
+    void usesPublishedOrderRatherThanSortingNames() {
+        ShardTopology topology = ShardTopology.fromNames("shard-b,shard-a");
+
+        assertEquals("shard-a", new ShardRouter(topology).route(1L).clusterName());
+    }
+
+    @Test
+    void requiresTopology() {
+        NullPointerException exception = assertThrows(NullPointerException.class, () -> new ShardRouter(null));
+
+        assertEquals("Shard topology is required", exception.getMessage());
     }
 
     @ParameterizedTest
@@ -42,5 +72,11 @@ class ShardRouterTest {
             assertEquals("SHA-256 is not available", exception.getMessage());
             assertSame(missing, exception.getCause());
         }
+    }
+
+    private static void assertRoute(long id, int expectedIndex, String names) {
+        ShardTopology topology = ShardTopology.fromNames(names);
+
+        assertSame(topology.shards().get(expectedIndex), new ShardRouter(topology).route(id));
     }
 }

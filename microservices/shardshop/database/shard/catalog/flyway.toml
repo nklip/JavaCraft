@@ -1,0 +1,21 @@
+# Catalog stream. Each migration Job mounts this folder at /flyway/sql and logs in as
+# catalog_migrator through FLYWAY_URL, FLYWAY_USER and FLYWAY_PASSWORD.
+[environments.default]
+schemas = ["catalog"]
+connectRetries = 2
+connectRetriesInterval = 1
+# Every session acts as catalog_owner from its first statement, so objects and history
+# belong to the owner group, never to the login; statements and locks stay bounded.
+jdbcProperties = { connectTimeout = "5", socketTimeout = "30", options = "-c role=catalog_owner -c statement_timeout=15000 -c lock_timeout=5000" }
+
+[flyway]
+environment = "default"
+locations = ["filesystem:/flyway/sql"]
+defaultSchema = "catalog"
+table = "flyway_schema_history"
+# The CNPG Database resource creates the schema with its owner; migrations never do.
+createSchemas = false
+validateMigrationNaming = true
+failOnMissingLocations = true
+cleanDisabled = true
+lockRetryCount = 5

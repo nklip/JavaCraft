@@ -1,0 +1,52 @@
+{{- if eq .Values.render "infrastructure" }}
+{{- $roles := list
+      (dict "name" "catalog_owner")
+      (dict "name" "catalog_reader")
+      (dict "name" "catalog_writer")
+      (dict "name" "catalog_reserver")
+      (dict "name" "catalog_migrator" "login" true "inherit" false "group" "catalog_owner")
+      (dict "name" "product_app" "login" true "inherit" true "group" "catalog_writer") -}}
+{{- range .Values.shards }}
+{{- $shard := .name }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: {{ $shard }}-shardshop
+  namespace: {{ $.Release.Namespace | quote }}
+spec:
+  cluster:
+    name: {{ $shard | quote }}
+  name: shardshop
+  owner: shardshop_owner
+  databaseReclaimPolicy: retain
+  schemas:
+    - name: catalog
+      owner: catalog_owner
+      ensure: present
+{{- range $roles }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: DatabaseRole
+metadata:
+  name: {{ $shard }}-{{ .name | replace "_" "-" }}
+  namespace: {{ $.Release.Namespace | quote }}
+spec:
+  cluster:
+    name: {{ $shard | quote }}
+  name: {{ .name | quote }}
+  {{- if .login }}
+  login: true
+  inherit: {{ .inherit }}
+  inRoles:
+    - {{ .group }}
+  passwordSecret:
+    name: {{ .name | replace "_" "-" }}
+  {{- else }}
+  login: false
+  disablePassword: true
+  {{- end }}
+  databaseRoleReclaimPolicy: retain
+{{- end }}
+{{- end }}
+{{- end }}

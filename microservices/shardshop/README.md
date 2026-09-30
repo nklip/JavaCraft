@@ -7,7 +7,8 @@ Steps 0.2–0.4 supply six Spring Boot application skeletons, their build/test
 configuration, and the shared shard-routing library. Each application starts a minimal
 application context and exits; no HTTP server, database connection, messaging,
 seeding, or load generation is implemented yet. No Docker or Kubernetes is
-needed to build or run these skeletons.
+needed to build or test these skeletons. Product and order now require a routing
+configuration file when launched; tests supply their own fixture.
 
 | Maven module | Entry point |
 |---|---|
@@ -24,6 +25,14 @@ library holding the shard-routing rule; only `shardshop-product` and
 applications and has no executable code. Applications have no dependencies on
 one another, and no API, model, or JSON types are shared.
 
+The target architecture permits ID creation only in `shardshop-product` and
+`shardshop-order`. Product issues seller/product IDs; order issues buyer/order,
+saga, command and message IDs, including ledger result IDs. Workload modules
+obtain IDs through service APIs and reuse them on retries; they never generate
+IDs or derive fixture IDs. Ledger reuses IDs supplied by order. Workloads and
+ledger have no Snowflake dependency or generator-allocator access. These API and
+generation contracts remain planned; the current applications are skeletons.
+
 ## Java and Maven
 
 Set `JAVA_HOME` to a JDK **25 or newer**. The SDKMAN `25-open` installation
@@ -36,6 +45,12 @@ export JAVA_HOME="$HOME/.sdkman/candidates/java/25-open"
 The lock records an official macOS arm64 OpenJDK 25 archive and its SHA-256 as a
 reference download. The build has no vendor or exact-patch restriction. Use the
 same JDK's `bin/java` to launch the packaged applications.
+
+The selected OpenJDK runtime also applies to Java migration tools. Application
+and Flyway containers use the pinned Canonical OpenJDK 25 JRE on Ubuntu 26.04;
+the Flyway image is assembled from its upstream libraries without copying the
+upstream image's Temurin runtime. This does not change the local `25-open`
+installation or the JDK selected by `JAVA_HOME`.
 
 Maven comes from the command line: use the `mvn` on your `PATH`. ShardShop keeps
 the repository's minimums, Maven 3.9.0 and Java **25**; newer JDKs such as 26 also
@@ -53,10 +68,15 @@ with `-pl`; `-am` also builds `shardshop-sharding` for product and order:
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product -am clean verify
+# After up.sh and migrate.sh have provisioned the lab:
+kubectl --context kind-shardshop -n shardshop get configmap shardshop-routing \
+    -o jsonpath='{.data.application\.properties}' > /tmp/shardshop-routing.properties
+export SHARDSHOP_ROUTING_CONFIG=file:/tmp/shardshop-routing.properties
 "$JAVA_HOME/bin/java" -jar microservices/shardshop/shardshop-product/target/shardshop-product-1.0-SNAPSHOT.jar
 ```
 
-Verify all six one at a time, without installing anything:
+Verify all six one at a time, without installing anything. For the JAR launches,
+keep `SHARDSHOP_ROUTING_CONFIG` exported as above:
 
 ```bash
 for module in \
@@ -121,24 +141,88 @@ online mode; with `-o` it is skipped with a warning. Unit coverage is under
 `target/site/jacoco`; integration coverage uses `jacoco-it.exec` and
 `target/site/jacoco-it`. `-Djacoco.skip=true` works for both runners.
 
-## Local Kubernetes cluster, operator and databases (steps 1.1–2.2)
+## Shard inventory and routing
+
+[`infra/shards.yaml`](infra/shards.yaml) is the only maintained list of shards.
+Its order defines routing indexes. The initial inventory is:
+
+```yaml
+shards:
+  - name: shard-a
+  - name: shard-b
+  - name: shard-c
+```
+
+[`infra/helm/shardshop/`](infra/helm/shardshop/) contains shared templates for
+clusters, databases/roles, migration Jobs, and routing configuration. Common
+settings live in `values.yaml`; kind storage/placement settings live in
+`kind-values.yaml`. Helm only renders these resources; `kubectl apply` owns their
+lifecycle, preserving existing names and PVCs. There are no per-shard directories,
+committed generated manifests, or new database Helm releases. The separate ledger
+is excluded from the shard list. Names must start with a lowercase letter, contain
+only lowercase letters, digits and hyphens, end in a letter/digit, and fit 45 characters.
+Empty/duplicate or malformed names and `ledger-db` fail before deployment.
+
+Preview without Kubernetes access:
+
+```bash
+bash microservices/shardshop/scripts/render.sh infrastructure
+bash microservices/shardshop/scripts/render.sh migration shard-a
+bash microservices/shardshop/scripts/render.sh routing
+```
+
+The scripts use Python 3's standard JSON library and Helm, with no YAML package to
+install. Inventory and script behavior is verified by live runs on the lab.
+`SHARDSHOP_INVENTORY=/path/inventory.yaml` selects another inventory;
+`SHARDSHOP_ENV_VALUES=/path/values.yaml` replaces the kind overrides.
+
+`up.sh` provisions the declared shards. `migrate.sh` waits for their deployed
+clusters/databases, migrates sequentially, then publishes `shardshop-routing`.
+That ConfigMap contains `application.properties` with the ordered names, plus a
+`version` key equal to SHA-256 of their comma-joined UTF-8 names, which the scripts
+use to refuse a changed topology. Publication is atomic;
+a failed migration leaves the previous routing configuration intact. Startup and
+migration snapshot the input inventory for the duration of each run.
+
+Product and order import `/etc/shardshop/routing/application.properties` at startup;
+future Deployments must mount the ConfigMap there. Local JAR launches copy
+its properties to a file and set `SHARDSHOP_ROUTING_CONFIG` as shown above. The Java
+library rejects missing, empty or duplicate names, keeps an immutable list, and
+routes the unsigned SHA-256 digest of a positive decimal ID modulo the list size.
+Missing or invalid configuration fails startup. The initial three-shard vectors are
+unchanged.
+Applications do not watch cluster health or reload routing while running; a failed
+primary remains on the same shard, behind the same `-rw` Service.
+
+Adding a shard means adding one inventory entry; all corresponding resources and
+routing settings are generated. Changing membership **or order** changes ownership
+of existing IDs. `up.sh` and `migrate.sh` refuse a list that differs from an already
+published version. For a different topology, stop applications/workloads and reset
+this disposable lab (`kind delete cluster --name shardshop`), then run `up.sh`,
+`migrate.sh`, export the new configuration, and reseed before restarting workloads.
+This reset destroys the lab's data. Online data redistribution and rolling topology
+changes are outside this implementation; deleting the routing ConfigMap alone
+would bypass the guard without moving any data.
+
+## Local Kubernetes cluster, operator and databases (steps 1.1–2.3)
 
 The lab runs on kind, and everything through the final acceptance run works on
 this one machine; the AWS track with Terraform (PLAN milestone 7) is optional and
-comes later. Take `docker`, `kind`, `kubectl`, and `helm` from your `PATH`, like
+comes later. Take `docker`, `kind`, `kubectl`, `helm`, `openssl`, and `python3` from your `PATH`, like
 Maven; this project never downloads or pins tool binaries. It was tested with
 Docker Desktop 4.92.0, kind 0.33.0, kubectl 1.36, and Helm 4.3.0 (for example,
 `brew install kind kubectl helm`). The node image's advisories were reviewed on
 2026-09-28 and accepted for this loopback-only, disposable lab. Give Docker
 Desktop's VM at least 12 GB of memory (Settings → Resources); `up.sh` stops early
-if it has less.
+if it has less. Migrations also require Docker's Buildx plugin: the migration
+script builds the OpenJDK Flyway image and loads it into the kind nodes.
 
 [`infra/kind.yaml`](infra/kind.yaml) defines one control plane and three workers,
 one per instance of each three-instance shard, on the digest-pinned Kubernetes
 1.36.4 node image, with the API server on 127.0.0.1. kind cannot add nodes, so a
 cluster created with fewer workers must be deleted and recreated once.
 Manifests follow the [portability rules](PLAN.md#portability-beyond-kind): a
-common base in `infra/k8s/base/` and the kind overlay in `infra/k8s/overlays/kind/`.
+shared chart in `infra/helm/shardshop/` with kind settings in `kind-values.yaml`.
 
 Create or reuse the cluster from the repository root:
 
@@ -149,11 +233,17 @@ bash microservices/shardshop/scripts/up.sh
 It creates the `shardshop` cluster if it does not exist and waits for all nodes to
 be Ready. It then installs CloudNativePG 1.30.1 from its vendored chart with
 `helm upgrade --install`, waiting up to 3 minutes for the operator, waits up to 180
-seconds for every CRD to be Established, and applies the kind overlay. That creates
+seconds for every CRD to be Established, and renders/applies the shared chart. That creates
 the `shardshop` namespace with the `restricted` Pod Security label, three
 three-instance clusters (`shard-a`, `shard-b`, `shard-c`), and the single-instance
 `ledger-db` cluster. It waits up to 300 seconds for every database cluster to be
-Ready. A fresh run takes about five minutes, mostly image
+Ready. It also creates a random password Secret for each login role
+(`catalog-migrator`, `product-app`) only if absent, shared by every shard. It
+applies the catalog roles as CNPG `DatabaseRole`s and each shard's `Database`
+resource, which creates schema `catalog` owned by `catalog_owner`, and waits up to
+180 seconds for each to report `applied`. It never creates tables or other schema
+contents; `migrate.sh` does (step 2.3 below).
+A fresh run takes about five minutes, mostly image
 pulls; a rerun takes seconds. kind adds the `kind-shardshop` context to
 `~/.kube/config` and selects it; the script passes that context on every command
 and never deletes a cluster, namespace, or volume. Check the result:
@@ -173,7 +263,7 @@ kubectl --context kind-shardshop -n shardshop get clusters,pods,pvc
 `values.yaml`, which pins the operator by tag and digest. The chart uses that one
 reference for both the operator image and `OPERATOR_IMAGE_NAME`, and it keeps its
 CRDs if the release is ever uninstalled, so the database clusters survive. The
-operator installs before the application overlay so its APIs and webhooks are
+operator installs before the shared database resources so its APIs and webhooks are
 ready for database resources. To upgrade, review the lock's support deadline, then
 vendor and verify the new chart and update `values.yaml` and the lock together;
 a later cloud target installs the same chart and values.
@@ -182,13 +272,16 @@ Each shard runs PostgreSQL 18.6 with one primary and two standbys, each on a sep
 worker with its own 2 GiB PVC. The nine pods share three workers; anti-affinity is
 scoped to each shard. Each shard is an independent database: physical replication
 never copies rows between shards. The version tag lets CNPG identify PostgreSQL
-upgrades; the accompanying digest pins the image bytes. The base declares the
-database, resources and replication settings; the kind overlay patches every CNPG
-`Cluster` to select `standard` storage and require placement on distinct workers,
-so later shards need no overlay changes. No pod security context is
+upgrades; the accompanying digest pins the image bytes. The chart declares the
+database, resources and replication settings; kind values select `standard`
+storage and require placement on distinct workers for every CNPG `Cluster`,
+so additional inventory entries need no placement changes. No pod security context is
 hard-coded. CNPG generates each shard's `<shard>-app` Secret at runtime for the
-`shardshop_owner` bootstrap role and `shardshop` database. No passwords are committed
-or printed; application and migration roles arrive in steps 2.3–2.4.
+`shardshop_owner` bootstrap role, which owns only the `shardshop` database. When a
+cluster is created, its `postInitApplicationSQL` revokes `TEMPORARY` on the
+database and all access to schema `public` from `PUBLIC`; `CONNECT` stays. No
+passwords are committed or printed; the catalog roles arrive in step 2.3 and the
+ordering roles in step 2.5.
 
 Step 2.1 reduces each database's memory limit from 1 GiB to 512 MiB after
 measuring the tiny-data lab; requests stay at 512 MiB and 250m CPU, with a one-CPU
@@ -210,19 +303,20 @@ retain the WAL each standby needs, so a large extra floor only fills the 2 GiB v
 These are not hard disk-usage caps: monitor free space and lag, and recover an
 invalidated slot explicitly after an outage that exceeds the retained WAL budget.
 
-Run the reversible topology drill against each shard in this disposable lab:
+Run the reversible topology drill in this disposable lab (defaults to the first
+inventory entry; pass another inventory name to drill that shard):
 
 ```bash
-for shard in shard-a shard-b shard-c; do
-  bash microservices/shardshop/scripts/verify-topology.sh "$shard" || exit 1
-done
+bash microservices/shardshop/scripts/verify-topology.sh
 ```
 
-Each invocation first checks all three writable primaries, six quorum standbys,
-independent database lineages, `-rw`/`-ro` Service endpoints and nine distinct Bound
-PVCs/backing volumes. It then drills the selected shard (`shard-a` by default):
-its golden-vector fixture must reach both standbys, writes on standbys must fail,
-and the probe schema must remain absent from all six peer-shard instances.
+Each invocation checks every inventory shard's writable primary, quorum standbys,
+independent database lineage, `-rw`/`-ro` Service endpoints and distinct Bound
+PVCs/backing volumes. Counts come from the inventory. It then drills the selected
+shard (the first entry by default): a probe row must reach both standbys, writes
+on standbys must fail, and the probe schema must remain absent from peer shards.
+Routing fixtures are tested separately in Java. This failure drill requires the
+lab's three instances per shard; changing the number of shards needs no script edit.
 It checks failover-slot synchronization and PVC persistence, replaces one standby
 pod, and temporarily fences one then both standbys to observe quorum commits.
 Reads and writes are disrupted during the
@@ -236,10 +330,10 @@ removing its SQL schema/slot and the ConfigMap.
 
 ## Separate ledger database (step 2.2)
 
-[`infra/k8s/base/ledger-db.yaml`](infra/k8s/base/ledger-db.yaml) adds a fourth
+[`clusters.yaml`](infra/helm/shardshop/templates/clusters.yaml) adds a separate
 CloudNativePG cluster with one PostgreSQL instance, separate from the nine shard
 pods. It uses the same pinned PostgreSQL image and its own 2 GiB PVC. The kind
-overlay places it on a worker using `standard` storage; `up.sh` creates it and
+values place it on a worker using `standard` storage; `up.sh` creates it and
 waits for readiness alongside the shards. Its 250m CPU/512 MiB memory requests
 and one-CPU/512 MiB limits match the tiny-data baseline. The ten databases now
 request 5 GiB of memory in total; remeasure when workloads arrive.
@@ -249,8 +343,10 @@ Connect to database `ledger` through the internal Service
 bootstrap owner `ledger_owner`; clients reference its `username` and `password`
 keys without committing or printing the values. TLS clients can mount only
 `ca.crt` from `ledger-db-ca` and use `sslmode=verify-full`. The bootstrap owner
-is for initial provisioning: the ledger schema, migrations and separate runtime
-grants belong to step 2.5. No application is wired to this owner here.
+owns only the database: the ledger schema, its owner, migrations and runtime
+grants belong to step 2.6, following step 2.3's pattern. No application is wired
+to this owner here. Like the shards, the cluster revokes `TEMPORARY` and access to
+schema `public` from `PUBLIC` when it is created.
 
 The ledger uses ordinary WAL and local durable commits, with no synchronous
 standby requirement or CDC setup; its planned outbox relay polls its own tables.
@@ -276,3 +372,116 @@ nine shard instances. See PLAN step 2.2 for the verification evidence.
 
 `kind delete cluster --name shardshop` removes the whole lab, including its
 storage; kind storage is disposable and is not a backup.
+
+## Database schemas and migrations (step 2.3)
+
+No Maven module owns a schema: databases, roles and migrations belong to the
+database layer in [ARCHITECTURE.md](ARCHITECTURE.md#database-change-management).
+The two scripts split the work:
+
+- `up.sh` declares everything Kubernetes can: the clusters and their creation-time
+  hardening, the catalog roles, and each shard's `Database` resource, which creates
+  schema `catalog` owned by `catalog_owner`. The shared
+  [`databases.yaml`](infra/helm/shardshop/templates/databases.yaml) template
+  renders the roles and `Database` for every inventory entry.
+- `migrate.sh` fills the schemas by running each Flyway stream in
+  [`database/`](database/) on every shard primary. It builds and loads the
+  migration image automatically; no Maven build, application JAR, or database
+  superuser session is needed.
+
+After `up.sh`, run:
+
+```bash
+bash microservices/shardshop/scripts/migrate.sh
+```
+
+After checking the published topology, `migrate.sh` invokes
+[`build-migration-image.sh`](scripts/build-migration-image.sh) before creating SQL
+ConfigMaps or migration Jobs. The helper uses Docker Buildx with pinned inputs and
+`SOURCE_DATE_EPOCH=0`, loads the ARM64 image into kind, and checks its CRI manifest
+digest on every node against the selected migration image pin. A build or digest
+failure stops the migration. To prepare that image separately after `up.sh`, run:
+
+```bash
+bash microservices/shardshop/scripts/build-migration-image.sh
+```
+
+[`database/shard/catalog/`](database/shard/catalog/) is the catalog stream.
+`V1__catalog.sql` creates the tables. `R__catalog_grants.sql` holds the complete
+privilege matrix; Flyway reapplies it whenever it changes. `flyway.toml` fixes the
+schema, the history table `catalog.flyway_schema_history`, retries, and the 5-second connect, 30-second
+socket, 15-second statement and 5-second lock timeouts. It also starts every
+connection as `catalog_owner`, so the migrator login never owns an object.
+
+The script loads the folder into the `catalog-migrations` ConfigMap, then runs one
+Job per inventory entry from the shared
+[`migration.yaml`](infra/helm/shardshop/templates/migration.yaml) template,
+one shard at a time. The template sets `SHARD_NAME` and the shard's CA Secret;
+Kubernetes expands `FLYWAY_URL` using the preceding environment variable. Each Job
+runs Flyway OSS 13.8.1 on the pinned Canonical OpenJDK 25 runtime. Its
+[`Dockerfile`](infra/images/flyway/Dockerfile) copies only Flyway's core and
+PostgreSQL plugin libraries, the PostgreSQL JDBC driver and the licenses from the
+pinned official distribution image;
+its final base is `ubuntu/jre` on Ubuntu 26.04. The Job logs in as
+`catalog_migrator` over TLS with `verify-full` and the
+shard's CA. It has a 180-second deadline and no retry. The script prints its log
+and stops at the first failure, leaving later shards unattempted; successful
+shards stay migrated, because migrations are not a transaction across databases. Correct the failure and rerun. Never edit a committed migration, repair
+checksums automatically, or clean a catalog that holds data. Before a migration is
+committed you may edit it, clean the lab's catalog with a one-off Flyway `clean`
+Job, and migrate again. The last run's
+Jobs and logs stay until the next run, which replaces them. Run one `migrate.sh`
+at a time. The routing ConfigMap is published only after all shards succeed:
+
+```bash
+kubectl --context kind-shardshop -n shardshop get jobs,pods -l app.kubernetes.io/name=schema-migration
+kubectl --context kind-shardshop -n shardshop logs job/shard-a-catalog-migration
+kubectl --context kind-shardshop -n shardshop get databaseroles,databases
+```
+
+The migration image and Job both select UID/GID 10001. The Job uses a
+read-only root filesystem, `HOME=/tmp`, no service-account token, and telemetry
+disabled. That fixed ID is an exception to the
+[portability rules](PLAN.md#portability-beyond-kind), which OpenShift's assigned
+UIDs would need to replace.
+
+### Catalog roles and tables
+
+| Role | Login | Privileges |
+|---|---|---|
+| `catalog_owner` | no | Owns schema `catalog`, its tables, functions and history |
+| `catalog_migrator` | yes | Member of `catalog_owner` without inheriting it; only Flyway uses it |
+| `catalog_reader` | no | `SELECT` on sellers and products |
+| `catalog_writer` | no | `SELECT` and `INSERT` on sellers and products |
+| `catalog_reserver` | no | `SELECT`, `INSERT`, `UPDATE` and `DELETE` on stock reservations, plus `UPDATE (stock)` on products; no `TRUNCATE` |
+| `product_app` | yes | Member of `catalog_writer` |
+
+`up.sh` generates the two login passwords into the Secrets `catalog-migrator` and
+`product-app`, shared by all three shards; neither is committed or printed. The
+order service's login joins `catalog_reader` and `catalog_reserver` in step 2.5.
+No login role owns an object, runs DDL, creates temporary tables, or reads the
+Flyway history.
+
+`catalog.sellers` holds positive `BIGINT` seller IDs and names. `catalog.products`
+references its seller and stores a positive `BIGINT` ID, a name of at most 200
+characters (not empty or only spaces), a non-negative `NUMERIC(19,2)` price
+(excluding NaN), an uppercase three-letter currency, and `initial_stock` and
+`stock`, with `0 <= stock <= initial_stock`. The product service sets `stock` to
+`initial_stock` when it creates a product. `catalog.stock_reservations` keeps one
+row per order and product, with the quantity the buyer ordered. The order service
+will reserve with `INSERT … ON CONFLICT (order_id, product_id) DO NOTHING` and,
+only for a new reservation, conditionally decrement stock in the same Java-managed
+shard transaction. Insufficient stock rolls back the reservation. Release will
+mark an active reservation released and restore its quantity in one transaction;
+retries must change stock at most once. There are no ID sequences.
+
+The stock-column grant permits direct updates without allowing changes to product
+names, prices or other columns. There is no stock trigger: reservation writes by
+themselves do not change stock. Java reserve/release logic and its integration
+tests remain planned in step 4.9. The database checks still enforce
+`0 <= stock <= initial_stock`, but the application must keep stock and reservation
+rows consistent.
+
+Step 2.3 changes no Java code, so it has no Java tests; it is verified on the lab,
+as recorded in PLAN step 2.3. The product application does not depend on Flyway,
+and its startup never migrates.

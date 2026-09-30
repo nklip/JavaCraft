@@ -1,0 +1,17 @@
+{{- $names := include "shardshop.names" . -}}
+{{- $version := sha256sum $names -}}
+{{- if eq .Values.render "inventory" }}
+{{- dict "apiVersion" "v1" "kind" "ConfigMap"
+      "metadata" (dict "name" "shardshop-inventory" "namespace" .Release.Namespace)
+      "data" (dict "shards" (replace "," "\n" $names) "instances" (toString .Values.shard.instances) "version" $version "migrationImage" .Values.migration.image) | toPrettyJson }}
+{{- else if eq .Values.render "routing" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shardshop-routing
+  namespace: {{ .Release.Namespace | quote }}
+data:
+  version: {{ $version | quote }}
+  application.properties: |
+    shardshop.routing.shards={{ $names }}
+{{- end }}
