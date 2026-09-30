@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Create or reuse the local ShardShop kind cluster, install CNPG, render the shared chart.
 # Tools come from PATH. Safe to rerun: it never deletes a cluster, namespace or volume.
-# When: run first to create the lab, and again after changing the shared chart or its
-# values. Changing infra/shards.yaml later needs the README's lab reset first.
-# Next: scripts/migrate.sh.
+# When: run first to create the lab, after down.sh to start it again, and after changing
+# the shared chart or its values. Changing infra/shards.yaml later needs the README's
+# lab reset first. Next: scripts/migrate.sh.
 set -euo pipefail
 
 [[ $# == 0 ]] || { echo 'Usage: up.sh' >&2; exit 1; }
@@ -28,8 +28,18 @@ mem=$(docker info --format '{{.MemTotal}}')
 (( mem >= 11 * 1024**3 + 512 * 1024**2 )) \
     || { echo "Docker VM has $(( mem / 1024**2 )) MiB; set Docker Desktop to 12 GB" >&2; exit 1; }
 
-kind get clusters | grep -qx shardshop \
-    || kind create cluster --config "$root/infra/kind.yaml" --wait 180s
+if kind get clusters | grep -qx shardshop; then
+    # down.sh stops the node containers; starting them keeps volumes and cluster state.
+    kind get nodes --name shardshop | xargs docker start >/dev/null
+    # A restarted API server needs a few seconds before kubectl can wait on nodes.
+    for attempt in {1..60}; do
+        kubectl --context "$context" --request-timeout=5s get --raw /readyz >/dev/null 2>&1 && break
+        (( attempt < 60 )) || { echo 'The kind-shardshop API server did not start' >&2; exit 1; }
+        sleep 2
+    done
+else
+    kind create cluster --config "$root/infra/kind.yaml" --wait 180s
+fi
 kubectl --context "$context" wait --for=condition=Ready nodes --all --timeout=180s
 # The operator comes from its verified, vendored chart; --wait covers its rollout.
 helm --kube-context "$context" upgrade --install cnpg \
@@ -57,6 +67,16 @@ done
 kubectl --context "$context" apply -f "$work/infrastructure.yaml"
 kubectl --context "$context" -n shardshop wait --for=condition=Ready \
     clusters.postgresql.cnpg.io --all --timeout=300s
+# After down.sh the stored statuses predate the restart, so the waits above can pass
+# early. Wait until each cluster's -rw Service really accepts connections.
+for cluster in "${shards[@]}" ledger-db; do
+    for attempt in {1..60}; do
+        primary=$(k get cluster "$cluster" -o jsonpath='{.status.currentPrimary}')
+        k exec "$primary" -c postgres -- pg_isready -q -h "$cluster-rw" -t 5 >/dev/null 2>&1 && break
+        (( attempt < 60 )) || { echo "$cluster-rw does not accept connections" >&2; exit 1; }
+        sleep 2
+    done
+done
 # Roles first: a Database resource creates each schema with its owner role.
 kubectl --context "$context" -n shardshop wait --for=jsonpath='{.status.applied}'=true \
     databaseroles.postgresql.cnpg.io --all --timeout=180s

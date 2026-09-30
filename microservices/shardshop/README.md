@@ -237,7 +237,8 @@ seconds for every CRD to be Established, and renders/applies the shared chart. T
 the `shardshop` namespace with the `restricted` Pod Security label, three
 three-instance clusters (`shard-a`, `shard-b`, `shard-c`), and the single-instance
 `ledger-db` cluster. It waits up to 300 seconds for every database cluster to be
-Ready. It also creates a random password Secret for each login role
+Ready, then until each cluster's `-rw` Service accepts connections. It also
+creates a random password Secret for each login role
 (`catalog-migrator`, `product-app`) only if absent, shared by every shard. It
 applies the catalog roles as CNPG `DatabaseRole`s and each shard's `Database`
 resource, which creates schema `catalog` owned by `catalog_owner`, and waits up to
@@ -257,6 +258,19 @@ helm --kube-context kind-shardshop -n cnpg-system list
 kubectl --context kind-shardshop -n cnpg-system get deployment cnpg-cloudnative-pg
 kubectl --context kind-shardshop -n shardshop get clusters,pods,pvc
 ```
+
+Stop the lab when you do not need it, to free Docker memory:
+
+```bash
+bash microservices/shardshop/scripts/down.sh
+```
+
+It stops the four node containers without deleting them; volumes, databases and
+cluster state stay inside. PostgreSQL shuts down cleanly within seconds, and Docker
+stops the rest after its default 10-second timeout. Rerun `up.sh` to start the same
+containers; it waits for the API server and for every `-rw` Service, because the
+stored Ready statuses predate the restart, and takes about a minute. Only
+`kind delete cluster --name shardshop` deletes the lab's data.
 
 [`infra/helm/cnpg/`](infra/helm/cnpg/) holds the official CloudNativePG chart
 0.29.1, verified against the lock's SHA-256 and its cosign signature, and
