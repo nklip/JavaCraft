@@ -1,0 +1,18 @@
+# Ordering stream. The shared Job supplies ordering_migrator credentials and topology.
+[environments.default]
+schemas = ["ordering"]
+connectRetries = 2
+connectRetriesInterval = 1
+# Ownership and bounded sessions match the independent catalog stream.
+jdbcProperties = { connectTimeout = "5", socketTimeout = "30", options = "-c role=ordering_owner -c statement_timeout=15000 -c lock_timeout=5000" }
+
+[flyway]
+environment = "default"
+locations = ["filesystem:/flyway/sql"]
+defaultSchema = "ordering"
+table = "flyway_schema_history"
+createSchemas = false
+validateMigrationNaming = true
+failOnMissingLocations = true
+cleanDisabled = true
+lockRetryCount = 5

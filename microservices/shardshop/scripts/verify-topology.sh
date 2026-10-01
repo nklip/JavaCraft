@@ -73,7 +73,7 @@ volumes() {
         -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.uid}{" "}{.spec.volumeName}{" "}{.status.phase}{"\n"}{end}' | sort
 }
 verify_routing() {
-    local vectors shard leader predicate
+    local vectors shard leader predicate entity schema
     vectors=$(python3 - "$root/shardshop-sharding/src/test/resources/routing-vectors.csv" "${shards[@]}" <<'PY'
 import csv, hashlib, re, sys
 
@@ -98,10 +98,14 @@ PY
     ) || return 1
     for shard in "${shards[@]}"; do
         leader=$(k get cluster "$shard" -o jsonpath='{.status.currentPrimary}')
-        predicate=$(sql "$leader" "SELECT pg_get_expr(conbin, conrelid) FROM pg_constraint WHERE conrelid = 'catalog.sellers'::regclass AND conname = 'sellers_shard_check' AND contype = 'c' AND convalidated")
-        [[ -n "$predicate" ]] || fail "$shard lacks a validated sellers_shard_check"
-        equal "$(sql "$leader" "BEGIN READ ONLY; SELECT count(*) FROM (VALUES $vectors) AS vectors(seller_id, expected_shard) WHERE ($predicate) IS DISTINCT FROM (expected_shard = '$shard'); ROLLBACK;")" 0 "$shard deployed seller routing vs golden vectors"
-        echo "Verified $shard deployed seller routing against the shared Java golden vectors."
+        for entity in seller buyer; do
+            schema=catalog
+            [[ "$entity" != buyer ]] || schema=ordering
+            predicate=$(sql "$leader" "SELECT pg_get_expr(conbin, conrelid) FROM pg_constraint WHERE conrelid = '$schema.${entity}s'::regclass AND conname = '${entity}s_shard_check' AND contype = 'c' AND convalidated")
+            [[ -n "$predicate" ]] || fail "$shard lacks a validated ${entity}s_shard_check"
+            equal "$(sql "$leader" "BEGIN READ ONLY; SELECT count(*) FROM (VALUES $vectors) AS vectors(${entity}_id, expected_shard) WHERE ($predicate) IS DISTINCT FROM (expected_shard = '$shard'); ROLLBACK;")" 0 "$shard deployed $entity routing vs golden vectors"
+            echo "Verified $shard deployed $entity routing against the shared Java golden vectors."
+        done
     done
 }
 verify_shared_topology() {

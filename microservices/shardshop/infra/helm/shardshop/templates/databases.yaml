@@ -4,8 +4,14 @@
       (dict "name" "catalog_reader")
       (dict "name" "catalog_writer")
       (dict "name" "catalog_reserver")
-      (dict "name" "catalog_migrator" "login" true "inherit" false "group" "catalog_owner")
-      (dict "name" "product_app" "login" true "inherit" true "group" "catalog_writer") -}}
+      (dict "name" "ordering_owner")
+      (dict "name" "ordering_writer")
+      (dict "name" "ordering_cdc_reader" "resourceName" "order-cdc-reader")
+      (dict "name" "catalog_migrator" "login" true "inherit" false "groups" (list "catalog_owner"))
+      (dict "name" "ordering_migrator" "login" true "inherit" false "groups" (list "ordering_owner"))
+      (dict "name" "product_app" "login" true "inherit" true "groups" (list "catalog_writer"))
+      (dict "name" "order_app" "login" true "inherit" true "groups" (list "catalog_reader" "catalog_reserver" "ordering_writer"))
+      (dict "name" "ordering_cdc" "login" true "inherit" true "replication" true "groups" (list "ordering_cdc_reader")) -}}
 {{- range .Values.shards }}
 {{- $shard := .name }}
 ---
@@ -24,12 +30,16 @@ spec:
     - name: catalog
       owner: catalog_owner
       ensure: present
+    - name: ordering
+      owner: ordering_owner
+      ensure: present
 {{- range $roles }}
 ---
 apiVersion: postgresql.cnpg.io/v1
 kind: DatabaseRole
 metadata:
-  name: {{ $shard }}-{{ .name | replace "_" "-" }}
+  {{- /* Preserve the deployed CDC reader resource name; DatabaseRoles do not have the Job name limit. */}}
+  name: {{ $shard }}-{{ .resourceName | default (.name | replace "_" "-") }}
   namespace: {{ $.Release.Namespace | quote }}
 spec:
   cluster:
@@ -39,7 +49,12 @@ spec:
   login: true
   inherit: {{ .inherit }}
   inRoles:
-    - {{ .group }}
+    {{- range .groups }}
+    - {{ . }}
+    {{- end }}
+  {{- if .replication }}
+  replication: true
+  {{- end }}
   passwordSecret:
     name: {{ .name | replace "_" "-" }}
   {{- else }}
@@ -48,5 +63,25 @@ spec:
   {{- end }}
   databaseRoleReclaimPolicy: retain
 {{- end }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Publication
+metadata:
+  name: {{ $shard }}-order-outbox
+  namespace: {{ $.Release.Namespace | quote }}
+spec:
+  cluster:
+    name: {{ $shard | quote }}
+  dbname: shardshop
+  name: ordering_order_outbox
+  target:
+    objects:
+      - table:
+          schema: ordering
+          name: order_outbox
+          only: true
+  parameters:
+    publish: insert
+  publicationReclaimPolicy: retain
 {{- end }}
 {{- end }}

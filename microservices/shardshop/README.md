@@ -190,8 +190,8 @@ bash microservices/shardshop/scripts/render.sh routing
 The migration render takes `SHARD [catalog|ordering]` and defaults to `catalog`.
 Its Job, SQL ConfigMap, migrator Secret, and component names follow the selected
 stream; both streams receive `shardRegion`, `shardIndex`, and `shardCount`.
-The ordering schema and roles remain planned in step 2.5; rendering its Job does
-not provision them.
+`up.sh` provisions both schemas and their roles; `migrate.sh` fills them and waits
+for the ordering outbox publications before activating routing.
 
 The scripts use Python 3's standard JSON library and Helm, with no YAML package to
 install. Inventory and script behavior is verified by live runs on the lab.
@@ -327,8 +327,8 @@ hard-coded. CNPG generates each shard's `<shard>-app` Secret at runtime for the
 `shardshop_owner` bootstrap role, which owns only the `shardshop` database. When a
 cluster is created, its `postInitApplicationSQL` revokes `TEMPORARY` on the
 database and all access to schema `public` from `PUBLIC`; `CONNECT` stays. No
-passwords are committed or printed; the catalog roles arrive in step 2.3 and the
-ordering roles in step 2.5.
+passwords are committed or printed; catalog and ordering roles are provisioned
+by the database layer (steps 2.3 and 2.5).
 
 Step 2.1 reduces each database's memory limit from 1 GiB to 512 MiB after
 measuring the tiny-data lab; requests stay at 512 MiB and 250m CPU, with a one-CPU
@@ -350,16 +350,16 @@ retain the WAL each standby needs, so a large extra floor only fills the 2 GiB v
 These are not hard disk-usage caps: monitor free space and lag, and recover an
 invalidated slot explicitly after an outage that exceeds the retained WAL budget.
 
-After catalog migrations, run the read-only routing check on every inventory
+After catalog and ordering migrations, run the read-only routing check on every inventory
 primary:
 
 ```bash
 bash microservices/shardshop/scripts/verify-topology.sh --routing-only
 ```
 
-It compares PostgreSQL SHA-256 arithmetic and the deployed seller placement
-constraint against the shared golden fixtures used by Java. It creates no SQL
-objects and does not run a failure drill.
+It compares PostgreSQL SHA-256 arithmetic and the deployed seller and buyer
+placement constraints against the shared golden fixtures used by Java. It creates
+no SQL objects and does not run a failure drill.
 
 Run the reversible topology drill in this disposable lab (defaults to the first
 inventory entry; pass another inventory name to drill that shard):
@@ -441,8 +441,10 @@ business logic and scripts for deployment checks.
 The two scripts split the work:
 
 - `up.sh` declares everything Kubernetes can: the clusters and their creation-time
-  hardening, the catalog roles, and each shard's `Database` resource, which creates
-  schema `catalog` owned by `catalog_owner`. The shared
+  hardening, the catalog and ordering roles, and each shard's `Database` resource,
+  which creates schemas `catalog` and `ordering` with their respective owners.
+  Its `Publication` resource selects only inserts into `ordering.order_outbox`;
+  CNPG reconciles it after the migration creates the table. The shared
   [`databases.yaml`](infra/helm/shardshop/templates/databases.yaml) template
   renders the roles and `Database` for every inventory entry.
 - `migrate.sh` fills the schemas by running each Flyway stream in
@@ -476,8 +478,8 @@ socket, 15-second statement and 5-second lock timeouts. It also starts every
 connection as `catalog_owner`, so the migrator login never owns an object.
 
 The script runs each existing stream directory under `database/shard/` in the
-order `catalog`, then `ordering`. Only catalog exists today; ordering remains
-planned in step 2.5. For each stream it loads the folder into the
+order `catalog`, then `ordering`. Both streams are required. For each stream it
+loads the folder into the
 `<stream>-migrations` ConfigMap, then runs one `<shard>-<stream>-migration` Job per
 inventory entry from the shared
 [`migration.yaml`](infra/helm/shardshop/templates/migration.yaml) template,
@@ -510,7 +512,8 @@ migration or failed publication and rerun with the same inventory. The published
 `shardshop-routing` ConfigMap also requires both matching hashes. Export its routing
 properties for local product/order launches after the first successful migration.
 Attempts to reassign a published shard region are refused. The routing ConfigMap
-is published only after all streams succeed on all shards:
+is published only after all streams succeed and every outbox publication is
+applied at its current resource generation:
 
 ```bash
 kubectl --context kind-shardshop -n shardshop get jobs,pods -l app.kubernetes.io/name=schema-migration
@@ -535,11 +538,12 @@ UIDs would need to replace.
 | `catalog_reserver` | no | `SELECT`, `INSERT`, `UPDATE` and `DELETE` on stock reservations, plus `UPDATE (stock)` on products; no `TRUNCATE` |
 | `product_app` | yes | Member of `catalog_writer` |
 
-`up.sh` generates the two login passwords into the Secrets `catalog-migrator` and
-`product-app`, shared by all three shards; neither is committed or printed. The
-order service's login joins `catalog_reader` and `catalog_reserver` in step 2.5.
-No login role owns an object, runs DDL, creates temporary tables, or reads the
-Flyway history.
+`up.sh` generates catalog login passwords into the Secrets `catalog-migrator` and
+`product-app`, shared by all three shards; neither is committed or printed.
+`order_app` joins `catalog_reader` and `catalog_reserver` as well as its ordering
+group; its credentials use the separate `order-app` Secret.
+Runtime logins do not own objects or have SQL privileges for DDL, temporary
+tables or `SELECT` on the Flyway history.
 
 `catalog.sellers` holds positive `BIGINT` seller IDs, names, and immutable
 `US`/`EU`/`ASIA` regions. Its checks require the deployed region and the exact
@@ -571,3 +575,84 @@ rows consistent.
 
 The product application does not depend on Flyway, and its startup never migrates.
 Implementation status and completed lab verification are recorded in PLAN.
+
+## Ordering schema and catalog access (step 2.5)
+
+[`database/shard/ordering/`](database/shard/ordering/) has its own V1, repeatable
+grants and `flyway.toml`. It uses `ordering.flyway_schema_history` and runs as
+`ordering_owner` through `ordering_migrator`, with the catalog stream's TLS,
+timeouts and topology placeholders. No Java module or application startup migrates.
+
+| Role | Login | Privileges |
+|---|---|---|
+| `ordering_owner` | no | Owns ordering schema, tables and history |
+| `ordering_migrator` | yes | Non-inheriting owner membership, used only by Flyway |
+| `ordering_writer` | no | Reads/inserts business records; updates status, reconciliation and publication metadata; deletes transport rows; reads/writes CDC offsets |
+| `ordering_cdc_reader` | no | Ordinary SQL `SELECT` on `ordering.order_outbox` only |
+| `order_app` | yes | `ordering_writer`, `catalog_reader`, `catalog_reserver` |
+| `ordering_cdc` | yes | Replication attribute plus `ordering_cdc_reader`; highly privileged WAL access |
+
+The additional Secrets are `ordering-migrator`, `order-app` and `ordering-cdc`.
+`up.sh` creates each once and preserves it on reruns. It waits for every role's
+current generation to be applied before checking the schemas. Ordinary SQL grants
+give runtime logins no DDL, temporary-table, history or owner privileges. Product
+has no ordering privileges; CDC has no SQL `SELECT` on catalog, other ordering
+tables or offsets. Order can update only the `stock` column of catalog products
+and cannot update sellers.
+
+The `ordering-cdc` Secret is highly privileged: PostgreSQL's `REPLICATION`
+attribute allows logical decoding beyond those SQL grants. The installed
+`test_decoding` plugin can stream committed changes throughout `shardshop`
+without consulting the outbox publication or table privileges. The dedicated
+publication limits the configured `pgoutput` stream; it is not an access-control
+boundary for this login. Restrict the Secret to the trusted CDC runtime and
+operators, and treat its compromise as potential exposure of every shared shard's
+database changes. See [PostgreSQL logical replication security](https://www.postgresql.org/docs/18/logical-replication-security.html).
+
+Buyers have immutable home regions and the same exact version-2 placement check
+as sellers. Allocations retain a unique `(buyer_id, run_name, request_ordinal)`
+mapping; ordinals are nonnegative. Orders reference both their local buyer and
+the allocation for that buyer. Items store immutable seller/product IDs, quantity,
+name, unit price and currency snapshots, without cross-shard catalog foreign keys.
+Orders and sagas start in `PENDING_STOCK`. Sagas retain cancellation/release state,
+a zero-to-five reconciliation counter and the next eligible time (initially
+creation plus 60 seconds).
+
+`order_result_ids` permanently binds each order-issued command/result message pair
+to its saga. Outbox and inbox foreign keys reject unreserved or wrong-saga result
+IDs; deleting transport records leaves these bindings and the saga intact.
+Runtime grants keep buyer, allocation, order/item payload and message identities
+immutable. Only outbox publication metadata can be updated. Java remains
+responsible for atomic writes, valid state transitions, envelope validation,
+stock reserve/release, and cleanup only after the retention and CDC checkpoint
+gates; those behaviors are later milestones.
+
+`orphan_results` and `conflicting_results` retain envelopes, correlation IDs,
+fingerprints, outcomes, reasons and audit metadata. Their composite key is message
+ID plus the SHA-256 fingerprint of the complete canonical received payload, so a
+different payload with the same message ID stays visible. Neither store has
+foreign keys that could prevent quarantine after data loss. The conflict store
+also retains expected and received identity/outcome snapshots. Unresolved-order
+indexes support the creation guard. Runtime may update delivery counts/times but
+cannot delete incidents or resolve them; resolution is an operator action.
+
+Each shard has CNPG Publication `<shard>-order-outbox`, SQL name
+`ordering_order_outbox`, publishing only inserts into `ordering.order_outbox`.
+`up.sh` may leave it pending until the table exists; `migrate.sh` waits for it
+before publishing routing. CDC uses its own login; publication-status and offset
+writes use `order_app`. The precreated `ordering.debezium_offset_storage` follows
+the [Debezium JDBC offset-store column contract](https://debezium.io/documentation/reference/3.7/configuration/storage.html#_offset_table_defaults).
+The future connector must set `offset.storage.jdbc.table.name` to that qualified
+name and disable publication auto-creation; connector/library qualification is
+still part of the CDC milestone.
+
+Apply and check both streams:
+
+```bash
+bash microservices/shardshop/scripts/up.sh
+bash microservices/shardshop/scripts/migrate.sh
+bash microservices/shardshop/scripts/migrate.sh # unchanged histories: no pending migrations
+bash microservices/shardshop/scripts/verify-topology.sh --routing-only
+kubectl --context kind-shardshop -n shardshop get publications
+kubectl --context kind-shardshop -n shardshop logs job/shard-a-ordering-migration
+```

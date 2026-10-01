@@ -492,8 +492,10 @@ are independent of database shard IDs.
 | `catalog.products` | the product's `seller_id` | Product service creates them; the order service reads them and updates only `stock` in its reservation transactions |
 | `catalog.stock_reservations` | the product's `seller_id` | Order service, writing reservations and adjusting product stock in the same shard transaction |
 | `ordering.buyers` | `buyer_id` | Order service |
+| `ordering.order_allocations` | `buyer_id` | Order service; permanent allocation retry mappings |
 | `ordering.orders`, `ordering.order_items` | the order's `buyer_id` | Order service |
 | `ordering.order_sagas`, `ordering.order_outbox`, `ordering.order_inbox` | the order's `buyer_id` | Order service; colocated with the order |
+| `ordering.order_result_ids` | the saga's order's `buyer_id` | Order service; permanent command/result message bindings survive transport cleanup |
 | `ordering.orphan_results` | the order's `buyer_id` | Order service; quarantine for a result whose order is missing |
 | `ordering.conflicting_results` | the order's `buyer_id` | Order service; quarantine for a result that conflicts with saved identity or outcome |
 | `ledger.ledger_entries`, `ledger.ledger_operations`, `ledger.ledger_inbox`, `ledger.ledger_outbox` | No sharding initially | Ledger service, in its separate database |
@@ -536,9 +538,10 @@ to unaffected shards. This keeps the measured primary and replica workloads
 distinct. See [CNPG Service roles](https://cloudnative-pg.io/docs/1.30/service_management/).
 
 Select the shard before opening a transaction, and keep it fixed until commit.
-Order creation, saga state, and its outgoing command commit together on one
-primary. The order CDC relay captures committed outbox inserts from every shard's
-WAL, rather than polling for unpublished rows. Freeze the hash and
+Order creation and initial saga state commit together on one primary. After stock
+reservation, the transition to `PENDING_LEDGER` and its outgoing command commit
+together on that primary. The order CDC relay captures committed outbox inserts
+from every shard's WAL, rather than polling for unpublished rows. Freeze the hash and
 three-shard mapping: changing the divisor requires a data migration strategy.
 Public APIs expose decimal-string Snowflake business IDs, never shard selectors:
 catalog calls carry the seller ID and order calls the buyer ID, and the services
@@ -547,8 +550,9 @@ derive the shard from them.
 ### CDC from shard writes to the ledger
 
 Use the **transactional outbox with log-based CDC** pattern. Each accepted order
-write inserts one `RecordOrder` envelope into `ordering.order_outbox` in the same
-transaction as the order, item snapshots, and saga. That committed insert is the
+progresses through stock reservation, then inserts one `RecordOrder` envelope into
+`ordering.order_outbox` in the same transaction as its `PENDING_LEDGER` transition
+and permanent command/result message binding. That committed insert is the
 captured change. Rollbacks emit no command, and the HTTP handler never publishes
 to RabbitMQ. Capture only this table for the ledger command flow: product seeding,
 raw order/item changes, and saga status updates are not separate ledger commands.
@@ -564,6 +568,13 @@ cross-shard transaction assembly.
   to connect and snapshot that table; it is separate from `order_app` and has
   no business-table DML or DDL privileges. The relay uses `order_app` for its
   publication-status update and its offset writes.
+  These SQL privileges do not restrict logical decoding: a replication login
+  can use another installed output plugin, such as `test_decoding`, to read
+  changes outside the publication. Treat the shared `ordering-cdc` Secret as
+  highly privileged across all shards and expose it only to the trusted CDC
+  runtime and operators. The outbox publication configures the intended stream;
+  it is not an authorization boundary. See
+  [PostgreSQL logical replication security](https://www.postgresql.org/docs/18/logical-replication-security.html).
 - Embed the connectors through [Debezium Engine](https://debezium.io/documentation/reference/stable/development/engine.html)
   in the order service's IO layer, with bounded buffers and a batch consumer
   that explicitly controls record completion. Keep one active reader per shard:
@@ -656,11 +667,12 @@ SQL ConfigMap and migrator Secret names; both streams receive the same
 to 44 characters so the longer `-ordering-migration` suffix stays within the
 63-character Job-name limit. The template names the cluster endpoint and CA Secret
 directly; no prefix replacement transformers are needed. Infrastructure rendering
-excludes Jobs and routing publication. `migrate.sh` runs existing catalog and
+excludes Jobs and routing publication. `migrate.sh` runs the required catalog and
 ordering stream directories sequentially, catalog first, and stops on the first
 failure; only complete success activates the routing ConfigMap. Run one
 `migrate.sh` at a time. Existing resource names and storage identities are retained.
-The ordering stream remains planned in step 2.5.
+Both catalog and ordering streams are implemented. Routing publication also waits
+for each current-generation CNPG outbox Publication to be applied.
 
 ```text
 database/
@@ -669,15 +681,19 @@ database/
       flyway.toml
       V1__catalog.sql
       R__catalog_grants.sql
-    ordering/       # step 2.5
+    ordering/
+      flyway.toml
+      V1__ordering.sql
+      R__ordering_grants.sql
   ledger/
     ledger/         # database `ledger`, step 2.6
 ```
 
 #### Roles
 
-Privileges belong to group roles that cannot log in; login roles only log in and
-inherit what their groups hold. This is PostgreSQL's role-membership model:
+Object privileges belong to group roles that cannot log in; login roles inherit
+those grants. The CDC login additionally has the powerful `REPLICATION` role
+attribute described above. This is PostgreSQL's role-membership model:
 passwords rotate without touching ownership, and adding a service means one login
 role and its memberships, with no SQL. For the catalog:
 
@@ -689,19 +705,22 @@ role and its memberships, with no SQL. For the catalog:
 | `catalog_writer` | no | none | `SELECT` and `INSERT` on sellers and products |
 | `catalog_reserver` | no | none | `SELECT`, `INSERT`, `UPDATE` and `DELETE` on `stock_reservations`, plus `UPDATE (stock)` on `products`; no `TRUNCATE` |
 | `product_app` | yes | `catalog_writer` | Product service |
-| `order_app` | yes | `catalog_reader`, `catalog_reserver`, and the ordering groups (step 2.5) | Order service |
+| `order_app` | yes | `catalog_reader`, `catalog_reserver`, `ordering_writer` | Order service |
 
-The ordering and ledger streams repeat the pattern with their own owner, migrator
-and groups. The CDC login is a `DatabaseRole` with the replication attribute and
-membership only in a group that may read `ordering.order_outbox`; its publication
-is a CNPG `Publication` resource. The Debezium offsets table belongs to the
+The ordering stream repeats the pattern with `ordering_owner`, a non-inheriting
+`ordering_migrator`, `ordering_writer` and `ordering_cdc_reader`. The ledger stream
+will have its own owner, migrator and groups in step 2.6. The CDC login is a
+`DatabaseRole` with the replication attribute and membership only in a group with
+SQL `SELECT` on `ordering.order_outbox`; those grants do not constrain WAL access.
+Its publication is a CNPG `Publication` resource.
+The Debezium offsets table belongs to the
 ordering stream, with DML granted to the order service's group.
 
 - Grant only to group roles. Each stream's repeatable `R__<schema>_grants.sql`
   revokes everything from its groups and grants the complete matrix again, so one
   reviewed file is the privilege model; Flyway reapplies it whenever it changes.
-- No login role owns objects, runs DDL, or reads a Flyway history, and no service
-  login is a member of an owner role.
+- Runtime logins do not own objects or have SQL privileges for DDL or `SELECT`
+  on Flyway histories, and no service login is a member of an owner role.
 - Database-wide hardening runs once, when a cluster is created
   (`postInitApplicationSQL`): revoke `TEMPORARY` on the database and all access to
   schema `public` from `PUBLIC`. `CONNECT` stays with `PUBLIC`; on its own it
@@ -744,8 +763,8 @@ and `shardCount` placeholders. It preserves all 256 digest bits and matches Java
 unsigned routing calculation. Incorrect seller placement is rejected on insertion.
 Schema migration V1 and the unchanged version-2 ID-routing algorithm are independent
 version numbers. `verify-topology.sh --routing-only` checks PostgreSQL's calculation
-and the deployed seller placement constraint on every primary against the same
-golden fixtures used by Java, using read-only queries without a failure drill.
+and the deployed seller and buyer placement constraints on every primary against
+the same golden fixtures used by Java, using read-only queries without a failure drill.
 
 The migration script reserves the ordered names and assigned regions before any
 shard changes, using the two version hashes in `shardshop-migration-topology`.
@@ -766,7 +785,7 @@ shard, even through the catalog writer's SQL privileges. Runtime grants allow no
 updates to seller identity or region. Placement is enforced by the table
 constraints and needs no function execution grants.
 
-The planned `ordering.buyers` schema likewise persists an immutable home region
+The implemented `ordering.buyers` table likewise persists an immutable home region
 and enforces the deployed region and ID placement. Orders and all their local
 records inherit the buyer's placement; they have no separate region selector.
 
@@ -1509,7 +1528,8 @@ Acceptance scenarios for implementation:
    Run the version-2 routing vectors in `shardshop-sharding`, including values above
    2^53 and signed-long boundary checks, and verify that both services route through
    it. Run `verify-topology.sh --routing-only` to compare the same golden fixtures
-   with SQL hashing and the deployed seller placement constraint on every primary.
+   with SQL hashing and the deployed seller and buyer placement constraints on
+   every primary.
 3. Exercise heavy product reads, primary read-after-write behavior, and explicitly
    stale replica reads under controlled lag.
 4. Verify an accepted order reaches `CONFIRMED` with exactly one ledger row, one

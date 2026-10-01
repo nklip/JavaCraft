@@ -54,7 +54,7 @@ kubectl --context "$context" wait --for=condition=Established crd --all --timeou
 kubectl --context "$context" apply -f "$work/namespace.yaml"
 assert_published_topology
 credentials="$work"
-for role in catalog_migrator product_app; do
+for role in catalog_migrator ordering_migrator product_app order_app ordering_cdc; do
     secret="${role//_/-}"
     existing=$(kubectl --context "$context" -n shardshop get secret "$secret" --ignore-not-found -o name)
     if [[ -z "$existing" ]]; then
@@ -78,9 +78,26 @@ for cluster in "${shards[@]}" ledger-db; do
     done
 done
 # Roles first: a Database resource creates each schema with its owner role.
-kubectl --context "$context" -n shardshop wait --for=jsonpath='{.status.applied}'=true \
-    databaseroles.postgresql.cnpg.io --all --timeout=180s
-kubectl --context "$context" -n shardshop wait --for=jsonpath='{.status.applied}'=true \
-    databases.postgresql.cnpg.io --all --timeout=180s
-# Routing is activated by migrate.sh only after every shard has passed migration.
+# Compare each status with its current generation, including operator spec updates.
+for attempt in {1..90}; do
+    pending=$(k get databaseroles.postgresql.cnpg.io -o json | python3 -c '
+import json, sys
+roles = json.load(sys.stdin)["items"]
+pending = [role["metadata"]["name"] for role in roles
+           if role.get("status", {}).get("observedGeneration") != role["metadata"]["generation"]
+           or role.get("status", {}).get("applied") is not True]
+print(", ".join(pending) if roles else "no DatabaseRoles found")
+')
+    [[ -z "$pending" ]] && break
+    (( attempt < 90 )) || { echo "DatabaseRoles not applied at their current generation: $pending" >&2; exit 1; }
+    sleep 2
+done
+for shard in "${shards[@]}"; do
+    # Adding a schema must not pass on the previous Database generation's status.
+    generation=$(k get "database/$shard-shardshop" -o jsonpath='{.metadata.generation}')
+    k wait "database/$shard-shardshop" --for=jsonpath='{.status.observedGeneration}'="$generation" --timeout=180s
+    k wait "database/$shard-shardshop" --for=jsonpath='{.status.applied}'=true --timeout=180s
+done
+# Publications remain pending until ordering migrations create their outbox tables.
+# CNPG retries reconciliation; migrate.sh waits for them before activating routing.
 echo "Provisioned ${#shards[@]} shards. Run scripts/migrate.sh to publish routing configuration."
