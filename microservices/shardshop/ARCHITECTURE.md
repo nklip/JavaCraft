@@ -70,7 +70,7 @@ they never generate, derive, or allocate them locally.
 | 1 | `shardshop-workload` | Aggregate the three workload applications below | No aggregator pod; one seeder Job and two load Deployments | None: no tables, migrations, or database credentials |
 | 2 | `shardshop-product` | Accept seller and product creation and product reader HTTP requests | Two identical product service pods behind one Kubernetes Service | Creates and reads sellers and products in schema `catalog` of the shared sharded PostgreSQL deployment |
 | 3 | `shardshop-order` | Accept buyer and order HTTP requests, coordinate the saga including stock reservation, and relay captured order-outbox inserts to RabbitMQ | One stateless order service pod initially | Buyers, orders, items, saga state, inbox, outbox, and CDC offsets in schema `ordering`; reads sellers and products and writes stock reservations and product stock in `catalog` |
-| 4 | `shardshop-ledger` | Consume ledger commands and persist order ledger records | One ledger consumer pod plus a separate PostgreSQL pod initially | Schema `ledger` in a dedicated ledger database: entries, decisions, inbox, and outbox |
+| 4 | `shardshop-ledger` | Consume ledger commands and persist order ledger records | One ledger consumer pod plus a separate PostgreSQL pod initially | Schema `ledger` in a dedicated ledger database: entries, decisions, permanent result bindings, inbox, outbox, and command quarantine |
 | 5 | `shardshop-sharding` | Route seller and buyer IDs to shards (section 3) | None; a library inside the product and order services | None |
 
 Module 1 contains exactly three independently runnable submodules:
@@ -461,8 +461,8 @@ shards may serve the same region in a custom inventory; IDs still select the
 exact shard through the unchanged hash rule. Shared Helm templates generate all
 resources and a routing snapshot. Its `version` remains SHA-256 of the comma-joined
 UTF-8 names; `regionVersion` is SHA-256 of the comma-joined UTF-8 `name=REGION` pairs
-in the same order. Only after every deployed shard passes its migrations does
-`migrate.sh` publish that snapshot as the `shardshop-routing` ConfigMap. The chart
+in the same order. Only after every deployed shard and the separate ledger pass
+their migrations does `migrate.sh` publish that snapshot as the `shardshop-routing` ConfigMap. The chart
 schema validates names and the `US`/`EU`/`ASIA` enum. Product/order import aligned
 `shardshop.routing.shards` and `shardshop.routing.regions` lists at startup and
 construct an immutable `ShardTopology` with `fromNamesAndRegions`. Missing, empty
@@ -498,7 +498,7 @@ are independent of database shard IDs.
 | `ordering.order_result_ids` | the saga's order's `buyer_id` | Order service; permanent command/result message bindings survive transport cleanup |
 | `ordering.orphan_results` | the order's `buyer_id` | Order service; quarantine for a result whose order is missing |
 | `ordering.conflicting_results` | the order's `buyer_id` | Order service; quarantine for a result that conflicts with saved identity or outcome |
-| `ledger.ledger_entries`, `ledger.ledger_operations`, `ledger.ledger_inbox`, `ledger.ledger_outbox` | No sharding initially | Ledger service, in its separate database |
+| `ledger.ledger_entries`, `ledger.ledger_operations`, `ledger.ledger_result_ids`, `ledger.ledger_inbox`, `ledger.ledger_outbox` | No sharding initially | Ledger service, in its separate database |
 | `ledger.conflicting_commands` | No sharding initially | Ledger service; quarantine for a command that conflicts with a permanent decision |
 
 Order items remain on their order's shard even when referenced products live on
@@ -638,8 +638,8 @@ run on the kind lab and on EKS (PLAN milestone 7), where Argo CD applies them.
 | Layer | Contents | Defined in | Applied on kind / on EKS |
 |---|---|---|---|
 | Instances | CNPG `Cluster`s, parameters, storage, database-wide hardening | `infra/helm/shardshop/templates/clusters.yaml` | `up.sh` / Argo CD |
-| Identities | Group roles, login roles, memberships | CNPG `DatabaseRole`s, one template rendered for each inventory entry (`infra/helm/shardshop/templates/databases.yaml`); one password Secret per login role, shared by every shard and referenced by name | `up.sh`, which generates the Secrets / Argo CD, with Secrets synced from AWS Secrets Manager |
-| Containers | Databases, schemas and their owners, CDC publications | CNPG `Database` and `Publication` resources, in the same per-shard template | `up.sh` / Argo CD |
+| Identities | Group roles, login roles, memberships | CNPG `DatabaseRole`s in `infra/helm/shardshop/templates/databases.yaml` for each inventory entry and `ledger-database.yaml` for ledger; one password Secret per login role, with shard credentials shared across shards and ledger credentials separate | `up.sh`, which generates the Secrets / Argo CD, with Secrets synced from AWS Secrets Manager |
+| Containers | Databases, schemas and their owners, CDC publications | CNPG `Database` and `Publication` resources in the per-shard template; `ledger-db-ledger` Database and schema in `ledger-database.yaml` | `up.sh` / Argo CD |
 | Contents | Tables, constraints, indexes, grants, data | Flyway streams under `database/`, run by Jobs rendered from `infra/helm/shardshop/templates/migration.yaml` | `migrate.sh` / Argo CD `PreSync` hook Jobs |
 
 `database/` holds one Flyway stream per schema. Each stream is a folder with its
@@ -663,15 +663,19 @@ placement. Scripts snapshot the inventory, enumerate its entries, and never keep
 another shard list. `render.sh migration SHARD [catalog|ordering]` selects the
 stream, defaulting to `catalog`. The shared template uses stream-specific Job,
 SQL ConfigMap and migrator Secret names; both streams receive the same
-`shardRegion`, `shardIndex`, and `shardCount` placeholders. Shard names are limited
+`shardRegion`, `shardIndex`, and `shardCount` placeholders.
+`render.sh migration ledger-db ledger` selects the ledger stream, without shard
+placeholders or region labels. The chart rejects mismatched ledger/shard targets.
+Shard names are limited
 to 44 characters so the longer `-ordering-migration` suffix stays within the
 63-character Job-name limit. The template names the cluster endpoint and CA Secret
 directly; no prefix replacement transformers are needed. Infrastructure rendering
-excludes Jobs and routing publication. `migrate.sh` runs the required catalog and
-ordering stream directories sequentially, catalog first, and stops on the first
-failure; only complete success activates the routing ConfigMap. Run one
+excludes Jobs and routing publication. `migrate.sh` runs catalog on every shard,
+then ordering on every shard, then `database/ledger/ledger` once, and stops on the
+first failure. Each Job waits for its cluster and Database's current-generation
+`applied` status; only complete success activates the routing ConfigMap. Run one
 `migrate.sh` at a time. Existing resource names and storage identities are retained.
-Both catalog and ordering streams are implemented. Routing publication also waits
+Catalog, ordering, and ledger streams are implemented. Routing publication also waits
 for each current-generation CNPG outbox Publication to be applied.
 
 ```text
@@ -686,7 +690,10 @@ database/
       V1__ordering.sql
       R__ordering_grants.sql
   ledger/
-    ledger/         # database `ledger`, step 2.6
+    ledger/         # database `ledger`, applied once to ledger-db
+      flyway.toml
+      V1__ledger.sql
+      R__ledger_grants.sql
 ```
 
 #### Roles
@@ -708,8 +715,12 @@ role and its memberships, with no SQL. For the catalog:
 | `order_app` | yes | `catalog_reader`, `catalog_reserver`, `ordering_writer` | Order service |
 
 The ordering stream repeats the pattern with `ordering_owner`, a non-inheriting
-`ordering_migrator`, `ordering_writer` and `ordering_cdc_reader`. The ledger stream
-will have its own owner, migrator and groups in step 2.6. The CDC login is a
+`ordering_migrator`, `ordering_writer` and `ordering_cdc_reader`. The ledger uses
+non-login `ledger_schema_owner` and `ledger_writer` groups. `ledger_migrator` has
+non-inheriting membership in `ledger_schema_owner`; its Flyway connections select
+that role explicitly, and `ledger_app` inherits only `ledger_writer`. Their
+Secrets are `ledger-migrator` and `ledger-app`. The existing `ledger_owner`
+bootstrap role continues to own only database `ledger`. The CDC login is a
 `DatabaseRole` with the replication attribute and membership only in a group with
 SQL `SELECT` on `ordering.order_outbox`; those grants do not constrain WAL access.
 Its publication is a CNPG `Publication` resource.
@@ -746,10 +757,74 @@ ordering stream, with DML granted to the order service's group.
   not atomic across shards, so each change follows expand/contract: add the new
   form, backfill, switch readers, and drop the old form in a later release, so
   running code keeps working while shards differ. Run the catalog stream before
-  ordering. Schema changes reach standbys through physical replication.
+  ordering, then migrate the separate ledger once. Schema changes reach shard
+  standbys through physical replication.
 - Applications never migrate at startup. Use bounded connection pools per
   service, pod, and endpoint; account for both product pods when budgeting
   PostgreSQL connections.
+
+### Ledger: decisions, replay identities, and transport
+
+Step 2.6 implements the ledger storage contract in
+`database/ledger/ledger/V1__ledger.sql`, with grants in `R__ledger_grants.sql`.
+`ledger_operations` keeps one permanent immutable decision per order, including
+the buyer, unique logical saga/command IDs, fingerprint, snapshot, amount and
+currency, outcome, rejection reason, and saved result data. Runtime cannot update
+or delete a decision. `ledger_entries` has one immutable row per recorded order;
+its composite foreign key requires the same amount, currency, timestamp, and
+`RECORDED` outcome as the operation. A `REJECTED` operation cannot have an entry.
+Java must write a successful decision and its entry atomically; SQL does not
+require every recorded decision to have an entry.
+
+The runtime has no `UPDATE` privilege on decisions, so it cannot use `SELECT ...
+FOR UPDATE` or `FOR KEY SHARE` to serialize them. Step 4.4 must use a transaction
+advisory lock such as `pg_advisory_xact_lock(order_id)`, or insert-conflict handling
+followed by reading and comparing the saved decision. Keep the decision immutable.
+
+`ledger_result_ids` permanently binds each order-reserved command `message_id`
+and `result_message_id` to its operation and exact immutable result envelope,
+including original timestamps. It retains a positive `publication_attempt`,
+initially one, through inbox/outbox cleanup. `ledger_inbox` references the saved
+command/result pair. `ledger_outbox.message_id` is the reserved result ID; the
+publisher joins it to `ledger_result_ids.result_message_id` for the envelope.
+The outbox's deferred composite foreign key requires its result ID and attempt
+to match the permanent binding at commit. An index on unpublished outbox rows
+supports the future polling relay; ledger has no CDC publication.
+
+For a duplicate command, Java must increment the durable counter and reset the
+existing outbox row to pending or recreate it in the same transaction. An inbox
+hit must still perform this replay work. SQL checks positive attempts and their
+committed consistency; Java controls monotonic increments. After confirmation,
+the publisher compares both `message_id` and the sent `publication_attempt`
+before setting `published_at`, so an older in-flight confirm cannot mark a newer
+attempt published. No replay changes the immutable envelope or generates an ID.
+
+`conflicting_commands` retains the received envelope and expected/received
+identity snapshots without foreign keys that could obstruct quarantine. Its
+primary key combines message ID with the SHA-256 fingerprint of the complete
+canonical received payload, preserving distinct conflicts sharing a message ID.
+Runtime may update only delivery time/count; snapshots are immutable and incident
+resolution is an operator action. Conflicting commands must be committed before
+acknowledgement without changing a permanent decision or emitting a rejection.
+
+`ledger_writer` has schema `USAGE` and `SELECT` on these six tables. Inserts into
+the outbox omit `created_at` and `published_at`, so new/recreated rows use database
+time and start unpublished. Inserts into command quarantine omit `resolved_at`
+and `resolution`, so incidents start unresolved. Column-level `INSERT` grants
+enforce these omissions; other ledger tables retain table-level `INSERT`.
+The ordering stream applies the same insert restrictions to `order_outbox`,
+`orphan_results`, and `conflicting_results`, preserving the unresolved-orphan
+guard against order ID reuse.
+The ledger group's only updates are `ledger_result_ids.publication_attempt`,
+`ledger_outbox.publication_attempt`/`published_at`, and
+`conflicting_commands.last_seen_at`/`delivery_count`; its only deletes are inbox
+and outbox rows. It cannot delete permanent records or quarantine, resolve an
+existing incident, modify saved payloads, create schema objects or temporary
+tables, truncate tables, or read the Flyway history. There are no ID sequences,
+SQL functions, or triggers. Envelope validation, business-conflict detection,
+atomic decision/replay writes, publication confirmation, and transport cleanup
+gates belong to later Java consumer/publisher steps. The DELETE grants alone do
+not enforce confirmed publication or retention windows.
 
 ### Catalog: sellers, products, and stock
 
@@ -1197,11 +1272,12 @@ local transaction, using the command's reserved `resultMessageId` as its
 `messageId` and preserving the original correlation IDs. It does this even if
 the command's transport `messageId` was seen before. Recreate a cleaned result
 outbox row or mark the existing row pending again; ignoring an insert conflict
-would suppress the replay. Reconstruct the same immutable envelope for that
-result ID, without changing timestamps or payload fields. Advance a durable
-publication-attempt counter, retained through outbox cleanup, and let the
-publisher mark only the attempt it sent, so an older in-flight confirm cannot
-erase a newer replay request. Neither a duplicate nor a replay generates an ID
+would suppress the replay. Load the immutable envelope from `ledger_result_ids`
+for that result ID, preserving its timestamps and payload fields. Atomically
+increment its durable `publication_attempt` and reset/recreate the outbox with
+that attempt; the deferred foreign key checks their consistency at commit.
+The publisher marks only the `(message_id, publication_attempt)` it sent, so an
+older in-flight confirm cannot erase a newer replay request. Neither a duplicate nor a replay generates an ID
 in ledger. Transport IDs, including `resultMessageId`, are excluded from the
 business fingerprint and permanent-decision conflict comparison.
 It never reevaluates ledger policy or inserts another entry. Persist a conflicting
@@ -1452,7 +1528,10 @@ See [RabbitMQ queue length limits](https://www.rabbitmq.com/docs/maxlength).
 
 Retain `ledger.ledger_operations` **permanently**, including rejected decisions,
 logical IDs, request fingerprint, immutable snapshot, and result data sufficient
-to regenerate the exact outcome. Ledger entries are also permanent. Retain order
+to regenerate the exact outcome. Ledger entries and `ledger.ledger_result_ids`
+are also permanent: retain every command/result message binding, exact result
+envelope, original timestamp, and publication-attempt counter after transport
+cleanup. Retain order
 and saga terminal identities/states, durable order-allocation mappings, reserved
 result identities, and unresolved quarantine records; never
 recycle order IDs. An old rejected operation cannot become recorded merely because

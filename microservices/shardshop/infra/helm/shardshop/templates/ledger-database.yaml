@@ -1,0 +1,48 @@
+{{- if eq .Values.render "infrastructure" }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: ledger-db-ledger
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  cluster:
+    name: ledger-db
+  name: ledger
+  owner: ledger_owner
+  databaseReclaimPolicy: retain
+  schemas:
+    - name: ledger
+      owner: ledger_schema_owner
+      ensure: present
+{{- $roles := list
+      (dict "name" "ledger_schema_owner")
+      (dict "name" "ledger_writer")
+      (dict "name" "ledger_migrator" "login" true "inherit" false "groups" (list "ledger_schema_owner"))
+      (dict "name" "ledger_app" "login" true "inherit" true "groups" (list "ledger_writer")) -}}
+{{- range $roles }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: DatabaseRole
+metadata:
+  name: ledger-db-{{ .name | replace "_" "-" }}
+  namespace: {{ $.Release.Namespace | quote }}
+spec:
+  cluster:
+    name: ledger-db
+  name: {{ .name | quote }}
+  {{- if .login }}
+  login: true
+  inherit: {{ .inherit }}
+  inRoles:
+    {{- range .groups }}
+    - {{ . }}
+    {{- end }}
+  passwordSecret:
+    name: {{ .name | replace "_" "-" }}
+  {{- else }}
+  login: false
+  disablePassword: true
+  {{- end }}
+  databaseRoleReclaimPolicy: retain
+{{- end }}
+{{- end }}

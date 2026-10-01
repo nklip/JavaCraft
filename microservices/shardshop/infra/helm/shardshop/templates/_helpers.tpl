@@ -7,8 +7,14 @@
   {{- end -}}
   {{- $_ := set $seen .name true -}}
 {{- end -}}
-{{- if and (eq .Values.render "migration") (not (hasKey $seen .Values.migrationShard)) -}}
-  {{- fail "migrationShard must name one member of the shard inventory" -}}
+{{- if eq .Values.render "migration" -}}
+  {{- if eq .Values.migrationStream "ledger" -}}
+    {{- if ne .Values.migrationShard "ledger-db" -}}
+      {{- fail "the ledger migration stream requires migrationShard=ledger-db" -}}
+    {{- end -}}
+  {{- else if not (hasKey $seen .Values.migrationShard) -}}
+    {{- fail "catalog and ordering migrationShard must name one member of the shard inventory" -}}
+  {{- end -}}
 {{- end -}}
 {{- end -}}
 

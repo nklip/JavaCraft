@@ -1,4 +1,5 @@
 {{- if eq .Values.render "migration" }}
+{{- $ledger := eq .Values.migrationStream "ledger" -}}
 {{- $shardIndex := 0 -}}
 {{- $region := "" -}}
 {{- range $index, $shard := .Values.shards -}}
@@ -15,7 +16,9 @@ metadata:
   labels:
     app.kubernetes.io/name: schema-migration
     app.kubernetes.io/component: {{ .Values.migrationStream }}
+    {{- if not $ledger }}
     shardshop.javacraft/region: {{ $region | quote }}
+    {{- end }}
 spec:
   backoffLimit: 0
   activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
@@ -24,7 +27,9 @@ spec:
       labels:
         app.kubernetes.io/name: schema-migration
         app.kubernetes.io/component: {{ .Values.migrationStream }}
+        {{- if not $ledger }}
         shardshop.javacraft/region: {{ $region | quote }}
+        {{- end }}
     spec:
       restartPolicy: Never
       automountServiceAccountToken: false
@@ -39,6 +44,7 @@ spec:
           image: {{ .Values.migration.image }}
           args: [-configFiles=/flyway/sql/flyway.toml, migrate]
           env:
+            {{- if not $ledger }}
             - name: SHARD_NAME
               value: {{ .Values.migrationShard | quote }}
             - name: FLYWAY_PLACEHOLDERS_SHARDREGION
@@ -47,8 +53,13 @@ spec:
               value: {{ $shardIndex | quote }}
             - name: FLYWAY_PLACEHOLDERS_SHARDCOUNT
               value: {{ len .Values.shards | quote }}
+            {{- end }}
             - name: FLYWAY_URL
+              {{- if $ledger }}
+              value: jdbc:postgresql://ledger-db-rw.{{ .Release.Namespace }}.svc:5432/ledger?sslmode=verify-full&sslrootcert=/etc/flyway/ca.crt
+              {{- else }}
               value: jdbc:postgresql://$(SHARD_NAME)-rw.{{ .Release.Namespace }}.svc:5432/shardshop?sslmode=verify-full&sslrootcert=/etc/flyway/ca.crt
+              {{- end }}
             - name: FLYWAY_USER
               valueFrom:
                 secretKeyRef:

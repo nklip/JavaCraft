@@ -1,0 +1,18 @@
+# Ledger stream, applied once to the separate ledger database, with no shard placement.
+[environments.default]
+schemas = ["ledger"]
+connectRetries = 2
+connectRetriesInterval = 1
+# The bootstrap ledger_owner owns only the database; no login owns schema objects.
+jdbcProperties = { connectTimeout = "5", socketTimeout = "30", options = "-c role=ledger_schema_owner -c statement_timeout=15000 -c lock_timeout=5000" }
+
+[flyway]
+environment = "default"
+locations = ["filesystem:/flyway/sql"]
+defaultSchema = "ledger"
+table = "flyway_schema_history"
+createSchemas = false
+validateMigrationNaming = true
+failOnMissingLocations = true
+cleanDisabled = true
+lockRetryCount = 5

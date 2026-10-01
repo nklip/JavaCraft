@@ -49,12 +49,12 @@ helm --kube-context "$context" upgrade --install cnpg \
     --hide-notes
 # CNPG's CRDs carry no common label; waiting for all CRDs survives operator upgrades.
 kubectl --context "$context" wait --for=condition=Established crd --all --timeout=180s
-# Generate each login role's password once, before the DatabaseRoles that use it; every
-# shard shares it. Existing Secrets are never overwritten, even on a startup rerun.
+# Generate each login role's password once, before the DatabaseRoles that use it.
+# Shard logins share credentials; existing Secrets are never overwritten on a rerun.
 kubectl --context "$context" apply -f "$work/namespace.yaml"
 assert_published_topology
 credentials="$work"
-for role in catalog_migrator ordering_migrator product_app order_app ordering_cdc; do
+for role in catalog_migrator ordering_migrator product_app order_app ordering_cdc ledger_migrator ledger_app; do
     secret="${role//_/-}"
     existing=$(kubectl --context "$context" -n shardshop get secret "$secret" --ignore-not-found -o name)
     if [[ -z "$existing" ]]; then
@@ -92,12 +92,13 @@ print(", ".join(pending) if roles else "no DatabaseRoles found")
     (( attempt < 90 )) || { echo "DatabaseRoles not applied at their current generation: $pending" >&2; exit 1; }
     sleep 2
 done
-for shard in "${shards[@]}"; do
+databases=("${shards[@]/%/-shardshop}" ledger-db-ledger)
+for database in "${databases[@]}"; do
     # Adding a schema must not pass on the previous Database generation's status.
-    generation=$(k get "database/$shard-shardshop" -o jsonpath='{.metadata.generation}')
-    k wait "database/$shard-shardshop" --for=jsonpath='{.status.observedGeneration}'="$generation" --timeout=180s
-    k wait "database/$shard-shardshop" --for=jsonpath='{.status.applied}'=true --timeout=180s
+    generation=$(k get "database/$database" -o jsonpath='{.metadata.generation}')
+    k wait "database/$database" --for=jsonpath='{.status.observedGeneration}'="$generation" --timeout=180s
+    k wait "database/$database" --for=jsonpath='{.status.applied}'=true --timeout=180s
 done
 # Publications remain pending until ordering migrations create their outbox tables.
 # CNPG retries reconciliation; migrate.sh waits for them before activating routing.
-echo "Provisioned ${#shards[@]} shards. Run scripts/migrate.sh to publish routing configuration."
+echo "Provisioned ${#shards[@]} shards and the ledger database. Run scripts/migrate.sh to publish routing configuration."

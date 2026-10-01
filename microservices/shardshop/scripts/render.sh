@@ -5,12 +5,12 @@
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-usage='Usage: render.sh infrastructure|namespace|inventory|routing | migration shard [catalog|ordering]'
+usage='Usage: render.sh infrastructure|namespace|inventory|routing | migration shard [catalog|ordering] | migration ledger-db ledger'
 (( $# >= 1 && $# <= 3 )) || { echo "$usage" >&2; exit 1; }
 mode=$1
 case "$mode" in
     infrastructure|namespace|inventory|routing) [[ $# == 1 ]] || { echo "$usage" >&2; exit 1; } ;;
-    # The chart rejects a shard that is not in the inventory.
+    # The chart validates shard inventory membership and the ledger-db/ledger pairing.
     migration) (( $# >= 2 )) || { echo "$usage" >&2; exit 1; } ;;
     *) echo "$usage" >&2; exit 1 ;;
 esac

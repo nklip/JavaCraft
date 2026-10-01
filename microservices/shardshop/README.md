@@ -184,22 +184,26 @@ Preview without Kubernetes access:
 bash microservices/shardshop/scripts/render.sh infrastructure
 bash microservices/shardshop/scripts/render.sh migration shard-a
 bash microservices/shardshop/scripts/render.sh migration shard-a ordering
+bash microservices/shardshop/scripts/render.sh migration ledger-db ledger
 bash microservices/shardshop/scripts/render.sh routing
 ```
 
 The migration render takes `SHARD [catalog|ordering]` and defaults to `catalog`.
 Its Job, SQL ConfigMap, migrator Secret, and component names follow the selected
-stream; both streams receive `shardRegion`, `shardIndex`, and `shardCount`.
-`up.sh` provisions both schemas and their roles; `migrate.sh` fills them and waits
-for the ordering outbox publications before activating routing.
+stream; both shard streams receive `shardRegion`, `shardIndex`, and `shardCount`.
+`migration ledger-db ledger` selects the separate ledger stream without shard
+placeholders or region labels. The chart rejects ledger streams on shards and
+shard streams on `ledger-db`. `up.sh` provisions all three schemas and their roles;
+`migrate.sh` runs catalog on every shard, then ordering on every shard, then ledger
+once. It waits for the ordering outbox publications before activating routing.
 
 The scripts use Python 3's standard JSON library and Helm, with no YAML package to
-install. Inventory and script behavior is verified by live runs on the lab.
+install. Earlier live inventory and script checks are recorded in PLAN.
 `SHARDSHOP_INVENTORY=/path/inventory.yaml` selects another inventory;
 `SHARDSHOP_ENV_VALUES=/path/values.yaml` replaces the kind overrides.
 
-`up.sh` provisions the declared shards. `migrate.sh` waits for their deployed
-clusters/databases, migrates sequentially, then publishes `shardshop-routing`.
+`up.sh` provisions the declared shards and ledger. `migrate.sh` waits for their
+deployed clusters/databases, migrates sequentially, then publishes `shardshop-routing`.
 That ConfigMap contains `application.properties` with aligned
 `shardshop.routing.shards` and `shardshop.routing.regions` lists. Its `version` key
 remains SHA-256 of the comma-joined UTF-8 names; `regionVersion` is SHA-256 of the
@@ -271,12 +275,13 @@ the `shardshop` namespace with the `restricted` Pod Security label, three
 three-instance clusters (`shard-a`/US, `shard-b`/EU, `shard-c`/ASIA), and the single-instance
 `ledger-db` cluster. It waits up to 300 seconds for every database cluster to be
 Ready, then until each cluster's `-rw` Service accepts connections. It also
-creates a random password Secret for each login role
-(`catalog-migrator`, `product-app`) only if absent, shared by every shard. It
-applies the catalog roles as CNPG `DatabaseRole`s and each shard's `Database`
-resource, which creates schema `catalog` owned by `catalog_owner`, and waits up to
-180 seconds for each to report `applied`. It never creates tables or other schema
-contents; `migrate.sh` does (step 2.3 below).
+creates random password Secrets only if absent: `catalog-migrator`,
+`ordering-migrator`, `product-app`, `order-app`, and `ordering-cdc` are shared by
+the shards; `ledger-migrator` and `ledger-app` belong to the separate ledger.
+It applies CNPG `DatabaseRole`s and `Database` resources for catalog, ordering,
+and ledger, waits for roles at their current generation, then waits up to 180
+seconds each for a Database's current generation and `applied` status. It never
+creates tables or other schema contents; `migrate.sh` does (step 2.3 below).
 A fresh run takes about five minutes, mostly image
 pulls; a rerun takes seconds. kind adds the `kind-shardshop` context to
 `~/.kube/config` and selects it; the script passes that context on every command
@@ -398,13 +403,13 @@ request 5 GiB of memory in total; remeasure when workloads arrive.
 
 Connect to database `ledger` through the internal Service
 `ledger-db-rw.shardshop.svc:5432`. CNPG generates `ledger-db-app` at runtime for
-bootstrap owner `ledger_owner`; clients reference its `username` and `password`
-keys without committing or printing the values. TLS clients can mount only
-`ca.crt` from `ledger-db-ca` and use `sslmode=verify-full`. The bootstrap owner
-owns only the database: the ledger schema, its owner, migrations and runtime
-grants belong to step 2.6, following step 2.3's pattern. No application is wired
-to this owner here. Like the shards, the cluster revokes `TEMPORARY` and access to
-schema `public` from `PUBLIC` when it is created.
+bootstrap owner `ledger_owner`; application clients use the separate `ledger-app`
+Secret from step 2.6. Secret values are never committed or printed. TLS clients
+can mount only `ca.crt` from `ledger-db-ca` and use `sslmode=verify-full`. The bootstrap owner
+owns only the database; `ledger_schema_owner` owns schema `ledger`, its objects,
+and its Flyway history. Step 2.6 below describes its migrations and runtime grants.
+No application is wired to the bootstrap owner. Like the shards, the cluster
+revokes `TEMPORARY` and access to schema `public` from `PUBLIC` when it is created.
 
 The ledger uses ordinary WAL and local durable commits, with no synchronous
 standby requirement or CDC setup; its planned outbox relay polls its own tables.
@@ -441,15 +446,17 @@ business logic and scripts for deployment checks.
 The two scripts split the work:
 
 - `up.sh` declares everything Kubernetes can: the clusters and their creation-time
-  hardening, the catalog and ordering roles, and each shard's `Database` resource,
+  hardening, the schema roles, and each shard's `Database` resource,
   which creates schemas `catalog` and `ordering` with their respective owners.
   Its `Publication` resource selects only inserts into `ordering.order_outbox`;
   CNPG reconciles it after the migration creates the table. The shared
   [`databases.yaml`](infra/helm/shardshop/templates/databases.yaml) template
-  renders the roles and `Database` for every inventory entry.
+  renders the roles and `Database` for every inventory entry. The separate
+  [`ledger-database.yaml`](infra/helm/shardshop/templates/ledger-database.yaml)
+  declares `ledger-db-ledger`, schema `ledger`, and its four roles.
 - `migrate.sh` fills the schemas by running each Flyway stream in
-  [`database/`](database/) on every shard primary. It builds and loads the
-  migration image automatically; no Maven build, application JAR, or database
+  [`database/`](database/) on every shard primary and then on ledger once. It builds
+  and loads the migration image automatically; no Maven build, application JAR, or database
   superuser session is needed.
 
 After `up.sh`, run:
@@ -477,8 +484,8 @@ schema, the history table `catalog.flyway_schema_history`, retries, and the 5-se
 socket, 15-second statement and 5-second lock timeouts. It also starts every
 connection as `catalog_owner`, so the migrator login never owns an object.
 
-The script runs each existing stream directory under `database/shard/` in the
-order `catalog`, then `ordering`. Both streams are required. For each stream it
+The script runs the required `database/shard/` streams in the order `catalog`,
+then `ordering`, followed by `database/ledger/ledger` once. For each shard stream it
 loads the folder into the
 `<stream>-migrations` ConfigMap, then runs one `<shard>-<stream>-migration` Job per
 inventory entry from the shared
@@ -487,16 +494,20 @@ one shard at a time. Each Job uses the matching `<stream>-migrator` Secret and
 stream component label. The template supplies the same `shardRegion`, `shardIndex`,
 and `shardCount` Flyway placeholders for both streams from the inventory, and sets
 `SHARD_NAME` and the shard's CA Secret. Kubernetes expands `FLYWAY_URL` using the
-preceding environment variable. Each Job
-runs Flyway OSS 13.8.1 on the pinned Canonical OpenJDK 25 runtime. Its
+preceding environment variable. The ledger Job uses `ledger-migrations`,
+`ledger-migrator`, `ledger-db-ca`, and the `ledger-db-rw` endpoint/database `ledger`,
+without shard placement settings. Before each Job, the script waits for its
+cluster and the Database's current-generation `applied` status. Each Job runs
+Flyway OSS 13.8.1 on the pinned Canonical OpenJDK 25 runtime. Its
 [`Dockerfile`](infra/images/flyway/Dockerfile) copies only Flyway's core and
 PostgreSQL plugin libraries, the PostgreSQL JDBC driver and the licenses from the
 pinned official distribution image;
 its final base is `ubuntu/jre` on Ubuntu 26.04. The Job logs in as the stream's
 migrator (`catalog_migrator` for catalog) over TLS with `verify-full` and the
-shard's CA. It has a 180-second deadline and no retry. The script prints its log
-and stops at the first failure, leaving later shards unattempted; successful
-shards stay migrated, because migrations are not a transaction across databases.
+cluster's CA. It has a 180-second deadline and no retry. The script prints its log
+and stops at the first failure, leaving later Jobs unattempted and routing
+unpublished; successful databases stay migrated because migrations are not a
+transaction across databases.
 Correct the failure and rerun. Retained versioned migrations are immutable; fix
 forward with another version. Never repair checksums automatically, bypass
 validation, or clean a catalog that holds data. Normal Flyway configuration keeps
@@ -622,7 +633,9 @@ creation plus 60 seconds).
 to its saga. Outbox and inbox foreign keys reject unreserved or wrong-saga result
 IDs; deleting transport records leaves these bindings and the saga intact.
 Runtime grants keep buyer, allocation, order/item payload and message identities
-immutable. Only outbox publication metadata can be updated. Java remains
+immutable. Outbox inserts cannot supply `created_at` or `published_at`: the
+database assigns creation time and rows start unpublished. Only outbox publication
+metadata can be updated. Java remains
 responsible for atomic writes, valid state transitions, envelope validation,
 stock reserve/release, and cleanup only after the retention and CDC checkpoint
 gates; those behaviors are later milestones.
@@ -635,6 +648,9 @@ foreign keys that could prevent quarantine after data loss. The conflict store
 also retains expected and received identity/outcome snapshots. Unresolved-order
 indexes support the creation guard. Runtime may update delivery counts/times but
 cannot delete incidents or resolve them; resolution is an operator action.
+Column-level `INSERT` grants omit `resolved_at` and `resolution` on both stores,
+so an orphan result cannot be inserted already resolved to bypass the order ID
+reuse guard.
 
 Each shard has CNPG Publication `<shard>-order-outbox`, SQL name
 `ordering_order_outbox`, publishing only inserts into `ordering.order_outbox`.
@@ -646,7 +662,7 @@ The future connector must set `offset.storage.jdbc.table.name` to that qualified
 name and disable publication auto-creation; connector/library qualification is
 still part of the CDC milestone.
 
-Apply and check both streams:
+Apply all streams and inspect ordering:
 
 ```bash
 bash microservices/shardshop/scripts/up.sh
@@ -656,3 +672,81 @@ bash microservices/shardshop/scripts/verify-topology.sh --routing-only
 kubectl --context kind-shardshop -n shardshop get publications
 kubectl --context kind-shardshop -n shardshop logs job/shard-a-ordering-migration
 ```
+
+## Ledger schema and replay records (step 2.6)
+
+[`database/ledger/ledger/`](database/ledger/ledger/) contains `V1__ledger.sql`,
+the complete repeatable grants, and `flyway.toml`. Its history is
+`ledger.flyway_schema_history`. Flyway logs in as `ledger_migrator` and starts
+each connection as `ledger_schema_owner`, using the same TLS, retries, and session
+timeouts as the shard streams. The ledger has no shard-placement constraints,
+sequences, SQL functions, or triggers.
+
+| Role | Login | Privileges |
+|---|---|---|
+| `ledger_owner` | yes, CNPG bootstrap | Owns database `ledger`; no application uses this role |
+| `ledger_schema_owner` | no | Owns schema `ledger`, its tables and history |
+| `ledger_migrator` | yes | Non-inheriting membership in `ledger_schema_owner`; only Flyway uses it |
+| `ledger_writer` | no | Schema `USAGE`, table `SELECT`, and `INSERT` with the column restrictions below; only the listed updates/deletes |
+| `ledger_app` | yes | Inherits `ledger_writer`; no owner membership |
+
+`up.sh` creates `ledger-migrator` and `ledger-app` Secrets once and preserves
+them on reruns. Four ledger `DatabaseRole` resources accompany the existing
+bootstrap role; the default three-shard inventory therefore renders 40
+`DatabaseRole` resources and four `Database` resources. Runtime has no DDL,
+temporary-table, Flyway-history, or `TRUNCATE` privileges.
+
+| Table in `ledger` | Stored data and constraints |
+|---|---|
+| `ledger_operations` | Permanent decision per order, unique saga/command IDs, buyer, fingerprint, immutable snapshot, amount/currency, outcome, rejection reason and saved result data |
+| `ledger_entries` | One permanent row per recorded order; composite foreign key requires its amount, currency and timestamp to match a `RECORDED` decision, preventing an entry for a rejected order |
+| `ledger_result_ids` | Permanent binding of order-reserved command/result message IDs to an operation, immutable result envelope and original timestamps, plus a durable `publication_attempt` |
+| `ledger_inbox` | Disposable command deduplication rows; foreign key requires the saved command/result pair |
+| `ledger_outbox` | Pending/confirmed result delivery metadata; `message_id` references the reserved result ID and its current publication attempt |
+| `conflicting_commands` | Immutable conflicting envelope and expected/received identity snapshots, reason, delivery metadata and operator-resolution fields; no foreign keys obstruct quarantine |
+
+`ledger_writer` may update only `ledger_result_ids.publication_attempt`,
+`ledger_outbox.publication_attempt`/`published_at`, and
+`conflicting_commands.last_seen_at`/`delivery_count`. It may delete only inbox and
+outbox rows. Runtime cannot update or delete decisions or entries, delete permanent
+message bindings, alter saved envelopes, delete quarantine records, or resolve an
+existing incident. The binding's publication counter is its sole mutable field.
+Column-level inserts into the outbox omit `created_at` and `published_at`; new
+and recreated rows use database time and start unpublished. Command-quarantine
+inserts omit `resolved_at` and `resolution`, so incidents start unresolved.
+Quarantine is keyed by message ID plus the SHA-256 fingerprint of the complete
+canonical received payload, preserving different conflicts sharing an ID.
+
+The publisher joins `ledger_outbox.message_id` to
+`ledger_result_ids.result_message_id` to load the saved envelope. A deferred
+foreign key requires the outbox attempt to match the permanent binding at commit.
+On a duplicate command, Java must atomically increment the durable counter and
+reset the existing outbox row to pending or recreate it after cleanup, even on an
+inbox hit. Publisher confirmation must compare both `message_id` and the sent
+`publication_attempt` before setting `published_at`; a stale confirmation must
+leave a newer attempt pending. Replays reuse the saved decision and envelope;
+ledger never generates IDs or reevaluates policy for a decided order.
+
+The SQL constraints and grants supply storage boundaries. Java command validation,
+decision/entry atomicity, conflict detection, replay transactions, publisher
+confirmation, and cleanup only after confirmed publication and retention remain
+later steps. A DELETE grant does not enforce these cleanup gates. The ledger
+application is still a skeleton and does not migrate at startup.
+Decisions have no runtime `UPDATE` privilege, including for `FOR UPDATE`/`FOR KEY
+SHARE` row locks. Step 4.4 must serialize with a transaction advisory lock or
+insert-conflict handling followed by reading and comparing the saved decision.
+
+Provision, migrate, and inspect the ledger from the repository root:
+
+```bash
+bash microservices/shardshop/scripts/render.sh migration ledger-db ledger
+bash microservices/shardshop/scripts/up.sh
+bash microservices/shardshop/scripts/migrate.sh
+kubectl --context kind-shardshop -n shardshop get database ledger-db-ledger
+kubectl --context kind-shardshop -n shardshop get databaseroles
+kubectl --context kind-shardshop -n shardshop logs job/ledger-db-ledger-migration
+bash microservices/shardshop/scripts/migrate.sh # unchanged histories: no pending migrations
+```
+
+The ledger Job must succeed before the script waits for shard publications and
+publishes routing. Verification evidence and remaining work are tracked in PLAN.
