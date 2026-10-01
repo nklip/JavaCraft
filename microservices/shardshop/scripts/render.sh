@@ -5,19 +5,21 @@
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-usage='Usage: render.sh infrastructure|namespace|inventory|routing|migration [shard]'
-(( $# >= 1 && $# <= 2 )) || { echo "$usage" >&2; exit 1; }
+usage='Usage: render.sh infrastructure|namespace|inventory|routing | migration shard [catalog|ordering]'
+(( $# >= 1 && $# <= 3 )) || { echo "$usage" >&2; exit 1; }
 mode=$1
 case "$mode" in
     infrastructure|namespace|inventory|routing) [[ $# == 1 ]] || { echo "$usage" >&2; exit 1; } ;;
     # The chart rejects a shard that is not in the inventory.
-    migration) [[ $# == 2 ]] || { echo "$usage" >&2; exit 1; } ;;
+    migration) (( $# >= 2 )) || { echo "$usage" >&2; exit 1; } ;;
     *) echo "$usage" >&2; exit 1 ;;
 esac
 
 args=(--namespace shardshop --values "${SHARDSHOP_ENV_VALUES:-$root/infra/helm/shardshop/kind-values.yaml}"
       --values "${SHARDSHOP_INVENTORY:-$root/infra/shards.yaml}" --set-string "render=$mode")
-if [[ "$mode" == migration ]]; then args+=(--set-string "migrationShard=$2"); fi
+if [[ "$mode" == migration ]]; then
+    args+=(--set-string "migrationShard=$2" --set-string "migrationStream=${3:-catalog}")
+fi
 helm template shardshop "$root/infra/helm/shardshop" "${args[@]}" |
     if [[ "$mode" == inventory ]]; then
         # Inventory is a single JSON ConfigMap; remove Helm's header for stdlib readers.

@@ -3,7 +3,7 @@
 ## 1. Implementation milestones
 
 This is the implementation checklist for `microservices/shardshop`, updated on
-2026-09-30. Every step starts as **Planned**; existing design documents and routing
+2026-10-01. Every step starts as **Planned**; existing design documents and routing
 vectors do not mean the corresponding application behavior is implemented.
 
 **ID ownership constraint:** only `shardshop-product` and `shardshop-order`
@@ -11,6 +11,27 @@ create IDs, including deterministic fixtures and transport IDs. Workload modules
 obtain IDs from service APIs and reuse them; they must not generate or derive IDs,
 depend on Snowflake, or access the generator allocator. Ledger uses result IDs
 reserved by order. Apply this constraint to every milestone below.
+
+**Regional placement constraint:** `shard-a=US`, `shard-b=EU`, and `shard-c=ASIA`.
+Seller/buyer home regions are derived from their unchanged version-2 ID routes
+and included in service-issued immutable fixtures. Sellers create products only
+on their home shard; buyers may order from any region, including mixed-region
+orders subject to existing currency and stock rules. Public APIs have no shard
+selector or independent product-region selector.
+
+**Flyway SQL constraint:** keep every stream simple and declarative: tables,
+constraints, indexes, grants, and data changes only. Do not create SQL functions
+or triggers. Implement business logic in Java and deployment checks in scripts.
+
+**2026-10-01 completed baseline consolidation:** regional seller constraints and
+comments were merged into `V1__catalog.sql`, and the empty lab catalogs were reset
+and migrated. All nine instances have the regional V1 schema and grants, both
+routing hashes are published, and Cluster/PVC identities are unchanged. A second
+migration run applied nothing. Follow-up checks passed: 54 Java routing tests,
+read-only golden-vector queries on all three primaries, strict topology guards,
+and Kubernetes dry runs for both migration streams at the 44-character shard-name
+limit. Future retained baselines remain immutable;
+application APIs, datasets, and workloads remain planned in milestones 3 and 4.
 
 ### Instructions for executing a step
 
@@ -76,22 +97,22 @@ Milestone numbers 0-7 remain stable for references from other documents.
 |---|---|---|---|
 | 2.1 Remaining shard clusters | 1.3 | Done | Nine shared PostgreSQL pods form three independent three-instance quorum clusters; data replicates only within its shard. Scenario 2 topology checks pass. **2026-09-29:** all nine instances are Ready: three primaries and six quorum standbys, one per shard per worker, on nine distinct 2 GiB PVCs. Each shard's drill confirmed independent system identifiers and replication peers, fixtures reaching only their own standbys, synchronized slots, standby replacement and quorum behavior. With 512 MiB limits the nine pods used 563 MiB, with no OOM events or restarts; remeasure under load. Scenario 2 schema and grant checks belong to steps 2.3 and 2.5. **Commands:** `bash microservices/shardshop/scripts/up.sh`; `bash microservices/shardshop/scripts/verify-topology.sh <shard>` for each shard. |
 | 2.2 Separate ledger database | 1.3 | Done | The ledger has its own persistent database and Service, outside the nine shared shard pods; restart preserves its data. **2026-09-29:** `ledger-db` is a fourth, single-instance CNPG Cluster on PostgreSQL 18.6 with its own 2 GiB PVC, internal `ledger-db-rw` Service and database `ledger` owned by `ledger_owner`, without synchronous standbys or logical decoding. Restricted client Jobs connected over `verify-full` TLS, rejected a wrong password, and read a committed row back after the pod was replaced, with PVC, system identifier and credentials unchanged; reruns left all ten instances unchanged. The README documents its outage and volume-loss limits; its schema, migrations and runtime grants belong to step 2.6. **Commands:** `bash microservices/shardshop/scripts/up.sh` (twice); `kubectl --context kind-shardshop -n shardshop delete pod ledger-db-1`, then wait until it is Ready. |
-| 2.3 Database change management and catalog schema | 2.1 | Done | Schemas, roles and migrations live outside the Maven modules, as ARCHITECTURE.md's database change management defines. CNPG `DatabaseRole` and `Database` resources declare the catalog roles and schema `catalog` owned by `catalog_owner`; the `database/shard/catalog` Flyway stream creates sellers, products (seller foreign key, `initial_stock`, and `stock` that cannot go below zero) and stock reservations with idempotency keys, plus `UPDATE (stock)` for `catalog_reserver`. Each primary has its own history owned by `catalog_owner`; no login role owns an object or runs DDL, only `catalog_reserver` writes reservations, and no migration needs a superuser session. Java stock handling belongs to step 4.9. **2026-09-30:** Flyway 13.8.1 Jobs on a trimmed OpenJDK 25 image (74 packages, no Docker Scout findings) log in as `catalog_migrator` over `verify-full` TLS and act as `catalog_owner`; clusters disable superuser access and revoke `PUBLIC` defaults at creation. Read-only queries on all nine instances returned identical results: history and all 11 relations owned by `catalog_owner`, no triggers or functions, the exact grant matrix, `PUBLIC` limited to `CONNECT`, and the foreign key, stock bounds and reservation key present. **Commands:** `bash microservices/shardshop/scripts/up.sh`; `bash microservices/shardshop/scripts/migrate.sh` (reruns apply zero migrations); see the [runbook](README.md#database-schemas-and-migrations-step-23). |
-| 2.4 Single shard inventory and configured routing | 2.3, 0.4 | Done | One ordered inventory renders all clusters, roles/databases, migration Jobs and the routing snapshot; no per-shard directories. Existing database/PVC identities and three-shard routing vectors remain unchanged. Product/order require the deployed snapshot at startup. Publication follows successful sequential migrations; invalid inventories, partial failures and changed active membership fail closed. **2026-09-30:** `infra/shards.yaml` and the shared Helm chart render all 26 prior infrastructure resources and the migration Jobs unchanged; all 14 Cluster/PVC identities survived reapply, and empty, duplicate, malformed or `ledger-db` inventories fail rendering. `migrate.sh` migrates one shard at a time, publishes the `shardshop-routing` ConfigMap only afterwards, and refuses a changed shard list; reruns apply zero migrations. Product and order fail startup without a valid imported shard list; 38 routing tests and 4 tests per application pass with 100% coverage and no warnings, and the shard drill passes. **Commands:** `helm lint microservices/shardshop/infra/helm/shardshop -f microservices/shardshop/infra/helm/shardshop/kind-values.yaml -f microservices/shardshop/infra/shards.yaml`; `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-order -am verify`; `bash microservices/shardshop/scripts/up.sh`; `bash microservices/shardshop/scripts/migrate.sh`; `bash microservices/shardshop/scripts/verify-topology.sh`. |
-| 2.5 Ordering schema and catalog access | 2.3 | Planned | Buyers, durable order allocations uniquely keyed by buyer/run name/request ordinal, orders with a local foreign key to their buyer, items with seller and product IDs and quantities, sagas with `PENDING_STOCK`, a stock-release marker and reconciliation counters, inbox/outbox with order-reserved result IDs, and both ordering quarantine stores exist on every shard; histories stay separate; `order_app` can read sellers and products, write stock reservations, and update only `products.stock` in `catalog`; each primary has the dedicated `ordering.order_outbox` publication and CDC offsets table, and the CDC login can replicate and read only the outbox. |
+| 2.3 Database change management and catalog schema | 2.1 | Done | Schemas, roles and migrations live outside the Maven modules, as ARCHITECTURE.md's database change management defines. CNPG `DatabaseRole` and `Database` resources declare the catalog roles and schema `catalog` owned by `catalog_owner`; the `database/shard/catalog` Flyway stream creates sellers with immutable home regions and ID-placement checks, products (local seller foreign key, `initial_stock`, and `stock` that cannot go below zero) and stock reservations with idempotency keys, plus `UPDATE (stock)` for `catalog_reserver`. Each primary has its own history owned by `catalog_owner`; no login role owns an object or runs DDL, only `catalog_reserver` writes reservations, and no migration needs a superuser session. Java stock handling belongs to step 4.9. **2026-09-30:** Flyway 13.8.1 Jobs on a trimmed OpenJDK 25 image (74 packages, no Docker Scout findings) log in as `catalog_migrator` over `verify-full` TLS and act as `catalog_owner`; clusters disable superuser access and revoke `PUBLIC` defaults at creation. Read-only queries on all nine instances returned identical results: history and all 11 relations owned by `catalog_owner`, no triggers or functions, the exact grant matrix, `PUBLIC` limited to `CONNECT`, and the foreign key, stock bounds and reservation key present. **Commands:** `bash microservices/shardshop/scripts/up.sh`; `bash microservices/shardshop/scripts/migrate.sh` (reruns apply zero migrations); see the [runbook](README.md#database-schemas-and-migrations-step-23). |
+| 2.4 Single shard inventory and configured routing | 2.3, 0.4 | Done | One ordered inventory of names and immutable regions renders all clusters, region labels, roles/databases, migration Jobs and the routing snapshot; no per-shard directories. Existing database/PVC identities and three-shard routing vectors remain unchanged. Product/order require the deployed snapshot at startup. Publication follows successful sequential migrations; invalid inventories, partial failures, changed active membership, and reassigned regions fail closed; both existing topology ConfigMaps require matching `version` and `regionVersion` values. **2026-09-30:** `infra/shards.yaml` and the shared Helm chart render all 26 prior infrastructure resources and the migration Jobs unchanged; all 14 Cluster/PVC identities survived reapply, and empty, duplicate, malformed or `ledger-db` inventories fail rendering. `migrate.sh` migrates one shard at a time, publishes the `shardshop-routing` ConfigMap only afterwards, and refuses a changed shard list; reruns apply zero migrations. Product and order fail startup without a valid imported shard list; 38 routing tests and 4 tests per application pass with 100% coverage and no warnings, and the shard drill passes. **Commands:** `helm lint microservices/shardshop/infra/helm/shardshop -f microservices/shardshop/infra/helm/shardshop/kind-values.yaml -f microservices/shardshop/infra/shards.yaml`; `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-order -am verify`; `bash microservices/shardshop/scripts/up.sh`; `bash microservices/shardshop/scripts/migrate.sh`; `bash microservices/shardshop/scripts/verify-topology.sh`. |
+| 2.5 Ordering schema and catalog access | 2.3, 2.4 | Planned | Buyers with immutable `US`/`EU`/`ASIA` home regions and checks for the deployed region and version-2 ID placement, durable order allocations uniquely keyed by buyer/run name/request ordinal, orders with a local foreign key to their buyer, items with seller and product IDs and quantities, sagas with `PENDING_STOCK`, a stock-release marker and reconciliation counters, inbox/outbox with order-reserved result IDs, and both ordering quarantine stores exist on every shard; histories stay separate; the shared migration Job uses the `ordering` stream, its ConfigMap and migrator Secret, and the same `shardRegion`/`shardIndex`/`shardCount` placeholders as catalog; `order_app` can read sellers and products, write stock reservations, and update only `products.stock` in `catalog`; each primary has the dedicated `ordering.order_outbox` publication and CDC offsets table, and the CDC login can replicate and read only the outbox. |
 | 2.6 Ledger schema and permanent decisions | 2.2, 2.3 | Planned | Ledger entries, permanent operation decisions, inbox/outbox using order-reserved result IDs, retained publication-attempt counters, and conflicting-command quarantine have the required identity constraints and separate migration/runtime roles. |
 
 ### Milestone 3: Product contracts, IDs, and workloads
 
 | Step / deliverable | Depends on | Status | Acceptance condition |
 |---|---|---|---|
-| 3.1 HTTP and message contracts | 0.3 | Planned | Each owning module holds its OpenAPI document or message schema, covering service-issued decimal-string IDs, dataset discovery, durable order-ID allocation and its retries, payloads, errors, and correlation, including order-reserved ledger result IDs; clients keep their own DTOs, and no API, model, or JSON files are shared between modules. Provider tests arrive with the implementing steps. |
+| 3.1 HTTP and message contracts | 0.3 | Planned | Each owning module holds its OpenAPI document or message schema, covering service-issued decimal-string IDs, immutable seller/buyer home regions, inherited product regions, dataset discovery, durable order-ID allocation and its retries, payloads, errors, and correlation, including order-reserved ledger result IDs; clients keep their own DTOs, and no API, model, or JSON files are shared between modules. Provider tests arrive with the implementing steps. |
 | 3.2 ID validation and currency selection | 3.1 | Planned | Each ID-consuming module has its own unit-tested ID parser that accepts canonical IDs up to the signed-long maximum, including values above 2^53, and rejects numeric JSON tokens, LF/CRLF/TAB text, and other noncanonical input; the order producer's currency selection passes its boundary IDs without depending on `shardshop-sharding`. |
 | 3.3 Bounded Snowflake generation | 0.3 | Planned | Injected generators exist only in product and order and satisfy concurrency, sequence-exhaustion, clock-failure, and timestamp-boundary checks; failures emit no ID. Workload and ledger dependencies contain no ID generator. Scenario 10 library checks pass. |
 | 3.4 Generator allocation at JVM startup | 1.1, 3.3 | Planned | Concurrent product/order starts and same-pod container restarts reserve distinct generator IDs; lost responses, missing/stale state, and exhaustion fail safely without resetting the high-water mark. Workloads and ledger have no allocation launcher or allocator permissions. |
-| 3.6 Service-owned deterministic datasets | 3.1, 3.3 | Planned | Product derives seller/product IDs and immutable USD/EUR fixture payloads; order derives buyer IDs in disjoint reserved ranges. Paginated service APIs expose the descriptors. Workloads consume those responses without deriving IDs or sharing a manifest file; service tests pin generation and workload tests verify unchanged ID forwarding. |
-| 3.5 Seller and product API on primaries | 0.4, 2.3, 3.2, 3.4, 3.6 | Planned | Seller and product PUTs accept only product-issued fixture IDs and return 201/200/409; a product PUT for a known fixture whose seller is not yet created returns `422 SELLER_NOT_FOUND`; GETs return stored data, including current stock, or 404; invalid/unissued IDs return 400; provider tests match responses to the product OpenAPI document; reads reach PostgreSQL and use bounded pools/timeouts. |
-| 3.7 Product seeder application | 3.5, 3.6 | Planned | Repeated seeding produces identical sellers and products; partial failures retain original IDs/payloads; completion requires successful primary-read verification. |
+| 3.6 Service-owned deterministic datasets | 2.4, 3.1, 3.3 | Planned | Product derives seller/product IDs and immutable USD/EUR fixture payloads in every region; order derives buyer IDs in disjoint reserved ranges. Both services derive immutable home regions from the routed IDs and expose them in paginated descriptors and seller/buyer creation payloads. Products inherit the seller region without an independent region field. Workloads consume those responses without deriving IDs or sharing a manifest file; service tests pin generation and workload tests verify unchanged ID forwarding. |
+| 3.5 Seller and product API on primaries | 0.4, 2.3, 3.2, 3.4, 3.6 | Planned | Seller and product PUTs accept only product-issued fixture IDs; seller payloads must carry the issued home region and products remain on that seller's shard. Valid requests return 201/200/409; a product PUT for a known fixture whose seller is not yet created returns `422 SELLER_NOT_FOUND`; GETs return stored data, including current stock, or 404; invalid/unissued IDs and missing/unknown or mismatched seller regions return `400 INVALID_REQUEST`; cross-region product placement is rejected by the API and database; provider tests match responses to the product OpenAPI document; reads reach PostgreSQL and use bounded pools/timeouts. |
+| 3.7 Product seeder application | 3.5, 3.6 | Planned | Repeated seeding produces identical sellers and products across US/EU/ASIA, with USD and EUR products in every region; partial failures retain original IDs/regions/payloads; completion requires successful primary-read verification. |
 | 3.8 Product reader application | 3.5, 3.6 | Planned | The reader has bounded load and reports request/latency/error metrics; its HTTP/1.1 pool, rotation, and five-second request deadline match the contract. |
 | 3.9 Product deployment and seeding gate | 3.7, 3.8 | Planned | Application images have an OS package inventory and advisory check; two product pods receive requests within 120 seconds; a failed/partial seed blocks the reader and order producer; successful repeated runs pass scenarios 1 and 3 for primary reads. |
 
@@ -99,14 +120,14 @@ Milestone numbers 0-7 remain stable for references from other documents.
 
 | Step / deliverable | Depends on | Status | Acceptance condition |
 |---|---|---|---|
-| 4.1 Order validation and atomic acceptance | 2.5, 3.4, 3.5 | Planned | Buyer and order PUT/GET use order-issued IDs; order-allocation POST commits a stable buyer/run name/request ordinal mapping before returning, and retries/restarts recover the same ID. Unissued IDs and wrong-parent allocations fail. Staged 400/409/422/503 precedence including `422 BUYER_NOT_FOUND`, locked re-checks, unknown commits, and atomic order/saga writes pass scenario 9; catalog IO holds no order connection or lock; provider tests match responses to the order OpenAPI document. |
+| 4.1 Order validation and atomic acceptance | 2.5, 3.4, 3.5 | Planned | Buyer and order PUT/GET use order-issued IDs; buyer creation requires the issued immutable home region, with invalid regions rejected as `400 INVALID_REQUEST`. Buyer orders remain on the buyer's home shard and may contain sellers from any or all regions under the existing currency rules; order-allocation POST commits a stable buyer/run name/request ordinal mapping before returning, and retries/restarts recover the same ID. Unissued IDs and wrong-parent allocations fail. Staged 400/409/422/503 precedence including `422 BUYER_NOT_FOUND`, locked re-checks, unknown commits, and atomic order/saga writes pass scenario 9; catalog IO holds no order connection or lock; provider tests match responses to the order OpenAPI document. |
 | 4.9 Stock reservation step | 2.5, 4.1 | Planned | Committed orders reserve every item on its seller's shard before the ledger sees them: success moves the saga to `PENDING_LEDGER` with its `RecordOrder` outbox insert, insufficient stock cancels with `OUT_OF_STOCK` and releases partial reservations, and catalog outages retry without cancelling; Java transactions adjust stock exactly once per reservation or release; scenario 11 passes. |
 | 4.2 RabbitMQ topology and policies | 1.1, 0.3, 3.1 | Planned | The persistent broker runs a release inside its support window, under the `restricted` Pod Security profile with an arbitrary user ID, and has processing/parking quorum queues, distinct complete source policies, required feature flags, and verified length/byte/retry limits. |
 | 4.3 Order outbox CDC relay | 4.2, 4.9 | Planned | Debezium is pinned and qualified. One reader per shard captures committed outbox inserts, including a first-start snapshot of unpublished rows, and publishes each stored envelope in source order; rollbacks, status updates, and deletes emit no command. Returns, nacks, timeouts, and crashes leave rows unpublished and offsets unadvanced; a failed reader restarts alone with capped backoff and resumes from the offsets in its shard database with stable envelope IDs, while slot or offset loss stops it for explicit recovery; published `RecordOrder` envelopes match the order-owned message schema. |
 | 4.4 Ledger command consumer | 2.6, 3.2, 4.2 | Planned | A command commits one immutable decision and result outbox record using its order-reserved result ID before acknowledgement; duplicate commands re-arm or recreate the saved result for publication without generating IDs; conflicts commit quarantine first; commands with invalid IDs are rejected without requeue. |
 | 4.5 Ledger result publisher | 4.4 | Planned | Stored outcomes reach the result queue with preserved logical correlation and order-reserved message IDs; retransmissions and duplicate-command replays retain the same ID, and publication-attempt checks prevent a stale confirm from hiding a replay. Ledger has no generator; result envelopes match its message schema. |
 | 4.6 Order result consumer | 4.3, 4.5 | Planned | Results atomically confirm/cancel the correct order, and a cancellation releases its stock reservations; duplicates are harmless; absent/conflicting results use named quarantine stores; unavailable shards follow retry/DLQ handling; results with invalid IDs are rejected without requeue. |
-| 4.7 Order producer application | 3.6, 4.1 | Planned | The HTTP-only producer discovers product/buyer descriptors, requests each order ID from order before USD/EUR selection, preserves returned IDs/payloads and configured allocation coordinates on retries/restarts, and polls status within bounded deadlines; it has no ID generator or allocator access. |
+| 4.7 Order producer application | 3.6, 4.1 | Planned | The HTTP-only producer discovers product/buyer descriptors and regions, exercises each buyer region buying from both other regions and mixed US/EU/ASIA orders in one currency, requests each order ID from order before USD/EUR selection, preserves returned IDs/regions/payloads and configured allocation coordinates on retries/restarts, and polls status within bounded deadlines; it has no ID generator or allocator access. |
 | 4.8 Saga deployment and first end-to-end run | 3.9, 4.6, 4.7 | Planned | Only product and order run generator-allocation launchers; ledger and workloads have no allocator credentials. Seeding gates load; a replacement order pod on either worker resumes CDC from the stored offsets; scenarios 4, 5 and 11 pass end to end. |
 
 ### Milestone 5: Recovery, retention, and backpressure
@@ -154,7 +175,7 @@ before their lock deadlines, whatever the milestone.
 
 ## 2. Scope and target topology
 
-Status: design roadmap, updated on 2026-09-28. [ARCHITECTURE.md](ARCHITECTURE.md)
+Status: design roadmap, updated on 2026-10-01. [ARCHITECTURE.md](ARCHITECTURE.md)
 defines module boundaries, HTTP/message contracts, consistency policies, and
 acceptance scenarios. This plan defines implementation order and local
 infrastructure. [VERSIONS.md](VERSIONS.md) defines the stable-release baseline,
@@ -164,11 +185,16 @@ Build ShardShop in `microservices/shardshop` to exercise product read load,
 horizontal sharding, physical replication, log-based CDC, order sagas, and
 Kubernetes failover. The APIs expose decimal-string Snowflake business IDs generated with
 `de.mkammerer.snowflake-id:snowflake-id`; shard routing stays internal: sellers, their
-products and stock route by seller ID, and buyers and their orders by buyer ID.
+products and stock route by seller ID to the seller's home region, and buyers
+and their orders by buyer ID to the buyer's home region. Buyers can purchase
+from sellers in any region; products inherit their seller's region.
 
 
 Use one local Kubernetes cluster and three CloudNativePG `Cluster` resources,
-named `shard-a`, `shard-b`, and `shard-c`, each with `spec.instances: 3`.
+named `shard-a` (US), `shard-b` (EU), and `shard-c` (ASIA), each with
+`spec.instances: 3`. The `shardshop.javacraft/region` label on each Cluster and
+its inherited metadata makes this mapping visible in Kubernetes. These are
+business regions within the one-machine lab, not geographic deployment sites.
 Each resource manages one primary and two physical streaming standbys, with quorum
 synchronous replication (`ANY 1`) and quorum-based failover. A single resource
 with nine instances would create one primary and eight standbys. See
@@ -182,9 +208,9 @@ flowchart LR
     O["Order service"] --> A
     O --> B
     O --> C
-    A --> P1[("Primary A: catalog + ordering")]
-    B --> P3[("Primary B: catalog + ordering")]
-    C --> P5[("Primary C: catalog + ordering")]
+    A --> P1[("Primary A · US: catalog + ordering")]
+    B --> P3[("Primary B · EU: catalog + ordering")]
+    C --> P5[("Primary C · ASIA: catalog + ordering")]
     P1 -->|"WAL replication"| P2[("Standbys A1, A2")]
     P3 -->|"WAL replication"| P4[("Standbys B1, B2")]
     P5 -->|"WAL replication"| P6[("Standbys C1, C2")]
@@ -234,14 +260,19 @@ buyer's shard:
 index = unsignedBigEndian(SHA-256(UTF-8(canonical decimal Snowflake ID))) % deployedShards.size
 shard = deployedShards[index]
 initial deployedShards = [shard-a, shard-b, shard-c]
+initial regions = [US, EU, ASIA]
+homeRegion(id) = shard.region
 ```
 
 Interpret all 32 digest bytes as an unsigned big-endian integer (byte 0 most
 significant). `shardshop-sharding` implements this rule and tests it against
-independently computed golden vectors. The order producer applies the same integer
-modulo 100 with its own code: EUR when it is below the configured
+independently computed golden vectors. `verify-topology.sh --routing-only` reads
+the same fixtures on every primary to compare PostgreSQL SHA-256 arithmetic and
+the deployed seller placement constraint with Java's expected results, without a
+failure drill. The order producer applies the same integer modulo 100 with its own code: EUR when it is below the configured
 `rejected-order-percent`, otherwise USD. The exact input encoding and boundary
-cases live in [ARCHITECTURE.md](ARCHITECTURE.md).
+cases live in [ARCHITECTURE.md](ARCHITECTURE.md). Region and currency are
+independent; provide both USD and EUR products in each region.
 Use positive Java `long` IDs and PostgreSQL `BIGINT` columns, with canonical
 decimal strings for all HTTP and message IDs, including values above 2^53.
 Reject numeric JSON IDs, signs, leading zeros, whitespace, zero, and values above
@@ -261,7 +292,24 @@ on container restart; never derive it from a pod name or choose it randomly.
 This finite lab supports at most 1,023 such starts per retained dataset. Existing
 logical requests and outbox retransmissions retain their assigned IDs.
 
-Order items, saga state, inbox, and outbox remain on their order's shard.
+Seller and buyer dataset descriptors include the immutable `region` derived by
+the owning service from the ID route. Their creation payloads must use that exact
+region; unknown or mismatched values return `400 INVALID_REQUEST`. Products have
+no independent region field and inherit their seller's placement. Catalog V1
+creates the seller region with the `shardRegion` default and checks each seller's
+region and ID against the deployed `shardIndex`/`shardCount`. Catalogs reject
+misplaced sellers. The local product foreign key enforces seller/product
+colocation; runtime roles cannot change a seller's region. Before any migrations,
+the script reserves both topology hashes in `shardshop-migration-topology`;
+startup and migration check that reservation
+and the published routing ConfigMap on every run, even with no pending versions.
+Both existing ConfigMaps require matching `version` and `regionVersion` values;
+absence is allowed for initial bootstrap. A partial migration or failed routing
+publication therefore cannot publish changed region/index/count parameters.
+Step 2.5 applies equivalent buyer placement constraints.
+
+Order items, saga state, inbox, and outbox remain on their order's home shard,
+including purchases from other regions and orders mixing US/EU/ASIA sellers.
 Resolve products from their sellers' primaries while holding no order transaction,
 advisory lock, or order connection. Then open a short order transaction, lock and
 re-check existing state/quarantine, and store product/price snapshots with the
@@ -270,14 +318,19 @@ foreign key, transaction, or join. Ledger rows live only in the separate ledger 
 copies each primary's database to its own standbys; it does not distribute rows
 between shards.
 
-Freeze the hash and the ordered mapping for each retained dataset. The single
-`infra/shards.yaml` inventory generates resource manifests and a versioned routing
-ConfigMap, published only after all shard migrations pass. Product/order load an
+Freeze the hash, ordered names, and assigned regions for each retained dataset.
+The single `infra/shards.yaml` inventory stores `name`/`region` entries and
+generates resource manifests and a versioned routing ConfigMap, published only
+after all shard migrations pass. Multiple shards may share a region in a custom
+inventory. The names-only `version` remains unchanged; `regionVersion` hashes
+comma-joined `name=REGION` pairs. Product/order require aligned
+`shardshop.routing.shards` and `shardshop.routing.regions` lists and load an
 immutable snapshot at startup; health changes never alter membership. Changing
-count or order would misroute existing data, so deployment refuses a changed
-published list. The lab must be stopped, reset and reseeded for a different
-topology. Online expansion needs a separate migration/cutover protocol. Routing is not authorization, and skewed access
-patterns can still create a hot shard.
+count or order would misroute existing data, and changing regions would redefine
+home regions, so deployment refuses either published change. A different topology
+needs the lab stopped, reset and reseeded. Online expansion needs a separate
+migration/cutover protocol.
+Routing is not authorization, and skewed access patterns can still create a hot shard.
 
 ## 4. Technology choices
 
@@ -389,7 +442,8 @@ OpenShift, or another distribution confined to the cluster bootstrap and environ
 
 1. Keep everything kind-specific in `infra/kind.yaml` and the bootstrap; every
    other manifest is plain Kubernetes.
-2. Keep one ordered shard inventory in `infra/shards.yaml` and shared Helm
+2. Keep one ordered shard inventory of names and immutable regions in
+   `infra/shards.yaml` and shared Helm
    templates in `infra/helm/shardshop/`. Environment values (initially
    `kind-values.yaml`) set only what differs between clusters, such as storage
    class and anti-affinity. Render with Helm, then apply ordinary Kubernetes
@@ -440,7 +494,9 @@ and repositories for JDBC IO. Domain types stay free of Spring dependencies.
 Select the shard before a transaction and retain it through commit. Prefer
 explicit shard handles over thread-local routing; test concurrent requests for
 routing leakage. Public contracts expose no shard selectors; catalog calls carry
-the seller ID.
+the seller ID. Enforce issued seller/buyer home regions, retain products on
+their seller's home shard, and allow buyers to purchase across regions under the
+same currency and stock rules.
 Keep the ID generator inside product/order behind an injected service adapter;
 domain types only need positive `long` values. A new-ID failure returns `503 ID_GENERATION_UNAVAILABLE`
 with no partial transaction, or retains a consumer delivery for retry/DLQ handling.
@@ -502,8 +558,8 @@ and [CloudNativePG synchronous replication](https://cloudnative-pg.io/docs/1.30/
 
 For the initial recovery exercise, dump all three shards and the ledger database
 to storage outside kind, and restore into isolated targets. Record each database's
-identity, routing version, owner schema versions, and backup time. Separate dumps
-are not a globally consistent snapshot: quiesce producers and drain sagas/relays
+identity, routing names and region versions, owner schema versions, and backup
+time. Separate dumps are not a globally consistent snapshot: quiesce producers and drain sagas/relays
 for a coordinated baseline backup, or explicitly reconcile restored order and
 ledger state. Preserve permanent ledger operation outcomes in every supported
 backup/restore process. Export broker definitions; database outboxes and
@@ -546,7 +602,7 @@ microservices/shardshop/
   shardshop-ledger/               # ledger consumer and result relay
   database/                       # Flyway streams: shard/catalog, shard/ordering, ledger/ledger
   infra/kind.yaml                # kind-only cluster configuration
-  infra/shards.yaml              # only ordered list of shard cluster names
+  infra/shards.yaml              # only ordered list of shard names and immutable regions
   infra/helm/shardshop/           # shared infrastructure, migration and routing templates
     kind-values.yaml             # kind storage class and anti-affinity strictness
     eks-values.yaml              # milestone 7: EKS storage class and zone placement
@@ -567,8 +623,20 @@ standby-loss behavior, and the complete Snowflake generation/restart contract.
 
 Infrastructure checks must also:
 
-1. Use fixed decimal-string Snowflake fixtures with independently calculated A/B/C routes.
-   Verify rows on exactly the expected primary and eventually both of its standbys.
+1. Use fixed decimal-string Snowflake fixtures with independently calculated
+   A/B/C routes and US/EU/ASIA home regions. Verify region labels, SQL placement
+   constraints, rejected wrong-region creation, and rows on exactly the expected
+   primary and eventually both standbys. Preserve the version-2 routing vectors;
+   verify V1 on fresh catalogs, with named checks and comments and no SQL functions
+   or triggers. A matching rerun applies no migrations. Run the read-only
+   `verify-topology.sh --routing-only` check on every primary using the Java golden
+   fixtures to detect differences in SQL hashing or deployed placement constraints.
+   Reject changed placement parameters after a partial migration, including when no
+   versioned migrations remain, before publishing the first regional snapshot.
+   Preserve the saved topology after failed publication, reject missing hashes,
+   and reuse the reservation on a matching retry.
+   Assert cross-region buying and mixed US/EU/ASIA orders with both USD and EUR
+   fixtures in every region, without bypassing currency or stock validation.
 2. Check `pg_is_in_recovery()` on every instance and `pg_stat_replication` on
    every primary. Confirm three writable shard primaries, rejected writes on
    standbys, each schema's migration version, and effective runtime privileges.
@@ -599,8 +667,9 @@ submodule; never run the repository's root Maven build for this project.
 mvn -f microservices/shardshop/pom.xml clean verify
 mvn -f microservices/shardshop/pom.xml -Pintegration verify
 bash microservices/shardshop/scripts/up.sh
-kubectl --context kind-shardshop -n shardshop get clusters.postgresql.cnpg.io
+kubectl --context kind-shardshop -n shardshop get clusters.postgresql.cnpg.io -L shardshop.javacraft/region
 kubectl --context kind-shardshop -n shardshop get pods,pvc,svc
+bash microservices/shardshop/scripts/verify-topology.sh --routing-only
 bash microservices/shardshop/scripts/verify-topology.sh
 bash microservices/shardshop/scripts/verify-sagas.sh
 bash microservices/shardshop/scripts/verify-failover.sh

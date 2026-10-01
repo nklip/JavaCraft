@@ -6,7 +6,13 @@ kind: Cluster
 metadata:
   name: {{ .name | quote }}
   namespace: {{ $.Release.Namespace | quote }}
+  labels:
+    shardshop.javacraft/region: {{ .region | quote }}
 spec:
+  # Business region only; kind still places all three regions on local workers.
+  inheritedMetadata:
+    labels:
+      shardshop.javacraft/region: {{ .region | quote }}
   instances: {{ $.Values.shard.instances }}
   {{- include "shardshop.clusterCommon" (dict "root" $ "database" "shardshop" "owner" "shardshop_owner" "affinity" $.Values.shard.affinity) | nindent 2 }}
   postgresql:

@@ -1,6 +1,7 @@
 # Render with infra/shards.yaml. This chart only renders manifests; scripts apply them.
 render: infrastructure
 migrationShard: ""
+migrationStream: catalog
 shards: []
 
 postgresql:

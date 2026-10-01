@@ -12,20 +12,36 @@ class ShardTest {
 
     @Test
     void keepsTheClusterName() {
-        assertEquals("shard-a", new Shard("shard-a").clusterName());
+        assertEquals("shard-a", new Shard("shard-a", "US").clusterName());
     }
 
     @ParameterizedTest
     @NullAndEmptySource
     @ValueSource(strings = {" ", "\t", "\n"})
     void rejectsBlankClusterNames(String name) {
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> new Shard(name));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> new Shard(name, "US"));
 
         assertEquals("Shard name must not be blank", exception.getMessage());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"US", "EU", "ASIA"})
+    void keepsTheRegion(String region) {
+        assertEquals(region, new Shard("regional-shard", region).region());
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"us", "Europe", "APAC", " US", "US ", "US\n"})
+    void rejectsInvalidRegions(String region) {
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> new Shard("shard-a", region));
+
+        assertEquals("Shard region must be US, EU or ASIA", exception.getMessage());
+    }
+
     @Test
-    void clusterNameIsItsIdentity() {
-        assertEquals(new Shard("shard-a"), new Shard("shard-a"));
+    void clusterNameAndRegionAreItsIdentity() {
+        assertEquals(new Shard("shard-a", "US"), new Shard("shard-a", "US"));
     }
 }

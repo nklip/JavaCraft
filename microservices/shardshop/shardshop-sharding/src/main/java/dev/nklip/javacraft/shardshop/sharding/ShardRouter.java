@@ -9,6 +9,8 @@ import java.util.Objects;
 /**
  * A positive Snowflake ID belongs to the configured shard at index
  * {@code unsignedBigEndian(SHA-256(UTF-8(decimal ID))) mod shardCount}.
+ * Sellers and buyers inherit that shard's region; products route by their seller ID.
+ * A buyer's home region does not restrict which sellers an order can reference.
  * <p>
  * The hash remains routing contract version 2. The topology fixes shard count and ordering
  * for this router's lifetime; changing either moves existing rows and needs a data migration.

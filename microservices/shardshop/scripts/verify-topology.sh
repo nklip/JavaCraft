@@ -3,20 +3,24 @@
 # kind-shardshop lab only. Temporarily fences standbys and replaces one standby
 # pod; never deletes PVCs. Run once per shard to exercise every primary.
 # When: on demand, once up.sh has made the clusters Ready, e.g. after changing cluster
-# settings. It briefly blocks writes on the drilled shard.
+# settings. It briefly blocks writes on the drilled shard. --routing-only checks
+# deployed routing constraints on every primary without performing the failure drill.
 set -euo pipefail
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/shards.sh"
-usage="Usage: $0 [shard from infra/shards.yaml]"
+usage="Usage: $0 [shard from infra/shards.yaml] | --routing-only"
+routing_only=false
+if [[ ${1:-} == --routing-only ]]; then routing_only=true; shift; fi
 (( $# <= 1 )) || { echo "$usage" >&2; exit 1; }
+[[ "$routing_only" != true || $# == 0 ]] || { echo "$usage" >&2; exit 1; }
 load_inventory
 context=kind-shardshop
 cluster=${1:-${shards[0]}}
 found=false
 for shard in "${shards[@]}"; do [[ "$shard" != "$cluster" ]] || found=true; done
 [[ "$found" == true ]] || { echo "$usage" >&2; exit 1; }
-[[ "$instances" == 3 ]] || { echo 'The quorum failure drill requires three instances per shard' >&2; exit 1; }
-# This is a replication probe, not a routing fixture; Java tests verify routing separately.
+[[ "$routing_only" == true || "$instances" == 3 ]] || { echo 'The quorum failure drill requires three instances per shard' >&2; exit 1; }
+# This row is only the replication probe; verify_routing uses the shared golden vectors.
 fixture=1
 shard_selector=$(IFS=,; echo "${shards[*]}")
 selector="cnpg.io/cluster=$cluster,cnpg.io/podRole=instance"
@@ -67,6 +71,38 @@ endpoints() {
 volumes() {
     k get pvc -l "cnpg.io/cluster=$cluster" \
         -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.uid}{" "}{.spec.volumeName}{" "}{.status.phase}{"\n"}{end}' | sort
+}
+verify_routing() {
+    local vectors shard leader predicate
+    vectors=$(python3 - "$root/shardshop-sharding/src/test/resources/routing-vectors.csv" "${shards[@]}" <<'PY'
+import csv, hashlib, re, sys
+
+# This frozen mapping belongs to the golden fixture contract, not the live inventory.
+golden_shards = ("shard-a", "shard-b", "shard-c")
+deployed_shards = sys.argv[2:]
+values = []
+with open(sys.argv[1]) as source:
+    for name, identifier, expected in csv.reader(line for line in source if not line.startswith("#")):
+        if not re.fullmatch(r"[1-9][0-9]{0,18}", identifier) or int(identifier) > 9223372036854775807:
+            sys.exit(f"Invalid golden ID: {name}")
+        digest = int.from_bytes(hashlib.sha256(identifier.encode("utf-8")).digest(), "big")
+        if golden_shards[digest % len(golden_shards)] != expected:
+            sys.exit(f"Golden routing vector disagrees with independent SHA-256: {name}")
+        # Also support reordered and differently sized deployment inventories.
+        shard = deployed_shards[digest % len(deployed_shards)]
+        values.append(f"({identifier}::bigint, '{shard}')")
+if not values:
+    sys.exit("No golden routing vectors found")
+print(",".join(values))
+PY
+    ) || return 1
+    for shard in "${shards[@]}"; do
+        leader=$(k get cluster "$shard" -o jsonpath='{.status.currentPrimary}')
+        predicate=$(sql "$leader" "SELECT pg_get_expr(conbin, conrelid) FROM pg_constraint WHERE conrelid = 'catalog.sellers'::regclass AND conname = 'sellers_shard_check' AND contype = 'c' AND convalidated")
+        [[ -n "$predicate" ]] || fail "$shard lacks a validated sellers_shard_check"
+        equal "$(sql "$leader" "BEGIN READ ONLY; SELECT count(*) FROM (VALUES $vectors) AS vectors(seller_id, expected_shard) WHERE ($predicate) IS DISTINCT FROM (expected_shard = '$shard'); ROLLBACK;")" 0 "$shard deployed seller routing vs golden vectors"
+        echo "Verified $shard deployed seller routing against the shared Java golden vectors."
+    done
 }
 verify_shared_topology() {
     local shard leader pod identity role shard_pods replicas expected all_volumes
@@ -174,12 +210,17 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 assert_published_topology
+if [[ "$routing_only" == true ]]; then
+    verify_routing
+    exit 0
+fi
 k wait --for=condition=Ready "cluster/$cluster" --timeout=180s
 existing_fence=$(k get cluster "$cluster" -o jsonpath='{.metadata.annotations.cnpg\.io/fencedInstances}')
 [[ -z "$existing_fence" || "$existing_fence" == '[]' ]] || fail 'Cluster is already fenced; recover it before this drill'
 k create configmap "$lock" --from-literal=probe="$probe" --from-literal=cluster="$cluster"
 locked=true
 verify_shared_topology
+verify_routing
 primary=$(current_primary)
 budget=$(k get cluster "$cluster" -o jsonpath='{.spec.postgresql.parameters.max_slot_wal_keep_size}')
 [[ -n "$budget" && "$budget" != -1 ]] || fail "$cluster must set a finite max_slot_wal_keep_size"

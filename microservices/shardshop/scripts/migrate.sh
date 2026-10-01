@@ -14,11 +14,18 @@ cp "${SHARDSHOP_INVENTORY:-$root/infra/shards.yaml}" "$work/inventory.yaml"
 export SHARDSHOP_INVENTORY="$work/inventory.yaml"
 load_inventory
 render routing >"$work/routing.yaml"
-for shard in "${shards[@]}"; do render migration "$shard" >"$work/$shard.yaml"; done
+streams=(catalog)
+if [[ -d "$root/database/shard/ordering" ]]; then streams+=(ordering); fi
+for stream in "${streams[@]}"; do
+    for shard in "${shards[@]}"; do
+        render migration "$shard" "$stream" >"$work/$shard-$stream.yaml"
+    done
+done
 assert_published_topology
 bash "$root/scripts/build-migration-image.sh"
+reserve_migration_topology
 
-for stream in catalog; do
+for stream in "${streams[@]}"; do
     # The stream's SQL files and flyway.toml; its Jobs mount them at /flyway/sql.
     k create configmap "$stream-migrations" --from-file="$root/database/shard/$stream" \
         --dry-run=client -o yaml | k apply -f -
@@ -27,7 +34,7 @@ for stream in catalog; do
         k wait "database/$shard-shardshop" --for=jsonpath='{.status.applied}'=true --timeout=180s
         job="$shard-$stream-migration"
         k delete job "$job" --ignore-not-found --wait
-        k apply -f "$work/$shard.yaml"
+        k apply -f "$work/$shard-$stream.yaml"
         # A Job's first condition is terminal: SuccessCriteriaMet/Complete or FailureTarget/Failed.
         k wait "job/$job" --for=jsonpath='{.status.conditions[0].status}'=True --timeout=200s
         k logs "job/$job"

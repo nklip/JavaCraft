@@ -1,12 +1,21 @@
 {{- if eq .Values.render "migration" }}
+{{- $shardIndex := 0 -}}
+{{- $region := "" -}}
+{{- range $index, $shard := .Values.shards -}}
+  {{- if eq $shard.name $.Values.migrationShard -}}
+    {{- $shardIndex = $index -}}
+    {{- $region = $shard.region -}}
+  {{- end -}}
+{{- end }}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ .Values.migrationShard }}-catalog-migration
+  name: {{ .Values.migrationShard }}-{{ .Values.migrationStream }}-migration
   namespace: {{ .Release.Namespace | quote }}
   labels:
     app.kubernetes.io/name: schema-migration
-    app.kubernetes.io/component: catalog
+    app.kubernetes.io/component: {{ .Values.migrationStream }}
+    shardshop.javacraft/region: {{ $region | quote }}
 spec:
   backoffLimit: 0
   activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
@@ -14,7 +23,8 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: schema-migration
-        app.kubernetes.io/component: catalog
+        app.kubernetes.io/component: {{ .Values.migrationStream }}
+        shardshop.javacraft/region: {{ $region | quote }}
     spec:
       restartPolicy: Never
       automountServiceAccountToken: false
@@ -31,17 +41,23 @@ spec:
           env:
             - name: SHARD_NAME
               value: {{ .Values.migrationShard | quote }}
+            - name: FLYWAY_PLACEHOLDERS_SHARDREGION
+              value: {{ $region | quote }}
+            - name: FLYWAY_PLACEHOLDERS_SHARDINDEX
+              value: {{ $shardIndex | quote }}
+            - name: FLYWAY_PLACEHOLDERS_SHARDCOUNT
+              value: {{ len .Values.shards | quote }}
             - name: FLYWAY_URL
               value: jdbc:postgresql://$(SHARD_NAME)-rw.{{ .Release.Namespace }}.svc:5432/shardshop?sslmode=verify-full&sslrootcert=/etc/flyway/ca.crt
             - name: FLYWAY_USER
               valueFrom:
                 secretKeyRef:
-                  name: catalog-migrator
+                  name: {{ .Values.migrationStream }}-migrator
                   key: username
             - name: FLYWAY_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: catalog-migrator
+                  name: {{ .Values.migrationStream }}-migrator
                   key: password
             - name: HOME
               value: /tmp
@@ -66,7 +82,7 @@ spec:
       volumes:
         - name: migrations
           configMap:
-            name: catalog-migrations
+            name: {{ .Values.migrationStream }}-migrations
         - name: ca
           secret:
             secretName: {{ .Values.migrationShard }}-ca

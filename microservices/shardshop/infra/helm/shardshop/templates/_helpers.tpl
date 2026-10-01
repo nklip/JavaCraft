@@ -20,6 +20,22 @@
 {{- join "," $names -}}
 {{- end -}}
 
+{{- define "shardshop.regions" -}}
+{{- $regions := list -}}
+{{- range .Values.shards -}}
+  {{- $regions = append $regions .region -}}
+{{- end -}}
+{{- join "," $regions -}}
+{{- end -}}
+
+{{- define "shardshop.regionVersion" -}}
+{{- $entries := list -}}
+{{- range .Values.shards -}}
+  {{- $entries = append $entries (printf "%s=%s" .name .region) -}}
+{{- end -}}
+{{- join "," $entries | sha256sum -}}
+{{- end -}}
+
 {{/* Every cluster uses the same image, resource budget, storage, and hardening. */}}
 {{- define "shardshop.clusterCommon" -}}
 imageName: {{ .root.Values.postgresql.image }}

@@ -25,6 +25,12 @@ library holding the shard-routing rule; only `shardshop-product` and
 applications and has no executable code. Applications have no dependencies on
 one another, and no API, model, or JSON types are shared.
 
+The regional model assigns `shard-a` to US, `shard-b` to EU, and `shard-c` to
+ASIA. Sellers create products only on their home shard; buyers may buy from any
+region, including multiple regions in one order under the existing currency and
+stock rules. Service-issued seller/buyer fixtures carry immutable home regions
+derived from their ID routes; products inherit their seller's region.
+
 The target architecture permits ID creation only in `shardshop-product` and
 `shardshop-order`. Product issues seller/product IDs; order issues buyer/order,
 saga, command and message IDs, including ledger result IDs. Workload modules
@@ -144,13 +150,17 @@ online mode; with `-o` it is skipped with a warning. Unit coverage is under
 ## Shard inventory and routing
 
 [`infra/shards.yaml`](infra/shards.yaml) is the only maintained list of shards.
-Its order defines routing indexes. The initial inventory is:
+Its order defines routing indexes; each entry has an immutable home region. The
+initial inventory is:
 
 ```yaml
 shards:
   - name: shard-a
+    region: US
   - name: shard-b
+    region: EU
   - name: shard-c
+    region: ASIA
 ```
 
 [`infra/helm/shardshop/`](infra/helm/shardshop/) contains shared templates for
@@ -160,16 +170,28 @@ settings live in `values.yaml`; kind storage/placement settings live in
 lifecycle, preserving existing names and PVCs. There are no per-shard directories,
 committed generated manifests, or new database Helm releases. The separate ledger
 is excluded from the shard list. Names must start with a lowercase letter, contain
-only lowercase letters, digits and hyphens, end in a letter/digit, and fit 45 characters.
-Empty/duplicate or malformed names and `ledger-db` fail before deployment.
+only lowercase letters, digits and hyphens, end in a letter/digit, and fit 44 characters,
+leaving room for either stream's migration Job suffix.
+Empty/duplicate or malformed names, `ledger-db`, and missing/invalid regions fail
+before deployment. Regions use only uppercase `US`, `EU`, and `ASIA`; a custom
+inventory may assign multiple shards to one region. The chart adds the
+`shardshop.javacraft/region` label to each shard Cluster and its inherited metadata.
+These are business regions in the local lab, not separate geographic locations.
 
 Preview without Kubernetes access:
 
 ```bash
 bash microservices/shardshop/scripts/render.sh infrastructure
 bash microservices/shardshop/scripts/render.sh migration shard-a
+bash microservices/shardshop/scripts/render.sh migration shard-a ordering
 bash microservices/shardshop/scripts/render.sh routing
 ```
+
+The migration render takes `SHARD [catalog|ordering]` and defaults to `catalog`.
+Its Job, SQL ConfigMap, migrator Secret, and component names follow the selected
+stream; both streams receive `shardRegion`, `shardIndex`, and `shardCount`.
+The ordering schema and roles remain planned in step 2.5; rendering its Job does
+not provision them.
 
 The scripts use Python 3's standard JSON library and Helm, with no YAML package to
 install. Inventory and script behavior is verified by live runs on the lab.
@@ -178,17 +200,25 @@ install. Inventory and script behavior is verified by live runs on the lab.
 
 `up.sh` provisions the declared shards. `migrate.sh` waits for their deployed
 clusters/databases, migrates sequentially, then publishes `shardshop-routing`.
-That ConfigMap contains `application.properties` with the ordered names, plus a
-`version` key equal to SHA-256 of their comma-joined UTF-8 names, which the scripts
-use to refuse a changed topology. Publication is atomic;
+That ConfigMap contains `application.properties` with aligned
+`shardshop.routing.shards` and `shardshop.routing.regions` lists. Its `version` key
+remains SHA-256 of the comma-joined UTF-8 names; `regionVersion` is SHA-256 of the
+comma-joined UTF-8 `name=REGION` pairs in inventory order. Before running any
+migrations, `migrate.sh` saves both hashes in `shardshop-migration-topology`.
+Both existing ConfigMaps must contain matching `version` and `regionVersion`
+values. The scripts refuse missing hashes or a changed saved or published topology
+or region mapping; absent ConfigMaps are allowed for initial bootstrap.
+The saved reservation survives partial migrations and publication failures;
+matching reruns reuse it. Publication is atomic;
 a failed migration leaves the previous routing configuration intact. Startup and
 migration snapshot the input inventory for the duration of each run.
 
 Product and order import `/etc/shardshop/routing/application.properties` at startup;
 future Deployments must mount the ConfigMap there. Local JAR launches copy
 its properties to a file and set `SHARDSHOP_ROUTING_CONFIG` as shown above. The Java
-library rejects missing, empty or duplicate names, keeps an immutable list, and
-routes the unsigned SHA-256 digest of a positive decimal ID modulo the list size.
+library requires names and regions, rejects invalid entries or mismatched list
+lengths, and keeps an immutable list of shards with their regions. It routes the
+unsigned SHA-256 digest of a positive decimal ID modulo the list size.
 Missing or invalid configuration fails startup. The initial three-shard vectors are
 unchanged.
 Applications do not watch cluster health or reload routing while running; a failed
@@ -197,7 +227,10 @@ primary remains on the same shard, behind the same `-rw` Service.
 Adding a shard means adding one inventory entry; all corresponding resources and
 routing settings are generated. Changing membership **or order** changes ownership
 of existing IDs. `up.sh` and `migrate.sh` refuse a list that differs from an already
-published version. For a different topology, stop applications/workloads and reset
+published version; a changed published region assignment is also refused.
+Schema V1 is independent of the unchanged version-2 ID-routing algorithm.
+
+For a different topology, stop applications/workloads and reset
 this disposable lab (`kind delete cluster --name shardshop`), then run `up.sh`,
 `migrate.sh`, export the new configuration, and reseed before restarting workloads.
 This reset destroys the lab's data. Online data redistribution and rolling topology
@@ -235,7 +268,7 @@ be Ready. It then installs CloudNativePG 1.30.1 from its vendored chart with
 `helm upgrade --install`, waiting up to 3 minutes for the operator, waits up to 180
 seconds for every CRD to be Established, and renders/applies the shared chart. That creates
 the `shardshop` namespace with the `restricted` Pod Security label, three
-three-instance clusters (`shard-a`, `shard-b`, `shard-c`), and the single-instance
+three-instance clusters (`shard-a`/US, `shard-b`/EU, `shard-c`/ASIA), and the single-instance
 `ledger-db` cluster. It waits up to 300 seconds for every database cluster to be
 Ready, then until each cluster's `-rw` Service accepts connections. It also
 creates a random password Secret for each login role
@@ -256,7 +289,7 @@ kubectl --context kind-shardshop get namespace shardshop --show-labels
 kubectl --context kind-shardshop get crds
 helm --kube-context kind-shardshop -n cnpg-system list
 kubectl --context kind-shardshop -n cnpg-system get deployment cnpg-cloudnative-pg
-kubectl --context kind-shardshop -n shardshop get clusters,pods,pvc
+kubectl --context kind-shardshop -n shardshop get clusters,pods,pvc -L shardshop.javacraft/region
 ```
 
 Stop the lab when you do not need it, to free Docker memory:
@@ -317,6 +350,17 @@ retain the WAL each standby needs, so a large extra floor only fills the 2 GiB v
 These are not hard disk-usage caps: monitor free space and lag, and recover an
 invalidated slot explicitly after an outage that exceeds the retained WAL budget.
 
+After catalog migrations, run the read-only routing check on every inventory
+primary:
+
+```bash
+bash microservices/shardshop/scripts/verify-topology.sh --routing-only
+```
+
+It compares PostgreSQL SHA-256 arithmetic and the deployed seller placement
+constraint against the shared golden fixtures used by Java. It creates no SQL
+objects and does not run a failure drill.
+
 Run the reversible topology drill in this disposable lab (defaults to the first
 inventory entry; pass another inventory name to drill that shard):
 
@@ -326,11 +370,11 @@ bash microservices/shardshop/scripts/verify-topology.sh
 
 Each invocation checks every inventory shard's writable primary, quorum standbys,
 independent database lineage, `-rw`/`-ro` Service endpoints and distinct Bound
-PVCs/backing volumes. Counts come from the inventory. It then drills the selected
-shard (the first entry by default): a probe row must reach both standbys, writes
-on standbys must fail, and the probe schema must remain absent from peer shards.
-Routing fixtures are tested separately in Java. This failure drill requires the
-lab's three instances per shard; changing the number of shards needs no script edit.
+PVCs/backing volumes, and runs the same read-only routing checks. Counts come from
+the inventory. It then drills the selected shard (the first entry by default): a
+probe row must reach both standbys, writes on standbys must fail, and the probe
+schema must remain absent from peer shards. This failure drill requires the lab's
+three instances per shard; changing the number of shards needs no script edit.
 It checks failover-slot synchronization and PVC persistence, replaces one standby
 pod, and temporarily fences one then both standbys to observe quorum commits.
 Reads and writes are disrupted during the
@@ -391,6 +435,9 @@ storage; kind storage is disposable and is not a backup.
 
 No Maven module owns a schema: databases, roles and migrations belong to the
 database layer in [ARCHITECTURE.md](ARCHITECTURE.md#database-change-management).
+Keep all Flyway SQL simple and declarative: tables, constraints, indexes, grants,
+and data changes only. Do not create SQL functions or triggers; use Java for
+business logic and scripts for deployment checks.
 The two scripts split the work:
 
 - `up.sh` declares everything Kubernetes can: the clusters and their creation-time
@@ -421,31 +468,49 @@ bash microservices/shardshop/scripts/build-migration-image.sh
 ```
 
 [`database/shard/catalog/`](database/shard/catalog/) is the catalog stream.
-`V1__catalog.sql` creates the tables. `R__catalog_grants.sql` holds the complete
-privilege matrix; Flyway reapplies it whenever it changes. `flyway.toml` fixes the
+`V1__catalog.sql` creates all tables, including seller home regions, named region
+and ID-placement checks, and regional comments. `R__catalog_grants.sql` holds the
+complete privilege matrix; Flyway reapplies it whenever it changes. `flyway.toml` fixes the
 schema, the history table `catalog.flyway_schema_history`, retries, and the 5-second connect, 30-second
 socket, 15-second statement and 5-second lock timeouts. It also starts every
 connection as `catalog_owner`, so the migrator login never owns an object.
 
-The script loads the folder into the `catalog-migrations` ConfigMap, then runs one
-Job per inventory entry from the shared
+The script runs each existing stream directory under `database/shard/` in the
+order `catalog`, then `ordering`. Only catalog exists today; ordering remains
+planned in step 2.5. For each stream it loads the folder into the
+`<stream>-migrations` ConfigMap, then runs one `<shard>-<stream>-migration` Job per
+inventory entry from the shared
 [`migration.yaml`](infra/helm/shardshop/templates/migration.yaml) template,
-one shard at a time. The template sets `SHARD_NAME` and the shard's CA Secret;
-Kubernetes expands `FLYWAY_URL` using the preceding environment variable. Each Job
+one shard at a time. Each Job uses the matching `<stream>-migrator` Secret and
+stream component label. The template supplies the same `shardRegion`, `shardIndex`,
+and `shardCount` Flyway placeholders for both streams from the inventory, and sets
+`SHARD_NAME` and the shard's CA Secret. Kubernetes expands `FLYWAY_URL` using the
+preceding environment variable. Each Job
 runs Flyway OSS 13.8.1 on the pinned Canonical OpenJDK 25 runtime. Its
 [`Dockerfile`](infra/images/flyway/Dockerfile) copies only Flyway's core and
 PostgreSQL plugin libraries, the PostgreSQL JDBC driver and the licenses from the
 pinned official distribution image;
-its final base is `ubuntu/jre` on Ubuntu 26.04. The Job logs in as
-`catalog_migrator` over TLS with `verify-full` and the
+its final base is `ubuntu/jre` on Ubuntu 26.04. The Job logs in as the stream's
+migrator (`catalog_migrator` for catalog) over TLS with `verify-full` and the
 shard's CA. It has a 180-second deadline and no retry. The script prints its log
 and stops at the first failure, leaving later shards unattempted; successful
-shards stay migrated, because migrations are not a transaction across databases. Correct the failure and rerun. Never edit a committed migration, repair
-checksums automatically, or clean a catalog that holds data. Before a migration is
-committed you may edit it, clean the lab's catalog with a one-off Flyway `clean`
-Job, and migrate again. The last run's
-Jobs and logs stay until the next run, which replaces them. Run one `migrate.sh`
-at a time. The routing ConfigMap is published only after all shards succeed:
+shards stay migrated, because migrations are not a transaction across databases.
+Correct the failure and rerun. Retained versioned migrations are immutable; fix
+forward with another version. Never repair checksums automatically, bypass
+validation, or clean a catalog that holds data. Normal Flyway configuration keeps
+`clean` disabled. The last run's Jobs and logs stay until the next run, which
+replaces them. Run one `migrate.sh` at a time.
+
+If a run stops partway through, retain the same regions, routing indexes, and
+shard count on retry. The `shardshop-migration-topology` ConfigMap is created once
+before any migration starts and must contain both `version` and `regionVersion`.
+`up.sh` and `migrate.sh` reject an inventory that differs from this saved
+reservation, even when no migrations remain. Keep the ConfigMap after partial
+migration or failed publication and rerun with the same inventory. The published
+`shardshop-routing` ConfigMap also requires both matching hashes. Export its routing
+properties for local product/order launches after the first successful migration.
+Attempts to reassign a published shard region are refused. The routing ConfigMap
+is published only after all streams succeed on all shards:
 
 ```bash
 kubectl --context kind-shardshop -n shardshop get jobs,pods -l app.kubernetes.io/name=schema-migration
@@ -463,7 +528,7 @@ UIDs would need to replace.
 
 | Role | Login | Privileges |
 |---|---|---|
-| `catalog_owner` | no | Owns schema `catalog`, its tables, functions and history |
+| `catalog_owner` | no | Owns schema `catalog`, its tables and history |
 | `catalog_migrator` | yes | Member of `catalog_owner` without inheriting it; only Flyway uses it |
 | `catalog_reader` | no | `SELECT` on sellers and products |
 | `catalog_writer` | no | `SELECT` and `INSERT` on sellers and products |
@@ -476,8 +541,13 @@ order service's login joins `catalog_reader` and `catalog_reserver` in step 2.5.
 No login role owns an object, runs DDL, creates temporary tables, or reads the
 Flyway history.
 
-`catalog.sellers` holds positive `BIGINT` seller IDs and names. `catalog.products`
-references its seller and stores a positive `BIGINT` ID, a name of at most 200
+`catalog.sellers` holds positive `BIGINT` seller IDs, names, and immutable
+`US`/`EU`/`ASIA` regions. Its checks require the deployed region and the exact
+shard selected by the unchanged version-2 SHA-256 rule. A `CHECK` expression
+uses PostgreSQL's built-in SHA-256, hexadecimal encoding, exact `NUMERIC`
+conversion, and modulo operator, preserving all 256 digest bits. No custom SQL
+function, trigger, or function execution grant is needed. `catalog.products`
+references its local seller and stores a positive `BIGINT` ID, a name of at most 200
 characters (not empty or only spaces), a non-negative `NUMERIC(19,2)` price
 (excluding NaN), an uppercase three-letter currency, and `initial_stock` and
 `stock`, with `0 <= stock <= initial_stock`. The product service sets `stock` to
@@ -487,7 +557,10 @@ will reserve with `INSERT … ON CONFLICT (order_id, product_id) DO NOTHING` and
 only for a new reservation, conditionally decrement stock in the same Java-managed
 shard transaction. Insufficient stock rolls back the reservation. Release will
 mark an active reservation released and restore its quantity in one transaction;
-retries must change stock at most once. There are no ID sequences.
+retries must change stock at most once. There are no ID sequences. Products
+inherit the seller's region and store no independent region column. The local
+seller foreign key and placement checks prevent creating products on a different
+region's shard. Runtime roles cannot change a seller's region.
 
 The stock-column grant permits direct updates without allowing changes to product
 names, prices or other columns. There is no stock trigger: reservation writes by
@@ -496,6 +569,5 @@ tests remain planned in step 4.9. The database checks still enforce
 `0 <= stock <= initial_stock`, but the application must keep stock and reservation
 rows consistent.
 
-Step 2.3 changes no Java code, so it has no Java tests; it is verified on the lab,
-as recorded in PLAN step 2.3. The product application does not depend on Flyway,
-and its startup never migrates.
+The product application does not depend on Flyway, and its startup never migrates.
+Implementation status and completed lab verification are recorded in PLAN.

@@ -9,6 +9,8 @@ import org.mockito.MockedStatic;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -17,12 +19,19 @@ import static org.mockito.Mockito.mockStatic;
 
 class ShardRouterTest {
 
-    private final ShardRouter router = new ShardRouter(ShardTopology.fromNames("shard-a,shard-b,shard-c"));
+    private final ShardRouter router = new ShardRouter(
+            ShardTopology.fromNamesAndRegions("shard-a,shard-b,shard-c", "US,EU,ASIA"));
 
     @ParameterizedTest(name = "{0}")
     @CsvFileSource(resources = "/routing-vectors.csv")
     void routesGoldenVectors(String name, long id, String expectedShard) {
         assertEquals(expectedShard, router.route(id).clusterName(), name);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"1, US", "880803840000004097, EU", "9223372036854775807, ASIA"})
+    void routesToTheImmutableHomeRegion(long id, String region) {
+        assertEquals(region, router.route(id).region());
     }
 
     // Expected indices were calculated with Python hashlib, independently of Java.
@@ -42,7 +51,7 @@ class ShardRouterTest {
 
     @Test
     void usesPublishedOrderRatherThanSortingNames() {
-        ShardTopology topology = ShardTopology.fromNames("shard-b,shard-a");
+        ShardTopology topology = ShardTopology.fromNamesAndRegions("shard-b,shard-a", "EU,US");
 
         assertEquals("shard-a", new ShardRouter(topology).route(1L).clusterName());
     }
@@ -75,7 +84,8 @@ class ShardRouterTest {
     }
 
     private static void assertRoute(long id, int expectedIndex, String names) {
-        ShardTopology topology = ShardTopology.fromNames(names);
+        String regions = Arrays.stream(names.split(",")).map(name -> "US").collect(Collectors.joining(","));
+        ShardTopology topology = ShardTopology.fromNamesAndRegions(names, regions);
 
         assertSame(topology.shards().get(expectedIndex), new ShardRouter(topology).route(id));
     }

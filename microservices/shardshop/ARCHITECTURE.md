@@ -3,7 +3,8 @@
 Status: target architecture.
 
 ShardShop combines product and order workloads, an inventory of replicated PostgreSQL
-shards (three initially), and an asynchronous order ledger. This document defines its contracts and
+shards (initially `shard-a` for US, `shard-b` for EU, and `shard-c` for ASIA),
+and an asynchronous order ledger. This document defines its contracts and
 boundaries; [PLAN.md](PLAN.md) describes implementation milestones and infrastructure.
 All runtimes, libraries, build plugins, and images follow [VERSIONS.md](VERSIONS.md):
 LTS where available, otherwise maintained stable GA releases with explicit upgrade
@@ -112,7 +113,11 @@ identifier allocation follow section 3.
    receives a distinct run name in its deployment configuration and has a fresh
    seeding gate; a previous Job cannot satisfy it. Workloads do not generate run IDs.
 
-For deterministic saga rejection, seed separate USD and EUR product fixtures.
+Seed sellers, buyers, and products across US, EU, and ASIA, with both USD and
+EUR product fixtures in every region. Region and currency are independent: the
+order producer must exercise purchases from other regions and orders mixing
+sellers from all three regions within one currency. For deterministic saga
+rejection, select the separate USD and EUR fixtures.
 The order API accepts any valid single currency matching its products; the ledger
 allowlist is USD in the rejection scenario. Configure `rejected-order-percent=10`.
 The producer first obtains an order ID from the order service's allocation API.
@@ -228,7 +233,11 @@ independent PostgreSQL shards. They connect to the same `shardshop` database on
 each shard and use separate schemas: `catalog` for sellers, products and stock,
 and `ordering` for buyers, orders and sagas. The database layer owns both schemas; the
 services only hold granted privileges. This is an intentional shared-database
-boundary for the lab.
+boundary for the lab. The initial home-region mapping is immutable: `shard-a`
+serves US, `shard-b` serves EU, and `shard-c` serves ASIA. Regions are business
+placement labels, not separate physical locations in this single-machine kind
+lab. The shared chart labels each shard Cluster and its inherited metadata with
+`shardshop.javacraft/region`; the separate ledger has no home-region assignment.
 
 ```mermaid
 flowchart TB
@@ -239,21 +248,21 @@ flowchart TB
     O --> ROUTE
 
     subgraph SHARED["Shared logical PostgreSQL database"]
-        subgraph A["shard-a"]
+        subgraph A["shard-a · US"]
             ARW["shard-a-rw"] --> AP[("Primary A")]
             ARO["shard-a-ro"] --> AS1[("Replica A1")]
             ARO --> AS2[("Replica A2")]
             AP -->|"Physical WAL replication"| AS1
             AP -->|"Physical WAL replication"| AS2
         end
-        subgraph B["shard-b"]
+        subgraph B["shard-b · EU"]
             BRW["shard-b-rw"] --> BP[("Primary B")]
             BRO["shard-b-ro"] --> BS1[("Replica B1")]
             BRO --> BS2[("Replica B2")]
             BP -->|"Physical WAL replication"| BS1
             BP -->|"Physical WAL replication"| BS2
         end
-        subgraph C["shard-c"]
+        subgraph C["shard-c · ASIA"]
             CRW["shard-c-rw"] --> CP[("Primary C")]
             CRO["shard-c-ro"] --> CS1[("Replica C1")]
             CRO --> CS2[("Replica C2")]
@@ -374,16 +383,20 @@ Product derives the fixed dataset of sellers and products with this same library
 layout, generator 0, and an injected deterministic millisecond `TimeSource` whose
 first timestamp is above zero. A versioned dataset configuration fixes the
 timestamp/sequence schedule, seller and product counts, each product's seller and
-initial stock, the USD/EUR split, and payload rules; reserve disjoint timestamp
-ranges for future dataset versions. Product exposes a paginated dataset API
-returning those IDs, seller/product relationships and immutable fixture payloads
-for a configured dataset version. Seeder, reader and order producer obtain that
+initial stock, the USD/EUR split within each region, and payload rules; reserve
+disjoint timestamp ranges for future dataset versions. Each seller's immutable
+`region` is the region of its ID's routed shard, derived by product; each product
+inherits its seller's region and has no independent region field or selector.
+Product exposes a paginated dataset API returning those IDs, seller/product
+relationships, seller regions, and immutable fixture payloads for a configured
+dataset version. Seeder, reader and order producer obtain that
 data over HTTP; they never reimplement the derivation or construct IDs. Dataset
 changes may select subsets but must never assign a different seller or product
 payload to an existing ID. Order similarly derives buyer fixtures in a disjoint
-reserved timestamp range and exposes them through its own dataset API. The
-producer obtains those IDs before creating buyers. The dataset APIs describe
-fixtures; creation still uses the owning service's PUT endpoints. Live
+reserved timestamp range, derives each buyer's immutable `region` from its routed
+shard, and exposes the IDs, regions, and immutable creation payloads through its
+own dataset API. The producer obtains those descriptors before creating buyers.
+The dataset APIs describe fixtures; creation still uses the owning service's PUT endpoints. Live
 generators never use generator 0.
 
 Before submitting a live order, the producer calls
@@ -410,20 +423,28 @@ ID cannot be generated. Existing allocations require no new ID generation.
 Creation APIs accept only IDs issued for the addressed entity and parent by the
 owning service: product validates its seller/product fixture mapping, order its
 buyer fixture mapping and durable order allocation. Reject an unissued ID or a
-wrong parent with `400 INVALID_REQUEST`. Canonical numeric formatting alone is
-not proof of issuance. Service tests cover issuance and retry behavior; workload
+wrong parent with `400 INVALID_REQUEST`. Seller and buyer creation payloads
+include the service-issued home `region`; reject a missing/unknown region or one
+that differs from the issued fixture and routed shard with `400 INVALID_REQUEST`.
+Regions use only uppercase `US`, `EU`, and `ASIA`; they cannot be chosen or changed
+by the caller. Canonical numeric formatting alone is not proof of issuance.
+Service tests cover issuance and retry behavior; workload
 tests use recorded API responses and assert that IDs are forwarded unchanged.
 
 Sellers and buyers use the same routing rule with their own Snowflake IDs,
-implemented once in `shardshop-sharding`. A seller's products and their stock
-reservations live on the seller's shard, so the catalog routes by `seller_id`. A
-buyer's orders, with their items, sagas and transport records, live on the buyer's
+implemented once in `shardshop-sharding`. Sellers may create products only on
+their home-region shard; a product's ID does not determine its placement. A
+seller's products and stock reservations stay on the seller's shard, so the
+catalog routes by `seller_id`. A buyer's orders, with their items, sagas and
+transport records, live on the buyer's
 shard, so ordering routes by `buyer_id`:
 
 ```text
 digestInteger(id) = unsignedBigEndian(SHA-256(UTF-8(canonical decimal Snowflake ID)))
 shard(id) = deployedShards[digestInteger(id) % deployedShards.size]
 initial deployedShards = [shard-a, shard-b, shard-c]
+initial regions = [US, EU, ASIA]
+homeRegion(id) = shard(id).region
 ```
 
 Use the validated canonical decimal ID text, with no newline or leading zeros,
@@ -435,21 +456,34 @@ of the configured shard result; the order producer implements it with its own co
 and does not depend on `shardshop-sharding`. This is identifier/routing contract **version 2**,
 replacing the previous unreleased draft and its vectors. The hash contract stays
 immutable; the initial ordered inventory preserves all version-2 routing vectors.
-`infra/shards.yaml` defines the ordered shard names. Shared Helm templates generate
-all resources and a routing snapshot of the ordered names; its version, the SHA-256
-of the comma-joined UTF-8 names, lets the scripts detect a changed topology. Only
-after every deployed shard passes its migrations does `migrate.sh` publish that
-snapshot as the `shardshop-routing` ConfigMap. The chart schema validates the names.
-Product/order import the ordered names at startup and pass an immutable
-`ShardTopology` to the framework-free router. Missing, empty or duplicate names
-fail startup. All replicas must start with the same snapshot.
+`infra/shards.yaml` defines ordered entries with `name` and `region`. Multiple
+shards may serve the same region in a custom inventory; IDs still select the
+exact shard through the unchanged hash rule. Shared Helm templates generate all
+resources and a routing snapshot. Its `version` remains SHA-256 of the comma-joined
+UTF-8 names; `regionVersion` is SHA-256 of the comma-joined UTF-8 `name=REGION` pairs
+in the same order. Only after every deployed shard passes its migrations does
+`migrate.sh` publish that snapshot as the `shardshop-routing` ConfigMap. The chart
+schema validates names and the `US`/`EU`/`ASIA` enum. Product/order import aligned
+`shardshop.routing.shards` and `shardshop.routing.regions` lists at startup and
+construct an immutable `ShardTopology` with `fromNamesAndRegions`. Missing, empty
+or duplicate names, invalid regions, or different list lengths fail startup.
+All replicas must start with the same snapshot.
 
 Topology membership is not a health check: outages and primary promotion never
 remove shards from the list. Processes do not refresh topology live. Changing
 membership or order reassigns existing IDs; deployment/migration refuse changes
-to a published list until the lab is explicitly reset and reseeded. This is not
-online resharding. Retaining populated data across such a change needs a separate
-migration/cutover protocol; never probe all shards as a fallback. Generator IDs
+to a published list until the lab is explicitly reset and reseeded. Changing an
+existing shard's region also fails the published `regionVersion` guard. Before
+starting migrations, `migrate.sh` reserves both version hashes in the
+`shardshop-migration-topology` ConfigMap. `up.sh` and `migrate.sh` compare the
+inventory with this saved topology as well as the published routing snapshot,
+including when no versioned migration is pending. Both existing ConfigMaps must
+contain matching `version` and `regionVersion` values; absent snapshots are allowed
+for initial bootstrap. The reservation survives a partial migration or failed
+first publication and matching reruns reuse it.
+Retaining populated data across topology changes needs a separate migration/cutover
+protocol; never probe all shards as a
+fallback. Generator IDs
 are independent of database shard IDs.
 
 | Data | Routing key | Writer / owner |
@@ -466,9 +500,11 @@ are independent of database shard IDs.
 | `ledger.conflicting_commands` | No sharding initially | Ledger service; quarantine for a command that conflicts with a permanent decision |
 
 Order items remain on their order's shard even when referenced products live on
-other shards: a buyer on one shard buys from sellers on any shard, and one order
-can mix sellers. Each item names its seller, product and the quantity the buyer
-wants; resolve them against the seller's primary before creating the order and
+other shards: a buyer in US, EU, or ASIA may buy from sellers in any region, and
+one order may mix sellers from all three. Region does not restrict buying or
+determine currency; existing same-currency and stock rules still apply. Each item
+names its seller, product and the quantity the buyer wants; resolve them against
+the seller's primary before creating the order and
 persist server-derived product/price snapshots in its items. Product details are
 immutable after creation; only `stock` changes, through the reservation step in
 section 5. There is no payment or cross-shard transaction. Foreign keys stay
@@ -593,7 +629,7 @@ run on the kind lab and on EKS (PLAN milestone 7), where Argo CD applies them.
 | Instances | CNPG `Cluster`s, parameters, storage, database-wide hardening | `infra/helm/shardshop/templates/clusters.yaml` | `up.sh` / Argo CD |
 | Identities | Group roles, login roles, memberships | CNPG `DatabaseRole`s, one template rendered for each inventory entry (`infra/helm/shardshop/templates/databases.yaml`); one password Secret per login role, shared by every shard and referenced by name | `up.sh`, which generates the Secrets / Argo CD, with Secrets synced from AWS Secrets Manager |
 | Containers | Databases, schemas and their owners, CDC publications | CNPG `Database` and `Publication` resources, in the same per-shard template | `up.sh` / Argo CD |
-| Contents | Tables, constraints, indexes, functions, grants | Flyway streams under `database/`, run by Jobs rendered from `infra/helm/shardshop/templates/migration.yaml` | `migrate.sh` / Argo CD `PreSync` hook Jobs |
+| Contents | Tables, constraints, indexes, grants, data | Flyway streams under `database/`, run by Jobs rendered from `infra/helm/shardshop/templates/migration.yaml` | `migrate.sh` / Argo CD `PreSync` hook Jobs |
 
 `database/` holds one Flyway stream per schema. Each stream is a folder with its
 SQL files and a `flyway.toml` that fixes the schema, the history table
@@ -613,16 +649,26 @@ The single ordered inventory `infra/shards.yaml` drives the shared chart's
 infrastructure, migration, and routing renders. Shared values carry image pins,
 resource budgets and database defaults; environment values carry storage and
 placement. Scripts snapshot the inventory, enumerate its entries, and never keep
-another shard list. The migration template names the cluster endpoint and CA
-Secret directly; no prefix replacement transformers are needed. Infrastructure
-rendering excludes Jobs and routing publication. Migrations run sequentially under
-a single-run lock and stop on the first failure; only complete success activates
-the routing ConfigMap. Existing resource names and storage identities are retained.
+another shard list. `render.sh migration SHARD [catalog|ordering]` selects the
+stream, defaulting to `catalog`. The shared template uses stream-specific Job,
+SQL ConfigMap and migrator Secret names; both streams receive the same
+`shardRegion`, `shardIndex`, and `shardCount` placeholders. Shard names are limited
+to 44 characters so the longer `-ordering-migration` suffix stays within the
+63-character Job-name limit. The template names the cluster endpoint and CA Secret
+directly; no prefix replacement transformers are needed. Infrastructure rendering
+excludes Jobs and routing publication. `migrate.sh` runs existing catalog and
+ordering stream directories sequentially, catalog first, and stops on the first
+failure; only complete success activates the routing ConfigMap. Run one
+`migrate.sh` at a time. Existing resource names and storage identities are retained.
+The ordering stream remains planned in step 2.5.
 
 ```text
 database/
   shard/            # database `shardshop`, applied to every shard primary
-    catalog/        # flyway.toml, V1__catalog.sql, R__catalog_grants.sql
+    catalog/
+      flyway.toml
+      V1__catalog.sql
+      R__catalog_grants.sql
     ordering/       # step 2.5
   ledger/
     ledger/         # database `ledger`, step 2.6
@@ -654,8 +700,6 @@ ordering stream, with DML granted to the order service's group.
 - Grant only to group roles. Each stream's repeatable `R__<schema>_grants.sql`
   revokes everything from its groups and grants the complete matrix again, so one
   reviewed file is the privilege model; Flyway reapplies it whenever it changes.
-  Any functions also revoke `EXECUTE` from `PUBLIC`,
-  which PostgreSQL grants by default.
 - No login role owns objects, runs DDL, or reads a Flyway history, and no service
   login is a member of an owner role.
 - Database-wide hardening runs once, when a cluster is created
@@ -667,11 +711,14 @@ ordering stream, with DML granted to the order service's group.
 
 #### Migrations
 
+- Keep all Flyway SQL simple and declarative: tables, constraints, indexes,
+  grants, and data changes only. Do not create SQL functions or triggers; business
+  logic belongs in Java and deployment checks belong in scripts.
 - A stream runs as its migrator with `createSchemas=false`: the `Database`
   resource creates each schema and its owner before any migration runs.
 - A versioned migration is immutable once it is committed; fix forward with a new
-  version. Before that, edit it and reset the lab's schema contents with a one-off
-  `flyway clean`, which the streams otherwise disable. Repeatable migrations hold
+  version for retained datasets. Never repair checksums automatically or bypass
+  validation. Normal streams keep `clean` disabled. Repeatable migrations hold
   grants.
 - Every session is bounded: 5-second connect, 30-second socket, 15-second statement
   and 5-second lock timeouts. Build large indexes with `CREATE INDEX CONCURRENTLY`
@@ -687,12 +734,41 @@ ordering stream, with DML granted to the order service's group.
 
 ### Catalog: sellers, products, and stock
 
-`catalog.sellers` holds a seller's positive `BIGINT` ID and name.
-`catalog.products` references its seller with a foreign key and carries the name,
-price, currency, `initial_stock` and `stock`, with `0 <= stock <= initial_stock`.
+`catalog.sellers` holds a seller's positive `BIGINT` ID, name, and immutable
+`region` (`US`, `EU`, or `ASIA`). `V1__catalog.sql` creates the region column with
+its default from the validated `shardRegion` Flyway placeholder and named checks
+that require the deployed region and an ID that hashes to this shard. The latter
+uses a `CHECK` expression with PostgreSQL's built-in SHA-256, hexadecimal
+encoding, exact `NUMERIC` conversion, and modulo operator, with the `shardIndex`
+and `shardCount` placeholders. It preserves all 256 digest bits and matches Java's
+unsigned routing calculation. Incorrect seller placement is rejected on insertion.
+Schema migration V1 and the unchanged version-2 ID-routing algorithm are independent
+version numbers. `verify-topology.sh --routing-only` checks PostgreSQL's calculation
+and the deployed seller placement constraint on every primary against the same
+golden fixtures used by Java, using read-only queries without a failure drill.
+
+The migration script reserves the ordered names and assigned regions before any
+shard changes, using the two version hashes in `shardshop-migration-topology`.
+Both existing topology ConfigMaps must include both matching hashes. `up.sh` and
+`migrate.sh` reject missing hashes or a different inventory before applying changes,
+even when no migration is pending.
+Keep this ConfigMap while retaining the dataset: versioned SQL checksums alone
+do not detect changed Flyway placeholder values.
+
+`catalog.products` references its seller with a local foreign key and carries the
+name, price, currency, `initial_stock` and `stock`, with `0 <= stock <= initial_stock`.
 `catalog.stock_reservations` records one row per order and product, keyed by both
 IDs, with the reserved quantity and its release time. All three live on the
-seller's shard, so their foreign keys stay local.
+seller's shard, so their foreign keys stay local. Products inherit the seller's
+region through that relationship; they store no second region value. The foreign
+key and seller placement checks prevent product creation on another region's
+shard, even through the catalog writer's SQL privileges. Runtime grants allow no
+updates to seller identity or region. Placement is enforced by the table
+constraints and needs no function execution grants.
+
+The planned `ordering.buyers` schema likewise persists an immutable home region
+and enforces the deployed region and ID placement. Orders and all their local
+records inherit the buyer's placement; they have no separate region selector.
 
 The order service writes `catalog.stock_reservations` and adjusts product stock
 through Java-managed transactions on the seller's shard. `catalog_reserver` has
@@ -746,13 +822,18 @@ replenished pool, as Shopify describes; the lab does not need it. Sources:
 
 Proposed HTTP contract. Product's dataset API issues seller/product fixture IDs
 before these calls; workloads only forward the returned IDs. Creation checks
-issuance and the seller/product association. Data calls route by seller ID:
+issuance, the seller/product association, and the immutable seller home region.
+Data calls route by seller ID; product payloads expose no independent region or
+shard selector:
 
-- `PUT /api/v1/sellers/{sellerId}` creates an immutable seller. Return `201` on
-  creation, `200` for an identical retry, and `409` for conflicting ID reuse.
+- `PUT /api/v1/sellers/{sellerId}` creates an immutable seller with the issued
+  `region`. A missing/unknown or mismatched fixture/home region returns
+  `400 INVALID_REQUEST` before IO. Valid requests return `201` on creation,
+  `200` for an identical retry, and `409` for conflicting ID reuse.
 - `GET /api/v1/sellers/{sellerId}` returns the seller or `404`.
 - `PUT /api/v1/sellers/{sellerId}/products/{productId}` creates a product with its
-  initial stock. Return `201` on creation, `200` for an identical retry, `409` for
+  initial stock only on its seller's home-region shard. It inherits the seller's
+  region. Return `201` on creation, `200` for an identical retry, `409` for
   conflicting ID reuse, and `422 SELLER_NOT_FOUND` when the seller does not exist.
   A retry is compared with the stored creation payload, including the initial
   stock, so later stock changes never turn a retry into a conflict.
@@ -839,11 +920,14 @@ Module 3 is the saga coordinator. The workflow uses local database transactions
 and asynchronous commands/results; there is no transaction spanning PostgreSQL,
 RabbitMQ, and the ledger database.
 
-Buyers are created through the order service using its buyer dataset IDs. The
-producer obtains an order ID through the allocation API before constructing the
+Buyers are created through the order service using its buyer dataset IDs and
+issued home regions. Buyers may purchase from any region, while their home region
+determines order storage. The producer obtains an order ID through the allocation API before constructing the
 order request. Order routes every buyer and order call by the buyer ID:
 
-- `PUT /api/v1/buyers/{buyerId}` creates an immutable buyer: `201` on creation,
+- `PUT /api/v1/buyers/{buyerId}` creates an immutable buyer with its issued
+  `region`. A missing/unknown or mismatched fixture/home region returns
+  `400 INVALID_REQUEST` before IO; valid requests return `201` on creation,
   `200` for an identical retry, `409` for conflicting ID reuse.
   `GET /api/v1/buyers/{buyerId}` returns the buyer or `404`.
 - `PUT /api/v1/buyers/{buyerId}/orders/{orderId}` places an order with a stable
@@ -862,7 +946,7 @@ order request. Order routes every buyer and order call by the buyer ID:
 | Condition | Response | Retry behavior |
 |---|---|---|
 | Noncanonical/out-of-range Snowflake ID, numeric JSON ID, malformed body, empty items, non-positive quantity, invalid currency code | `400 INVALID_REQUEST` | Correct the request |
-| Creation ID was not issued by its owning service, or belongs to another parent | `400 INVALID_REQUEST` | Obtain and use the owning service's ID |
+| Creation ID was not issued by its owning service, belongs to another parent, or seller/buyer region differs from the issued home region | `400 INVALID_REQUEST` | Use the owning service's ID and immutable fixture payload |
 | The buyer does not exist on its reachable primary | `422 BUYER_NOT_FOUND` | Create the buyer first |
 | A product is absent under its seller on the seller's reachable primary | `422 PRODUCT_NOT_FOUND` | Seed or correct the seller and product IDs |
 | Items use different currencies | `422 MIXED_CURRENCIES` | Submit an order in one currency |
@@ -1398,18 +1482,34 @@ Acceptance scenarios for implementation:
    credentials/tables. With 16 connections and bounded connection lifetimes,
    observe positive request-counter deltas on both ready product pods within
    120 seconds, then repeat after one pod restarts.
-2. Verify deterministic seller/buyer routing across all three shards, with each
-   seller's products and reservations on the seller's shard, each buyer's orders on
-   the buyer's shard, a buyer ordering from sellers on other shards, and physical
-   replication only within each shard. Create schemas through `Database`
+2. Verify `shard-a=US`, `shard-b=EU`, and `shard-c=ASIA` in inventory, runtime
+   routing and Kubernetes labels, with unchanged version-2 ID routes. Reject
+   malformed regions, misaligned configuration, and reassignment of a published
+   shard region; reject missing version hashes in either ConfigMap. Verify seller
+   and buyer immutable regions, rejecting a wrong issued region with HTTP 400.
+   Each seller's products and reservations stay on its home shard, and each
+   buyer's orders on its home shard. Reject wrong-shard seller IDs or regions and
+   foreign-region product creation at the database boundary. Exercise buyers in
+   every region buying from each other region and one order mixing US/EU/ASIA
+   sellers in one currency; USD and EUR fixtures exist in every region. Physical
+   replication remains within each shard. Create schemas through `Database`
    resources and migrate the catalog and ordering streams without history
    collisions on all primaries. Assert the role matrix: `order_app` can select
    sellers and products, write stock reservations without `TRUNCATE`, and update
    only the `stock` column of products; no other catalog writes or DDL are allowed.
    `product_app` cannot touch reservations or
-   ordering tables; no login role owns an object. Run the version-2 routing
-   vectors in `shardshop-sharding`, including values above 2^53 and signed-long
-   boundary checks, and verify that both services route through it.
+   ordering tables; Flyway creates no custom functions or triggers, and no login
+   role owns an object.
+   Verify fresh V1 creates all regional constraints and comments, rejects
+   misplaced sellers, and reaches identical migration state on standbys. A matching
+   rerun must apply no migrations. After a partial migration, reject changed
+   region/index/count parameters using the saved topology before first routing
+   publication, including a run with no pending versioned migrations. Preserve
+   the reservation after publication failure and reuse it on a matching rerun.
+   Run the version-2 routing vectors in `shardshop-sharding`, including values above
+   2^53 and signed-long boundary checks, and verify that both services route through
+   it. Run `verify-topology.sh --routing-only` to compare the same golden fixtures
+   with SQL hashing and the deployed seller placement constraint on every primary.
 3. Exercise heavy product reads, primary read-after-write behavior, and explicitly
    stale replica reads under controlled lag.
 4. Verify an accepted order reaches `CONFIRMED` with exactly one ledger row, one
@@ -1478,7 +1578,9 @@ Acceptance scenarios for implementation:
     distinct generator allocations. Test lost CAS responses, stale/missing registry,
     and allocation exhaustion without emitting duplicates. Verify registry retention
     during backup/restore. Rerun service-side dataset generation and seeding with
-    the same configuration and assert identical product IDs/payloads. Workloads
+    the same configuration and assert identical product IDs/payloads and
+    seller/buyer home regions; retries preserve the service-issued descriptors.
+    Workloads
     obtain IDs only from APIs, have no generator dependency or allocator access,
     and preserve returned IDs on retries. Lost allocation responses, concurrent
     requests, and producer restarts return the same order ID; unissued IDs and

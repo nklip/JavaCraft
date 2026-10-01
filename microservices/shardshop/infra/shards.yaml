@@ -1,6 +1,10 @@
-# Routing order is part of data ownership. Changing membership or order requires
+# Regions describe business ownership in this local lab, not physical node placement.
+# Routing order and regions are part of data ownership. Changing either requires
 # a coordinated reset/reseed in this lab; it is not an online resharding operation.
 shards:
   - name: shard-a
+    region: US
   - name: shard-b
+    region: EU
   - name: shard-c
+    region: ASIA

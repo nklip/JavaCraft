@@ -31,7 +31,7 @@ class ProductApplicationTest {
         assertTrue(context.isActive());
         assertNotNull(context.getBean(ProductApplication.class));
         ShardTopology topology = context.getBean(ShardTopology.class);
-        assertEquals(List.of(new Shard("shard-b"), new Shard("shard-a")), topology.shards());
-        assertEquals("shard-a", context.getBean(ShardRouter.class).route(1L).clusterName());
+        assertEquals(List.of(new Shard("shard-b", "EU"), new Shard("shard-a", "US")), topology.shards());
+        assertEquals(new Shard("shard-a", "US"), context.getBean(ShardRouter.class).route(1L));
     }
 }

@@ -11,7 +11,10 @@ class ShardRoutingConfiguration {
 
     @Bean
     ShardTopology shardTopology(Environment environment) {
-        return ShardTopology.fromNames(environment.getRequiredProperty("shardshop.routing.shards"));
+        return ShardTopology.fromNamesAndRegions(
+                environment.getRequiredProperty("shardshop.routing.shards"),
+                environment.getRequiredProperty("shardshop.routing.regions")
+        );
     }
 
     @Bean

@@ -42,12 +42,23 @@ class ShardRoutingStartupTest {
     @Test
     void failsStartupWhenTopologyIsInvalid() throws IOException {
         Path imported = directory.resolve("application.properties");
-        assertEquals(imported, Files.writeString(imported, "shardshop.routing.shards=shard-a,shard-a\n"));
+        assertEquals(imported, Files.writeString(imported, "shardshop.routing.shards=shard-a,shard-a\nshardshop.routing.regions=US,EU\n"));
 
         RuntimeException failure = assertThrows(RuntimeException.class, () -> application().run(arguments(imported)));
 
         assertThat(failure).hasRootCauseInstanceOf(IllegalArgumentException.class)
                 .rootCause().hasMessage("Shard topology must contain a nonempty list of distinct shards");
+    }
+
+    @Test
+    void failsStartupWhenRegionsPropertyIsMissing() throws IOException {
+        Path imported = directory.resolve("application.properties");
+        assertEquals(imported, Files.writeString(imported, "shardshop.routing.shards=shard-a\n"));
+
+        RuntimeException failure = assertThrows(RuntimeException.class, () -> application().run(arguments(imported)));
+
+        assertThat(failure).hasRootCauseInstanceOf(IllegalStateException.class)
+                .rootCause().hasMessage("Required key 'shardshop.routing.regions' not found");
     }
 
     private SpringApplication application() {
