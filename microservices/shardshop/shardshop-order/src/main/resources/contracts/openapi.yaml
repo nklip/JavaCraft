@@ -1,0 +1,618 @@
+openapi: 3.1.1
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+info:
+  title: ShardShop order API
+  version: 1.0.0
+  description: |
+    Design contract for PLAN step 3.1; providers are implemented in steps 3.6 and 4.1.
+    Order owns buyer fixtures and durable order allocations. Clients forward issued
+    IDs unchanged and keep their own DTOs. No public operation accepts a shard selector.
+    Buyer regions are immutable service-issued values; buyers may purchase from
+    sellers in any region. All buyer/order reads and writes use the buyer's primary.
+    Unknown request fields, duplicate object member names, unknown/repeated query
+    parameters, numeric JSON IDs and noncanonical text are INVALID_REQUEST.
+    IDs are checked before conversion or IO, without trimming or coercion.
+    Error messages are diagnostic text; clients branch on the stable code.
+    Names and run names must contain Unicode scalar values, excluding NUL and
+    unpaired UTF-16 surrogates; valid surrogate pairs decode to one scalar value.
+    Reject invalid text as 400 before IO. Integral JSON numbers such as 2, 2.0
+    and 2e0 have the same meaning and normalize to integer 2. Parse numbers exactly;
+    reject a fractional value such as 2.5, out-of-range values, numeric strings and
+    booleans as 400, without truncation or binary floating-point rounding.
+    Examples illustrate the wire format, not issued dataset fixtures. Issuance is
+    established by configured dataset responses and durable allocation records.
+paths:
+  /api/v1/datasets/{datasetVersion}/buyers:
+    parameters:
+      - $ref: '#/components/parameters/DatasetVersion'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+    get:
+      operationId: listBuyerFixtures
+      summary: Discover immutable buyer IDs and creation payloads
+      description: |
+        Describes buyers across US, EU and ASIA without creating them, using ID ranges
+        disjoint from product's seller/product fixtures. Pin the configured dataset version
+        throughout a run. Pages use ascending numeric buyerId order and contain at most
+        limit descriptors. Repeat requests return the same descriptors. Omit cursor for
+        the first page; use nextCursor unchanged to continue. It is opaque, scoped to
+        this version and collection, and remains usable while the dataset is retained.
+        Omitting nextCursor means completion; an empty collection has items: [].
+        A malformed or wrong-version/collection cursor is INVALID_REQUEST.
+        There is no mutable latest alias. Limit may change between pages without
+        skipping or repeating descriptors. Versions reserve disjoint ranges for new
+        IDs and may select retained subsets without changing an existing ID's payload.
+      responses:
+        '200':
+          description: A stable page of buyer fixtures
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuyerPage'
+              example:
+                datasetVersion: v1
+                items:
+                  - buyerId: '21380884070400003'
+                    creationPayload: {name: Example buyer, region: ASIA}
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '404':
+          $ref: '#/components/responses/DatasetNotFound'
+        '503':
+          $ref: '#/components/responses/GenerationUnavailable'
+  /api/v1/buyers/{buyerId}:
+    parameters:
+      - $ref: '#/components/parameters/BuyerId'
+    put:
+      operationId: putBuyer
+      summary: Create an immutable buyer or recover an identical retry
+      description: |
+        Only order-issued buyer fixture IDs are accepted. The payload must match the
+        issued fixture on first creation. A missing/unknown region or a region differing
+        from the issued fixture and routed home region is INVALID_REQUEST before IO.
+        Once created, an otherwise valid issued ID with a different stored name is
+        BUYER_ID_CONFLICT; an identical retry returns the saved buyer. A 503 can mean
+        an unknown commit: retry the same buyerId and exact creation payload.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuyerCreation'
+            example: {name: Example buyer, region: ASIA}
+      responses:
+        '201':
+          $ref: '#/components/responses/Buyer'
+        '200':
+          $ref: '#/components/responses/Buyer'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '409':
+          $ref: '#/components/responses/BuyerConflict'
+        '503':
+          $ref: '#/components/responses/OrderStoreUnavailable'
+    get:
+      operationId: getBuyer
+      summary: Read a buyer from its primary
+      responses:
+        '200':
+          $ref: '#/components/responses/Buyer'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '404':
+          $ref: '#/components/responses/BuyerNotFound'
+        '503':
+          $ref: '#/components/responses/OrderStoreUnavailable'
+  /api/v1/buyers/{buyerId}/order-allocations:
+    parameters:
+      - $ref: '#/components/parameters/BuyerId'
+    post:
+      operationId: allocateOrder
+      summary: Allocate or recover an order ID using durable retry coordinates
+      description: |
+        Atomically persist (buyerId, runName, requestOrdinal) -> orderId before returning.
+        Concurrent calls, lost responses and producer/service restarts recover the same
+        committed mapping forever while the dataset is retained. Never recycle it.
+        Allocation creates no order, saga or outbox. Existing mappings require no new
+        ID generation. A missing buyer is BUYER_NOT_FOUND. Unknown commits and an
+        unavailable store are ORDER_STORE_UNAVAILABLE: retry the same coordinates with
+        bounded backoff. Freeze dataset versions and workload settings for a run; only
+        a new independent run receives a new configured runName. requestOrdinal is a
+        zero-based retry coordinate, represented as text to preserve BIGINT precision;
+        it is not a client-generated application ID. An unissued buyerId is invalid.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AllocationRequest'
+            example: {runName: local-run-1, requestOrdinal: '0'}
+      responses:
+        '201':
+          $ref: '#/components/responses/Allocation'
+        '200':
+          $ref: '#/components/responses/Allocation'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '422':
+          $ref: '#/components/responses/BuyerNotFound'
+        '503':
+          $ref: '#/components/responses/AllocationUnavailable'
+  /api/v1/buyers/{buyerId}/orders/{orderId}:
+    parameters:
+      - $ref: '#/components/parameters/BuyerId'
+      - $ref: '#/components/parameters/OrderId'
+    put:
+      operationId: putOrder
+      summary: Accept an order asynchronously or recover its saved status
+      description: |
+        Use an order allocation belonging to this buyer. Only currency and requested
+        items are supplied; prices, snapshots and totals come from the catalog.
+        Region imposes no purchase restriction; all items must use one currency.
+        An accepted order and PENDING_STOCK saga commit together before 202. No command
+        is published by the HTTP request; stock reservation precedes the ledger outbox.
+        Identical retries return 202 while pending or 200 when terminal, without new
+        IDs, catalog access or another saga. Unknown commit results are 503: retry the
+        same orderId and payload or poll statusUrl. Acceptance is not ledger confirmation.
+
+        Validation precedence, independent of lookup completion order:
+        1. Validate syntax, canonical IDs, field constraints and duplicate seller/product
+           pairs before IO; invalid input is 400 INVALID_REQUEST.
+        2. In a short locked order transaction check unresolved quarantine first (409
+           ORDER_RECONCILIATION_REQUIRED), then allocation ownership (400), existing
+           fingerprint (409 ORDER_ID_CONFLICT or saved status), then missing buyer (422).
+           Failure to perform the checks is 503 ORDER_STORE_UNAVAILABLE.
+        3. Release the transaction, lock and connection before bounded catalog IO.
+           Catalog errors rank CATALOG_UNAVAILABLE (503), PRODUCT_NOT_FOUND (422),
+           MIXED_CURRENCIES (422), CURRENCY_MISMATCH (422), in that order.
+        4. Reacquire the lock and repeat the order checks before using any catalog
+           outcome. Concurrent creation or quarantine wins. If still new, a validation
+           error writes nothing; otherwise commit order/snapshots/PENDING_STOCK together.
+           Generation failure is 503 ID_GENERATION_UNAVAILABLE, without a partial commit.
+        All amount arithmetic must be exact; an unrepresentable NUMERIC(19,2) total
+        is 400 INVALID_REQUEST after the catalog checks and final locked re-check.
+        Validation never consumes the durable allocation. Reported product IDs, if
+        included in diagnostic text, use ascending numeric order of canonical IDs.
+
+        Fingerprint v1 is lowercase SHA-256 of UTF-8 compact JSON with exactly these
+        keys in this order: {"buyerId":"...","orderId":"...","currency":"USD",
+        "items":[{"sellerId":"...","productId":"...","quantity":1}]}.
+        Serialize without whitespace or a trailing newline, retaining item array order,
+        canonical ID strings and base-10 integer quantities (2.0 and 2e0 become 2).
+        Each seller/product pair
+        appears once. JSON object member order on input is irrelevant. Prices, totals,
+        logical/transport IDs and timestamps are excluded. This fingerprint is carried
+        unchanged by the RecordOrder command and ledger results.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderCreation'
+            example:
+              currency: EUR
+              items:
+                - {sellerId: '11234023833600000', productId: '11234023837794304', quantity: 2}
+      responses:
+        '202':
+          description: Committed new or existing pending order; poll the status URL
+          headers:
+            Location:
+              description: Same relative status URL as the response body's statusUrl
+              schema: {type: string, format: uri-reference}
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OrderStatus'
+                  - properties:
+                      status: {enum: [PENDING_STOCK, PENDING_LEDGER]}
+              example:
+                buyerId: '21380884070400003'
+                orderId: '100925016375300096'
+                status: PENDING_STOCK
+                statusUrl: /api/v1/buyers/21380884070400003/orders/100925016375300096
+        '200':
+          description: An identical retry found an existing terminal decision
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OrderStatus'
+                  - properties:
+                      status: {enum: [CONFIRMED, CANCELLED]}
+              examples:
+                recorded:
+                  value:
+                    buyerId: '21380884070400003'
+                    orderId: '100925016375300096'
+                    status: CONFIRMED
+                    statusUrl: /api/v1/buyers/21380884070400003/orders/100925016375300096
+                rejected:
+                  value:
+                    buyerId: '21380884070400003'
+                    orderId: '100925016375300096'
+                    status: CANCELLED
+                    statusUrl: /api/v1/buyers/21380884070400003/orders/100925016375300096
+                    cancellationReason: UNSUPPORTED_CURRENCY
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '409':
+          $ref: '#/components/responses/OrderConflict'
+        '422':
+          $ref: '#/components/responses/OrderValidationFailed'
+        '503':
+          $ref: '#/components/responses/OrderUnavailable'
+    get:
+      operationId: getOrder
+      summary: Read the current order status from the buyer's primary
+      description: |
+        A pending order stays pending through transient failures; infrastructure failure
+        never proves business rejection. CONFIRMED and CANCELLED are terminal.
+        OUT_OF_STOCK cancellation releases partial reservations without a ledger command.
+        UNSUPPORTED_CURRENCY is a later ledger rejection and releases reserved stock.
+        A terminal cancellation can be visible while release retries are still running.
+        An allocation without an accepted order returns ORDER_NOT_FOUND, not a pending order.
+      responses:
+        '200':
+          description: Current pending or terminal status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderStatus'
+              example:
+                buyerId: '21380884070400003'
+                orderId: '100925016375300096'
+                status: PENDING_LEDGER
+                statusUrl: /api/v1/buyers/21380884070400003/orders/100925016375300096
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '404':
+          $ref: '#/components/responses/OrderNotFound'
+        '503':
+          $ref: '#/components/responses/OrderStoreUnavailable'
+components:
+  parameters:
+    BuyerId:
+      name: buyerId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Id'
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Id'
+    DatasetVersion:
+      name: datasetVersion
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/DatasetVersion'
+    Limit:
+      name: limit
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 1000, default: 100}
+    Cursor:
+      name: cursor
+      in: query
+      schema:
+        $ref: '#/components/schemas/Cursor'
+  schemas:
+    Id:
+      type: string
+      minLength: 1
+      maxLength: 19
+      description: |
+        Canonical ASCII decimal string in 1..9223372036854775807, never a JSON number.
+        The alternatives enforce the signed-long bound; the final assertion forbids
+        trailing LF/CRLF or any other character. Runtime also checks the parsed range.
+      pattern: '^(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[01][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])(?![\s\S])'
+      examples: ['1', '21380884070400003', '9223372036854775807']
+    Name:
+      type: string
+      minLength: 1
+      maxLength: 200
+      pattern: '^(?=[\s\S]*\S)(?:[^\u0000\uD800-\uDFFF]|[\uD800-\uDBFF][\uDC00-\uDFFF])+(?![\s\S])'
+      description: Nonblank text of at most 200 Unicode scalar values, excluding NUL and unpaired surrogates. Preserve exactly without trimming or case folding.
+    DatasetVersion:
+      type: string
+      minLength: 1
+      maxLength: 64
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}(?![\s\S])'
+    Cursor:
+      type: string
+      minLength: 1
+      maxLength: 1024
+      pattern: '^[A-Za-z0-9_-]+(?![\s\S])'
+      description: Opaque base64url cursor; never decoded or constructed by clients.
+    Currency:
+      type: string
+      pattern: '^[A-Z]{3}(?![\s\S])'
+      description: Three uppercase ASCII letters; ledger support is evaluated asynchronously.
+    BuyerCreation:
+      type: object
+      additionalProperties: false
+      required: [name, region]
+      properties:
+        name:
+          $ref: '#/components/schemas/Name'
+        region:
+          type: string
+          enum: [US, EU, ASIA]
+          description: Immutable home region issued with the fixture; never a placement choice.
+    Buyer:
+      type: object
+      additionalProperties: false
+      required: [buyerId, name, region]
+      properties:
+        buyerId:
+          $ref: '#/components/schemas/Id'
+        name:
+          $ref: '#/components/schemas/Name'
+        region: {type: string, enum: [US, EU, ASIA]}
+    BuyerFixture:
+      type: object
+      additionalProperties: false
+      required: [buyerId, creationPayload]
+      properties:
+        buyerId:
+          $ref: '#/components/schemas/Id'
+        creationPayload:
+          $ref: '#/components/schemas/BuyerCreation'
+    BuyerPage:
+      type: object
+      additionalProperties: false
+      required: [datasetVersion, items]
+      properties:
+        datasetVersion:
+          $ref: '#/components/schemas/DatasetVersion'
+        items:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/BuyerFixture'
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+    RequestOrdinal:
+      description: Canonical nonnegative decimal retry coordinate, 0..9223372036854775807.
+      oneOf:
+        - {const: '0'}
+        - $ref: '#/components/schemas/Id'
+    AllocationRequest:
+      type: object
+      additionalProperties: false
+      required: [runName, requestOrdinal]
+      properties:
+        runName:
+          $ref: '#/components/schemas/Name'
+        requestOrdinal:
+          $ref: '#/components/schemas/RequestOrdinal'
+    Allocation:
+      type: object
+      additionalProperties: false
+      required: [buyerId, orderId, runName, requestOrdinal]
+      properties:
+        buyerId:
+          $ref: '#/components/schemas/Id'
+        orderId:
+          $ref: '#/components/schemas/Id'
+        runName:
+          $ref: '#/components/schemas/Name'
+        requestOrdinal:
+          $ref: '#/components/schemas/RequestOrdinal'
+    OrderItem:
+      type: object
+      additionalProperties: false
+      required: [sellerId, productId, quantity]
+      properties:
+        sellerId:
+          $ref: '#/components/schemas/Id'
+        productId:
+          $ref: '#/components/schemas/Id'
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+          description: Exact integral JSON value; 2, 2.0 and 2e0 normalize to 2, while 2.5 and numeric strings are invalid.
+    OrderCreation:
+      type: object
+      additionalProperties: false
+      required: [currency, items]
+      properties:
+        currency:
+          $ref: '#/components/schemas/Currency'
+        items:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          uniqueItems: true
+          description: |
+            Preserve order for retry fingerprinting. Duplicate sellerId/productId pairs
+            are invalid even if quantities differ; providers enforce pair uniqueness.
+          items:
+            $ref: '#/components/schemas/OrderItem'
+    OrderStatus:
+      type: object
+      additionalProperties: false
+      required: [buyerId, orderId, status, statusUrl]
+      properties:
+        buyerId:
+          $ref: '#/components/schemas/Id'
+        orderId:
+          $ref: '#/components/schemas/Id'
+        status: {type: string, enum: [PENDING_STOCK, PENDING_LEDGER, CONFIRMED, CANCELLED]}
+        statusUrl:
+          type: string
+          format: uri-reference
+          description: /api/v1/buyers/{buyerId}/orders/{orderId}, using the same returned IDs.
+          pattern: '^/api/v1/buyers/(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[01][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])/orders/(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[01][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])(?![\s\S])'
+        cancellationReason: {type: string, enum: [OUT_OF_STOCK, UNSUPPORTED_CURRENCY]}
+      if:
+        properties:
+          status: {const: CANCELLED}
+      then:
+        required: [cancellationReason]
+      else:
+        not:
+          required: [cancellationReason]
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code: {type: string}
+        message: {type: string, minLength: 1}
+  responses:
+    Buyer:
+      description: Stored immutable buyer (201 on creation, 200 on read or identical retry)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Buyer'
+          example: {buyerId: '21380884070400003', name: Example buyer, region: ASIA}
+    Allocation:
+      description: Durable allocation (201 new, 200 recovered); creates no order or saga
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Allocation'
+          example:
+            buyerId: '21380884070400003'
+            orderId: '100925016375300096'
+            runName: local-run-1
+            requestOrdinal: '0'
+    InvalidRequest:
+      description: Invalid syntax, fields, IDs, issuance, parent, region, cursor or amount range
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Error'
+              - properties:
+                  code: {const: INVALID_REQUEST}
+          example: {code: INVALID_REQUEST, message: Use the service-issued ID and creation payload.}
+    DatasetNotFound:
+      description: Unknown configured dataset version
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Error'
+              - properties:
+                  code: {const: DATASET_NOT_FOUND}
+          example: {code: DATASET_NOT_FOUND, message: Dataset version was not found.}
+    BuyerNotFound:
+      description: Buyer absent on its reachable primary (404 on GET, 422 on allocation)
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Error'
+              - properties:
+                  code: {const: BUYER_NOT_FOUND}
+          example: {code: BUYER_NOT_FOUND, message: Buyer was not found.}
+    OrderNotFound:
+      description: Order absent under this buyer on its reachable primary
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Error'
+              - properties:
+                  code: {const: ORDER_NOT_FOUND}
+          example: {code: ORDER_NOT_FOUND, message: Order was not found under this buyer.}
+    BuyerConflict:
+      description: Existing buyer has a different immutable creation payload
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Error'
+              - properties:
+                  code: {const: BUYER_ID_CONFLICT}
+          example: {code: BUYER_ID_CONFLICT, message: Buyer ID already has a different creation payload.}
+    OrderConflict:
+      description: Conflicting reuse or unresolved orphan quarantine; never start a new saga
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Error'
+              - properties:
+                  code: {enum: [ORDER_ID_CONFLICT, ORDER_RECONCILIATION_REQUIRED]}
+          examples:
+            conflictingPayload:
+              value: {code: ORDER_ID_CONFLICT, message: Order ID already has a different creation payload.}
+            quarantine:
+              value: {code: ORDER_RECONCILIATION_REQUIRED, message: Operator reconciliation is required before reusing this order ID.}
+    OrderValidationFailed:
+      description: Missing buyer/product or incompatible product currencies; creates no order
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Error'
+              - properties:
+                  code: {enum: [BUYER_NOT_FOUND, PRODUCT_NOT_FOUND, MIXED_CURRENCIES, CURRENCY_MISMATCH]}
+          examples:
+            missingBuyer:
+              value: {code: BUYER_NOT_FOUND, message: Create the buyer before placing an order.}
+            missingProduct:
+              value: {code: PRODUCT_NOT_FOUND, message: Product was not found under its seller.}
+            mixedCurrencies:
+              value: {code: MIXED_CURRENCIES, message: All products must use the same currency.}
+            mismatchedCurrency:
+              value: {code: CURRENCY_MISMATCH, message: Order currency must match the products.}
+    OrderStoreUnavailable:
+      description: Order primary unavailable, deadline exceeded or commit outcome unknown
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Error'
+              - properties:
+                  code: {const: ORDER_STORE_UNAVAILABLE}
+          example: {code: ORDER_STORE_UNAVAILABLE, message: Order store is temporarily unavailable; retry the same request.}
+    GenerationUnavailable:
+      description: Fixture generation unavailable; retry the same dataset version and cursor
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Error'
+              - properties:
+                  code: {const: ID_GENERATION_UNAVAILABLE}
+          example: {code: ID_GENERATION_UNAVAILABLE, message: Fixture generation is temporarily unavailable.}
+    AllocationUnavailable:
+      description: Store failure/unknown commit or new-ID failure; retry the same coordinates
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Error'
+              - properties:
+                  code: {enum: [ORDER_STORE_UNAVAILABLE, ID_GENERATION_UNAVAILABLE]}
+          examples:
+            storeUnavailable:
+              value: {code: ORDER_STORE_UNAVAILABLE, message: Allocation outcome is unknown; retry the same coordinates.}
+            generationUnavailable:
+              value: {code: ID_GENERATION_UNAVAILABLE, message: No ID could be allocated; retry the same coordinates.}
+    OrderUnavailable:
+      description: Bounded retry with the same orderId/payload; a commit may already exist
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Error'
+              - properties:
+                  code: {enum: [ORDER_STORE_UNAVAILABLE, CATALOG_UNAVAILABLE, ID_GENERATION_UNAVAILABLE]}
+          examples:
+            storeUnavailable:
+              value: {code: ORDER_STORE_UNAVAILABLE, message: Order commit outcome is unknown; retry the same order ID and payload.}
+            catalogUnavailable:
+              value: {code: CATALOG_UNAVAILABLE, message: Catalog lookup is temporarily unavailable.}
+            generationUnavailable:
+              value: {code: ID_GENERATION_UNAVAILABLE, message: Saga ID generation is temporarily unavailable; retry the same request.}

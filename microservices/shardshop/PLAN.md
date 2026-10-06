@@ -3,8 +3,14 @@
 ## 1. Implementation milestones
 
 This is the implementation checklist for `microservices/shardshop`, updated on
-2026-10-01. Every step starts as **Planned**; existing design documents and routing
+2026-10-06. Every step starts as **Planned**; existing design documents and routing
 vectors do not mean the corresponding application behavior is implemented.
+
+**Framework migration completed, 2026-10-04:** all six application skeletons use
+**Quarkus 3.40.1** in JVM mode on Java 25. Step **0.5** verifies their POMs, tests,
+artifact lock and launch commands. Steps 0.2–0.4 retain their historical evidence;
+the new qualification is recorded separately in step 0.5 and [VERSIONS.md](VERSIONS.md#step-05-verification-record). Quarkus 3.40.1 is the latest
+stable release at this review, on the 3.40 LTS line. [Release status](https://quarkus.io/releases/).
 
 **ID ownership constraint:** only `shardshop-product` and `shardshop-order`
 create IDs, including deterministic fixtures and transport IDs. Workload modules
@@ -68,7 +74,9 @@ application APIs, datasets, and workloads remain planned in milestones 3 and 4.
    starts after step 6.6; never make a local step depend on it or on a cloud
    service.
 
-Execute steps in dependency order; the table order is a usable default. “Depends
+Execute steps in dependency order; the table order is a usable default except
+for the added migration step 0.5, which follows the completed routing setup in
+2.4 and precedes further application work. “Depends
 on” lists direct prerequisites and includes their prerequisites transitively.
 Scenario numbers refer to the
 [architecture's acceptance scenarios](ARCHITECTURE.md#7-consistency-tradeoffs-and-verification).
@@ -82,6 +90,7 @@ Milestone numbers 0-7 remain stable for references from other documents.
 | 0.2 Maven skeleton | 0.1 | Done | The parent and workload aggregators contain six independently buildable application skeletons, and the Java 25 minimum works. **2026-09-28:** all six `clean verify` builds and JAR launches pass on OpenJDK 25 with 100% line coverage from an empty Maven cache; the build passes on JDK 25 and 26 and rejects JDK 21. **Commands:** the per-application loop in the [README](README.md#build-and-run); `mvn -B -ntp -f microservices/shardshop/pom.xml validate`. |
 | 0.3 Dependency and test configuration | 0.2 | Done | Effective POMs, resolved dependencies/plugins, and SBOM agree with the inventory; Surefire and the opt-in `integration` profile are configured in each module. **2026-09-28:** all 20 unit tests pass and `integration` runs `*IT` through Failsafe; each application's effective POM matches the lock's 17 plugin pins, overrides and test-image digests, with no prereleases. **Commands:** `mvn -B -ntp -f microservices/shardshop/pom.xml -Pintegration,audit clean verify` ([README](README.md#dependency-and-test-validation)). |
 | 0.4 Shared shard-routing module | 0.3 | Done | `shardshop-sharding` implements routing contract version 2 in plain Java; only product and order depend on it, and it holds no API, model, or JSON types. Golden vectors cover every shard, a value above 2^53, the signed-long maximum, and digests with the high bit set. **2026-09-28:** the router tests pass with 100% line and branch coverage on JDK 25 and 26, with no warnings; step 2.4 later made the shard list configurable. **Commands:** `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-sharding clean verify`. |
+| 0.5 Quarkus 3.40.1 migration | 0.4, 2.4 | Done | **2026-10-04:** all six skeletons independently pass `clean verify` with `integration,audit`, using the scoped Quarkus 3.40.1 BOM/plugin and Maven 3.9.16 on Java 25. The 62 unit/startup tests and 10 packaged startup ITs pass with 100% line coverage. CDI preserves eager routing validation and unchanged golden vectors. Effective POMs, graphs, SBOMs and verified artifact checksums agree; no Spring runtime/test artifacts resolve. The three official plugin-internal XML prereleases are qualified under the explicit version-policy exception. All six packages start non-root on the pinned JRE; product builds/tests on the pinned JDK. **Commands:** the [README build loop](README.md#build-and-run) with `-Pintegration,audit`; [qualification evidence](VERSIONS.md#step-05-verification-record). **2026-10-06 review:** default `verify` now runs the ten packaged routing checks; all six `-Paudit clean verify` builds pass with 62 unit/startup tests and no warnings. Removing unused app Mockito dependencies leaves 140 SBOM components for product/order and 139 for each other app; plugin agents remain. |
 
 ### Milestone 1: Local cluster and one replicated shard
 
@@ -106,9 +115,9 @@ Milestone numbers 0-7 remain stable for references from other documents.
 
 | Step / deliverable | Depends on | Status | Acceptance condition |
 |---|---|---|---|
-| 3.1 HTTP and message contracts | 0.3 | Planned | Each owning module holds its OpenAPI document or message schema, covering service-issued decimal-string IDs, immutable seller/buyer home regions, inherited product regions, dataset discovery, durable order-ID allocation and its retries, payloads, errors, and correlation, including order-reserved ledger result IDs; clients keep their own DTOs, and no API, model, or JSON files are shared between modules. Provider tests arrive with the implementing steps. |
+| 3.1 HTTP and message contracts | 0.5 | Done | Each owning module holds its OpenAPI document or message schema, covering service-issued decimal-string IDs, immutable seller/buyer home regions, inherited product regions, dataset discovery, durable order-ID allocation and its retries, payloads, errors, and correlation, including order-reserved ledger result IDs; clients keep their own DTOs, and no API, model, or JSON files are shared between modules. Provider tests arrive with the implementing steps. **2026-10-06:** product/order OpenAPI 3.1.1 documents and order/ledger JSON Schema 2020-12 envelopes are self-contained, with inline HTTP and correlated message examples. Structural/example validation, signed-long and whitespace boundaries, money constraints, fingerprint/total/correlation checks pass; all seven resources match their owner JARs. The affected build passes 59 unit/startup tests and 10 packaged startup ITs without warnings. **Commands:** [contract validation](README.md#http-and-message-contracts-step-31); `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-order,shardshop-ledger -am -Pintegration clean verify`. **Review fixes:** UTC microsecond timestamps, coherent generator-0 fixtures/live examples, Unicode and exact-integer contracts, complete response examples and bounded status URLs are verified by the committed `scripts/verify-contracts.py`; its pinned tools are recorded in VERSIONS.md. |
 | 3.2 ID validation and currency selection | 3.1 | Planned | Each ID-consuming module has its own unit-tested ID parser that accepts canonical IDs up to the signed-long maximum, including values above 2^53, and rejects numeric JSON tokens, LF/CRLF/TAB text, and other noncanonical input; the order producer's currency selection passes its boundary IDs without depending on `shardshop-sharding`. |
-| 3.3 Bounded Snowflake generation | 0.3 | Planned | Injected generators exist only in product and order and satisfy concurrency, sequence-exhaustion, clock-failure, and timestamp-boundary checks; failures emit no ID. Workload and ledger dependencies contain no ID generator. Scenario 10 library checks pass. |
+| 3.3 Bounded Snowflake generation | 0.5 | Planned | Injected generators exist only in product and order and satisfy concurrency, sequence-exhaustion, clock-failure, and timestamp-boundary checks; failures emit no ID. Workload and ledger dependencies contain no ID generator. Scenario 10 library checks pass. |
 | 3.4 Generator allocation at JVM startup | 1.1, 3.3 | Planned | Concurrent product/order starts and same-pod container restarts reserve distinct generator IDs; lost responses, missing/stale state, and exhaustion fail safely without resetting the high-water mark. Workloads and ledger have no allocation launcher or allocator permissions. |
 | 3.6 Service-owned deterministic datasets | 2.4, 3.1, 3.3 | Planned | Product derives seller/product IDs and immutable USD/EUR fixture payloads in every region; order derives buyer IDs in disjoint reserved ranges. Both services derive immutable home regions from the routed IDs and expose them in paginated descriptors and seller/buyer creation payloads. Products inherit the seller region without an independent region field. Workloads consume those responses without deriving IDs or sharing a manifest file; service tests pin generation and workload tests verify unchanged ID forwarding. |
 | 3.5 Seller and product API on primaries | 0.4, 2.3, 3.2, 3.4, 3.6 | Planned | Seller and product PUTs accept only product-issued fixture IDs; seller payloads must carry the issued home region and products remain on that seller's shard. Valid requests return 201/200/409; a product PUT for a known fixture whose seller is not yet created returns `422 SELLER_NOT_FOUND`; GETs return stored data, including current stock, or 404; invalid/unissued IDs and missing/unknown or mismatched seller regions return `400 INVALID_REQUEST`; cross-region product placement is rejected by the API and database; provider tests match responses to the product OpenAPI document; reads reach PostgreSQL and use bounded pools/timeouts. |
@@ -122,7 +131,7 @@ Milestone numbers 0-7 remain stable for references from other documents.
 |---|---|---|---|
 | 4.1 Order validation and atomic acceptance | 2.5, 3.4, 3.5 | Planned | Buyer and order PUT/GET use order-issued IDs; buyer creation requires the issued immutable home region, with invalid regions rejected as `400 INVALID_REQUEST`. Buyer orders remain on the buyer's home shard and may contain sellers from any or all regions under the existing currency rules; order-allocation POST commits a stable buyer/run name/request ordinal mapping before returning, and retries/restarts recover the same ID. Unissued IDs and wrong-parent allocations fail. Staged 400/409/422/503 precedence including `422 BUYER_NOT_FOUND`, locked re-checks, unknown commits, and atomic order/saga writes pass scenario 9; catalog IO holds no order connection or lock; provider tests match responses to the order OpenAPI document. |
 | 4.9 Stock reservation step | 2.5, 4.1 | Planned | Committed orders reserve every item on its seller's shard before the ledger sees them: success moves the saga to `PENDING_LEDGER` with its `RecordOrder` outbox insert, insufficient stock cancels with `OUT_OF_STOCK` and releases partial reservations, and catalog outages retry without cancelling; Java transactions adjust stock exactly once per reservation or release; scenario 11 passes. |
-| 4.2 RabbitMQ topology and policies | 1.1, 0.3, 3.1 | Planned | The persistent broker runs a release inside its support window, under the `restricted` Pod Security profile with an arbitrary user ID, and has processing/parking quorum queues, distinct complete source policies, required feature flags, and verified length/byte/retry limits. |
+| 4.2 RabbitMQ topology and policies | 1.1, 0.5, 3.1 | Planned | The persistent broker runs a release inside its support window, under the `restricted` Pod Security profile with an arbitrary user ID, and has processing/parking quorum queues, distinct complete source policies, required feature flags, and verified length/byte/retry limits. |
 | 4.3 Order outbox CDC relay | 4.2, 4.9 | Planned | Debezium is pinned and qualified. One reader per shard captures committed outbox inserts, including a first-start snapshot of unpublished rows, and publishes each stored envelope in source order; rollbacks, status updates, and deletes emit no command. Returns, nacks, timeouts, and crashes leave rows unpublished and offsets unadvanced; a failed reader restarts alone with capped backoff and resumes from the offsets in its shard database with stable envelope IDs, while slot or offset loss stops it for explicit recovery; published `RecordOrder` envelopes match the order-owned message schema. |
 | 4.4 Ledger command consumer | 2.6, 3.2, 4.2 | Planned | A command commits one immutable decision and result outbox record using its order-reserved result ID before acknowledgement; duplicate commands re-arm or recreate the saved result for publication without generating IDs; conflicts commit quarantine first; commands with invalid IDs are rejected without requeue. Serialize immutable decisions with a transaction advisory lock or insert-conflict handling followed by reading/comparing the saved decision; runtime has no `UPDATE` privilege for row locks. |
 | 4.5 Ledger result publisher | 4.4 | Planned | Stored outcomes reach the result queue with preserved logical correlation and order-reserved message IDs; retransmissions and duplicate-command replays retain the same ID, and publication-attempt checks prevent a stale confirm from hiding a replay. Ledger has no generator; result envelopes match its message schema. |
@@ -148,7 +157,7 @@ Milestone numbers 0-7 remain stable for references from other documents.
 | 6.2 Synchronous failover drills | 5.5, 6.1 | Planned | Switchover and primary failure promote a standby confirmed to hold every acknowledged commit, preserve acknowledged saga commits, and keep writes flowing through the remaining standby; CDC resumes from the synchronized logical slot without losing a command. One lost standby keeps writes but pauses CDC, both lost block writes, and losing the primary with one standby triggers no automatic promotion; unrelated shards keep working. |
 | 6.3 Coordinated backup and isolated restore | 5.3, 6.2 | Planned | Isolated restores retain schema/routing metadata, permanent outcomes, quarantine, and the latest allocator high-water mark; backup artifacts live outside kind. |
 | 6.4 Asynchronous-loss audit and recovery | 6.3 | Planned | Deliberate asynchronous loss removes acknowledged orders without creating ledger records; after a restore from an older backup, late and previously acknowledged orphan outcomes are quarantined, ID reuse is blocked, and verified restore/replay resolves recoverable cases. |
-| 6.5 Supported upgrade qualification | 0.3, 1.2 | Planned | Every installed component moves to a supported release before its lock deadline, with the successor choice, compatibility checks, upgrade/recovery procedure, and evidence from the checks that exist at that point recorded. |
+| 6.5 Supported upgrade qualification | 0.5, 1.2 | Planned | Every installed component moves to a supported release before its lock deadline, with the successor choice, compatibility checks, upgrade/recovery procedure, and evidence from the checks that exist at that point recorded. |
 | 6.6 Complete demo and acceptance run | 6.4, 6.5 | Planned | A fresh lab follows the README without hidden steps; all eleven architecture scenarios have commands and passing evidence, including full Snowflake lifecycle checks. |
 
 ### Milestone 7: AWS deployment (optional, advanced)
@@ -175,7 +184,7 @@ before their lock deadlines, whatever the milestone.
 
 ## 2. Scope and target topology
 
-Status: design roadmap, updated on 2026-10-01. [ARCHITECTURE.md](ARCHITECTURE.md)
+Status: design roadmap, updated on 2026-10-04. [ARCHITECTURE.md](ARCHITECTURE.md)
 defines module boundaries, HTTP/message contracts, consistency policies, and
 acceptance scenarios. This plan defines implementation order and local
 infrastructure. [VERSIONS.md](VERSIONS.md) defines the stable-release baseline,
@@ -279,7 +288,7 @@ Reject numeric JSON IDs, signs, leading zeros, whitespace, zero, and values abov
 9223372036854775807. The version-2 vectors replace the unreleased draft;
 deployed data using a different identifier/routing contract would need migration.
 
-Pin `de.mkammerer.snowflake-id:snowflake-id:0.0.2` explicitly outside the Boot BOM.
+Pin `de.mkammerer.snowflake-id:snowflake-id:0.0.2` explicitly outside the Quarkus platform BOM.
 Follow the architecture's fixed epoch `2026-01-01T00:00:00Z`, 41/10/12-bit layout,
 checked monotonic time source, and throwing sequence-overflow policy. Use one
 injected generator per product/order process; no other module generates IDs.
@@ -341,6 +350,8 @@ outside scope. This applies to runtimes, every direct/transitive library, build/
 plugins, container OS packages, and operational tooling. Stable does not imply
 LTS. The explicitly requested pre-1.0 Snowflake library is the narrow exception
 to the maintained-release requirement: no published support term is assumed.
+The official Quarkus plugin also carries three exact plugin-only XML prereleases,
+qualified under the scoped exception in the version policy.
 Follow the dated baseline and lifecycle evidence in [VERSIONS.md](VERSIONS.md).
 
 | Concern | Planned choice |
@@ -350,26 +361,28 @@ Follow the dated baseline and lifecycle evidence in [VERSIONS.md](VERSIONS.md).
 | Node layout | One control-plane node and three worker nodes; Docker Desktop VM with at least 12 GB of memory |
 | Database lifecycle | CloudNativePG 1.30.1 initially, installed from its verified Helm chart, with upgrades before operator EOL; three independent three-instance quorum shard clusters and separate ledger storage |
 | Database | PostgreSQL 18, reviewed patch 18.6, with maintained 18.x updates and pinned image digests |
-| Application | Six Spring Boot 4.1.1 applications in the five-module layout; a scoped BOM baseline and supported branch upgrades |
-| Persistence | Explicit JDBC repositories; bounded pools per service, pod, shard, and endpoint |
+| Application | Six Quarkus 3.40.1 applications in the five-module layout; JVM mode, a scoped platform BOM, and supported branch upgrades |
+| Persistence | Explicit JDBC repositories with PostgreSQL JDBC and Agroal; bounded pools per service, pod, shard, and endpoint |
 | Identifiers | Explicitly pinned `de.mkammerer.snowflake-id:snowflake-id:0.0.2`; decimal strings on the wire and positive `BIGINT` in PostgreSQL; reviewed support-policy exception |
 | Database change management | CNPG `DatabaseRole`, `Database` and `Publication` resources for roles, schemas and CDC publications; the official Flyway OSS CLI image (13.8.1 initially), pinned by digest, for one migration stream per schema under `database/`, run as Kubernetes Jobs by that schema's migrator |
 | Messaging | Stable RabbitMQ 4.3.6 and its supported bundled OTP 27.3.4.17 initially; explicit rolling-support upgrade requirement and the architecture's retry/DLQ contract |
 | Change data capture | Debezium Engine and its PostgreSQL connector (`pgoutput`), embedded in the order service with one reader per shard and offsets in each shard database (JDBC offset store); pinned and qualified under VERSIONS.md in step 4.3 |
 | Deployment packaging | Vendored, verified Helm charts for third-party operators (the CloudNativePG chart 0.29.1 today); one ordered shard inventory and shared Helm templates with environment values for ShardShop's own manifests. The same inventory/templates serve the later cloud target |
 | Cloud target (optional) | AWS EKS provisioned with Terraform in milestone 7, after the local lab passes step 6.6: an EKS overlay, the same operator charts, and GitOps delivery for the applications. No local step depends on it |
-| Libraries | Boot-managed compatible Spring/JDBC/AMQP/Jackson/logging/test libraries; verify upstream maintenance and audit inherited overrides |
-| Build and testing | Command-line Maven (repository minimum 3.9.0), separately pinned GA build plugins, JUnit/Mockito/Testcontainers, and Kubernetes drills |
+| Libraries | Quarkus platform-managed extensions and compatible JDBC/Jackson/logging/test libraries; qualify RabbitMQ and Debezium separately and audit inherited overrides |
+| Build and testing | Command-line Maven 3.9.16 or newer (Quarkus plugin minimum), separately pinned GA build plugins, JUnit/Mockito/Testcontainers, and Kubernetes drills |
 
-The support baseline was checked on 2026-09-28. PostgreSQL 18 has multi-year
+The infrastructure support baseline was checked on 2026-09-28; the Quarkus
+framework choice was checked on 2026-10-03. PostgreSQL 18 has multi-year
 maintenance; the OpenJDK 25 selection carries no assumed vendor support horizon.
 OpenJDK container images need qualification after the distribution change.
-Kubernetes, CNPG, RabbitMQ, Debezium, Boot, and many libraries need regular supported-release upgrades. Recheck sources before implementation and
+Kubernetes, CNPG, RabbitMQ, Debezium, Quarkus, and many libraries need regular supported-release upgrades. Recheck sources before implementation and
 pin exact artifacts only after compatibility and image-availability verification.
 In particular, kind's default Kubernetes 1.37 image is outside CNPG 1.30's
 supported matrix, and the reviewed kind artifacts lag Kubernetes 1.36's current
-patch. Resolve that artifact gap in milestone 0. No prereleases, floating tags,
-external snapshots, unchecked inherited library versions, or assumed paid support.
+patch. Resolve that artifact gap in milestone 0. Apart from the three qualified
+plugin-only XML artifacts, no prereleases, floating tags, external snapshots,
+unchecked inherited library versions or assumed paid support are allowed.
 
 The local RabbitMQ baseline has one broker pod. A single-member quorum queue
 provides persistent storage but no broker high availability. Application queues
@@ -390,6 +403,54 @@ including requalification of retry/capacity and database failover behavior. A
 successor must be stable, available, and community-supported before selection.
 If none is available, stop deployment past EOL or validate a supported community
 replacement. Do not label these short-lived release lines LTS.
+
+### Quarkus framework migration
+
+Step 0.5 completed the framework migration and skeleton qualification. Keep the
+following implementation rules for later milestones, which add HTTP, persistence,
+messaging and workload behavior.
+
+1. Import `io.quarkus.platform:quarkus-bom:3.40.1` in the ShardShop parent and
+   pin `io.quarkus.platform:quarkus-maven-plugin:3.40.1` separately. Configure
+   augmentation/code generation only for the six applications; keep
+   `shardshop-sharding` a plain Java library. Audit inherited dependency versions,
+   test providers and plugin overrides against the effective Quarkus model.
+   Replace the existing repackage goal with Quarkus JVM `fast-jar` packaging: ship
+   the complete `target/quarkus-app/` directory and launch its `quarkus-run.jar`.
+   Native compilation is outside this migration. [Maven tooling](https://quarkus.io/guides/maven-tooling/).
+2. Replace existing application/configuration wiring with Quarkus lifecycle APIs,
+   CDI constructor injection and SmallRye Config. Preserve the skeletons' current
+   startup-and-exit smoke behavior; add long-running service/workload lifecycles
+   and the finite seeder Job in their implementing steps. Map the routing file to
+   Quarkus configuration loading, retaining `shardshop.routing.shards` and
+   `shardshop.routing.regions`. Validate and freeze that snapshot eagerly at
+   startup so missing or invalid routing fails before serving requests.
+   [Lifecycle](https://quarkus.io/guides/lifecycle/),
+   [configuration](https://quarkus.io/guides/config-reference/).
+3. Add extensions only in modules and milestones that need them: Quarkus REST
+   with Jackson (`quarkus-rest-jackson`), Jakarta validation
+   (`quarkus-hibernate-validator`), PostgreSQL JDBC with Agroal
+   (`quarkus-jdbc-postgresql`), SmallRye Health (`quarkus-smallrye-health`) and
+   Prometheus metrics (`quarkus-micrometer-registry-prometheus`). Retain explicit
+   JDBC transactions on one selected shard and bounded pools; keep blocking IO
+   off event-loop threads. Migrations remain external Flyway Jobs. Use the
+   RabbitMQ Java client (`com.rabbitmq:amqp-client`) behind module-owned adapters
+   to preserve mandatory routing, returns/confirms and acknowledgement ordering;
+   keep Debezium Engine embedded in order and qualify both libraries against the
+   Quarkus dependency graph. Workloads retain the architecture's HTTP-only client
+   contract and receive no database/broker credentials.
+   [REST](https://quarkus.io/guides/rest/),
+   [datasources](https://quarkus.io/guides/datasource/),
+   [RabbitMQ Java client](https://www.rabbitmq.com/client-libraries/java-api-guide).
+4. Keep plain JUnit/Mockito tests for domain and routing code; replace the existing
+   context tests with Quarkus startup/CDI tests using `quarkus-junit` and, when
+   needed, `quarkus-junit-mockito`. Preserve coverage and Mockito agents, qualify
+   Surefire/Failsafe wiring, and test packaged launches as well as in-process
+   startup. Retain the opt-in `integration` profile and pinned Testcontainers
+   images; disable automatic Dev Services for the ordinary test run and use
+   explicit infrastructure in integration tests. Refresh `VERSIONS.md`,
+   `versions.lock.yaml`, audit reports and the README only with newly verified
+   versions, checksums and commands. [Testing](https://quarkus.io/guides/getting-started-testing/).
 
 ## 5. Local infrastructure details
 
@@ -489,8 +550,9 @@ outbox state; the prior ID allocation remains available for retry.
 publishes: the order service's per-shard CDC relay publishes committed outbox
 inserts, and the ledger's result relay polls its own outbox.
 
-Keep controllers responsible for mapping/validation, services for business logic,
-and repositories for JDBC IO. Domain types stay free of Spring dependencies.
+Keep Jakarta REST resources responsible for mapping/validation, services for
+business logic, and repositories for JDBC IO. Domain types stay free of Quarkus
+and other framework dependencies.
 Select the shard before a transaction and retain it through commit. Prefer
 explicit shard handles over thread-local routing; test concurrent requests for
 routing leakage. Public contracts expose no shard selectors; catalog calls carry

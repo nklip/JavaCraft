@@ -9,8 +9,9 @@ boundaries; [PLAN.md](PLAN.md) describes implementation milestones and infrastru
 All runtimes, libraries, build plugins, and images follow [VERSIONS.md](VERSIONS.md):
 LTS where available, otherwise maintained stable GA releases with explicit upgrade
 deadlines, plus the named support-policy exception for the requested
-`de.mkammerer.snowflake-id:snowflake-id` library. The version gate also includes
-repository-inherited dependency overrides.
+`de.mkammerer.snowflake-id:snowflake-id` library and the three exact Quarkus
+plugin XML dependencies documented in the version policy. The version gate also
+includes repository-inherited dependency overrides.
 
 The primary target is a local kind lab on one machine: every contract, drill, and
 acceptance scenario in this document must run and pass there. A later AWS target
@@ -163,6 +164,52 @@ shardshop/
   database/                       # Flyway migration streams, one per schema (section 3)
   infra/                          # Kubernetes, PostgreSQL, RabbitMQ configuration
 ```
+
+### Wire contracts (step 3.1)
+
+The owner-local, self-contained wire documents now define the planned providers:
+
+- [Product OpenAPI](shardshop-product/src/main/resources/contracts/openapi.yaml):
+  seller/product fixtures and creation/read operations.
+- [Order OpenAPI](shardshop-order/src/main/resources/contracts/openapi.yaml):
+  buyer fixtures, buyer creation, durable order allocations and order status.
+- [RecordOrder schema](shardshop-order/src/main/resources/contracts/record-order.schema.json):
+  order's outgoing command and immutable catalog snapshot.
+- [Ledger result schema](shardshop-ledger/src/main/resources/contracts/ledger-result.schema.json):
+  ledger's outgoing recorded/rejected outcomes.
+
+OpenAPI 3.1.1 and JSON Schema 2020-12 define shapes and bounds; provider tests in
+the implementing steps will enforce issuance, arithmetic, stored-state and
+cross-envelope relationships. These documents are not shared runtime files or
+generated client models. Clients retain their own DTOs and JSON handling.
+
+The concrete wire choices are version-pinned `/api/v1/datasets/{datasetVersion}`
+collections (`sellers`, `products`, or `buyers`), immutable `creationPayload`
+descriptors, bounded pages and opaque cursors. Money uses exact fixed-two-decimal
+strings. Allocation `requestOrdinal` is a nonnegative decimal string through the
+signed-long maximum, preserving retry-coordinate precision without making it an
+application ID. Orders allow at most 1,000 distinct seller/product pairs; duplicate
+pairs are invalid, and item order participates in the normalized fingerprint.
+The order API specifies its exact SHA-256 serialization. The message field is
+`requestFingerprint`; envelope `occurredAt` is distinct from the ledger's permanent
+`decidedAt`. Result publication uses routing key `order.ledger-results` on
+`order.saga-results`. Each same-ID result replay preserves both timestamps.
+Message timestamps use uppercase UTC `T`/`Z` with at most six fractional digits.
+Truncate clock instants to microseconds before persisting or constructing envelopes,
+and use that same instant for the decision row, ledger entry and initial result.
+Reconciliation reads the retained decision instant; same-ID replay reads the exact
+stored envelope. This matches PostgreSQL `TIMESTAMPTZ` precision without rounding
+a published nanosecond instant into a different replay instant.
+Product store failures and unknown commits return `503 CATALOG_UNAVAILABLE`;
+strict replica failures use `503 READ_REPLICA_UNAVAILABLE`.
+
+Reject NUL and unpaired UTF-16 surrogates in names/run names before IO; correctly
+paired supplementary Unicode characters remain valid. Integer-valued JSON numbers
+such as `2`, `2.0` and `2e0` normalize to the same integer. Validate exact decimal
+values and ranges before conversion: `2.5` must never truncate to `2`. Fingerprints
+serialize normalized quantities as base-10 integers. The provider milestones must
+enforce this contract at JSON decoding, including unknown/duplicate object members
+and numeric tokens in string fields; default mapper coercion is insufficient.
 
 ## 2. Runtime topology
 
@@ -1384,7 +1431,7 @@ Declare `ledger.commands` as a durable direct exchange and bind
 `ledger.record-order` with the routing key `ledger.record-order` before CDC starts.
 
 Messages carry `messageId`, logical `commandId`, `sagaId`, `orderId`, `buyerId`,
-type, schema version, fingerprint, and immutable business data. Commands also
+`type`, `schemaVersion`, `requestFingerprint`, `occurredAt`, and immutable business data. Commands also
 carry `resultMessageId`, reserved by order for ledger to copy into the result's
 `messageId`. Results retain command/saga correlation, including the buyer ID,
 and the stored outcome. All ID fields use the same canonical decimal-string

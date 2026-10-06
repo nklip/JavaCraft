@@ -2,20 +2,25 @@ package dev.nklip.javacraft.shardshop.product;
 
 import dev.nklip.javacraft.shardshop.sharding.ShardRouter;
 import dev.nklip.javacraft.shardshop.sharding.ShardTopology;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.core.env.Environment;
+import io.quarkus.runtime.Startup;
+import jakarta.enterprise.inject.Produces;
+import jakarta.inject.Singleton;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
-@Configuration(proxyBeanMethods = false)
+@Singleton
 class ShardRoutingConfiguration {
 
-    @Bean
-    ShardTopology shardTopology(Environment environment) {
-        return ShardTopology.fromNamesAndRegions(environment.getRequiredProperty("shardshop.routing.shards"),
-                environment.getRequiredProperty("shardshop.routing.regions"));
+    @Produces
+    @Singleton
+    @Startup
+    ShardTopology shardTopology(@ConfigProperty(name = "shardshop.routing.shards") String shards,
+                                @ConfigProperty(name = "shardshop.routing.regions") String regions) {
+        return ShardTopology.fromNamesAndRegions(shards, regions);
     }
 
-    @Bean
+    @Produces
+    @Singleton
+    @Startup
     ShardRouter shardRouter(ShardTopology topology) {
         return new ShardRouter(topology);
     }

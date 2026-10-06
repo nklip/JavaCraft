@@ -24,12 +24,12 @@
             <artifactId>shardshop-sharding</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter</artifactId>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-arc</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -37,10 +37,33 @@
     <build>
         <plugins>
             <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>routing-startup-tests</id>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <includes combine.self="override">
+                                <include>**/ShardRoutingStartupIT.java</include>
+                            </includes>
+                            <failIfNoTests>true</failIfNoTests>
+                            <summaryFile>${project.build.directory}/failsafe-reports/routing-startup-summary.xml</summaryFile>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>io.quarkus.platform</groupId>
+                <artifactId>quarkus-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>dev.nklip.javacraft.shardshop.product.ProductApplication</mainClass>
+                    <!-- The deployed routing snapshot is required at runtime, not during augmentation. -->
+                    <systemProperties>
+                        <quarkus.config.locations>application.properties</quarkus.config.locations>
+                    </systemProperties>
                 </configuration>
             </plugin>
         </plugins>

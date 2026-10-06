@@ -1,12 +1,13 @@
 package dev.nklip.javacraft.shardshop.workload.producer;
 
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
+import io.quarkus.runtime.QuarkusApplication;
+import io.quarkus.runtime.annotations.QuarkusMain;
 
-@SpringBootApplication
-public class OrderProducerApplication {
+@QuarkusMain
+public class OrderProducerApplication implements QuarkusApplication {
 
-    static void main(String[] args) {
-        SpringApplication.run(OrderProducerApplication.class, args);
+    @Override
+    public int run(String... args) {
+        return 0;
     }
 }

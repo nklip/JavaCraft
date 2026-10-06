@@ -1,0 +1,15 @@
+{
+  "type": "LedgerRecorded",
+  "schemaVersion": 1,
+  "messageId": "100925016375300100",
+  "commandId": "100925016375300098",
+  "sagaId": "100925016375300097",
+  "orderId": "100925016375300096",
+  "buyerId": "21380884070400003",
+  "requestFingerprint": "180521963fa8788737fdc156bf8359756e4f1f82d75f3d1d130ee81ee15605c3",
+  "occurredAt": "2026-10-06T12:00:01Z",
+  "amount": "39.90",
+  "currency": "EUR",
+  "outcome": "RECORDED",
+  "decidedAt": "2026-10-06T12:00:01Z"
+}

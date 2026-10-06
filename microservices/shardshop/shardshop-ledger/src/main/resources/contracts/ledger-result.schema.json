@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:shardshop:ledger:ledger-result:v1",
+  "title": "Ledger result v1",
+  "description": "Ledger-owned immutable LedgerRecorded or LedgerRejected envelope. Publish the saved JSON envelope persistently through order.saga-results with routing key order.ledger-results to queue order.ledger-results, using mandatory routing and confirms. The result messageId is exactly the corresponding RecordOrder.resultMessageId reserved by order; ledger generates no IDs. Preserve commandId, sagaId, orderId, buyerId and requestFingerprint from the accepted command, and amount/currency from its immutable snapshot. buyerId selects the order shard; order verifies that messageId is a retained reservation for that saga's command and that all correlation, fingerprint, business data and outcome agree before applying the result. Missing orders on reachable primaries and conflicting results are quarantined durably, never fabricated or applied. These cross-envelope and stored-state checks require semantic validation beyond this schema. Retain permanent ledger decisions (including rejections), all command/result bindings, exact result envelopes with timestamps and publication-attempt counters through transport cleanup and backups. A duplicate command, even after inbox cleanup, rearms its exact saved result envelope; the same result messageId never acquires a different payload or timestamp. A newly reserved reconciliation result ID gets an envelope from the stored decision with unchanged decidedAt and outcome; policy is never reevaluated. Conflicting command identity/snapshot is quarantined without emitting LedgerRejected. The EUR recorded/rejected examples are alternative decisions for the same example order under different allowlists; they must never coexist for one retained order.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "type",
+    "schemaVersion",
+    "messageId",
+    "commandId",
+    "sagaId",
+    "orderId",
+    "buyerId",
+    "requestFingerprint",
+    "occurredAt",
+    "amount",
+    "currency",
+    "outcome",
+    "decidedAt"
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "LedgerRecorded",
+        "LedgerRejected"
+      ]
+    },
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "messageId": {
+      "$ref": "#/$defs/snowflakeId",
+      "description": "Exactly the corresponding order-reserved RecordOrder.resultMessageId; permanently bound to that command's messageId and decision. Reuse this identity on retransmission; ledger never generates it."
+    },
+    "commandId": {
+      "$ref": "#/$defs/snowflakeId",
+      "description": "Stable order-generated logical command ID; unchanged for all reconciliation envelopes and outcomes of this order."
+    },
+    "sagaId": {
+      "$ref": "#/$defs/snowflakeId",
+      "description": "Stable order-generated saga ID; unchanged through retries and reconciliation."
+    },
+    "orderId": {
+      "$ref": "#/$defs/snowflakeId",
+      "description": "Stable order-service-issued order ID; no separate ledger entry ID is generated."
+    },
+    "buyerId": {
+      "$ref": "#/$defs/snowflakeId",
+      "description": "Order-service-issued buyer ID that routes the command's order and every result to the buyer's shard."
+    },
+    "requestFingerprint": {
+      "$ref": "#/$defs/requestFingerprint"
+    },
+    "occurredAt": {
+      "$ref": "#/$defs/timestamp",
+      "description": "First creation time of this result envelope, at or after decidedAt. Retain it exactly on every delivery using this messageId. A new reconciliation result ID may have a later envelope time while preserving the original decidedAt."
+    },
+    "amount": {
+      "$ref": "#/$defs/money",
+      "description": "Immutable decision amount, exactly equal to RecordOrder.snapshot.amount and the saved permanent operation; a rejection retains the requested amount."
+    },
+    "currency": {
+      "$ref": "#/$defs/currency",
+      "description": "Immutable decision currency, exactly equal to RecordOrder.snapshot.currency and the saved permanent operation."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "RECORDED",
+        "REJECTED"
+      ]
+    },
+    "rejectionReason": {
+      "type": "string",
+      "const": "UNSUPPORTED_CURRENCY",
+      "description": "Definitive business rejection because the currency is absent from the ledger allowlist. The defined rejection scenario allows USD and rejects EUR. Present only for LedgerRejected; infrastructure failures and identity conflicts are not business rejections."
+    },
+    "decidedAt": {
+      "$ref": "#/$defs/timestamp",
+      "description": "Original permanent ledger decision time. Immutable across duplicate commands, new reconciliation transport IDs, allowlist changes, cleanup and backups. For RECORDED it also equals the ledger entry's recorded_at."
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "type": {
+          "const": "LedgerRecorded"
+        },
+        "outcome": {
+          "const": "RECORDED"
+        }
+      },
+      "not": {
+        "required": [
+          "rejectionReason"
+        ]
+      }
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "LedgerRejected"
+        },
+        "outcome": {
+          "const": "REJECTED"
+        }
+      },
+      "required": [
+        "rejectionReason"
+      ]
+    }
+  ],
+  "$defs": {
+    "snowflakeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 19,
+      "pattern": "^(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)(?![\\s\\S])",
+      "description": "Canonical ASCII decimal Snowflake ID in the inclusive range 1..9223372036854775807. JSON numbers, zero, signs, leading zeroes, whitespace, trailing LF/CRLF, fractions, exponents and overflow are invalid; never coerce or normalize before validation."
+    },
+    "money": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]{0,16})\\.[0-9]{2}(?![\\s\\S])",
+      "description": "Nonnegative exact decimal amount from 0.00 through 99999999999999999.99, matching NUMERIC(19,2). Exactly two fractional digits, no sign, exponent, grouping, whitespace or leading zeroes; JSON numbers are invalid."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}(?![\\s\\S])",
+      "description": "Uppercase three-letter currency code; region does not determine currency."
+    },
+    "requestFingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}(?![\\s\\S])",
+      "description": "Lowercase hexadecimal SHA-256 of the normalized immutable creation request; excludes server-derived snapshots, logical command/saga IDs, transport IDs and timestamps."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 UTC timestamp with uppercase T/Z and zero to six fractional digits. Validate the date-time format as well as the pattern. Producers truncate the clock instant to microseconds before both persistence and envelope creation; never serialize a nanosecond instant then rely on database rounding. Persist and compare that same instant, and retain the exact saved envelope text on same-messageId replay. New reconciliation envelopes reuse the permanent decidedAt instant serialized in this format. PostgreSQL TIMESTAMPTZ stores microseconds and not the original offset.",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?Z(?![\\s\\S])"
+    }
+  }
+}

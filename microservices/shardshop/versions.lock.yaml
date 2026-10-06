@@ -1,4 +1,6 @@
-# Dated artifact inventory is complete; deployment qualification has separate milestones.
+# Dated artifact inventory; Quarkus application artifacts requalified on 2026-10-04.
+# Infrastructure entries retain their own verification dates and identities.
+# Inventory completion does not establish final deployment readiness.
 ---
 schema_version: 1
 project: shardshop
@@ -38,8 +40,9 @@ sources:
   openjdk_archive: https://jdk.java.net/archive/
   openjdk_images: https://github.com/docker-library/openjdk#deprecated
   postgresql: https://www.postgresql.org/support/versioning/
-  spring_boot: https://api.spring.io/projects/spring-boot/generations/4.1.x
-  spring_boot_requirements: https://docs.spring.io/spring-boot/system-requirements.html
+  quarkus_releases: https://quarkus.io/releases/
+  quarkus_requirements: https://quarkus.io/version/3.40/guides/getting-started/
+  quarkus_plugin: https://repo.maven.apache.org/maven2/io/quarkus/platform/quarkus-maven-plugin/3.40.1/quarkus-maven-plugin-3.40.1.pom
   maven_plugins: https://maven.apache.org/plugins/
   kubernetes: https://kubernetes.io/releases/patch-releases/
   kubernetes_release: https://api.github.com/repos/kubernetes/kubernetes/releases/tags/v1.36.5
@@ -77,7 +80,7 @@ support_policies:
     - flyway_release_notes
     eol: null
     note: Flyway OSS Edition CLI with frequent releases and no published fixed EOL;
-      13.8.1 was the newest image on 2026-09-30. It replaces the Boot BOM's 12.4.0
+      13.8.1 was the newest image on 2026-09-30. It replaces the earlier 12.4.0
       library for migrations; qualify updates by rerunning scripts/migrate.sh on the lab.
   openjdk_25:
     model: user_selected_local_baseline
@@ -111,15 +114,15 @@ support_policies:
     - postgresql
     eol: '2030-11-14'
     upgrade_before: '2030-11-14'
-  spring_boot_4_1:
-    model: community_branch
-    checked_on: '2026-09-28'
-    review_by: '2026-10-28'
+  quarkus_3_40:
+    model: community_lts
+    checked_on: '2026-10-04'
+    review_by: '2026-11-04'
     source_refs:
-    - spring_boot
-    - spring_boot_requirements
-    eol: '2027-07-31'
-    upgrade_before: '2027-07-31'
+    - quarkus_releases
+    - quarkus_requirements
+    eol: '2027-09-30'
+    upgrade_before: '2027-09-30'
   kubernetes_1_36:
     model: community_minor
     checked_on: '2026-09-28'
@@ -213,7 +216,7 @@ support_policies:
     - maven_plugins
     eol: null
     note: No published fixed EOL; per-artifact upstream metadata checked on 2026-09-28.
-      No inherited JDK/Boot LTS claim.
+      No inherited JDK/framework LTS claim.
   docker_desktop:
     model: rolling_stable
     checked_on: '2026-09-28'
@@ -247,14 +250,17 @@ compatibility:
     vendor_restricted: false
     patch_restricted: false
     preview_enabled: false
-  spring_boot:
-    version: 4.1.1
+  quarkus:
+    version: 3.40.1
+    checked_on: '2026-10-04'
+    review_by: '2026-11-04'
     support_refs:
-    - spring_boot_4_1
+    - quarkus_3_40
     java_25_supported: true
-    minimum_maven: 3.6.3
+    minimum_maven: 3.9.16
     source_refs:
-    - spring_boot_requirements
+    - quarkus_requirements
+    - quarkus_plugin
   cloudnative_pg:
     version: 1.30.1
     support_refs:
@@ -440,6 +446,8 @@ images:
     version_environment_observed:
     - RABBITMQ_VERSION=4.3.6
   application_jre:
+    quarkus_checked_on: '2026-10-04'
+    quarkus_qualification: All six Quarkus JVM fast-jar packages start as UID/GID 584792, network disabled, read-only root and no capabilities.
     version: 25.0.4.1
     purpose: OpenJDK 25 runtime base for the six applications
     support_refs:
@@ -473,6 +481,8 @@ images:
       root. Shell-free runtime: use a Java/native launcher and explicitly configure
       non-root execution.'
   build_jdk:
+    quarkus_checked_on: '2026-10-04'
+    quarkus_qualification: Product and routing clean verify with integration tests pass on the pinned JDK, installed Maven 3.9.16 and an offline cache in an isolated source copy.
     version: 25.0.4.1
     purpose: OpenJDK 25 container build/test JDK
     support_refs:
@@ -673,11 +683,26 @@ vendor_bundles:
     image_ref: kind_node
 maven:
   version_policy: Explicit GA plugin pins; exclude metadata entries for Maven 4 beta
-    plugins and Boot milestones. Install/deploy are pinned lifecycle plugins, not
+    plugins and framework milestones, except the three qualified Quarkus plugin XML libraries. Install/deploy are pinned lifecycle plugins, not
     authorization to publish artifacts.
-  runtime_qualification: Six independent clean verify builds with integration/audit
-    profiles passed on Maven 3.9.16 / OpenJDK 25. Executed goals, providers, agents
-    and SBOM generation qualified; unused goals remain unqualified.
+  runtime_qualification: On 2026-10-04 six independent Quarkus 3.40.1 clean verify
+    builds with integration/audit passed on Maven 3.9.16 / OpenJDK 25; 62 unit/startup
+    tests and 10 packaged startup ITs pass with 100% line coverage. Effective graphs
+    and SBOMs contain no Spring runtime/test artifacts. Plugin XML prereleases are
+    the exact qualified exception below; unused goals remain unqualified.
+  review_qualification:
+    checked_on: '2026-10-06'
+    build: All six applications pass default clean verify with audit; product/order integration profile also passes without duplicate routing tests.
+    unit_startup_tests: 62
+    packaged_routing_tests: 10
+    sbom_components:
+      shardshop-product: 140
+      shardshop-order: 140
+      shardshop-ledger: 139
+      shardshop-product-seeder: 139
+      shardshop-product-reader: 139
+      shardshop-order-producer: 139
+    dependency_change: Removed unused direct Mockito dependencies from all six apps; Mockito, byte-buddy and objenesis are absent from application graphs/SBOMs. Plugin startup agents remain.
   override_review: pom.xml comments name the advisory each plugin override fixes.
   plugin_dependency_overrides:
     org.apache.maven.plugins:maven-resources-plugin:
@@ -701,9 +726,6 @@ maven:
       com.fasterxml.jackson.core:jackson-annotations: "2.22"
       com.fasterxml.jackson.dataformat:jackson-dataformat-xml: "2.22.3"
       com.fasterxml.jackson.dataformat:jackson-dataformat-yaml: "2.22.3"
-    org.springframework.boot:spring-boot-maven-plugin:
-      org.codehaus.plexus:plexus-utils: "3.6.2"
-      org.apache.commons:commons-lang3: "3.20.0"
   plugin_dependency_exclusions:
     org.apache.maven.plugins:maven-enforcer-plugin:
     - org.apache-extras.beanshell:bsh
@@ -714,7 +736,6 @@ maven:
     com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.22.3: {"sha256":"8b99f4a11761246f2d721f02d2865dcca32dd8101082ebfbc3c16133b6c0d3e0","artifact_url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformat-xml/2.22.3/jackson-dataformat-xml-2.22.3.jar","upstream_checksum":{"algorithm":"sha256","value":"8b99f4a11761246f2d721f02d2865dcca32dd8101082ebfbc3c16133b6c0d3e0","url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformat-xml/2.22.3/jackson-dataformat-xml-2.22.3.jar.sha256"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
     com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.3: {"sha256":"2bcbc3b9abaefbeba11409b9e30ec35ed7071a61a47c8c2a9c688e40e45b90f9","artifact_url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.22.3/jackson-dataformat-yaml-2.22.3.jar","upstream_checksum":{"algorithm":"sha256","value":"2bcbc3b9abaefbeba11409b9e30ec35ed7071a61a47c8c2a9c688e40e45b90f9","url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.22.3/jackson-dataformat-yaml-2.22.3.jar.sha256"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
     commons-beanutils:commons-beanutils:1.11.0: {"sha256":"9e44ba68ec9a3f21286fa2a8bbb003b735c0f69101bb43144b79f4f8aaa74709","artifact_url":"https://repo.maven.apache.org/maven2/commons-beanutils/commons-beanutils/1.11.0/commons-beanutils-1.11.0.jar","upstream_checksum":{"algorithm":"sha1","value":"ac03ea606d13de04c2e4508227680faff151f491","url":"https://repo.maven.apache.org/maven2/commons-beanutils/commons-beanutils/1.11.0/commons-beanutils-1.11.0.jar.sha1"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
-    org.apache.commons:commons-lang3:3.20.0: {"sha256":"69e5c9fa35da7a51a5fd2099dfe56a2d8d32cf233e2f6d770e796146440263f4","artifact_url":"https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.20.0/commons-lang3-3.20.0.jar","upstream_checksum":{"algorithm":"sha1","value":"65897b3e5731220962e659e001904af3c3cbeba9","url":"https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.20.0/commons-lang3-3.20.0.jar.sha1"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
     org.apache.maven.enforcer:enforcer-rules:3.6.3: {"sha256":"24bad9159ed9af932488bad1be042471a170a5bc822bfc8f7b29f3c297c1e138","artifact_url":"https://repo.maven.apache.org/maven2/org/apache/maven/enforcer/enforcer-rules/3.6.3/enforcer-rules-3.6.3.jar","upstream_checksum":{"algorithm":"sha1","value":"10055ea71dbb2e98434e0a4192a64f3506abf524","url":"https://repo.maven.apache.org/maven2/org/apache/maven/enforcer/enforcer-rules/3.6.3/enforcer-rules-3.6.3.jar.sha1"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
     org.codehaus.plexus:plexus-utils:3.6.2: {"sha256":"7c2cdf8b4a02a2ee3f0514b8d74ad5eb6e2365eeb073a5cabd6f2d61d8f871df","artifact_url":"https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-utils/3.6.2/plexus-utils-3.6.2.jar","upstream_checksum":{"algorithm":"sha256","value":"7c2cdf8b4a02a2ee3f0514b8d74ad5eb6e2365eeb073a5cabd6f2d61d8f871df","url":"https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-utils/3.6.2/plexus-utils-3.6.2.jar.sha256"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
     org.codehaus.plexus:plexus-utils:4.1.0: {"sha256":"6a2fe69e98301882bb2bb05afe36414eb82d6f7c63299cccdb2dc02b4358a968","artifact_url":"https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-utils/4.1.0/plexus-utils-4.1.0.jar","upstream_checksum":{"algorithm":"sha256","value":"6a2fe69e98301882bb2bb05afe36414eb82d6f7c63299cccdb2dc02b4358a968","url":"https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-utils/4.1.0/plexus-utils-4.1.0.jar.sha256"},"checked_on":"2026-09-28","review_by":"2026-10-28"}
@@ -967,25 +988,25 @@ maven:
       requirements_source: META-INF/maven/plugin.xml inside the hashed JAR
       source_refs:
       - cyclonedx
-    org.springframework.boot:spring-boot-maven-plugin:
-      version: 4.1.1
+    io.quarkus.platform:quarkus-maven-plugin:
+      version: 3.40.1
       extension: jar
-      artifact_url: https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-maven-plugin/4.1.1/spring-boot-maven-plugin-4.1.1.jar
-      sha256: c8e1a3f44dab037f9ff23d31a1db00e937da5a56c96404d91e83fdc22c13bd56
+      checked_on: '2026-10-04'
+      review_by: '2026-11-04'
+      artifact_url: https://repo.maven.apache.org/maven2/io/quarkus/platform/quarkus-maven-plugin/3.40.1/quarkus-maven-plugin-3.40.1.jar
+      sha256: 221b5bd6024359585fda3e28cb85c100244c73415c75617b0a6b0b0eeccc80aa
       published_checksum:
         algorithm: sha512
-        value: 3811c0373c64474130ac28623c1110a9824932aad5dbd0fab0e2e40cc4a66d4707f00f9dc5ac7392679fdea99bf99c438f5daf55a496761771b4f97f23f10632
-        url: https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-maven-plugin/4.1.1/spring-boot-maven-plugin-4.1.1.jar.sha512
-      metadata_url: https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-maven-plugin/maven-metadata.xml
-      verification: Artifact bytes downloaded and hashed; matched published checksum.
-        No signature check. Step 0.1 did not execute it.
+        value: 073559ad9225e96b6e9633b877939fc0b61ee60e2b73789647fb66bdfe3fdd4167d026fe06fda613029cdab428ef1e3a00f702e685aa99718e6522dcc631e398
+        url: https://repo.maven.apache.org/maven2/io/quarkus/platform/quarkus-maven-plugin/3.40.1/quarkus-maven-plugin-3.40.1.jar.sha512
+      verification: Artifact bytes matched Maven Central SHA-512; SHA-256 computed independently.
       support_refs:
-      - spring_boot_4_1
+      - quarkus_3_40
       declared_minimum_java: '17'
-      declared_minimum_maven: 3.6.3
-      requirements_source: Spring Boot system requirements
+      declared_minimum_maven: 3.9.16
+      requirements_source: META-INF/maven/plugin.xml inside the hashed JAR
       source_refs:
-      - spring_boot_requirements
+      - quarkus_plugin
     org.codehaus.mojo:versions-maven-plugin:
       version: 2.22.0
       extension: jar
@@ -1023,20 +1044,20 @@ maven:
       activation: Only if inherited execution/profile is retained; do not introduce
         a new execution just for this pin.
   artifacts:
-    org.springframework.boot:spring-boot-dependencies:
-      version: 4.1.1
+    io.quarkus.platform:quarkus-bom:
+      version: 3.40.1
       extension: pom
-      artifact_url: https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-dependencies/4.1.1/spring-boot-dependencies-4.1.1.pom
-      sha256: 1c929eeccb48f8ee12225e9fec725177170b89575754bd903f184c185db77775
+      checked_on: '2026-10-04'
+      review_by: '2026-11-04'
+      artifact_url: https://repo.maven.apache.org/maven2/io/quarkus/platform/quarkus-bom/3.40.1/quarkus-bom-3.40.1.pom
+      sha256: bb64a72f89a9d93def79484fb21949ade14f82486a66d5bcc8fd598526e0f696
       published_checksum:
         algorithm: sha512
-        value: 452f1dad89fce421f9807986e31a9481177b2df611162dd3f6eb7d298bce0d2844f3bf5e96e8511d3a90a6e90e9bdaaebc3bd6d086bfeb6330b08e19515db43b
-        url: https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-dependencies/4.1.1/spring-boot-dependencies-4.1.1.pom.sha512
-      metadata_url: https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-dependencies/maven-metadata.xml
-      verification: Artifact bytes downloaded and hashed; matched published checksum.
-        No signature check. Step 0.1 did not execute it.
+        value: ec9be07241de92a05a6ea6497a65f0b093b8b7ac15622bf729280102e8346a2b1a5037a7c8511e5c4b15c2b4f3d4d1309cd885f7b0de9c193386a680bf59f17a
+        url: https://repo.maven.apache.org/maven2/io/quarkus/platform/quarkus-bom/3.40.1/quarkus-bom-3.40.1.pom.sha512
+      verification: Artifact bytes matched Maven Central SHA-512; SHA-256 computed independently.
       support_refs:
-      - spring_boot_4_1
+      - quarkus_3_40
     de.mkammerer.snowflake-id:snowflake-id:
       version: 0.0.2
       extension: jar
@@ -1051,23 +1072,29 @@ maven:
         No signature check. Step 0.1 did not execute it.
       support_refs:
       - snowflake_exception
-  boot_bom_snapshot:
-    source_coordinate: org.springframework.boot:spring-boot-dependencies:4.1.1
-    status: Published BOM properties, not an effective/resolved dependency graph
-    spring_framework: 7.0.9
-    spring_amqp: 4.1.1
-    rabbitmq_java_client: 5.30.0
-    postgresql_jdbc: 42.7.13
-    hikaricp: 7.0.2
-    flyway: 12.4.0
-    jackson_bom: 3.1.5
+  quarkus_dependency_snapshot:
+    source_coordinate: io.quarkus.platform:quarkus-bom:3.40.1
+    checked_on: '2026-10-06'
+    review_by: '2026-11-04'
+    status: Resolved skeleton runtime/test families checked against effective POMs and SBOMs; Mockito is a plugin test agent only
+    quarkus: 3.40.1
+    junit_jupiter: 6.1.3
+    plugin_test_agent_mockito: 5.21.0
+    jboss_logmanager: 3.2.2.Final
     slf4j: 2.0.18
-    logback: 1.5.38
-    junit_jupiter: 6.0.3
-    netty: 4.2.17.Final
-    mockito: 5.23.0
-    testcontainers: 2.0.5
-    lombok: 1.18.46
+    managed_netty_not_resolved: 4.1.138.Final
+    lombok_processor: 1.18.46
+  plugin_prerelease_exception:
+    owner: io.quarkus.platform:quarkus-maven-plugin:3.40.1
+    checked_on: '2026-10-04'
+    review_by: '2026-11-04'
+    scope: Plugin classpath only; absent from application runtime/test dependencies and SBOMs
+    reason: Official stable plugin dependency chain; Maven Central metadata lists no GA successors
+    qualification: All six independent integration/audit builds pass; retain upstream versions
+    artifacts:
+      org.apache.maven:maven-xml-impl: {"version":"4.0.0-alpha-7","artifact_url":"https://repo.maven.apache.org/maven2/org/apache/maven/maven-xml-impl/4.0.0-alpha-7/maven-xml-impl-4.0.0-alpha-7.jar","sha256":"c89323b70dd491a3ef21432dba4cad2b74e26caaafd77178b0f15313fe0bd5f0","published_checksum":{"algorithm":"sha1","value":"06678934d540a73916c58993f09495d53aac1291","url":"https://repo.maven.apache.org/maven2/org/apache/maven/maven-xml-impl/4.0.0-alpha-7/maven-xml-impl-4.0.0-alpha-7.jar.sha1"}}
+      org.apache.maven:maven-api-xml: {"version":"4.0.0-alpha-7","artifact_url":"https://repo.maven.apache.org/maven2/org/apache/maven/maven-api-xml/4.0.0-alpha-7/maven-api-xml-4.0.0-alpha-7.jar","sha256":"3388f4d0465f5a7e9a6264baf506da1b052c51f7cc10b7ce73f09723e6cf1d92","published_checksum":{"algorithm":"sha1","value":"ae85bf0c76a6b868058af3e0ec89c78d9acd4eff","url":"https://repo.maven.apache.org/maven2/org/apache/maven/maven-api-xml/4.0.0-alpha-7/maven-api-xml-4.0.0-alpha-7.jar.sha1"}}
+      org.apache.maven:maven-api-meta: {"version":"4.0.0-alpha-7","artifact_url":"https://repo.maven.apache.org/maven2/org/apache/maven/maven-api-meta/4.0.0-alpha-7/maven-api-meta-4.0.0-alpha-7.jar","sha256":"c4f6f3868f5b280cc7e268f0f95e1bb1d2a824afe92a8029e861be7ec48b1272","published_checksum":{"algorithm":"sha1","value":"db4b391f5341ef940fb3a79060865b7edda6c6d5","url":"https://repo.maven.apache.org/maven2/org/apache/maven/maven-api-meta/4.0.0-alpha-7/maven-api-meta-4.0.0-alpha-7.jar.sha1"}}
 unresolved:
 - id: KIND-1.36.5
   blocks:
@@ -1108,12 +1135,15 @@ unresolved:
 - id: EFFECTIVE-MAVEN-GRAPH
   blocks:
   - '0.3'
+  - '0.5'
   status: resolved
-  finding: Root Boot, JUnit and Netty properties, test agents/providers, plugin classpaths
-    and floating test images required scoped qualification.
-  resolution: Boot 4.1.1 BOM and local properties agree; in all six applications the
-    effective POMs match the lock's plugin pins, overrides and test-image digests.
-    Plugin security overrides fix the advisories named in pom.xml and replace prereleases.
+  finding: Inherited framework, JUnit and Netty management, test agents/providers,
+    plugin classpaths and test images required scoped qualification.
+  resolution: Quarkus 3.40.1 and local properties agree; on 2026-10-04 all six
+    effective POMs, resolved dependency graphs and SBOMs matched selected pins.
+    No Spring runtime/test artifacts resolve. Inert parent/BOM compatibility entries
+    are not dependencies. The three plugin-only XML prereleases are recorded in
+    maven.plugin_prerelease_exception; other plugin security overrides are retained.
 - id: SBOM-AND-RUNTIME
   blocks:
   - '3.9'

@@ -3,14 +3,16 @@
 [Architecture](ARCHITECTURE.md) · [Implementation plan](PLAN.md) ·
 [Version policy](VERSIONS.md) · [Artifact lock](versions.lock.yaml)
 
-Steps 0.2–0.4 supply six Spring Boot application skeletons, their build/test
-configuration, and the shared shard-routing library. Each application starts a minimal
-application context and exits; no HTTP server, database connection, messaging,
-seeding, or load generation is implemented yet. No Docker or Kubernetes is
+All six application skeletons use **Quarkus 3.40.1** in JVM mode on Java 25.
+[Step 0.5](PLAN.md#milestone-0-supported-baseline-and-project-skeleton) migrated
+their dependency injection, configuration, tests and packaging. Each application
+starts its CDI container and exits through `QuarkusApplication.run()`; no HTTP
+server, database connection, messaging, seeding, or load generation is implemented
+yet. No Docker or Kubernetes is
 needed to build or test these skeletons. Product and order now require a routing
 configuration file when launched; tests supply their own fixture.
 
-| Maven module | Entry point |
+| Maven module | Quarkus application class |
 |---|---|
 | `shardshop-product` | `dev.nklip.javacraft.shardshop.product.ProductApplication` |
 | `shardshop-order` | `dev.nklip.javacraft.shardshop.order.OrderApplication` |
@@ -36,8 +38,83 @@ The target architecture permits ID creation only in `shardshop-product` and
 saga, command and message IDs, including ledger result IDs. Workload modules
 obtain IDs through service APIs and reuse them on retries; they never generate
 IDs or derive fixture IDs. Ledger reuses IDs supplied by order. Workloads and
-ledger have no Snowflake dependency or generator-allocator access. These API and
-generation contracts remain planned; the current applications are skeletons.
+ledger have no Snowflake dependency or generator-allocator access. Step 3.1 defines
+the wire contracts below; their API and generation implementations remain planned.
+The current applications are skeletons.
+
+## HTTP and message contracts (step 3.1)
+
+| Owner | Contract |
+|---|---|
+| Product | [OpenAPI](shardshop-product/src/main/resources/contracts/openapi.yaml): seller/product PUT and GET, plus immutable versioned dataset pages |
+| Order | [OpenAPI](shardshop-order/src/main/resources/contracts/openapi.yaml): buyer datasets and PUT/GET, durable order-ID allocation, order PUT/status GET |
+| Order | [RecordOrder JSON Schema](shardshop-order/src/main/resources/contracts/record-order.schema.json) and [command example](shardshop-order/src/main/resources/contracts/examples/record-order.json) |
+| Ledger | [Result JSON Schema](shardshop-ledger/src/main/resources/contracts/ledger-result.schema.json), [recorded example](shardshop-ledger/src/main/resources/contracts/examples/ledger-recorded.json) and [rejected example](shardshop-ledger/src/main/resources/contracts/examples/ledger-rejected.json) |
+
+Each document is self-contained and packaged under its owner's `contracts/`
+classpath directory. Applications do not import another module's schemas or models;
+clients keep their own DTOs. HTTP examples appear inline. The two result examples
+show alternative decisions for one example command, never two outcomes for one
+retained order. Example IDs illustrate the format and are not an issued dataset.
+Provider behavior and provider contract tests arrive in steps 3.5, 3.6 and 4.1–4.5.
+
+Dataset discovery uses `GET /api/v1/datasets/{datasetVersion}/sellers`, `/products`
+on product and `/buyers` on order. Pin each service's version throughout a run;
+forward returned IDs and `creationPayload` values unchanged. Pages accept `limit`
+(1–1,000, default 100) and an opaque `cursor`; follow `nextCursor` until absent.
+Discovery creates no records. Seller/buyer regions are immutable; products inherit
+their seller's region without a separate field.
+
+IDs are strings in `1..9223372036854775807`; money is a nonnegative decimal string
+with exactly two fractional digits. Allocation accepts `runName` and a string
+`requestOrdinal` in `0..9223372036854775807`, and returns the same persisted order ID
+on retries/restarts. Orders accept at most 1,000 distinct seller/product pairs.
+The order contract defines normalization, validation precedence and retries;
+message schemas define `requestFingerprint`, command/result correlation, immutable
+snapshots and timestamp-preserving replay. Cross-field arithmetic, issuance and
+stored-state checks require provider tests beyond schema validation.
+
+The examples form one EUR purchase: product fixtures use generator 0 on
+2026-02-01, buyer fixtures use a disjoint generator-0 range on 2026-03-01, and
+order/saga/command/transport IDs use generator 1 at 2026-10-06T11:59:59Z, before
+command publication. Seller and buyer regions match the existing routing rule.
+These coordinates qualify the examples; step 3.6 still owns the deployed dataset.
+
+Message timestamps require uppercase UTC `T`/`Z` and at most six fractional digits.
+Producers truncate instants to microseconds **before** both persistence and envelope
+creation. Replays retain the saved instant and, for the same message ID, the exact
+saved envelope. Names/run names reject NUL and unpaired UTF-16 surrogates before IO,
+while supplementary Unicode characters are valid. Integer fields accept `2`, `2.0`
+and `2e0` as the same exact value and reject fractional values such as `2.5`; the
+fingerprint serializes the normalized integer.
+
+Provider steps 3.5 and 4.1 must enforce strict decoding before constructing typed
+DTOs or touching storage. Enable unknown-property rejection and duplicate-member
+detection, require JSON string tokens for string fields, and validate integral
+numeric values exactly before conversion. Do not rely on Jackson's default string
+coercion or float-to-int truncation. Contract/provider tests must include raw JSON
+with duplicate keys, numeric IDs, `2.0`, `2e0`, `2.5`, NUL and unpaired surrogates.
+The current skeletons have no HTTP providers to configure yet.
+
+To validate contracts without starting infrastructure, use a temporary Python 3.11+
+environment outside the repository. The requirements file pins validation tools
+and their transitive dependencies; [VERSIONS.md](VERSIONS.md#contract-validation-tools)
+records the qualification. No Maven/runtime dependency is added.
+
+```bash
+python3 -m venv /tmp/shardshop-contract-validation
+/tmp/shardshop-contract-validation/bin/python -m pip install \
+  -r microservices/shardshop/scripts/contract-validation-requirements.txt
+/tmp/shardshop-contract-validation/bin/python microservices/shardshop/scripts/verify-contracts.py
+mvn -B -ntp -f microservices/shardshop/pom.xml \
+  -pl shardshop-product,shardshop-order,shardshop-ledger -am clean verify
+```
+
+The verifier checks every inline HTTP request/response example (including referenced
+responses), message examples, ID and status-URL limits, money, text and timestamp
+boundaries, integer normalization, fingerprints, totals, correlation and illustrative
+fixture/live ID rules. It also rejects missing response examples. Packaged routing
+startup checks run in the default Maven `verify` lifecycle.
 
 ## Java and Maven
 
@@ -59,9 +136,9 @@ upstream image's Temurin runtime. This does not change the local `25-open`
 installation or the JDK selected by `JAVA_HOME`.
 
 Maven comes from the command line: use the `mvn` on your `PATH`. ShardShop keeps
-the repository's minimums, Maven 3.9.0 and Java **25**; newer JDKs such as 26 also
-work. Its Toolchains execution selects the `JAVA_HOME` JDK, so compilation and
-forked tests use the same JDK as Maven; see the
+Java **25** as its minimum and requires Maven **3.9.16** or newer, matching the
+Quarkus plugin's declared minimum. Its Toolchains execution selects the
+`JAVA_HOME` JDK, so compilation and forked tests use the same JDK as Maven; see the
 [JDK selection parameters](https://maven.apache.org/plugins/maven-toolchains-plugin/select-jdk-toolchain-mojo.html).
 Compilation targets release 25 with preview features disabled, whichever JDK
 builds it. These rules are inherited only by ShardShop's children.
@@ -78,7 +155,7 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product -am clean v
 kubectl --context kind-shardshop -n shardshop get configmap shardshop-routing \
     -o jsonpath='{.data.application\.properties}' > /tmp/shardshop-routing.properties
 export SHARDSHOP_ROUTING_CONFIG=file:/tmp/shardshop-routing.properties
-"$JAVA_HOME/bin/java" -jar microservices/shardshop/shardshop-product/target/shardshop-product-1.0-SNAPSHOT.jar
+"$JAVA_HOME/bin/java" -jar microservices/shardshop/shardshop-product/target/quarkus-app/quarkus-run.jar
 ```
 
 Verify all six one at a time, without installing anything. For the JAR launches,
@@ -95,13 +172,23 @@ for module in \
 do
   mvn -B -ntp -f microservices/shardshop/pom.xml -pl "$module" -am clean verify || exit 1
   "$JAVA_HOME/bin/java" -jar \
-    "microservices/shardshop/$module/target/${module##*/}-1.0-SNAPSHOT.jar" || exit 1
+    "microservices/shardshop/$module/target/quarkus-app/quarkus-run.jar" || exit 1
 done
 ```
 
-Each startup test invokes the real main method and checks that its application
-bean exists in an active context. JaCoCo reports go to each application's
-`target/site/jacoco/`; executable Spring Boot JARs go to `target/`.
+Command-mode tests start each application through Quarkus; product/order also
+test CDI injection of their configured topology and router. JaCoCo reports go to
+each application's `target/site/jacoco/`. JVM packages live in `target/quarkus-app/`;
+deploy that entire directory and launch `quarkus-run.jar` inside it.
+
+Product/order load the external routing file through `quarkus.config.locations`,
+retaining the `SHARDSHOP_ROUTING_CONFIG` override and default path
+`file:/etc/shardshop/routing/application.properties`. Their eager CDI producers
+validate the snapshot before the command runs. The Maven plugin uses only the
+bundled `application.properties` during augmentation, so packaging does not need
+a deployed snapshot. Production startup still fails for a missing file, missing
+shard/region keys or an invalid topology; packaged integration tests cover those
+failures and a valid external snapshot.
 
 Step 0.3 adds scoped dependency/plugin checks, SBOMs, pinned test images, and
 integration-test configuration (commands below). Step 0.1 now pins the
@@ -112,15 +199,23 @@ Cluster setup and final application images remain separate milestones.
 
 ## Dependency and test validation
 
-Boot's **4.1.1 BOM** manages application/test dependencies. The local parent pins
-all 17 build/report plugins; security overrides are confined to their own plugin
-classpaths. Comments in the parent POM explain the aligned JUnit/Netty/Mockito/Lombok
-properties and name the advisory each plugin override fixes.
+The scoped Quarkus **3.40.1 platform BOM** manages application/test dependencies.
+The local parent aligns inherited JUnit **6.1.3**, Mockito **5.21.0** and Netty
+**4.1.138.Final** management with that platform and pins all 17 build/report
+plugins. Plugin security overrides are confined to their own classpaths; the
+official Quarkus plugin's three XML-library exceptions are recorded in
+[the version policy](VERSIONS.md#quarkus-plugin-xml-libraries). Comments in the
+parent POM explain the aligned JUnit/Netty/Mockito/Lombok properties and name the
+advisory each plugin override fixes.
 No application dependency is added merely because the BOM manages it.
 
-Surefire runs `*Test` during `test`; opt-in `-Pintegration` runs `*IT` through
-Failsafe during `verify`; there are no integration tests yet. Tests load Mockito's
-agent at JVM startup because dynamic agent loading is disabled. `shardshop-sharding`
+Surefire runs `*Test` during `test`. Product/order each run five packaged routing
+startup cases through Failsafe during **every `verify`**, without a profile or
+infrastructure. Opt-in `-Pintegration` runs other `*IT` tests and excludes those
+already executed routing cases. Ordinary tests disable automatic Dev Services.
+Surefire/Failsafe supply Mockito's startup agent through their plugin dependencies;
+the six skeleton applications have no direct Mockito dependency because none of
+their tests use it. `shardshop-sharding`
 tests its router against golden vectors whose expected shards were computed
 independently. PostgreSQL 18.6 and RabbitMQ 4.3.6 test-image
 properties use the lock's immutable digests. No containers run at this stage;

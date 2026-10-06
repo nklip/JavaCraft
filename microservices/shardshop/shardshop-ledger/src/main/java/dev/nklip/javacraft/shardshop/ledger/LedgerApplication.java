@@ -1,12 +1,13 @@
 package dev.nklip.javacraft.shardshop.ledger;
 
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
+import io.quarkus.runtime.QuarkusApplication;
+import io.quarkus.runtime.annotations.QuarkusMain;
 
-@SpringBootApplication
-public class LedgerApplication {
+@QuarkusMain
+public class LedgerApplication implements QuarkusApplication {
 
-    static void main(String[] args) {
-        SpringApplication.run(LedgerApplication.class, args);
+    @Override
+    public int run(String... args) {
+        return 0;
     }
 }

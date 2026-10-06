@@ -1,27 +1,18 @@
 package dev.nklip.javacraft.shardshop.workload.producer;
 
+import io.quarkus.test.junit.main.Launch;
+import io.quarkus.test.junit.main.LaunchResult;
+import io.quarkus.test.junit.main.QuarkusMainTest;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.ConfigurableApplicationContext;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-@SpringBootTest(useMainMethod = SpringBootTest.UseMainMethod.ALWAYS,
-        webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@QuarkusMainTest
 class OrderProducerApplicationTest {
 
-    private final ConfigurableApplicationContext context;
-
-    @Autowired
-    OrderProducerApplicationTest(ConfigurableApplicationContext context) {
-        this.context = context;
-    }
-
     @Test
-    void mainStartsApplicationWithoutExternalServices() {
-        assertTrue(context.isActive());
-        assertNotNull(context.getBean(OrderProducerApplication.class));
+    @Launch({})
+    void startsAndExitsWithoutExternalServices(LaunchResult result) {
+        assertEquals(0, result.exitCode());
     }
 }

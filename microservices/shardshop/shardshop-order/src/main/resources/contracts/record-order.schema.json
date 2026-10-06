@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:shardshop:order:record-order:v1",
+  "title": "RecordOrder v1",
+  "description": "Order-owned immutable command envelope, written only after successful stock reservation in the transaction entering PENDING_LEDGER. Send the stored JSON envelope to the durable ledger.commands exchange with routing key ledger.record-order and destination queue ledger.record-order; do not send a Debezium row-change wrapper. Publish persistently with mandatory routing and confirms. An envelope retransmission retains every field including both transport IDs and occurredAt. A new reconciliation command reserves new, distinct messageId and resultMessageId in order but retains commandId, sagaId, orderId, buyerId, requestFingerprint and the complete snapshot. Ledger never generates IDs. Consumers enforce cross-field and stored-identity equality described below; JSON Schema alone cannot express those constraints. Preserve the decision, snapshot, command/result bindings and exact result envelopes permanently, including after inbox/outbox cleanup. Cleanup order outboxes only after confirmed publication, the configured retention window and a durable CDC checkpoint past the insert.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "type",
+    "schemaVersion",
+    "messageId",
+    "commandId",
+    "sagaId",
+    "orderId",
+    "buyerId",
+    "requestFingerprint",
+    "occurredAt",
+    "resultMessageId",
+    "snapshot"
+  ],
+  "properties": {
+    "type": {
+      "const": "RecordOrder"
+    },
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "messageId": {
+      "$ref": "#/$defs/snowflakeId",
+      "description": "Order-generated transport ID of this envelope."
+    },
+    "commandId": {
+      "$ref": "#/$defs/snowflakeId",
+      "description": "Stable order-generated logical command ID; unchanged for all reconciliation envelopes and outcomes of this order."
+    },
+    "sagaId": {
+      "$ref": "#/$defs/snowflakeId",
+      "description": "Stable order-generated saga ID; unchanged through retries and reconciliation."
+    },
+    "orderId": {
+      "$ref": "#/$defs/snowflakeId",
+      "description": "Stable order-service-issued order ID; no separate ledger entry ID is generated."
+    },
+    "buyerId": {
+      "$ref": "#/$defs/snowflakeId",
+      "description": "Order-service-issued buyer ID that routes the command's order and every result to the buyer's shard."
+    },
+    "requestFingerprint": {
+      "$ref": "#/$defs/requestFingerprint"
+    },
+    "occurredAt": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "resultMessageId": {
+      "$ref": "#/$defs/snowflakeId",
+      "description": "New order-reserved result transport ID, distinct from this command's messageId. Ledger copies it into the result's messageId. The reservation and its binding to messageId and sagaId survive transport cleanup; an existing transport binding cannot be reused for another command or result."
+    },
+    "snapshot": {
+      "$ref": "#/$defs/orderSnapshot"
+    }
+  },
+  "$defs": {
+    "snowflakeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 19,
+      "pattern": "^(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)(?![\\s\\S])",
+      "description": "Canonical ASCII decimal Snowflake ID in the inclusive range 1..9223372036854775807. JSON numbers, zero, signs, leading zeroes, whitespace, trailing LF/CRLF, fractions, exponents and overflow are invalid; never coerce or normalize before validation."
+    },
+    "money": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]{0,16})\\.[0-9]{2}(?![\\s\\S])",
+      "description": "Nonnegative exact decimal amount from 0.00 through 99999999999999999.99, matching NUMERIC(19,2). Exactly two fractional digits, no sign, exponent, grouping, whitespace or leading zeroes; JSON numbers are invalid."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}(?![\\s\\S])",
+      "description": "Uppercase three-letter currency code; region does not determine currency."
+    },
+    "requestFingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}(?![\\s\\S])",
+      "description": "Lowercase hexadecimal SHA-256 of the normalized immutable creation request; excludes server-derived snapshots, logical command/saga IDs, transport IDs and timestamps. Version 1 hashes the UTF-8 bytes of compact JSON with the exact key order {\"buyerId\":\"...\",\"orderId\":\"...\",\"currency\":\"EUR\",\"items\":[{\"sellerId\":\"...\",\"productId\":\"...\",\"quantity\":1}]}, no whitespace or trailing newline, canonical ID strings and base-10 integer quantities. Preserve the original item array order; its elements contain exactly sellerId, productId and quantity in that key order. Use the envelope buyerId/orderId, snapshot currency and each ordered snapshot item's requested sellerId/productId/quantity. Consumers recompute and compare the hash, then compare the full saved business identity and snapshot; a matching hash alone is insufficient."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 UTC timestamp with uppercase T/Z and zero to six fractional digits. Validate the date-time format as well as the pattern. Producers truncate the clock instant to microseconds before both persistence and envelope creation; never serialize a nanosecond instant then rely on database rounding. Persist and compare that same instant, and retain the exact saved envelope text on same-messageId replay. New reconciliation envelopes reuse the permanent decidedAt instant serialized in this format. PostgreSQL TIMESTAMPTZ stores microseconds and not the original offset.",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?Z(?![\\s\\S])"
+    },
+    "orderSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "amount",
+        "currency",
+        "items"
+      ],
+      "description": "Complete immutable order snapshot derived by order from validated catalog prices and requested quantities. No ledger catalog lookup is needed. Every item currency must equal this currency. amount must equal the exact sum of unitPrice multiplied by quantity across items and fit NUMERIC(19,2); never trust client totals. Each sellerId/productId pair occurs once. Item positions equal their zero-based array indexes, preserving original request order. These equality, arithmetic and pair-uniqueness constraints require semantic validation.",
+      "properties": {
+        "amount": {
+          "$ref": "#/$defs/money"
+        },
+        "currency": {
+          "$ref": "#/$defs/currency"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/orderItem"
+          }
+        }
+      }
+    },
+    "orderItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "itemPosition",
+        "sellerId",
+        "productId",
+        "quantity",
+        "productName",
+        "unitPrice",
+        "currency"
+      ],
+      "properties": {
+        "itemPosition": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 999,
+          "description": "Zero-based original request item position, equal to this item's array index and stable on replay."
+        },
+        "sellerId": {
+          "$ref": "#/$defs/snowflakeId",
+          "description": "Product-service-issued seller ID; the seller may be in any region."
+        },
+        "productId": {
+          "$ref": "#/$defs/snowflakeId",
+          "description": "Product-service-issued product ID belonging to sellerId."
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "description": "A JSON number with an exact integral value in range. 2, 2.0 and 2e0 normalize to integer 2; fractional values and strings are invalid. Parse exactly before range validation, never truncate or round."
+        },
+        "productName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^(?=[\\s\\S]*\\S)(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])+(?![\\s\\S])",
+          "description": "Immutable nonblank catalog name of at most 200 Unicode scalar values; NUL and unpaired UTF-16 surrogates are invalid, while properly paired supplementary characters are allowed."
+        },
+        "unitPrice": {
+          "$ref": "#/$defs/money"
+        },
+        "currency": {
+          "$ref": "#/$defs/currency"
+        }
+      }
+    }
+  }
+}

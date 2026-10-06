@@ -1,12 +1,13 @@
 package dev.nklip.javacraft.shardshop.workload.reader;
 
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
+import io.quarkus.runtime.QuarkusApplication;
+import io.quarkus.runtime.annotations.QuarkusMain;
 
-@SpringBootApplication
-public class ProductReaderApplication {
+@QuarkusMain
+public class ProductReaderApplication implements QuarkusApplication {
 
-    static void main(String[] args) {
-        SpringApplication.run(ProductReaderApplication.class, args);
+    @Override
+    public int run(String... args) {
+        return 0;
     }
 }
