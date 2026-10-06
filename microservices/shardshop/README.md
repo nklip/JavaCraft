@@ -21,11 +21,13 @@ configuration file when launched; tests supply their own fixture.
 | `shardshop-workload/shardshop-product-reader` | `dev.nklip.javacraft.shardshop.workload.reader.ProductReaderApplication` |
 | `shardshop-workload/shardshop-order-producer` | `dev.nklip.javacraft.shardshop.workload.producer.OrderProducerApplication` |
 
-The ShardShop parent has five children. `shardshop-sharding` is a plain Java
-library holding the shard-routing rule; only `shardshop-product` and
-`shardshop-order` depend on it. `shardshop-workload` aggregates its three
+The ShardShop parent has six children. `shardshop-common` holds reusable validation
+and utilities, including `IdParser` and `Sha256`, and is used by all six
+applications and the routing library. `shardshop-sharding` holds the shard-routing
+rule and topology; only `shardshop-product` and `shardshop-order` depend on it.
+Both libraries are ordinary Java JARs. `shardshop-workload` aggregates its three
 applications and has no executable code. Applications have no dependencies on
-one another, and no API, model, or JSON types are shared.
+one another and own their API, DTO/model and wire documents.
 
 The regional model assigns `shard-a` to US, `shard-b` to EU, and `shard-c` to
 ASIA. Sellers create products only on their home shard; buyers may buy from any
@@ -116,6 +118,49 @@ boundaries, integer normalization, fingerprints, totals, correlation and illustr
 fixture/live ID rules. It also rejects missing response examples. Packaged routing
 startup checks run in the default Maven `verify` lifecycle.
 
+## ID validation and currency selection (step 3.2)
+
+All six applications use `dev.nklip.javacraft.shardshop.common.IdParser` from
+`shardshop-common`; its implementation and regression tests are maintained once
+in that library. `parse(String)`
+validates path/descriptor text and returns an exact positive `long`.
+`parseJson(JsonParser)` requires the current token to be a JSON string, then
+applies the same whole-string ASCII and signed-long range checks without
+advancing or closing the caller's parser. Call it before typed DTO binding so
+numeric tokens cannot be coerced into strings. Invalid IDs, including malformed
+string content detected by Jackson when reading the current token, throw
+`IllegalArgumentException` with a fixed message that contains no input data;
+future HTTP providers must map this to `400 INVALID_REQUEST`, and message
+consumers must apply their invalid-command handling. Plain `IOException` from
+the underlying stream propagates unchanged. Surrounding document validation,
+including mapping syntax errors from the caller's token reads to HTTP 400,
+remains with those providers/consumers.
+
+`requestOrdinal` is a separate nonnegative retry coordinate that permits `"0"`.
+Step 4.1 must give allocation requests a separate validator; `IdParser` continues
+to reject zero for every application ID.
+
+The order producer's `CurrencySelector` validates an order-service-issued ID,
+uses the shared `Sha256.unsignedDigest` to hash its unchanged UTF-8 text, and takes the full unsigned digest
+modulo 100. It returns EUR for buckets below the rejection percentage and USD
+otherwise. The default is 10; the integer constructor accepts 0 through 100.
+Tests pin the architecture's buckets 0, 9, 10 and 99, plus exact large-ID values.
+The future producer loop supplies its configured percentage and retains the
+chosen payload across retries. The routing library uses the same digest helper;
+the order producer has no shard-routing dependency.
+
+Run the shared utility tests alone with
+`mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-common clean verify`.
+
+Run all affected application checks, including dependency/SBOM reports and
+packaged routing tests, without infrastructure:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml \
+  -pl shardshop-product,shardshop-order,shardshop-ledger,shardshop-workload/shardshop-product-seeder,shardshop-workload/shardshop-product-reader,shardshop-workload/shardshop-order-producer \
+  -am -Paudit clean verify
+```
+
 ## Java and Maven
 
 Set `JAVA_HOME` to a JDK **25 or newer**. The SDKMAN `25-open` installation
@@ -147,7 +192,8 @@ builds it. These rules are inherited only by ShardShop's children.
 
 Run from the repository root with `JAVA_HOME` already set. Always select a
 ShardShop POM; do not invoke the repository root reactor. Build one application
-with `-pl`; `-am` also builds `shardshop-sharding` for product and order:
+with `-pl`; `-am` also builds `shardshop-common`, plus `shardshop-sharding` for
+product and order:
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product -am clean verify

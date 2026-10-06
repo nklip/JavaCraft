@@ -4,7 +4,7 @@ info:
   title: ShardShop Product API
   version: 1.0.0
   description: |
-    Contract owned by shardshop-product. Clients own their DTOs and JSON handling;
+    Contract owned by shardshop-product. Clients own their DTOs and document decoding;
     this document and its schemas are not shared runtime artifacts. This contract
     describes the planned HTTP implementation, not the current application skeleton.
 

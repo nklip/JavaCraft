@@ -89,7 +89,7 @@ Milestone numbers 0-7 remain stable for references from other documents.
 | 0.1 Version and artifact inventory | None | Done | Exact compatible tool/image selections, origins, support dates, and review deadlines are recorded; the kind node-image gap is resolved; the Snowflake exception is explicit. **2026-09-28:** all seven image digest chains verify; the kind 1.36.5 node image returns 404, so the user-authorized 1.36.4 fallback is pinned; digest-pinned Canonical OpenJDK 25 images build the product and start all six applications as non-root. **Check:** recompute the [lock](versions.lock.yaml)'s digests as [VERSIONS.md](VERSIONS.md#step-01-verification-record) describes. |
 | 0.2 Maven skeleton | 0.1 | Done | The parent and workload aggregators contain six independently buildable application skeletons, and the Java 25 minimum works. **2026-09-28:** all six `clean verify` builds and JAR launches pass on OpenJDK 25 with 100% line coverage from an empty Maven cache; the build passes on JDK 25 and 26 and rejects JDK 21. **Commands:** the per-application loop in the [README](README.md#build-and-run); `mvn -B -ntp -f microservices/shardshop/pom.xml validate`. |
 | 0.3 Dependency and test configuration | 0.2 | Done | Effective POMs, resolved dependencies/plugins, and SBOM agree with the inventory; Surefire and the opt-in `integration` profile are configured in each module. **2026-09-28:** all 20 unit tests pass and `integration` runs `*IT` through Failsafe; each application's effective POM matches the lock's 17 plugin pins, overrides and test-image digests, with no prereleases. **Commands:** `mvn -B -ntp -f microservices/shardshop/pom.xml -Pintegration,audit clean verify` ([README](README.md#dependency-and-test-validation)). |
-| 0.4 Shared shard-routing module | 0.3 | Done | `shardshop-sharding` implements routing contract version 2 in plain Java; only product and order depend on it, and it holds no API, model, or JSON types. Golden vectors cover every shard, a value above 2^53, the signed-long maximum, and digests with the high bit set. **2026-09-28:** the router tests pass with 100% line and branch coverage on JDK 25 and 26, with no warnings; step 2.4 later made the shard list configurable. **Commands:** `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-sharding clean verify`. |
+| 0.4 Shared shard-routing module | 0.3 | Done | `shardshop-sharding` implements routing contract version 2 in plain Java; only product and order depend on it, and it holds no API, model, or JSON types. Golden vectors cover every shard, a value above 2^53, the signed-long maximum, and digests with the high bit set. **2026-09-28:** the router tests pass with 100% line and branch coverage on JDK 25 and 26, with no warnings; step 2.4 later made the shard list configurable. **Commands:** `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-sharding -am clean verify`. |
 | 0.5 Quarkus 3.40.1 migration | 0.4, 2.4 | Done | **2026-10-04:** all six skeletons independently pass `clean verify` with `integration,audit`, using the scoped Quarkus 3.40.1 BOM/plugin and Maven 3.9.16 on Java 25. The 62 unit/startup tests and 10 packaged startup ITs pass with 100% line coverage. CDI preserves eager routing validation and unchanged golden vectors. Effective POMs, graphs, SBOMs and verified artifact checksums agree; no Spring runtime/test artifacts resolve. The three official plugin-internal XML prereleases are qualified under the explicit version-policy exception. All six packages start non-root on the pinned JRE; product builds/tests on the pinned JDK. **Commands:** the [README build loop](README.md#build-and-run) with `-Pintegration,audit`; [qualification evidence](VERSIONS.md#step-05-verification-record). **2026-10-06 review:** default `verify` now runs the ten packaged routing checks; all six `-Paudit clean verify` builds pass with 62 unit/startup tests and no warnings. Removing unused app Mockito dependencies leaves 140 SBOM components for product/order and 139 for each other app; plugin agents remain. |
 
 ### Milestone 1: Local cluster and one replicated shard
@@ -116,7 +116,7 @@ Milestone numbers 0-7 remain stable for references from other documents.
 | Step / deliverable | Depends on | Status | Acceptance condition |
 |---|---|---|---|
 | 3.1 HTTP and message contracts | 0.5 | Done | Each owning module holds its OpenAPI document or message schema, covering service-issued decimal-string IDs, immutable seller/buyer home regions, inherited product regions, dataset discovery, durable order-ID allocation and its retries, payloads, errors, and correlation, including order-reserved ledger result IDs; clients keep their own DTOs, and no API, model, or JSON files are shared between modules. Provider tests arrive with the implementing steps. **2026-10-06:** product/order OpenAPI 3.1.1 documents and order/ledger JSON Schema 2020-12 envelopes are self-contained, with inline HTTP and correlated message examples. Structural/example validation, signed-long and whitespace boundaries, money constraints, fingerprint/total/correlation checks pass; all seven resources match their owner JARs. The affected build passes 59 unit/startup tests and 10 packaged startup ITs without warnings. **Commands:** [contract validation](README.md#http-and-message-contracts-step-31); `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-order,shardshop-ledger -am -Pintegration clean verify`. **Review fixes:** UTC microsecond timestamps, coherent generator-0 fixtures/live examples, Unicode and exact-integer contracts, complete response examples and bounded status URLs are verified by the committed `scripts/verify-contracts.py`; its pinned tools are recorded in VERSIONS.md. |
-| 3.2 ID validation and currency selection | 3.1 | Planned | Each ID-consuming module has its own unit-tested ID parser that accepts canonical IDs up to the signed-long maximum, including values above 2^53, and rejects numeric JSON tokens, LF/CRLF/TAB text, and other noncanonical input; the order producer's currency selection passes its boundary IDs without depending on `shardshop-sharding`. |
+| 3.2 Common utilities, ID validation and currency selection | 3.1 | Done | `shardshop-common` owns one unit-tested `IdParser` and the shared unsigned UTF-8 SHA-256 calculation. All six applications use common; routing also depends on common, while ledger/workloads have no sharding or Snowflake dependency. Canonical IDs through the signed-long maximum, numeric JSON rejection, malformed strings and stream failures retain their checks; routing and currency vectors remain unchanged. **2026-10-06:** the common library replaces six parser copies and duplicate digest code. Its 79 tests run once; all affected builds pass 186 unit/startup tests plus 10 packaged routing tests, without warnings, with 100% line and branch coverage across eight Java modules. Audit graphs confirm the dependency boundaries, and all six packaged applications contain the common JAR. Redundant consumer SHA-256 failure tests and Mockito dependencies are removed; only common tests that failure. SBOM component counts are common 14, routing 11, product/order 142, and ledger/workloads 141. **Command:** `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-order,shardshop-ledger,shardshop-workload/shardshop-product-seeder,shardshop-workload/shardshop-product-reader,shardshop-workload/shardshop-order-producer -am -Paudit clean verify`. |
 | 3.3 Bounded Snowflake generation | 0.5 | Planned | Injected generators exist only in product and order and satisfy concurrency, sequence-exhaustion, clock-failure, and timestamp-boundary checks; failures emit no ID. Workload and ledger dependencies contain no ID generator. Scenario 10 library checks pass. |
 | 3.4 Generator allocation at JVM startup | 1.1, 3.3 | Planned | Concurrent product/order starts and same-pod container restarts reserve distinct generator IDs; lost responses, missing/stale state, and exhaustion fail safely without resetting the high-water mark. Workloads and ledger have no allocation launcher or allocator permissions. |
 | 3.6 Service-owned deterministic datasets | 2.4, 3.1, 3.3 | Planned | Product derives seller/product IDs and immutable USD/EUR fixture payloads in every region; order derives buyer IDs in disjoint reserved ranges. Both services derive immutable home regions from the routed IDs and expose them in paginated descriptors and seller/buyer creation payloads. Products inherit the seller region without an independent region field. Workloads consume those responses without deriving IDs or sharing a manifest file; service tests pin generation and workload tests verify unchanged ID forwarding. |
@@ -244,12 +244,20 @@ additional; Maven aggregators have no runtime pods.
 
 ## 3. Modules, data ownership, and routing
 
-Create a parent Maven aggregator with five top-level children and six deployable
+Create a parent Maven aggregator with six top-level children and six deployable
 applications. `shardshop-workload` is a POM aggregator for the three workload
-applications; product, order, and ledger are services; `shardshop-sharding` is a
-plain Java library with the shard-routing rule, used only by product and order.
-Nothing else is shared: each module owns its API, DTO/model classes, JSON handling,
-and test data, as described in the architecture.
+applications; product, order, and ledger are services. `shardshop-common` is an
+ordinary Java library for reusable validation and utilities, including `IdParser`
+and `Sha256.unsignedDigest`, with their unit tests. All six applications and
+`shardshop-sharding` depend on it. Common has no application, sharding, Quarkus,
+generator or IO-service dependency; its low-level JSON validation uses Jackson.
+`shardshop-sharding` owns the routing rule and topology and is used only by product
+and order. Each application owns its API, DTO/model classes, wire documents,
+document decoding, business validation, persistence and service-specific tests.
+New reusable logic belongs in common when multiple modules need it; common changes
+must pass the shared tests and all six application builds. Each application's
+packaged copy changes only when its rebuilt artifact is deployed; wire-compatible
+changes do not require simultaneous deployment.
 
 Product and order services share three shard databases and use separate
 schemas, `catalog` and `ordering`; the separate ledger database uses `ledger`. No
@@ -278,7 +286,9 @@ significant). `shardshop-sharding` implements this rule and tests it against
 independently computed golden vectors. `verify-topology.sh --routing-only` reads
 the same fixtures on every primary to compare PostgreSQL SHA-256 arithmetic and
 the deployed seller placement constraint with Java's expected results, without a
-failure drill. The order producer applies the same integer modulo 100 with its own code: EUR when it is below the configured
+failure drill. Both routing and currency selection obtain the full unsigned digest
+from `shardshop-common` after validating the ID. The order producer applies that
+integer modulo 100: EUR when it is below the configured
 `rejected-order-percent`, otherwise USD. The exact input encoding and boundary
 cases live in [ARCHITECTURE.md](ARCHITECTURE.md). Region and currency are
 independent; provide both USD and EUR products in each region.
@@ -361,7 +371,7 @@ Follow the dated baseline and lifecycle evidence in [VERSIONS.md](VERSIONS.md).
 | Node layout | One control-plane node and three worker nodes; Docker Desktop VM with at least 12 GB of memory |
 | Database lifecycle | CloudNativePG 1.30.1 initially, installed from its verified Helm chart, with upgrades before operator EOL; three independent three-instance quorum shard clusters and separate ledger storage |
 | Database | PostgreSQL 18, reviewed patch 18.6, with maintained 18.x updates and pinned image digests |
-| Application | Six Quarkus 3.40.1 applications in the five-module layout; JVM mode, a scoped platform BOM, and supported branch upgrades |
+| Application | Six Quarkus 3.40.1 applications in the six-module layout, including the common and routing libraries; JVM mode, a scoped platform BOM, and supported branch upgrades |
 | Persistence | Explicit JDBC repositories with PostgreSQL JDBC and Agroal; bounded pools per service, pod, shard, and endpoint |
 | Identifiers | Explicitly pinned `de.mkammerer.snowflake-id:snowflake-id:0.0.2`; decimal strings on the wire and positive `BIGINT` in PostgreSQL; reviewed support-policy exception |
 | Database change management | CNPG `DatabaseRole`, `Database` and `Publication` resources for roles, schemas and CDC publications; the official Flyway OSS CLI image (13.8.1 initially), pinned by digest, for one migration stream per schema under `database/`, run as Kubernetes Jobs by that schema's migrator |
@@ -413,7 +423,7 @@ messaging and workload behavior.
 1. Import `io.quarkus.platform:quarkus-bom:3.40.1` in the ShardShop parent and
    pin `io.quarkus.platform:quarkus-maven-plugin:3.40.1` separately. Configure
    augmentation/code generation only for the six applications; keep
-   `shardshop-sharding` a plain Java library. Audit inherited dependency versions,
+   `shardshop-common` and `shardshop-sharding` ordinary Java libraries. Audit inherited dependency versions,
    test providers and plugin overrides against the effective Quarkus model.
    Replace the existing repackage goal with Quarkus JVM `fast-jar` packaging: ship
    the complete `target/quarkus-app/` directory and launch its `quarkus-run.jar`.
@@ -535,6 +545,9 @@ community-only policy in [VERSIONS.md](VERSIONS.md).
 
 Use the architecture's product and order HTTP contracts. For orders,
 first obtain a durable order allocation for the buyer and configured run/ordinal.
+Step 4.1 must validate `requestOrdinal` separately from application IDs: its
+canonical string range is `0..9223372036854775807`, including `"0"`, while
+`IdParser` requires positive IDs.
 `PUT /api/v1/buyers/{buyerId}/orders/{orderId}` commits an order, items, and a
 `PENDING_STOCK` saga atomically on the buyer's shard, then returns `202 Accepted`; its `RecordOrder`
 outbox insert follows once its stock is reserved.
@@ -653,6 +666,7 @@ microservices/shardshop/
   VERSIONS.md                     # baseline, support evidence, update policy
   versions.lock.yaml              # verified artifact inventory, support dates, open blockers
   pom.xml                         # parent POM aggregator
+  shardshop-common/               # shared validation and utilities, with unit tests
   shardshop-sharding/             # shard routing, used only by product and order
   shardshop-workload/
     pom.xml                       # workload POM aggregator

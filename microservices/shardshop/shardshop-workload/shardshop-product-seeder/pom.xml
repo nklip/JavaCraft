@@ -20,6 +20,10 @@
 
     <dependencies>
         <dependency>
+            <groupId>dev.nklip.javacraft</groupId>
+            <artifactId>shardshop-common</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-arc</artifactId>
         </dependency>

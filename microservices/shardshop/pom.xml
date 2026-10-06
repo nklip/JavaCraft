@@ -51,6 +51,7 @@
     </properties>
 
     <modules>
+        <module>shardshop-common</module>
         <module>shardshop-sharding</module>
         <module>shardshop-workload</module>
         <module>shardshop-product</module>
@@ -72,6 +73,12 @@
                 <groupId>de.mkammerer.snowflake-id</groupId>
                 <artifactId>snowflake-id</artifactId>
                 <version>${snowflake-id.version}</version>
+            </dependency>
+            <!-- Shared validation and utilities used by the applications and routing library. -->
+            <dependency>
+                <groupId>dev.nklip.javacraft</groupId>
+                <artifactId>shardshop-common</artifactId>
+                <version>${project.version}</version>
             </dependency>
             <!-- Shard routing; only shardshop-product and shardshop-order depend on it. -->
             <dependency>

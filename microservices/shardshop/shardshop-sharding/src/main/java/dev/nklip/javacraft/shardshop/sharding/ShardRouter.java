@@ -1,9 +1,8 @@
 package dev.nklip.javacraft.shardshop.sharding;
 
+import dev.nklip.javacraft.shardshop.common.Sha256;
+
 import java.math.BigInteger;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Objects;
 
 /**
@@ -29,15 +28,6 @@ public final class ShardRouter {
         if (id <= 0) {
             throw new IllegalArgumentException("Shard routing requires a positive ID, but was " + id);
         }
-        byte[] digest = sha256().digest(Long.toString(id).getBytes(StandardCharsets.UTF_8));
-        return topology.shards().get(new BigInteger(1, digest).mod(shardCount).intValue());
-    }
-
-    private static MessageDigest sha256() {
-        try {
-            return MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is not available", e);
-        }
+        return topology.shards().get(Sha256.unsignedDigest(Long.toString(id)).mod(shardCount).intValue());
     }
 }

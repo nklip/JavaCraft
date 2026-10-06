@@ -51,10 +51,12 @@ This design embeds Debezium Engine in the existing order relay so it can retain
 the publication bookkeeping and mandatory-routing protocol defined below;
 Kafka and a separate Debezium Server deployment are not required.
 
-There are five top-level Maven modules and six deployable applications. The
+There are six top-level Maven modules and six deployable applications. The
 workload module is a POM aggregator containing three applications; product, order,
-and ledger are the other three applications; `shardshop-sharding` is a library used
-only by product and order. PostgreSQL and RabbitMQ are supporting infrastructure.
+and ledger are the other three applications. `shardshop-common` provides shared
+validation and utilities to all applications and the routing library;
+`shardshop-sharding` is used only by product and order. Both libraries are ordinary
+Java JARs with no runtime process. PostgreSQL and RabbitMQ are supporting infrastructure.
 
 No module owns a database schema or ships migrations: schemas, roles and
 migrations belong to the database layer described in section 3, and each service
@@ -73,6 +75,7 @@ they never generate, derive, or allocate them locally.
 | 3 | `shardshop-order` | Accept buyer and order HTTP requests, coordinate the saga including stock reservation, and relay captured order-outbox inserts to RabbitMQ | One stateless order service pod initially | Buyers, orders, items, saga state, inbox, outbox, and CDC offsets in schema `ordering`; reads sellers and products and writes stock reservations and product stock in `catalog` |
 | 4 | `shardshop-ledger` | Consume ledger commands and persist order ledger records | One ledger consumer pod plus a separate PostgreSQL pod initially | Schema `ledger` in a dedicated ledger database: entries, decisions, permanent result bindings, inbox, outbox, and command quarantine |
 | 5 | `shardshop-sharding` | Route seller and buyer IDs to shards (section 3) | None; a library inside the product and order services | None |
+| 6 | `shardshop-common` | Shared canonical-ID parsing and UTF-8 SHA-256 utilities | None; a library inside all six applications and the routing library | None |
 
 Module 1 contains exactly three independently runnable submodules:
 
@@ -137,22 +140,40 @@ Module 2 also handles seller and product creation so the product seeder can popu
 shared database through an application API. Module 4 includes a consumer process:
 the ledger database itself does not consume RabbitMQ messages.
 
-### Shared shard routing, nothing else
+### Shared utilities and shard routing
 
-`shardshop-sharding` is the only shared ShardShop Java module. It holds the
-version-2 routing rule from section 3 and its golden-vector tests, whose expected
-shards were computed independently of the implementation; never regenerate them
-with the code under test. Only product and order depend on it; the ledger and the
-workload apps never see shard routing. Nothing else is shared: each module owns its
-HTTP API, DTO/model classes, JSON handling, validation, persistence types, and test
-data, which keeps release cycles and domain models decoupled. The order service's
-catalog reads and stock reservations remain explicit database grants.
+`shardshop-common` owns reusable logic used across ShardShop: `IdParser` validates
+canonical positive IDs from text or a current JSON string token, and
+`Sha256.unsignedDigest` hashes unchanged UTF-8 text as an unsigned big-endian
+integer. Their unit tests and boundary vectors live in this module. Add common
+validation and utility logic here when multiple modules need it. The library has
+no Quarkus startup/CDI wiring, application dependencies, shard topology, ID
+generation, database access or messaging. Its JSON parser uses the platform-managed
+Jackson streaming API. All six applications depend on it directly.
+
+`shardshop-sharding` depends on `shardshop-common` for digest calculation and owns
+the version-2 routing rule, shard topology and routing golden-vector tests.
+Only product and order depend on this routing library; common has no dependency
+back to sharding, so ledger and workloads receive no shard-routing code. Golden
+digests, shards and currency boundaries are computed independently of the
+implementation; never regenerate expected values with the code under test.
+
+Applications own their HTTP APIs, DTO/model classes, wire documents, document
+decoding, business validation, persistence types and service-specific tests.
+They use the shared utilities without depending on one another. Currency policy
+stays in the order producer; catalog reads and stock reservations retain their
+explicit database grants. Common changes must pass its tests and all six
+application builds before release. Each executable packages its own copy of common;
+running applications adopt a common change when their rebuilt artifacts are
+deployed. This couples release qualification without introducing a shared runtime
+service or requiring simultaneous deployment for wire-compatible changes.
 
 Proposed source layout:
 
 ```text
 shardshop/
   pom.xml                         # parent aggregator, no runtime process
+  shardshop-common/               # shared validation and utilities; no service dependencies
   shardshop-sharding/             # shard routing, used only by product and order
   shardshop-workload/
     shardshop-product-seeder/
@@ -181,7 +202,7 @@ The owner-local, self-contained wire documents now define the planned providers:
 OpenAPI 3.1.1 and JSON Schema 2020-12 define shapes and bounds; provider tests in
 the implementing steps will enforce issuance, arithmetic, stored-state and
 cross-envelope relationships. These documents are not shared runtime files or
-generated client models. Clients retain their own DTOs and JSON handling.
+generated client models. Clients retain their own DTOs and document decoding.
 
 The concrete wire choices are version-pinned `/api/v1/datasets/{datasetVersion}`
 collections (`sellers`, `products`, or `buyers`), immutable `creationPayload`
@@ -381,6 +402,13 @@ returns `400 INVALID_REQUEST`, not an uncaught conversion error. Hash the accept
 without modification. IDs are identifiers, not secrets or authorization tokens,
 and generation time/worker bits are not a public business-time ordering contract.
 
+The shared `IdParser` in `shardshop-common` enforces this contract once for all
+consumers. Malformed string content detected while reading the current JSON token
+uses the same fixed validation error; plain stream `IOException` propagates.
+Providers still validate the surrounding document and map its syntax errors.
+Allocation `requestOrdinal` is a separate nonnegative coordinate that permits
+`"0"` and requires its own validator in step 4.1.
+
 The order producer obtains each order ID from order before its first PUT and
 retains it with the exact creation payload through bounded retries/status
 polling. Product owns seller/product ID generation; order owns buyer/order and
@@ -498,9 +526,11 @@ Use the validated canonical decimal ID text, with no newline or leading zeros,
 before UTF-8 encoding. Interpret all 32 SHA-256 digest bytes as one unsigned
 256-bit **big-endian** integer: byte 0 is most significant, byte 31 least
 significant. Do not use a signed integer, truncate the digest, or use Java
-`hashCode()`. Currency selection uses this same integer modulo 100, independently
-of the configured shard result; the order producer implements it with its own code
-and does not depend on `shardshop-sharding`. This is identifier/routing contract **version 2**,
+`hashCode()`. Both routing and currency selection use
+`shardshop-common`'s `Sha256.unsignedDigest` after validating the ID. The order
+producer applies modulo 100 and its rejection percentage independently of the
+configured shard result, without depending on `shardshop-sharding`.
+This is identifier/routing contract **version 2**,
 replacing the previous unreleased draft and its vectors. The hash contract stays
 immutable; the initial ordered inventory preserves all version-2 routing vectors.
 `infra/shards.yaml` defines ordered entries with `name` and `region`. Multiple

@@ -21,6 +21,10 @@
     <dependencies>
         <dependency>
             <groupId>dev.nklip.javacraft</groupId>
+            <artifactId>shardshop-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>dev.nklip.javacraft</groupId>
             <artifactId>shardshop-sharding</artifactId>
         </dependency>
         <dependency>

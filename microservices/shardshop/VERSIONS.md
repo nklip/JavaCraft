@@ -133,6 +133,40 @@ dependencies a module uses. [REST](https://quarkus.io/guides/rest/),
 [datasources](https://quarkus.io/guides/datasource/),
 [testing](https://quarkus.io/guides/getting-started-testing/).
 
+### Step 3.2 ID parsing dependency
+
+On **2026-10-06**, `shardshop-common` centralized ID validation and the shared
+SHA-256 calculation. All six applications and `shardshop-sharding` depend on
+this ordinary Java library. Common holds the direct dependency on
+`com.fasterxml.jackson.core:jackson-core`, managed at **2.21.7** by the existing
+Quarkus BOM. Only the streaming API is needed for strict JSON token validation;
+HTTP providers and their framework extensions remain later steps. The artifact
+matches Maven Central's published SHA-1; its independently computed SHA-256 is
+recorded in the lock.
+
+Jackson 2.21 is an open LTS branch; **no published fixed EOL; upstream maintenance
+checked on 2026-10-06**, with review by **2026-11-04**.
+[Release status](https://github.com/FasterXML/jackson/wiki/Jackson-Releases) and
+the [Core advisory list](https://github.com/FasterXML/jackson-core/security)
+were checked. Version 2.21.7 includes the September fixes for
+[unbounded error-token growth](https://github.com/FasterXML/jackson-core/security/advisories/GHSA-7hhh-6rmp-j9qf)
+and [numeric-pattern backtracking](https://github.com/FasterXML/jackson-core/security/advisories/GHSA-p6pp-m3f8-5c89).
+The plugin-only Jackson
+2.22.3 override remains separate from this application dependency.
+
+Only common declares the existing BOM-managed Mockito **5.21.0** test dependency
+to exercise unavailable SHA-256. Consumer tests cover routing and currency behavior
+without mocking common's internals; the inherited plugin test agent remains.
+No runtime contains Mockito. The step 3.2 audit build passes **186 unit/startup
+tests and 10 packaged routing tests**, without warnings and with **100% line and
+branch coverage** across all eight Java modules. The parser regression suite now
+runs once in common; routing and currency suites still test their own behavior.
+SBOMs contain 14 components for common, 11 for routing, 142 for product/order,
+and 141 for ledger/seeder/reader/producer (including test dependencies).
+Every packaged application contains the common JAR. Common has only Jackson at
+runtime; ledger and workloads contain neither sharding nor Snowflake.
+The exact build command is in [README](README.md#id-validation-and-currency-selection-step-32).
+
 ### Explicit Snowflake library selection
 
 Pin **`de.mkammerer.snowflake-id:snowflake-id:0.0.2`** outside the framework BOM in
