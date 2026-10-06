@@ -703,20 +703,21 @@ maven:
     the exact qualified exception below; unused goals remain unqualified.
   review_qualification:
     checked_on: '2026-10-06'
-    milestone: '3.2'
-    build: Both shared libraries and all six applications pass default clean verify with audit; 100% line and branch coverage, no warnings.
-    unit_startup_tests: 186
-    packaged_routing_tests: 10
+    milestone: '3.3'
+    build: The three core libraries and all six applications pass clean verify with audit; 100% line and branch coverage, no warnings. Compile probes reject generator and shared configuration use in ledger and workloads; dependency enforcement rejects optional idgen dependencies and the former optional Snowflake dependency in common. Idgen's separate rules reject common and sharding through direct, optional and transitive dependencies in six negative fixtures.
+    unit_startup_tests: 215
+    packaged_startup_tests: 40
     sbom_components:
       shardshop-common: 14
-      shardshop-sharding: 11
-      shardshop-product: 142
-      shardshop-order: 142
+      shardshop-idgen: 143
+      shardshop-sharding: 141
+      shardshop-product: 144
+      shardshop-order: 144
       shardshop-ledger: 141
       shardshop-product-seeder: 141
       shardshop-product-reader: 141
       shardshop-order-producer: 141
-    dependency_change: Only common declares a Mockito test dependency; duplicated SHA-256 failure tests and Mockito dependencies were removed from routing and order producer. Mockito, byte-buddy and objenesis are absent from consumer graphs/SBOMs. Plugin startup agents remain.
+    dependency_change: The shardshop-core POM groups common, idgen and sharding. Common supplies validation and hashing to all six applications and sharding. Idgen owns the generator, Snowflake 0.0.2 dependency and ID configuration/producer; sharding owns routing and its configuration/producer. Their tests and beans.xml files stay with each library. Only product/order consume idgen and sharding, and neither library depends on the other. Common and idgen use Mockito in tests; no application runtime contains Mockito. Common, sharding, ledger and workloads contain no generator classes or Snowflake dependency. Plugin startup agents remain.
   override_review: pom.xml comments name the advisory each plugin override fixes.
   plugin_dependency_overrides:
     org.apache.maven.plugins:maven-resources-plugin:
@@ -1103,18 +1104,20 @@ maven:
         url: https://repo.maven.apache.org/maven2/de/mkammerer/snowflake-id/snowflake-id/0.0.2/snowflake-id-0.0.2.jar.sha1
       metadata_url: https://repo.maven.apache.org/maven2/de/mkammerer/snowflake-id/snowflake-id/maven-metadata.xml
       verification: Artifact bytes downloaded and hashed; matched published checksum.
-        No signature check. Step 0.1 did not execute it.
+        No signature check. Step 3.3 qualified this exact hash on OpenJDK 25 with
+        concurrency, bounded overflow, clock failure and timestamp-boundary tests.
       support_refs:
       - snowflake_exception
   quarkus_dependency_snapshot:
     source_coordinate: io.quarkus.platform:quarkus-bom:3.40.1
     checked_on: '2026-10-06'
     review_by: '2026-11-04'
-    status: Step 3.2 common/routing/application runtime and test families checked against effective POMs and SBOMs; Mockito is test-only in common, plus the plugin test agent
+    status: Step 3.3 common/generator/routing/application families checked against effective POMs and SBOMs; Snowflake belongs to the generator library and product/order only, Mockito is test-only in common and generator libraries, plus the plugin test agent
     quarkus: 3.40.1
     junit_jupiter: 6.1.3
     plugin_test_agent_mockito: 5.21.0
     common_test_mockito: 5.21.0
+    generator_test_mockito: 5.21.0
     jackson_core: 2.21.7
     jboss_logmanager: 3.2.2.Final
     slf4j: 2.0.18

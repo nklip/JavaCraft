@@ -74,7 +74,7 @@ volumes() {
 }
 verify_routing() {
     local vectors shard leader predicate entity schema
-    vectors=$(python3 - "$root/shardshop-sharding/src/test/resources/routing-vectors.csv" "${shards[@]}" <<'PY'
+    vectors=$(python3 - "$root/shardshop-core/sharding/src/test/resources/routing-vectors.csv" "${shards[@]}" <<'PY'
 import csv, hashlib, re, sys
 
 # This frozen mapping belongs to the golden fixture contract, not the live inventory.

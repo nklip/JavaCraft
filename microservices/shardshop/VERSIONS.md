@@ -154,17 +154,17 @@ and [numeric-pattern backtracking](https://github.com/FasterXML/jackson-core/sec
 The plugin-only Jackson
 2.22.3 override remains separate from this application dependency.
 
-Only common declares the existing BOM-managed Mockito **5.21.0** test dependency
+At step 3.2, only common declared the existing BOM-managed Mockito **5.21.0** test dependency
 to exercise unavailable SHA-256. Consumer tests cover routing and currency behavior
 without mocking common's internals; the inherited plugin test agent remains.
-No runtime contains Mockito. The step 3.2 audit build passes **186 unit/startup
+No runtime contains Mockito. The step 3.2 audit build passed **186 unit/startup
 tests and 10 packaged routing tests**, without warnings and with **100% line and
-branch coverage** across all eight Java modules. The parser regression suite now
-runs once in common; routing and currency suites still test their own behavior.
-SBOMs contain 14 components for common, 11 for routing, 142 for product/order,
+branch coverage** across all eight Java modules. The parser regression suite ran
+once in common; routing and currency suites still tested their own behavior.
+The step 3.2 SBOMs contained 14 components for common, 11 for routing, 142 for product/order,
 and 141 for ledger/seeder/reader/producer (including test dependencies).
-Every packaged application contains the common JAR. Common has only Jackson at
-runtime; ledger and workloads contain neither sharding nor Snowflake.
+Every packaged application contains the common JAR. At step 3.2 common had only
+Jackson at runtime; ledger and workloads contain neither sharding nor Snowflake.
 The exact build command is in [README](README.md#id-validation-and-currency-selection-step-32).
 
 ### Explicit Snowflake library selection
@@ -182,14 +182,49 @@ the SBOM, and recheck upstream releases/advisories monthly, first by **2026-10-2
 The tagged POM declares Java 11 minimum, LGPLv3 licensing, and no runtime
 dependencies. Verify Java 25 operation, distribution/license obligations, artifact
 origin, and the generator's concurrency/time behavior before the application
-milestone. Add the dependency only to `shardshop-product` and `shardshop-order`,
-the only modules allowed to generate IDs, including deterministic fixture IDs.
+milestone. `shardshop-idgen`, in `shardshop-core/idgen`, declares the dependency
+for its generator implementation and unit tests. Product/order use that library
+and its shared CDI producer to enable generation, including the planned
+deterministic fixture IDs. Common and sharding have no generator dependency.
 Workloads consume service-issued IDs and ledger consumes order-reserved result
 IDs; neither may depend on Snowflake or access the generator allocator.
 Do not invent a supported successor version or silently substitute a different
 generator library. A critical unresolved defect requires a documented remediation
 before deployment. [Tagged POM](https://github.com/phxql/snowflake-id/blob/v0.0.2/pom.xml),
 [tagged generator](https://github.com/phxql/snowflake-id/blob/v0.0.2/src/main/java/de/mkammerer/snowflakeid/SnowflakeIdGenerator.java).
+
+Step 3.3 qualified this exact JAR on OpenJDK **25+36-3489** on **2026-10-06**;
+its SHA-256 matches the lock. The generator implementation and unit tests are
+maintained once in `shardshop-idgen`, which resolves Snowflake and uses
+BOM-managed Mockito **5.21.0** for controlled-clock tests. Product/order alone
+package Snowflake in their application runtimes. The generator classes use the
+`dev.nklip.javacraft.shardshop.idgen` package to match their module, with their
+SmallRye mapping, CDI producer
+and injection tests in `dev.nklip.javacraft.shardshop.idgen.config`. Sharding owns
+routing and its `dev.nklip.javacraft.shardshop.sharding.config` wiring. Each library
+owns its relevant test properties and `META-INF/beans.xml` for discovery from its
+JAR. Neither library depends on the other; only sharding depends on common.
+Routing and ID domain classes have no framework imports, and common has no Quarkus
+or generator dependency. The three libraries live in the `common`, `idgen` and
+`sharding` directories under the `shardshop-core` POM parent and aggregator.
+Mockito remains absent from every runtime. The six-application clean audit
+passes **215 unit/startup tests and 40 packaged startup
+checks**, without warnings and with **100% line and branch coverage** across the
+nine Java modules. Common contributes **79 tests**, idgen **30** and sharding **54**.
+Concurrency, throwing sequence exhaustion, clock failures,
+backwards time and timestamp boundaries pass. SBOMs contain **144** components
+for product/order, **143** for idgen, **141** for sharding, ledger and each workload,
+and **14** for common. Generator classes and Snowflake are absent from common,
+sharding, ledger and workload classpaths/graphs/SBOMs. Compile probes reject
+generator and configuration imports in ledger and every workload, and Maven
+Enforcer rejects direct (including optional) and transitive idgen/sharding/Snowflake
+dependencies in unauthorized consumers, including ledger and workloads. An isolated
+optional-idgen consumer fails the direct dependency rule. Idgen's own isolation
+rules reject common and sharding through direct, optional and transitive
+dependencies; all six negative fixtures fail at the expected rule. The
+[test JVM option reproduction](README.md#dependency-and-test-validation) records why the core
+Quarkus tests retain `--add-opens`. Commands are in the
+[step 3.3 runbook](README.md#bounded-snowflake-generation-step-33).
 
 The fixed 41/10/12 profile, epoch, process allocation, overflow handling, decimal
 wire/storage types, and tests are defined in [ARCHITECTURE.md](ARCHITECTURE.md).

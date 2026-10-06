@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>dev.nklip.javacraft</groupId>
+        <artifactId>shardshop-core</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>shardshop-idgen</artifactId>
+    <packaging>jar</packaging>
+
+    <properties>
+        <!-- Prevents Quarkus module-access warnings in clean library tests on OpenJDK 25; see ../../README.md. -->
+        <argLine>--add-opens=java.base/java.lang.invoke=ALL-UNNAMED</argLine>
+        <shardshop.failIfNoTests>true</shardshop.failIfNoTests>
+        <shardshop.idGenerationBoundary.skip>true</shardshop.idGenerationBoundary.skip>
+        <shardshop.directory>${project.basedir}/../..</shardshop.directory>
+    </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>enforce-direct-idgen-isolation</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <bannedDependencies>
+                                    <excludes>
+                                        <exclude>dev.nklip.javacraft:shardshop-common</exclude>
+                                        <exclude>dev.nklip.javacraft:shardshop-sharding</exclude>
+                                    </excludes>
+                                    <!-- Direct checking also includes optional dependencies. -->
+                                    <searchTransitive>false</searchTransitive>
+                                    <message>Idgen must not depend on common or sharding.</message>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>enforce-transitive-idgen-isolation</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <bannedDependencies>
+                                    <excludes>
+                                        <exclude>dev.nklip.javacraft:shardshop-common</exclude>
+                                        <exclude>dev.nklip.javacraft:shardshop-sharding</exclude>
+                                    </excludes>
+                                    <searchTransitive>true</searchTransitive>
+                                    <message>Idgen must not depend on common or sharding.</message>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <dependencies>
+        <dependency>
+            <groupId>de.mkammerer.snowflake-id</groupId>
+            <artifactId>snowflake-id</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-arc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

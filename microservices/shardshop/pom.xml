@@ -29,6 +29,7 @@
         <shardshop.directory>${project.basedir}</shardshop.directory>
         <jacoco.it.argLine/>
         <shardshop.failIfNoTests>false</shardshop.failIfNoTests>
+        <shardshop.idGenerationBoundary.skip>false</shardshop.idGenerationBoundary.skip>
         <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
         <maven-failsafe-plugin.version>3.6.0</maven-failsafe-plugin.version>
@@ -51,8 +52,7 @@
     </properties>
 
     <modules>
-        <module>shardshop-common</module>
-        <module>shardshop-sharding</module>
+        <module>shardshop-core</module>
         <module>shardshop-workload</module>
         <module>shardshop-product</module>
         <module>shardshop-order</module>
@@ -68,7 +68,7 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-            <!-- Named support-policy exception; only ID-producing modules add a dependency later. -->
+            <!-- Named exception; only core/idgen declares this dependency. -->
             <dependency>
                 <groupId>de.mkammerer.snowflake-id</groupId>
                 <artifactId>snowflake-id</artifactId>
@@ -80,7 +80,12 @@
                 <artifactId>shardshop-common</artifactId>
                 <version>${project.version}</version>
             </dependency>
-            <!-- Shard routing; only shardshop-product and shardshop-order depend on it. -->
+            <!-- ID generation and routing are separate core libraries for product/order only. -->
+            <dependency>
+                <groupId>dev.nklip.javacraft</groupId>
+                <artifactId>shardshop-idgen</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>dev.nklip.javacraft</groupId>
                 <artifactId>shardshop-sharding</artifactId>
@@ -345,6 +350,47 @@
                                 <requireMavenVersion>
                                     <version>[3.9.16,)</version>
                                 </requireMavenVersion>
+                            </rules>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>enforce-direct-id-generation-boundary</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${shardshop.idGenerationBoundary.skip}</skip>
+                            <rules>
+                                <bannedDependencies>
+                                    <excludes>
+                                        <exclude>dev.nklip.javacraft:shardshop-idgen</exclude>
+                                        <exclude>dev.nklip.javacraft:shardshop-sharding</exclude>
+                                        <exclude>de.mkammerer.snowflake-id:snowflake-id</exclude>
+                                    </excludes>
+                                    <!-- Direct checking also includes optional dependencies. -->
+                                    <searchTransitive>false</searchTransitive>
+                                    <message>ID generation and service-only core dependencies are restricted to shardshop-idgen, shardshop-product and shardshop-order.</message>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>enforce-transitive-id-generation-boundary</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${shardshop.idGenerationBoundary.skip}</skip>
+                            <rules>
+                                <bannedDependencies>
+                                    <excludes>
+                                        <exclude>dev.nklip.javacraft:shardshop-idgen</exclude>
+                                        <exclude>dev.nklip.javacraft:shardshop-sharding</exclude>
+                                        <exclude>de.mkammerer.snowflake-id:snowflake-id</exclude>
+                                    </excludes>
+                                    <searchTransitive>true</searchTransitive>
+                                    <message>ID generation and service-only core dependencies are restricted to shardshop-idgen, shardshop-product and shardshop-order.</message>
+                                </bannedDependencies>
                             </rules>
                         </configuration>
                     </execution>

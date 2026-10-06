@@ -10,7 +10,8 @@ starts its CDI container and exits through `QuarkusApplication.run()`; no HTTP
 server, database connection, messaging, seeding, or load generation is implemented
 yet. No Docker or Kubernetes is
 needed to build or test these skeletons. Product and order now require a routing
-configuration file when launched; tests supply their own fixture.
+configuration file and an explicit live generator ID when launched; tests supply
+their own fixtures.
 
 | Maven module | Quarkus application class |
 |---|---|
@@ -21,13 +22,22 @@ configuration file when launched; tests supply their own fixture.
 | `shardshop-workload/shardshop-product-reader` | `dev.nklip.javacraft.shardshop.workload.reader.ProductReaderApplication` |
 | `shardshop-workload/shardshop-order-producer` | `dev.nklip.javacraft.shardshop.workload.producer.OrderProducerApplication` |
 
-The ShardShop parent has six children. `shardshop-common` holds reusable validation
-and utilities, including `IdParser` and `Sha256`, and is used by all six
-applications and the routing library. `shardshop-sharding` holds the shard-routing
-rule and topology; only `shardshop-product` and `shardshop-order` depend on it.
-Both libraries are ordinary Java JARs. `shardshop-workload` aggregates its three
-applications and has no executable code. Applications have no dependencies on
-one another and own their API, DTO/model and wire documents.
+The ShardShop parent has five children and nine Java modules: six applications
+and three library JARs. `shardshop-core` is a POM parent and aggregator for
+`common`, `idgen` and `sharding`. Their artifact IDs are `shardshop-common`,
+`shardshop-idgen` and `shardshop-sharding`. Common holds reusable validation and
+utilities, including `IdParser` and `Sha256`; all six applications and sharding
+depend on it. Idgen owns bounded ID generation; sharding owns the shard-routing
+rule and topology. Each owns its relevant SmallRye configuration mappings, CDI
+producers and tests. Only product and order depend on idgen and sharding, and
+neither library depends on the other. Each has `META-INF/beans.xml` for bean
+discovery. Common has no Quarkus or generator dependency. ID and routing domain
+classes remain free of framework imports; their Quarkus wiring lives in
+`dev.nklip.javacraft.shardshop.idgen.config` and
+`dev.nklip.javacraft.shardshop.sharding.config`, respectively. The libraries have
+no runtime processes. `shardshop-workload` aggregates its three applications and
+has no executable code. Applications have no dependencies on one another and own
+their API, DTO/model and wire documents.
 
 The regional model assigns `shard-a` to US, `shard-b` to EU, and `shard-c` to
 ASIA. Sellers create products only on their home shard; buyers may buy from any
@@ -41,8 +51,8 @@ saga, command and message IDs, including ledger result IDs. Workload modules
 obtain IDs through service APIs and reuse them on retries; they never generate
 IDs or derive fixture IDs. Ledger reuses IDs supplied by order. Workloads and
 ledger have no Snowflake dependency or generator-allocator access. Step 3.1 defines
-the wire contracts below; their API and generation implementations remain planned.
-The current applications are skeletons.
+the wire contracts below; the APIs remain planned. Step 3.3 implements bounded
+live generators. The current applications are still skeletons.
 
 ## HTTP and message contracts (step 3.1)
 
@@ -150,7 +160,7 @@ chosen payload across retries. The routing library uses the same digest helper;
 the order producer has no shard-routing dependency.
 
 Run the shared utility tests alone with
-`mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-common clean verify`.
+`mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-core/common clean verify`.
 
 Run all affected application checks, including dependency/SBOM reports and
 packaged routing tests, without infrastructure:
@@ -160,6 +170,73 @@ mvn -B -ntp -f microservices/shardshop/pom.xml \
   -pl shardshop-product,shardshop-order,shardshop-ledger,shardshop-workload/shardshop-product-seeder,shardshop-workload/shardshop-product-reader,shardshop-workload/shardshop-order-producer \
   -am -Paudit clean verify
 ```
+
+## Bounded Snowflake generation (step 3.3)
+
+Product and order each inject one eager, process-scoped `IdGenerator` through the
+shared CDI producer in `shardshop-idgen` (`shardshop-core/idgen`). That library
+owns the generator, checked time source, exception and their unit tests in
+`dev.nklip.javacraft.shardshop.idgen`, and declares the Snowflake dependency.
+Its SmallRye/CDI wiring and injection tests live in
+`dev.nklip.javacraft.shardshop.idgen.config`. The generator domain classes have no
+framework imports. Common, sharding, ledger and workloads contain neither
+generator classes nor Snowflake.
+The generator uses the pinned Snowflake 0.0.2 library with epoch `2026-01-01T00:00:00Z`,
+a 41/10/12-bit layout and
+`THROW_EXCEPTION` sequence overflow. A checked `MonotonicTimeSource` validates
+the exact returned millisecond tick before the library masks it; negative ticks
+and ticks at or above `2^41` fail. The last valid millisecond is
+`2095-09-07T15:47:35.551Z`.
+
+`nextId()` returns a positive `long`, or throws the shared
+`IdGenerationUnavailableException` with code `ID_GENERATION_UNAVAILABLE`.
+Sequence exhaustion (4,096 IDs in one millisecond), backwards time, clock-source
+failure and timestamp overflow never return an ID or trigger a spin/retry loop.
+Future HTTP providers must map this exception to 503 and abort their transaction;
+consumer delivery handling remains part of the later service milestones.
+
+Production startup requires `shardshop.id.generator-id`, also configurable through
+`SHARDSHOP_ID_GENERATOR_ID`, in `1..1023`; there is no production default.
+Generator 0 remains reserved for the service-owned fixtures in step 3.6.
+This setting accepts an already reserved ID; it does not reserve or persist one.
+Step 3.4 supplies the durable launcher that must reserve a fresh ID before every
+product/order JVM start. Manual IDs below are only for disposable skeleton smoke
+tests without retained data, not deployment allocations.
+
+Controlled-clock tests exercise concurrency, sequence exhaustion/recovery, source
+failures, backwards time, epoch/layout compatibility, exact timestamp limits and
+the maximum positive `long`. CDI tests check shared instance identity; packaged
+startup tests cover system-property and environment-variable configuration,
+including missing, empty, malformed and out-of-range live IDs. Run the shared
+ID-generation library's unit and CDI suite with
+`mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-core/idgen -am clean verify`.
+Run routing's unit and CDI suite with
+`mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-core/sharding -am clean verify`.
+Run both owners and their shared libraries:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml \
+  -pl shardshop-product,shardshop-order -am clean verify
+```
+
+The six-application audit produces dependency/SBOM reports for ownership checks:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml \
+  -pl shardshop-product,shardshop-order,shardshop-ledger,shardshop-workload/shardshop-product-seeder,shardshop-workload/shardshop-product-reader,shardshop-workload/shardshop-order-producer \
+  -am -Paudit verify
+```
+
+After separating the three libraries under `shardshop-core` on 2026-10-06,
+the clean audit passed 215 unit/startup tests and 40 packaged startup checks, with
+no warnings and 100% line/branch coverage across nine Java modules. Common runs
+79 tests, idgen 30 and sharding 54. Generator classes and Snowflake appear only
+in idgen and product/order classpaths, dependency graphs and SBOMs; only
+product/order application packages contain them. Maven Enforcer rejects direct
+(including optional) and transitive idgen, sharding and Snowflake dependencies
+in unauthorized consumers during `validate`. The audited idgen and sharding dependency graphs remain independent.
+Idgen also has separate direct and transitive rules banning common and sharding,
+including direct optional dependencies; sharding's inherited rules ban idgen.
 
 ## Java and Maven
 
@@ -192,8 +269,8 @@ builds it. These rules are inherited only by ShardShop's children.
 
 Run from the repository root with `JAVA_HOME` already set. Always select a
 ShardShop POM; do not invoke the repository root reactor. Build one application
-with `-pl`; `-am` also builds `shardshop-common`, plus `shardshop-sharding` for
-product and order:
+with `-pl`; `-am` also builds the common, idgen and sharding libraries for product
+and order:
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product -am clean verify
@@ -201,11 +278,14 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product -am clean v
 kubectl --context kind-shardshop -n shardshop get configmap shardshop-routing \
     -o jsonpath='{.data.application\.properties}' > /tmp/shardshop-routing.properties
 export SHARDSHOP_ROUTING_CONFIG=file:/tmp/shardshop-routing.properties
-"$JAVA_HOME/bin/java" -jar microservices/shardshop/shardshop-product/target/quarkus-app/quarkus-run.jar
+# One disposable skeleton smoke launch, without retained IDs/data:
+"$JAVA_HOME/bin/java" -Dshardshop.id.generator-id=1 \
+  -jar microservices/shardshop/shardshop-product/target/quarkus-app/quarkus-run.jar
 ```
 
-Verify all six one at a time, without installing anything. For the JAR launches,
-keep `SHARDSHOP_ROUTING_CONFIG` exported as above:
+Verify all six one at a time, without installing anything. Product/order run their
+packaged startup tests during `verify`; the loop also launches the four packages
+that do not generate IDs:
 
 ```bash
 for module in \
@@ -217,14 +297,20 @@ for module in \
   shardshop-workload/shardshop-order-producer
 do
   mvn -B -ntp -f microservices/shardshop/pom.xml -pl "$module" -am clean verify || exit 1
-  "$JAVA_HOME/bin/java" -jar \
-    "microservices/shardshop/$module/target/quarkus-app/quarkus-run.jar" || exit 1
+  case "$module" in
+    shardshop-ledger|shardshop-workload/*)
+      "$JAVA_HOME/bin/java" -jar \
+        "microservices/shardshop/$module/target/quarkus-app/quarkus-run.jar" || exit 1
+      ;;
+  esac
 done
 ```
 
-Command-mode tests start each application through Quarkus; product/order also
-test CDI injection of their configured topology and router. JaCoCo reports go to
-each application's `target/site/jacoco/`. JVM packages live in `target/quarkus-app/`;
+Command-mode tests start each application through Quarkus. Sharding tests CDI
+injection of the configured topology and router; idgen tests injection of its
+singleton ID generator. Each library owns its test configuration, and
+product/order each verify packaged startup. JaCoCo reports go to each Java module's
+`target/site/jacoco/`. JVM packages live in `target/quarkus-app/`;
 deploy that entire directory and launch `quarkus-run.jar` inside it.
 
 Product/order load the external routing file through `quarkus.config.locations`,
@@ -255,18 +341,31 @@ parent POM explain the aligned JUnit/Netty/Mockito/Lombok properties and name th
 advisory each plugin override fixes.
 No application dependency is added merely because the BOM manages it.
 
-Surefire runs `*Test` during `test`. Product/order each run five packaged routing
-startup cases through Failsafe during **every `verify`**, without a profile or
+Surefire runs `*Test` during `test`. Product/order each run twenty packaged routing
+and generator startup cases through Failsafe during **every `verify`**, without a profile or
 infrastructure. Opt-in `-Pintegration` runs other `*IT` tests and excludes those
 already executed routing cases. Ordinary tests disable automatic Dev Services.
 Surefire/Failsafe supply Mockito's startup agent through their plugin dependencies;
-the six skeleton applications have no direct Mockito dependency because none of
-their tests use it. `shardshop-sharding`
+common and idgen declare Mockito for their controlled-source tests.
+The applications have no direct Mockito dependency. `shardshop-sharding`
 tests its router against golden vectors whose expected shards were computed
 independently. PostgreSQL 18.6 and RabbitMQ 4.3.6 test-image
 properties use the lock's immutable digests. No containers run at this stage;
 Testcontainers dependencies and auxiliary image pins belong to the first tests
 that actually use containers.
+
+Idgen and sharding retain the test JVM option
+`--add-opens=java.base/java.lang.invoke=ALL-UNNAMED`. On 2026-10-06, removing their
+two POM `argLine` properties and running the command below on OpenJDK
+**25+36-3489** with Quarkus **3.40.1** reproduced ten warnings, five per library:
+`Could not get access to jdk.internal.module API` and `FallbackModulesReconfigurer`
+failures to open `java.lang` to `org.jboss.threads`. Tests still passed; restoring
+the option eliminated those bootstrap warnings.
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml \
+  -pl shardshop-product,shardshop-order -am clean verify
+```
 
 For a fast unit-only loop or explicit integration check:
 

@@ -51,12 +51,17 @@ This design embeds Debezium Engine in the existing order relay so it can retain
 the publication bookkeeping and mandatory-routing protocol defined below;
 Kafka and a separate Debezium Server deployment are not required.
 
-There are six top-level Maven modules and six deployable applications. The
-workload module is a POM aggregator containing three applications; product, order,
-and ledger are the other three applications. `shardshop-common` provides shared
-validation and utilities to all applications and the routing library;
-`shardshop-sharding` is used only by product and order. Both libraries are ordinary
-Java JARs with no runtime process. PostgreSQL and RabbitMQ are supporting infrastructure.
+There are five top-level Maven modules and nine Java modules: six deployable
+applications and three library JARs. `shardshop-core` is a POM parent and aggregator
+for `common`, `idgen` and `sharding`. The workload module is a POM aggregator
+containing three applications; product, order and ledger are the other three
+applications. The `shardshop-common` artifact provides shared validation and
+utilities to all applications and `shardshop-sharding`. Only product/order use
+`shardshop-idgen` for bounded ID generation and `shardshop-sharding` for routing.
+Idgen and sharding each own their Quarkus wiring, while their domain classes
+remain free of framework imports. They do not depend on one another. All three
+libraries are ordinary Java JARs with no runtime process. PostgreSQL and RabbitMQ
+are supporting infrastructure.
 
 No module owns a database schema or ships migrations: schemas, roles and
 migrations belong to the database layer described in section 3, and each service
@@ -74,8 +79,7 @@ they never generate, derive, or allocate them locally.
 | 2 | `shardshop-product` | Accept seller and product creation and product reader HTTP requests | Two identical product service pods behind one Kubernetes Service | Creates and reads sellers and products in schema `catalog` of the shared sharded PostgreSQL deployment |
 | 3 | `shardshop-order` | Accept buyer and order HTTP requests, coordinate the saga including stock reservation, and relay captured order-outbox inserts to RabbitMQ | One stateless order service pod initially | Buyers, orders, items, saga state, inbox, outbox, and CDC offsets in schema `ordering`; reads sellers and products and writes stock reservations and product stock in `catalog` |
 | 4 | `shardshop-ledger` | Consume ledger commands and persist order ledger records | One ledger consumer pod plus a separate PostgreSQL pod initially | Schema `ledger` in a dedicated ledger database: entries, decisions, permanent result bindings, inbox, outbox, and command quarantine |
-| 5 | `shardshop-sharding` | Route seller and buyer IDs to shards (section 3) | None; a library inside the product and order services | None |
-| 6 | `shardshop-common` | Shared canonical-ID parsing and UTF-8 SHA-256 utilities | None; a library inside all six applications and the routing library | None |
+| 5 | `shardshop-core` | Aggregate `common` (canonical-ID parsing and UTF-8 SHA-256), `idgen` (bounded Snowflake generation) and `sharding` (seller/buyer routing); idgen and sharding own their SmallRye/CDI wiring (section 3) | No aggregator pod; common is inside all six applications, idgen and sharding are inside product/order | None |
 
 Module 1 contains exactly three independently runnable submodules:
 
@@ -142,21 +146,43 @@ the ledger database itself does not consume RabbitMQ messages.
 
 ### Shared utilities and shard routing
 
-`shardshop-common` owns reusable logic used across ShardShop: `IdParser` validates
+`shardshop-core` is a POM parent and aggregator with three independent library
+responsibilities. `shardshop-common`, in `shardshop-core/common`, owns reusable
+logic used across ShardShop: `IdParser` validates
 canonical positive IDs from text or a current JSON string token, and
 `Sha256.unsignedDigest` hashes unchanged UTF-8 text as an unsigned big-endian
-integer. Their unit tests and boundary vectors live in this module. Add common
-validation and utility logic here when multiple modules need it. The library has
-no Quarkus startup/CDI wiring, application dependencies, shard topology, ID
-generation, database access or messaging. Its JSON parser uses the platform-managed
-Jackson streaming API. All six applications depend on it directly.
+integer. Their unit tests and boundary vectors live in common. Add reusable
+validation and utilities here when multiple modules need them. Common has no
+Quarkus startup/CDI wiring, application dependencies, shard topology, ID generation,
+database access or messaging. Its JSON parser uses the platform-managed Jackson
+streaming API. All six applications depend on common directly.
 
-`shardshop-sharding` depends on `shardshop-common` for digest calculation and owns
-the version-2 routing rule, shard topology and routing golden-vector tests.
-Only product and order depend on this routing library; common has no dependency
-back to sharding, so ledger and workloads receive no shard-routing code. Golden
-digests, shards and currency boundaries are computed independently of the
-implementation; never regenerate expected values with the code under test.
+`shardshop-sharding`, in `shardshop-core/sharding`, depends on `shardshop-common`
+for digest calculation and owns the version-2 routing rule, shard topology and
+routing golden-vector tests. Its `RoutingConfiguration` mapping,
+`ShardRoutingConfiguration` CDI producer and injection tests live in
+`dev.nklip.javacraft.shardshop.sharding.config`.
+
+`shardshop-idgen`, in `shardshop-core/idgen`, owns `IdGenerator`,
+`CheckedTimeSource` and `IdGenerationUnavailableException` in
+`dev.nklip.javacraft.shardshop.idgen`, their unit tests and the Snowflake dependency.
+Its `IdConfiguration` mapping, `IdGenerationConfiguration` CDI producer and
+injection tests live in `dev.nklip.javacraft.shardshop.idgen.config`. Idgen has no
+common or sharding dependency; sharding has no idgen or Snowflake dependency.
+Routing and ID domain classes have no framework imports. Each library owns its
+relevant test properties and has `META-INF/beans.xml` for Quarkus discovery.
+Product and order depend directly on both libraries and retain their own packaged
+startup tests.
+
+Common has no dependency back to idgen or sharding; common, ledger and workloads
+receive no shard-routing classes, generator classes or Snowflake. Maven Enforcer
+rejects direct (including optional) and transitive idgen, sharding and Snowflake
+dependencies in unauthorized consumers, including ledger and workloads. Idgen's
+separate direct and transitive Enforcer rules forbid common and sharding even
+though idgen skips the general ID-ownership rules to use Snowflake. Direct optional
+dependencies are also checked. Golden digests, shards and currency boundaries
+are computed independently of the implementation; never regenerate expected
+values with the code under test.
 
 Applications own their HTTP APIs, DTO/model classes, wire documents, document
 decoding, business validation, persistence types and service-specific tests.
@@ -173,8 +199,10 @@ Proposed source layout:
 ```text
 shardshop/
   pom.xml                         # parent aggregator, no runtime process
-  shardshop-common/               # shared validation and utilities; no service dependencies
-  shardshop-sharding/             # shard routing, used only by product and order
+  shardshop-core/                 # library POM parent and aggregator, no runtime process
+    common/                       # shared validation and utilities; all applications
+    idgen/                        # ID generation and its Quarkus wiring; product/order only
+    sharding/                     # routing and its Quarkus wiring; product/order only
   shardshop-workload/
     shardshop-product-seeder/
     shardshop-product-reader/
@@ -370,7 +398,8 @@ both a command's transport ID and its result's transport ID when committing a
 new command envelope; ledger copies the reserved result ID. Item positions can
 remain order-local integers rather than requiring another global ID.
 
-Use an injected, process-scoped `SnowflakeIdGenerator` configured explicitly with
+Use `shardshop-idgen`'s `IdGenerator` through its shared process-scoped CDI
+producer in each owning service. It wraps `SnowflakeIdGenerator` configured explicitly with
 `createCustom`, a checked wrapper around `MonotonicTimeSource`, `Structure(41, 10, 12)`, and
 `Options.SequenceOverflowStrategy.THROW_EXCEPTION`. The common epoch is
 **2026-01-01T00:00:00Z**. The sign bit stays zero; the remaining bits are a
@@ -1681,7 +1710,7 @@ Acceptance scenarios for implementation:
    region/index/count parameters using the saved topology before first routing
    publication, including a run with no pending versioned migrations. Preserve
    the reservation after publication failure and reuse it on a matching rerun.
-   Run the version-2 routing vectors in `shardshop-sharding`, including values above
+   Run the version-2 routing vectors in `shardshop-core/sharding`, including values above
    2^53 and signed-long boundary checks, and verify that both services route through
    it. Run `verify-topology.sh --routing-only` to compare the same golden fixtures
    with SQL hashing and the deployed seller and buyer placement constraints on
