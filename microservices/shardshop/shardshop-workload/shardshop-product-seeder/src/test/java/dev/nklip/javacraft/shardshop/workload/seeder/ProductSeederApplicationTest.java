@@ -11,8 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class ProductSeederApplicationTest {
 
     @Test
-    @Launch({})
-    void startsAndExitsWithoutExternalServices(LaunchResult result) {
+    @Launch({"--check-startup"})
+    void validatesConfigurationAndExitsWithoutExternalServices(LaunchResult result) {
         assertEquals(0, result.exitCode());
     }
 }

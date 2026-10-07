@@ -16,18 +16,17 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Flow;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -71,16 +70,76 @@ class SeederDatasetsTest {
         assertEquals("POST", sellerRequest.method());
         assertEquals(URI.create("http://product:8080/api/v1/sellers"), sellerRequest.uri());
         assertEquals(seller.key(), sellerRequest.headers().firstValue("Idempotency-Key").orElseThrow());
-        assertEquals(sellerPayload(), json.readTree(body(sellerRequest)));
-        assertEquals(body(sellerRequest), body(requests.getAllValues().get(1)));
+        assertEquals(sellerPayload(), json.readTree(RequestBodies.of(sellerRequest)));
+        assertEquals(RequestBodies.of(sellerRequest), RequestBodies.of(requests.getAllValues().get(1)));
         assertEquals(sellerRequest.headers(), requests.getAllValues().get(1).headers());
         HttpRequest productRequest = requests.getAllValues().get(2);
         assertEquals("POST", productRequest.method());
         assertEquals(URI.create("http://product:8080/api/v1/sellers/" + SELLER_ID + "/products"), productRequest.uri());
         assertEquals(fixture.key(), productRequest.headers().firstValue("Idempotency-Key").orElseThrow());
-        assertEquals(productPayload(), json.readTree(body(productRequest)));
-        assertEquals(body(productRequest), body(requests.getAllValues().getLast()));
+        assertEquals(productPayload(), json.readTree(RequestBodies.of(productRequest)));
+        assertEquals(RequestBodies.of(productRequest), RequestBodies.of(requests.getAllValues().getLast()));
         assertEquals(productRequest.headers(), requests.getAllValues().getLast().headers());
+    }
+
+    @Test
+    void readsAndLooksUpAcknowledgedEntitiesWithoutSendingBodies() throws Exception {
+        assertEquals(CatalogDataset.VERSION, datasets.catalogVersion());
+        assertEquals(catalog.productsBySeller().get(seller.key()), datasets.productsOf(seller));
+        assertEquals(List.of("USD", "EUR"), datasets.productsOf(seller).stream().map(ProductDefinition::currency).toList());
+        SeederDatasets.CreatedSeller createdSeller = new SeederDatasets.CreatedSeller(seller, SELLER_ID, INITIAL_PROFITS);
+        reply(sellerResponse());
+        assertEquals(createdSeller, datasets.readSeller(createdSeller));
+        assertEquals(createdSeller, datasets.lookupSeller(seller));
+        SeederDatasets.CreatedProduct createdProduct = new SeederDatasets.CreatedProduct(fixture, SELLER_ID, PRODUCT_ID, 0);
+        reply(productResponse());
+        assertEquals(createdProduct, datasets.readProduct(createdProduct));
+        assertEquals(createdProduct, datasets.lookupProduct(fixture, createdSeller));
+        ArgumentCaptor<HttpRequest> requests = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http, times(4)).sendAsync(requests.capture(), any());
+        assertEquals(List.of("http://product:8080/api/v1/sellers/" + SELLER_ID,
+                        "http://product:8080/api/v1/sellers/by-key/" + seller.key() + "?region=US",
+                        "http://product:8080/api/v1/sellers/" + SELLER_ID + "/products/" + PRODUCT_ID,
+                        "http://product:8080/api/v1/sellers/" + SELLER_ID + "/products/by-key/" + fixture.key()),
+                requests.getAllValues().stream().map(request -> request.uri().toString()).toList());
+        for (HttpRequest request : requests.getAllValues()) {
+            assertEquals("GET", request.method());
+            assertTrue(request.bodyPublisher().isEmpty());
+            assertTrue(request.headers().firstValue("Idempotency-Key").isEmpty());
+        }
+    }
+
+    @Test
+    void rejectsReadResponsesForAnotherAcknowledgedIdentity() {
+        reply(productResponse().put("sellerId", "1"));
+        SeederDatasets.CreatedProduct createdProduct = new SeederDatasets.CreatedProduct(fixture, SELLER_ID, PRODUCT_ID, 0);
+        assertThrows(IllegalArgumentException.class, () -> datasets.readProduct(createdProduct));
+        reply(sellerResponse().put("region", "EU"));
+        assertThrows(IllegalArgumentException.class, () -> datasets.lookupSeller(seller));
+    }
+
+    @Test
+    void refusesForeignReadsAndInvalidIdsBeforeSending() {
+        SellerDefinition unknownSeller = new SellerDefinition("foreign", seller.companyName(), seller.region());
+        ProductDefinition unknownProduct = new ProductDefinition("foreign", seller.key(), fixture.name(),
+                fixture.description(), fixture.price(), fixture.unitCost(), fixture.currency(), fixture.initialStock());
+        assertThrows(IllegalArgumentException.class, () -> datasets.productsOf(unknownSeller));
+        assertThrows(IllegalArgumentException.class, () -> datasets.lookupSeller(unknownSeller));
+        assertThrows(IllegalArgumentException.class,
+                () -> datasets.readSeller(new SeederDatasets.CreatedSeller(unknownSeller, SELLER_ID, INITIAL_PROFITS)));
+        assertThrows(IllegalArgumentException.class,
+                () -> datasets.readSeller(new SeederDatasets.CreatedSeller(seller, "0", INITIAL_PROFITS)));
+        assertThrows(IllegalArgumentException.class,
+                () -> datasets.readProduct(new SeederDatasets.CreatedProduct(unknownProduct, SELLER_ID, PRODUCT_ID, 0)));
+        assertThrows(IllegalArgumentException.class,
+                () -> datasets.readProduct(new SeederDatasets.CreatedProduct(fixture, " " + SELLER_ID, PRODUCT_ID, 0)));
+        assertThrows(IllegalArgumentException.class,
+                () -> datasets.readProduct(new SeederDatasets.CreatedProduct(fixture, SELLER_ID, "9223372036854775808", 0)));
+        assertThrows(IllegalArgumentException.class, () -> datasets.lookupProduct(fixture,
+                new SeederDatasets.CreatedSeller(catalog.sellers().get(1), SELLER_ID, INITIAL_PROFITS)));
+        assertThrows(IllegalArgumentException.class, () -> datasets.lookupProduct(fixture,
+                new SeederDatasets.CreatedSeller(seller, "-1", INITIAL_PROFITS)));
+        verifyNoInteractions(http);
     }
 
     @Test
@@ -178,19 +237,5 @@ class SeederDatasetsTest {
         when(response.body()).thenReturn(body.toString().getBytes(StandardCharsets.UTF_8));
         when(http.sendAsync(any(HttpRequest.class), org.mockito.ArgumentMatchers.<HttpResponse.BodyHandler<byte[]>>any()))
                 .thenReturn(CompletableFuture.completedFuture(response));
-    }
-
-    private static String body(HttpRequest request) {
-        Flow.Subscriber<ByteBuffer> subscriber = mock();
-        doAnswer(invocation -> {
-            Flow.Subscription subscription = invocation.getArgument(0);
-            subscription.request(Long.MAX_VALUE);
-            return null;
-        }).when(subscriber).onSubscribe(any());
-        request.bodyPublisher().orElseThrow().subscribe(subscriber);
-        ArgumentCaptor<ByteBuffer> bytes = ArgumentCaptor.forClass(ByteBuffer.class);
-        verify(subscriber).onNext(bytes.capture());
-        verify(subscriber).onComplete();
-        return StandardCharsets.UTF_8.decode(bytes.getValue()).toString();
     }
 }

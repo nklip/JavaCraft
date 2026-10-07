@@ -112,8 +112,11 @@ Dataset definitions and service-side creation follow section 3.
    sellers first, then their products with initial stock. Product generates each
    entity ID; the seeder uses the returned seller ID for product creation. It exits
    successfully only after every seller and product has been acknowledged and
-   verified through primary reads. A retry repeats the same creation keys and
-   payloads and recovers the same IDs.
+   verified through primary reads, by returned ID and by creation key. A retry
+   repeats the same creation keys and payloads and recovers the same IDs. Within a
+   run, the seeder sends a request again only after a transport failure or a `503`
+   response, with bounded backoff. Other statuses and reads that differ from the
+   acknowledged ID or payload stop the run.
 3. The startup script waits for that run's Job `Complete` condition with a
    300-second deadline. A failed Job or deadline stops startup; it never starts
    load against a partially seeded dataset. Only after success does it scale the

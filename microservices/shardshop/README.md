@@ -4,11 +4,13 @@
 [Version policy](VERSIONS.md) · [Artifact lock](versions.lock.yaml)
 
 All six applications use **Quarkus 3.40.1** in JVM mode on Java 25.
-Product now runs the seller/product HTTP API from step 3.6; the other entry points
-start CDI and exit. Step 3.5 provides workload-owned dataset definitions and HTTP
-clients; the buyer provider remains step 4.1, and workload loops remain steps
-3.7, 3.8 and 4.7. No Docker or Kubernetes is needed for Maven module tests. The
-separate product-provider acceptance check uses disposable PostgreSQL databases.
+Product now runs the seller/product HTTP API from step 3.6. The product seeder
+from step 3.7 seeds and verifies the catalog through that API and then exits. The
+other entry points start CDI and exit. Step 3.5 provides workload-owned dataset
+definitions and HTTP clients; the buyer provider remains step 4.1, and workload
+loops remain steps 3.8 and 4.7. No Docker or Kubernetes is needed for Maven module
+tests. The separate product-provider and seeder acceptance checks use disposable
+PostgreSQL databases.
 Product/order production
 starts still require the routing snapshot and a live generator ID reserved by
 the startup launcher; tests use disposable configuration.
@@ -290,6 +292,90 @@ catalog checks, and the deployed routing checks passed. V1 remains unchanged.
 The allocation drill passed using `--check-startup`, consumed exactly four slots
 (high-water 8 → 12), and preserved the registry UID, routing and all 14 Cluster/PVC
 identities. Its temporary pods and images were removed.
+
+## Product seeder (step 3.7)
+
+`shardshop-product-seeder` is the finite application for the seeder Job. It sends
+the `catalog-v1` definitions to the product API in dataset order: each seller, and
+then the USD and EUR products of that seller. Each POST has the definition key in
+`Idempotency-Key`. Product requests use the seller ID from the seller response.
+After all creations, the seeder reads each seller and product by its returned ID
+and by its creation key. Each read must return the acknowledged ID and the dataset
+payload. In the default product read profile, these GETs read the primaries.
+
+The seeder keeps no local state. A new run sends the same keys and payloads again.
+Product returns `200` with the stored ID for an entity that exists and creates only
+the missing entities. Thus a run after a partial failure keeps the IDs, home regions
+and payloads that the failed run received.
+
+| Product result | Seeder action |
+|---|---|
+| `201` or `200` with a valid ID and the dataset payload | Keep the returned entity |
+| `503`, a response timeout, or a refused or closed connection | Send the same request again after a backoff, up to `max-attempts` attempts |
+| A different status, an invalid response, or a read with a different ID or payload | Stop the run at once |
+
+The seeder exits with code 0 only after it created and verified all 150 sellers and
+300 products. Then it logs one summary line:
+
+```text
+Seeded and verified catalog-v1 [US 50 sellers, 100 products {USD=50, EUR=50}; EU 50 sellers, 100 products {USD=50, EUR=50}; ASIA 50 sellers, 100 products {USD=50, EUR=50}], key-to-ID SHA-256 <hex>
+```
+
+The digest is the SHA-256 of one `key=sellerId` line per seller and one
+`key=sellerId/productId` line per product, each with LF, in dataset order. Equal
+digests show that two runs recovered the same IDs. A failure logs one error line
+with the operation, the creation key, and the HTTP status and error code or the
+failure type. Then the seeder exits with code 1. Log lines contain no response payloads.
+
+| Property | Default | Purpose |
+|---|---|---|
+| `shardshop.seeder.product-url` | None. Startup fails without it | Base URL of the product Service |
+| `shardshop.seeder.catalog-version` | `catalog-v1` | Dataset version. Other versions fail before HTTP |
+| `shardshop.seeder.connect-timeout` | `2s` | HTTP/1.1 connection deadline |
+| `shardshop.seeder.request-timeout` | `5s` | Complete deadline of one attempt, including the response body |
+| `shardshop.seeder.max-attempts` | `5` | Attempts for each request, 1–10 |
+| `shardshop.seeder.retry-backoff` | `500ms` | First delay. Each failed attempt doubles it |
+| `shardshop.seeder.max-retry-backoff` | `5s` | Maximum delay |
+
+With the defaults, one request stops after a maximum of approximately 33 seconds.
+The Job deadline of 300 seconds (step 3.9) limits the complete run. Environment
+variables such as `SHARDSHOP_SEEDER_PRODUCT_URL` also set these properties.
+`--check-startup` validates the configuration and exits without HTTP requests.
+The Kubernetes Job and the seeding gate of the startup script are step 3.9.
+
+Build the product and seeder packages, and then run the isolated acceptance check
+(the Python environment is prepared in
+[contract validation](#http-and-message-contracts-step-31)):
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-workload/shardshop-product-seeder -am -Paudit clean verify
+docker run -d --name shardshop-seeder-check -p 127.0.0.1:55437:5432 \
+  -e POSTGRES_PASSWORD=shardshop-test-only \
+  docker.io/library/postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+/tmp/shardshop-contract-validation/bin/python -B \
+  microservices/shardshop/scripts/verify-product-seeder.py shardshop-seeder-check
+docker rm -f shardshop-seeder-check
+```
+
+The check uses the provider harness of step 3.6: four disposable shard databases
+(two US) and its own product JVMs. It does not connect to the kind lab. It holds
+the advisory lock of `catalog-v1.EU.seller.10`, so the first seeder run fails with
+`503` after 59 sellers and 118 products. After a product restart with a new
+generator ID, a complete run must keep those rows unchanged. Two complete runs
+must store identical rows and log the same digest. The script calculates the
+expected payloads from the dataset TSVs and the digest from the stored IDs. It
+also checks seller ID routes, creation-key homes, product colocation and zero
+USD/EUR profits. A last run against product with unavailable replica reads must
+fail and leave the rows unchanged.
+
+Verification on **2026-10-07**: the scoped audit build passes 717 unit/startup
+tests and 24 packaged product startup checks, with no warnings at the normal log
+level. The 48 seeder tests cover 100% of the seeder's 192 lines and 74 branches.
+The isolated check passed: the blocked run stopped after 59 sellers and 118
+products, two complete runs then stored identical rows, and the replica-profile run
+failed. One complete seeder JVM run took 3.9 seconds. The seeder POM and its
+dependencies are unchanged (147 SBOM components). The kind lab was not used,
+because product deployment and the seeder Job are step 3.9.
 
 ## HTTP and message contracts (step 3.1)
 
