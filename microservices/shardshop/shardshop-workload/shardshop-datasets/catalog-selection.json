@@ -1,0 +1,1081 @@
+{
+  "datasetVersion": "catalog-v1",
+  "source": {
+    "title": "Brand Finance Global 500 2026",
+    "measure": "Published global brand-value rank; a proxy for company popularity, not a company sales or popularity ranking.",
+    "extractedInputSha256": "4f8c508c3cda1d0472f538e35eba89ba1d53843929b3b24e4f9904f8826a3cf7",
+    "provenanceDocument": "SOURCES.md"
+  },
+  "selectionRule": [
+    "Sort all 500 source entries by ascending published global rank.",
+    "Keep US entries for US, EU27-country entries for EU, and China/Vietnam/South Korea/Japan entries for ASIA.",
+    "Retain the published country classification for included entries; it is not a reassignment to legal incorporation or current headquarters.",
+    "Exclude Taiwan and Hong Kong brands explicitly listed below even when the source aggregates them under China.",
+    "Map obvious platform/product brands to the company names below, then keep only the first occurrence of each mapped company within a region.",
+    "Stop at 50 companies per region; retain the original best brand rank, without renumbering or summing brand values.",
+    "Leave other published company/group/trading names unchanged; this is not an exhaustive ultimate-parent consolidation.",
+    "Do not impose country quotas; eligible countries may have zero selected companies.",
+    "Synthetic catalog products do not represent actual products sold by the named companies."
+  ],
+  "eligibleCountryCodes": {
+    "US": [
+      "US"
+    ],
+    "EU": [
+      "AT",
+      "BE",
+      "BG",
+      "CY",
+      "CZ",
+      "DE",
+      "DK",
+      "EE",
+      "ES",
+      "FI",
+      "FR",
+      "GR",
+      "HR",
+      "HU",
+      "IE",
+      "IT",
+      "LT",
+      "LU",
+      "LV",
+      "MT",
+      "NL",
+      "PL",
+      "PT",
+      "RO",
+      "SE",
+      "SI",
+      "SK"
+    ],
+    "ASIA": [
+      "CN",
+      "JP",
+      "KR",
+      "VN"
+    ]
+  },
+  "brandToCompany": {
+    "Facebook": "Meta Platforms",
+    "Instagram": "Meta Platforms",
+    "Google": "Alphabet",
+    "YouTube": "Alphabet",
+    "Chase": "JPMorgan Chase",
+    "JPMorgan": "JPMorgan Chase",
+    "JP Morgan": "JPMorgan Chase",
+    "Xfinity": "Comcast",
+    "UnitedHealthcare": "UnitedHealth Group",
+    "T": "Deutsche Telekom",
+    "TikTok/Douyin": "ByteDance",
+    "WeChat": "Tencent",
+    "Tencent": "Tencent",
+    "Taobao": "Alibaba Group",
+    "Tmall": "Alibaba Group",
+    "au": "KDDI"
+  },
+  "explicitTerritoryExclusions": [
+    {
+      "brand": "TSMC",
+      "rank": 47,
+      "sourceCountryCode": "CN",
+      "excludedTerritory": "Taiwan"
+    },
+    {
+      "brand": "AIA",
+      "rank": 174,
+      "sourceCountryCode": "CN",
+      "excludedTerritory": "Hong Kong"
+    },
+    {
+      "brand": "MediaTek",
+      "rank": 451,
+      "sourceCountryCode": "CN",
+      "excludedTerritory": "Taiwan"
+    }
+  ],
+  "additionalMappingEvidence": {
+    "Alibaba Group": "https://home.alibabagroup.com/en-US/document-1796373087252381696",
+    "KDDI": "https://www.kddi.com/english/corporate/ir/finance/about-kddi-business/"
+  },
+  "regions": {
+    "US": {
+      "resource": "src/main/resources/datasets/catalog-v1/US.tsv",
+      "rowCount": 50,
+      "countryCounts": {
+        "US": 50
+      },
+      "lastSelectedGlobalRank": 103,
+      "skippedDuplicateBrandsBeforeCutoff": [
+        {
+          "brand": "Instagram",
+          "rank": 13,
+          "companyName": "Meta Platforms",
+          "retainedRank": 9
+        },
+        {
+          "brand": "YouTube",
+          "rank": 49,
+          "companyName": "Alphabet",
+          "retainedRank": 3
+        },
+        {
+          "brand": "JP Morgan",
+          "rank": 53,
+          "companyName": "JPMorgan Chase",
+          "retainedRank": 39
+        }
+      ],
+      "excludedTerritoryBrandsBeforeCutoff": [],
+      "resourceSha256": "986ccd29a9a8edfd0f446e9bc2e4120b942b1c4220e0f261687366f932ca84a9",
+      "selectedCompanies": [
+        {
+          "companyName": "Apple",
+          "countryCode": "US",
+          "rank": 1,
+          "sourceBrand": "Apple"
+        },
+        {
+          "companyName": "Microsoft",
+          "countryCode": "US",
+          "rank": 2,
+          "sourceBrand": "Microsoft"
+        },
+        {
+          "companyName": "Alphabet",
+          "countryCode": "US",
+          "rank": 3,
+          "sourceBrand": "Google"
+        },
+        {
+          "companyName": "Amazon",
+          "countryCode": "US",
+          "rank": 4,
+          "sourceBrand": "Amazon"
+        },
+        {
+          "companyName": "NVIDIA",
+          "countryCode": "US",
+          "rank": 5,
+          "sourceBrand": "NVIDIA"
+        },
+        {
+          "companyName": "Walmart",
+          "countryCode": "US",
+          "rank": 7,
+          "sourceBrand": "Walmart"
+        },
+        {
+          "companyName": "Meta Platforms",
+          "countryCode": "US",
+          "rank": 9,
+          "sourceBrand": "Facebook"
+        },
+        {
+          "companyName": "Home Depot",
+          "countryCode": "US",
+          "rank": 15,
+          "sourceBrand": "Home Depot"
+        },
+        {
+          "companyName": "Verizon",
+          "countryCode": "US",
+          "rank": 16,
+          "sourceBrand": "Verizon"
+        },
+        {
+          "companyName": "Oracle",
+          "countryCode": "US",
+          "rank": 18,
+          "sourceBrand": "Oracle"
+        },
+        {
+          "companyName": "American Express",
+          "countryCode": "US",
+          "rank": 23,
+          "sourceBrand": "American Express"
+        },
+        {
+          "companyName": "UnitedHealth Group",
+          "countryCode": "US",
+          "rank": 24,
+          "sourceBrand": "UnitedHealthcare"
+        },
+        {
+          "companyName": "AT&T",
+          "countryCode": "US",
+          "rank": 25,
+          "sourceBrand": "AT&T"
+        },
+        {
+          "companyName": "Costco",
+          "countryCode": "US",
+          "rank": 26,
+          "sourceBrand": "Costco"
+        },
+        {
+          "companyName": "Disney",
+          "countryCode": "US",
+          "rank": 29,
+          "sourceBrand": "Disney"
+        },
+        {
+          "companyName": "Uber",
+          "countryCode": "US",
+          "rank": 30,
+          "sourceBrand": "Uber"
+        },
+        {
+          "companyName": "Bank of America",
+          "countryCode": "US",
+          "rank": 34,
+          "sourceBrand": "Bank of America"
+        },
+        {
+          "companyName": "Coca-Cola",
+          "countryCode": "US",
+          "rank": 37,
+          "sourceBrand": "Coca-Cola"
+        },
+        {
+          "companyName": "JPMorgan Chase",
+          "countryCode": "US",
+          "rank": 39,
+          "sourceBrand": "Chase"
+        },
+        {
+          "companyName": "VISA",
+          "countryCode": "US",
+          "rank": 40,
+          "sourceBrand": "VISA"
+        },
+        {
+          "companyName": "Deloitte",
+          "countryCode": "US",
+          "rank": 42,
+          "sourceBrand": "Deloitte"
+        },
+        {
+          "companyName": "McDonald's",
+          "countryCode": "US",
+          "rank": 43,
+          "sourceBrand": "McDonald's"
+        },
+        {
+          "companyName": "accenture",
+          "countryCode": "US",
+          "rank": 44,
+          "sourceBrand": "accenture"
+        },
+        {
+          "companyName": "Wells Fargo",
+          "countryCode": "US",
+          "rank": 46,
+          "sourceBrand": "Wells Fargo"
+        },
+        {
+          "companyName": "Lowe's",
+          "countryCode": "US",
+          "rank": 48,
+          "sourceBrand": "Lowe's"
+        },
+        {
+          "companyName": "Starbucks",
+          "countryCode": "US",
+          "rank": 51,
+          "sourceBrand": "Starbucks"
+        },
+        {
+          "companyName": "Citi",
+          "countryCode": "US",
+          "rank": 56,
+          "sourceBrand": "Citi"
+        },
+        {
+          "companyName": "Cisco",
+          "countryCode": "US",
+          "rank": 62,
+          "sourceBrand": "Cisco"
+        },
+        {
+          "companyName": "Mastercard",
+          "countryCode": "US",
+          "rank": 63,
+          "sourceBrand": "Mastercard"
+        },
+        {
+          "companyName": "UPS",
+          "countryCode": "US",
+          "rank": 68,
+          "sourceBrand": "UPS"
+        },
+        {
+          "companyName": "Capital One",
+          "countryCode": "US",
+          "rank": 71,
+          "sourceBrand": "Capital One"
+        },
+        {
+          "companyName": "Tesla",
+          "countryCode": "US",
+          "rank": 75,
+          "sourceBrand": "Tesla"
+        },
+        {
+          "companyName": "Netflix",
+          "countryCode": "US",
+          "rank": 76,
+          "sourceBrand": "Netflix"
+        },
+        {
+          "companyName": "Target",
+          "countryCode": "US",
+          "rank": 77,
+          "sourceBrand": "Target"
+        },
+        {
+          "companyName": "PWC",
+          "countryCode": "US",
+          "rank": 79,
+          "sourceBrand": "PWC"
+        },
+        {
+          "companyName": "Nike",
+          "countryCode": "US",
+          "rank": 80,
+          "sourceBrand": "Nike"
+        },
+        {
+          "companyName": "ExxonMobil",
+          "countryCode": "US",
+          "rank": 83,
+          "sourceBrand": "ExxonMobil"
+        },
+        {
+          "companyName": "IBM Group",
+          "countryCode": "US",
+          "rank": 84,
+          "sourceBrand": "IBM Group"
+        },
+        {
+          "companyName": "Progressive",
+          "countryCode": "US",
+          "rank": 86,
+          "sourceBrand": "Progressive"
+        },
+        {
+          "companyName": "FedEx",
+          "countryCode": "US",
+          "rank": 88,
+          "sourceBrand": "FedEx"
+        },
+        {
+          "companyName": "CVS",
+          "countryCode": "US",
+          "rank": 89,
+          "sourceBrand": "CVS"
+        },
+        {
+          "companyName": "Comcast",
+          "countryCode": "US",
+          "rank": 90,
+          "sourceBrand": "Xfinity"
+        },
+        {
+          "companyName": "General Electric",
+          "countryCode": "US",
+          "rank": 92,
+          "sourceBrand": "General Electric"
+        },
+        {
+          "companyName": "Boeing",
+          "countryCode": "US",
+          "rank": 93,
+          "sourceBrand": "Boeing"
+        },
+        {
+          "companyName": "Enterprise",
+          "countryCode": "US",
+          "rank": 94,
+          "sourceBrand": "Enterprise"
+        },
+        {
+          "companyName": "Dell Technologies",
+          "countryCode": "US",
+          "rank": 95,
+          "sourceBrand": "Dell Technologies"
+        },
+        {
+          "companyName": "Goldman Sachs",
+          "countryCode": "US",
+          "rank": 97,
+          "sourceBrand": "Goldman Sachs"
+        },
+        {
+          "companyName": "Ford",
+          "countryCode": "US",
+          "rank": 98,
+          "sourceBrand": "Ford"
+        },
+        {
+          "companyName": "Broadcom",
+          "countryCode": "US",
+          "rank": 102,
+          "sourceBrand": "Broadcom"
+        },
+        {
+          "companyName": "Caterpillar",
+          "countryCode": "US",
+          "rank": 103,
+          "sourceBrand": "Caterpillar"
+        }
+      ]
+    },
+    "EU": {
+      "resource": "src/main/resources/datasets/catalog-v1/EU.tsv",
+      "rowCount": 50,
+      "countryCounts": {
+        "AT": 1,
+        "DE": 16,
+        "DK": 1,
+        "ES": 3,
+        "FR": 19,
+        "IT": 4,
+        "NL": 3,
+        "SE": 3
+      },
+      "lastSelectedGlobalRank": 246,
+      "skippedDuplicateBrandsBeforeCutoff": [],
+      "excludedTerritoryBrandsBeforeCutoff": [],
+      "resourceSha256": "ab980bc8cca39de57942f2fc97fb56ee5833e16cb5ccd323ce91514c05b0d2ba",
+      "selectedCompanies": [
+        {
+          "companyName": "Deutsche Telekom",
+          "countryCode": "DE",
+          "rank": 11,
+          "sourceBrand": "T"
+        },
+        {
+          "companyName": "Allianz Group",
+          "countryCode": "DE",
+          "rank": 21,
+          "sourceBrand": "Allianz Group"
+        },
+        {
+          "companyName": "Mercedes-Benz",
+          "countryCode": "DE",
+          "rank": 36,
+          "sourceBrand": "Mercedes-Benz"
+        },
+        {
+          "companyName": "BMW",
+          "countryCode": "DE",
+          "rank": 41,
+          "sourceBrand": "BMW"
+        },
+        {
+          "companyName": "SAP",
+          "countryCode": "DE",
+          "rank": 50,
+          "sourceBrand": "SAP"
+        },
+        {
+          "companyName": "Volkswagen",
+          "countryCode": "DE",
+          "rank": 54,
+          "sourceBrand": "Volkswagen"
+        },
+        {
+          "companyName": "Porsche",
+          "countryCode": "DE",
+          "rank": 57,
+          "sourceBrand": "Porsche"
+        },
+        {
+          "companyName": "Chanel",
+          "countryCode": "FR",
+          "rank": 59,
+          "sourceBrand": "Chanel"
+        },
+        {
+          "companyName": "Louis Vuitton",
+          "countryCode": "FR",
+          "rank": 70,
+          "sourceBrand": "Louis Vuitton"
+        },
+        {
+          "companyName": "Santander",
+          "countryCode": "ES",
+          "rank": 73,
+          "sourceBrand": "Santander"
+        },
+        {
+          "companyName": "Airbus",
+          "countryCode": "FR",
+          "rank": 82,
+          "sourceBrand": "Airbus"
+        },
+        {
+          "companyName": "Siemens Group",
+          "countryCode": "DE",
+          "rank": 87,
+          "sourceBrand": "Siemens Group"
+        },
+        {
+          "companyName": "Hermès",
+          "countryCode": "FR",
+          "rank": 99,
+          "sourceBrand": "Hermès"
+        },
+        {
+          "companyName": "TotalEnergies",
+          "countryCode": "FR",
+          "rank": 110,
+          "sourceBrand": "TotalEnergies"
+        },
+        {
+          "companyName": "Aldi Süd",
+          "countryCode": "DE",
+          "rank": 115,
+          "sourceBrand": "Aldi Süd"
+        },
+        {
+          "companyName": "Zara",
+          "countryCode": "ES",
+          "rank": 119,
+          "sourceBrand": "Zara"
+        },
+        {
+          "companyName": "Adidas",
+          "countryCode": "DE",
+          "rank": 120,
+          "sourceBrand": "Adidas"
+        },
+        {
+          "companyName": "Orange",
+          "countryCode": "FR",
+          "rank": 121,
+          "sourceBrand": "Orange"
+        },
+        {
+          "companyName": "Lidl",
+          "countryCode": "DE",
+          "rank": 126,
+          "sourceBrand": "Lidl"
+        },
+        {
+          "companyName": "BNP Paribas",
+          "countryCode": "FR",
+          "rank": 130,
+          "sourceBrand": "BNP Paribas"
+        },
+        {
+          "companyName": "Generali Group",
+          "countryCode": "IT",
+          "rank": 131,
+          "sourceBrand": "Generali Group"
+        },
+        {
+          "companyName": "AXA",
+          "countryCode": "FR",
+          "rank": 132,
+          "sourceBrand": "AXA"
+        },
+        {
+          "companyName": "Audi",
+          "countryCode": "DE",
+          "rank": 136,
+          "sourceBrand": "Audi"
+        },
+        {
+          "companyName": "LEGO",
+          "countryCode": "DK",
+          "rank": 138,
+          "sourceBrand": "LEGO"
+        },
+        {
+          "companyName": "Bosch",
+          "countryCode": "DE",
+          "rank": 140,
+          "sourceBrand": "Bosch"
+        },
+        {
+          "companyName": "EDF",
+          "countryCode": "FR",
+          "rank": 149,
+          "sourceBrand": "EDF"
+        },
+        {
+          "companyName": "Cartier",
+          "countryCode": "FR",
+          "rank": 154,
+          "sourceBrand": "Cartier"
+        },
+        {
+          "companyName": "BBVA",
+          "countryCode": "ES",
+          "rank": 163,
+          "sourceBrand": "BBVA"
+        },
+        {
+          "companyName": "IKEA",
+          "countryCode": "SE",
+          "rank": 170,
+          "sourceBrand": "IKEA"
+        },
+        {
+          "companyName": "Ferrari",
+          "countryCode": "IT",
+          "rank": 173,
+          "sourceBrand": "Ferrari"
+        },
+        {
+          "companyName": "Heineken",
+          "countryCode": "NL",
+          "rank": 186,
+          "sourceBrand": "Heineken"
+        },
+        {
+          "companyName": "ING",
+          "countryCode": "NL",
+          "rank": 189,
+          "sourceBrand": "ING"
+        },
+        {
+          "companyName": "L'Oréal",
+          "countryCode": "FR",
+          "rank": 192,
+          "sourceBrand": "L'Oréal"
+        },
+        {
+          "companyName": "Vinci",
+          "countryCode": "FR",
+          "rank": 193,
+          "sourceBrand": "Vinci"
+        },
+        {
+          "companyName": "Intesa Sanpaolo",
+          "countryCode": "IT",
+          "rank": 205,
+          "sourceBrand": "Intesa Sanpaolo"
+        },
+        {
+          "companyName": "Philips",
+          "countryCode": "NL",
+          "rank": 206,
+          "sourceBrand": "Philips"
+        },
+        {
+          "companyName": "Red Bull",
+          "countryCode": "AT",
+          "rank": 208,
+          "sourceBrand": "Red Bull"
+        },
+        {
+          "companyName": "Enel",
+          "countryCode": "IT",
+          "rank": 213,
+          "sourceBrand": "Enel"
+        },
+        {
+          "companyName": "Dior",
+          "countryCode": "FR",
+          "rank": 215,
+          "sourceBrand": "Dior"
+        },
+        {
+          "companyName": "Carrefour",
+          "countryCode": "FR",
+          "rank": 218,
+          "sourceBrand": "Carrefour"
+        },
+        {
+          "companyName": "Engie",
+          "countryCode": "FR",
+          "rank": 220,
+          "sourceBrand": "Engie"
+        },
+        {
+          "companyName": "DHL",
+          "countryCode": "DE",
+          "rank": 223,
+          "sourceBrand": "DHL"
+        },
+        {
+          "companyName": "Decathlon",
+          "countryCode": "FR",
+          "rank": 226,
+          "sourceBrand": "Decathlon"
+        },
+        {
+          "companyName": "E.Leclerc",
+          "countryCode": "FR",
+          "rank": 229,
+          "sourceBrand": "E.Leclerc"
+        },
+        {
+          "companyName": "Spotify",
+          "countryCode": "SE",
+          "rank": 233,
+          "sourceBrand": "Spotify"
+        },
+        {
+          "companyName": "Rewe",
+          "countryCode": "DE",
+          "rank": 234,
+          "sourceBrand": "Rewe"
+        },
+        {
+          "companyName": "BASF",
+          "countryCode": "DE",
+          "rank": 235,
+          "sourceBrand": "BASF"
+        },
+        {
+          "companyName": "Volvo",
+          "countryCode": "SE",
+          "rank": 237,
+          "sourceBrand": "Volvo"
+        },
+        {
+          "companyName": "Capgemini",
+          "countryCode": "FR",
+          "rank": 240,
+          "sourceBrand": "Capgemini"
+        },
+        {
+          "companyName": "Michelin",
+          "countryCode": "FR",
+          "rank": 246,
+          "sourceBrand": "Michelin"
+        }
+      ]
+    },
+    "ASIA": {
+      "resource": "src/main/resources/datasets/catalog-v1/ASIA.tsv",
+      "rowCount": 50,
+      "countryCounts": {
+        "CN": 32,
+        "JP": 14,
+        "KR": 4
+      },
+      "lastSelectedGlobalRank": 212,
+      "skippedDuplicateBrandsBeforeCutoff": [
+        {
+          "brand": "WeChat",
+          "rank": 33,
+          "companyName": "Tencent",
+          "retainedRank": 27
+        }
+      ],
+      "excludedTerritoryBrandsBeforeCutoff": [
+        "TSMC",
+        "AIA"
+      ],
+      "resourceSha256": "bb55a3757cf535cdd3c46562cdb65ef0c278d27ddae046f18dbfbe8476517593",
+      "selectedCompanies": [
+        {
+          "companyName": "ByteDance",
+          "countryCode": "CN",
+          "rank": 6,
+          "sourceBrand": "TikTok/Douyin"
+        },
+        {
+          "companyName": "Samsung Group",
+          "countryCode": "KR",
+          "rank": 8,
+          "sourceBrand": "Samsung Group"
+        },
+        {
+          "companyName": "State Grid Corporation of China",
+          "countryCode": "CN",
+          "rank": 10,
+          "sourceBrand": "State Grid Corporation of China"
+        },
+        {
+          "companyName": "ICBC",
+          "countryCode": "CN",
+          "rank": 12,
+          "sourceBrand": "ICBC"
+        },
+        {
+          "companyName": "China Construction Bank",
+          "countryCode": "CN",
+          "rank": 14,
+          "sourceBrand": "China Construction Bank"
+        },
+        {
+          "companyName": "Bank of China",
+          "countryCode": "CN",
+          "rank": 17,
+          "sourceBrand": "Bank of China"
+        },
+        {
+          "companyName": "Agricultural Bank of China",
+          "countryCode": "CN",
+          "rank": 19,
+          "sourceBrand": "Agricultural Bank of China"
+        },
+        {
+          "companyName": "Toyota",
+          "countryCode": "JP",
+          "rank": 20,
+          "sourceBrand": "Toyota"
+        },
+        {
+          "companyName": "Moutai",
+          "countryCode": "CN",
+          "rank": 22,
+          "sourceBrand": "Moutai"
+        },
+        {
+          "companyName": "Tencent",
+          "countryCode": "CN",
+          "rank": 27,
+          "sourceBrand": "Tencent"
+        },
+        {
+          "companyName": "China Mobile",
+          "countryCode": "CN",
+          "rank": 31,
+          "sourceBrand": "China Mobile"
+        },
+        {
+          "companyName": "Ping An",
+          "countryCode": "CN",
+          "rank": 32,
+          "sourceBrand": "Ping An"
+        },
+        {
+          "companyName": "Hyundai Group",
+          "countryCode": "KR",
+          "rank": 38,
+          "sourceBrand": "Hyundai Group"
+        },
+        {
+          "companyName": "NTT Group",
+          "countryCode": "JP",
+          "rank": 45,
+          "sourceBrand": "NTT Group"
+        },
+        {
+          "companyName": "Mitsubishi Group",
+          "countryCode": "JP",
+          "rank": 52,
+          "sourceBrand": "Mitsubishi Group"
+        },
+        {
+          "companyName": "Petrochina",
+          "countryCode": "CN",
+          "rank": 55,
+          "sourceBrand": "Petrochina"
+        },
+        {
+          "companyName": "Huawei",
+          "countryCode": "CN",
+          "rank": 58,
+          "sourceBrand": "Huawei"
+        },
+        {
+          "companyName": "Sumitomo Group",
+          "countryCode": "JP",
+          "rank": 64,
+          "sourceBrand": "Sumitomo Group"
+        },
+        {
+          "companyName": "Mitsui Group",
+          "countryCode": "JP",
+          "rank": 65,
+          "sourceBrand": "Mitsui Group"
+        },
+        {
+          "companyName": "Sinopec Group",
+          "countryCode": "CN",
+          "rank": 66,
+          "sourceBrand": "Sinopec Group"
+        },
+        {
+          "companyName": "CATL",
+          "countryCode": "CN",
+          "rank": 67,
+          "sourceBrand": "CATL"
+        },
+        {
+          "companyName": "SK Group",
+          "countryCode": "KR",
+          "rank": 72,
+          "sourceBrand": "SK Group"
+        },
+        {
+          "companyName": "China Merchants Bank",
+          "countryCode": "CN",
+          "rank": 74,
+          "sourceBrand": "China Merchants Bank"
+        },
+        {
+          "companyName": "Honda",
+          "countryCode": "JP",
+          "rank": 78,
+          "sourceBrand": "Honda"
+        },
+        {
+          "companyName": "Wuliangye",
+          "countryCode": "CN",
+          "rank": 81,
+          "sourceBrand": "Wuliangye"
+        },
+        {
+          "companyName": "CSCEC",
+          "countryCode": "CN",
+          "rank": 85,
+          "sourceBrand": "CSCEC"
+        },
+        {
+          "companyName": "JD.com",
+          "countryCode": "CN",
+          "rank": 101,
+          "sourceBrand": "JD.com"
+        },
+        {
+          "companyName": "China Life",
+          "countryCode": "CN",
+          "rank": 104,
+          "sourceBrand": "China Life"
+        },
+        {
+          "companyName": "LG Group",
+          "countryCode": "KR",
+          "rank": 112,
+          "sourceBrand": "LG Group"
+        },
+        {
+          "companyName": "China CITIC Bank",
+          "countryCode": "CN",
+          "rank": 128,
+          "sourceBrand": "China CITIC Bank"
+        },
+        {
+          "companyName": "Postal Savings Bank",
+          "countryCode": "CN",
+          "rank": 134,
+          "sourceBrand": "Postal Savings Bank"
+        },
+        {
+          "companyName": "BYD",
+          "countryCode": "CN",
+          "rank": 142,
+          "sourceBrand": "BYD"
+        },
+        {
+          "companyName": "PICC",
+          "countryCode": "CN",
+          "rank": 145,
+          "sourceBrand": "PICC"
+        },
+        {
+          "companyName": "CRECG",
+          "countryCode": "CN",
+          "rank": 151,
+          "sourceBrand": "CRECG"
+        },
+        {
+          "companyName": "Hitachi",
+          "countryCode": "JP",
+          "rank": 153,
+          "sourceBrand": "Hitachi"
+        },
+        {
+          "companyName": "Nongfu Spring",
+          "countryCode": "CN",
+          "rank": 160,
+          "sourceBrand": "Nongfu Spring"
+        },
+        {
+          "companyName": "MUFG",
+          "countryCode": "JP",
+          "rank": 161,
+          "sourceBrand": "MUFG"
+        },
+        {
+          "companyName": "Sony",
+          "countryCode": "JP",
+          "rank": 166,
+          "sourceBrand": "Sony"
+        },
+        {
+          "companyName": "Bank of Communications",
+          "countryCode": "CN",
+          "rank": 167,
+          "sourceBrand": "Bank of Communications"
+        },
+        {
+          "companyName": "CPIC",
+          "countryCode": "CN",
+          "rank": 168,
+          "sourceBrand": "CPIC"
+        },
+        {
+          "companyName": "Yili",
+          "countryCode": "CN",
+          "rank": 172,
+          "sourceBrand": "Yili"
+        },
+        {
+          "companyName": "Pinduoduo",
+          "countryCode": "CN",
+          "rank": 184,
+          "sourceBrand": "Pinduoduo"
+        },
+        {
+          "companyName": "SoftBank",
+          "countryCode": "JP",
+          "rank": 190,
+          "sourceBrand": "SoftBank"
+        },
+        {
+          "companyName": "China Telecom",
+          "countryCode": "CN",
+          "rank": 194,
+          "sourceBrand": "China Telecom"
+        },
+        {
+          "companyName": "JR",
+          "countryCode": "JP",
+          "rank": 196,
+          "sourceBrand": "JR"
+        },
+        {
+          "companyName": "7-Eleven",
+          "countryCode": "JP",
+          "rank": 198,
+          "sourceBrand": "7-Eleven"
+        },
+        {
+          "companyName": "Japan Post Holdings",
+          "countryCode": "JP",
+          "rank": 202,
+          "sourceBrand": "Japan Post Holdings"
+        },
+        {
+          "companyName": "CRCC",
+          "countryCode": "CN",
+          "rank": 204,
+          "sourceBrand": "CRCC"
+        },
+        {
+          "companyName": "Alibaba Group",
+          "countryCode": "CN",
+          "rank": 210,
+          "sourceBrand": "Taobao"
+        },
+        {
+          "companyName": "KDDI",
+          "countryCode": "JP",
+          "rank": 212,
+          "sourceBrand": "au"
+        }
+      ]
+    }
+  }
+}

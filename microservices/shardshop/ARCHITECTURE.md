@@ -51,10 +51,11 @@ This design embeds Debezium Engine in the existing order relay so it can retain
 the publication bookkeeping and mandatory-routing protocol defined below;
 Kafka and a separate Debezium Server deployment are not required.
 
-There are five top-level Maven modules and nine Java modules: six deployable
-applications and three library JARs. `shardshop-core` is a POM parent and aggregator
+There are five top-level Maven modules and ten Java modules: six deployable
+applications and four library JARs. `shardshop-core` is a POM parent and aggregator
 for `common`, `idgen` and `sharding`. The workload module is a POM aggregator
-containing three applications; product, order and ledger are the other three
+containing three applications and the ID-free `shardshop-datasets` library;
+product, order and ledger are the other three
 applications. The `shardshop-common` artifact provides shared validation and
 utilities to all applications and `shardshop-sharding`. Only product/order use
 `shardshop-idgen` for bounded ID generation and `shardshop-sharding` for routing.
@@ -90,26 +91,29 @@ Module 1 contains exactly three independently runnable submodules:
 | `shardshop-product-reader` | Generate many concurrent product reads through module 2 to load the database | Its own Deployment with one pod |
 | `shardshop-order-producer` | Create its buyers, generate their orders, submit them to module 3 over HTTP, and observe their status | Its own Deployment with one pod |
 
-Each workload app uses configuration, IDs returned by product/order APIs, and
-bounded in-memory business state. Workloads have no ID generator, Snowflake
+Each workload app uses local ID-free dataset definitions, IDs returned by
+product/order APIs, and bounded in-memory business state. Workloads have no ID generator, Snowflake
 dependency, generator-allocation launcher or allocator permissions. They have no
 direct SQL connections or persistent tables, including inbox/outbox tables. Each
-has its own request rate, concurrency limit, and resource budget. They discover
-the same fixed product dataset through the product API; no manifest file is
-shared between modules. Dataset size chooses a deterministic subset; a retry
-reuses the IDs issued by the owning service. Dataset discovery and service-side
-identifier allocation follow section 3.
+has its own request rate, concurrency limit, and resource budget. The pure `shardshop-datasets` library under `shardshop-workload` contains all
+dataset definitions. It fixes payloads and creation retry keys, never entity IDs.
+Only workload applications depend on it; service/core modules contain no datasets.
+A retry repeats the original creation key/payload and recovers the same
+service-issued ID. Readers resolve persisted IDs by creation key through ordinary
+resource lookups; no runtime manifest is shared between applications.
+Dataset definitions and service-side creation follow section 3.
 
 ### Workload lifecycle
 
 1. Start the infrastructure and product, order, and ledger services. Keep reader
    and order producer Deployments at zero replicas.
 2. Run `shardshop-product-seeder` as a Job with `restartPolicy: Never`,
-   `backoffLimit: 3`, and `activeDeadlineSeconds: 300`. Its idempotent PUTs seed
-   the sellers first, then their products with initial stock, using the IDs
-   obtained from the product service's dataset API. It exits
+   `backoffLimit: 3`, and `activeDeadlineSeconds: 300`. Its idempotent POSTs seed
+   sellers first, then their products with initial stock. Product generates each
+   entity ID; the seeder uses the returned seller ID for product creation. It exits
    successfully only after every seller and product has been acknowledged and
-   verified through primary reads. A retry uses the same IDs.
+   verified through primary reads. A retry repeats the same creation keys and
+   payloads and recovers the same IDs.
 3. The startup script waits for that run's Job `Complete` condition with a
    300-second deadline. A failed Job or deadline stops startup; it never starts
    load against a partially seeded dataset. Only after success does it scale the
@@ -195,6 +199,11 @@ running applications adopt a common change when their rebuilt artifacts are
 deployed. This couples release qualification without introducing a shared runtime
 service or requiring simultaneous deployment for wire-compatible changes.
 
+Step 3.5 places generic bounded JSON HTTP transport and strict field readers
+in common. It contains no datasets or service wire models. The workload-owned
+dataset library holds ID-free definitions; each application owns its service
+response decoding and request construction.
+
 Proposed source layout:
 
 ```text
@@ -205,6 +214,7 @@ shardshop/
     idgen/                        # ID generation and its Quarkus wiring; product/order only
     sharding/                     # routing and its Quarkus wiring; product/order only
   shardshop-workload/
+    shardshop-datasets/            # ID-free definitions; workload consumers only
     shardshop-product-seeder/
     shardshop-product-reader/
     shardshop-order-producer/
@@ -220,9 +230,9 @@ shardshop/
 The owner-local, self-contained wire documents now define the planned providers:
 
 - [Product OpenAPI](shardshop-product/src/main/resources/contracts/openapi.yaml):
-  seller/product fixtures and creation/read operations.
+  seller/product creation/read operations and lookup by creation key.
 - [Order OpenAPI](shardshop-order/src/main/resources/contracts/openapi.yaml):
-  buyer fixtures, buyer creation, durable order allocations and order status.
+  buyer creation, durable order allocations and order status.
 - [RecordOrder schema](shardshop-order/src/main/resources/contracts/record-order.schema.json):
   order's outgoing command and immutable catalog snapshot.
 - [Ledger result schema](shardshop-ledger/src/main/resources/contracts/ledger-result.schema.json):
@@ -233,10 +243,19 @@ the implementing steps will enforce issuance, arithmetic, stored-state and
 cross-envelope relationships. These documents are not shared runtime files or
 generated client models. Clients retain their own DTOs and document decoding.
 
-The concrete wire choices are version-pinned `/api/v1/datasets/{datasetVersion}`
-collections (`sellers`, `products`, or `buyers`), immutable `creationPayload`
-descriptors, bounded pages and opaque cursors. Money uses exact fixed-two-decimal
-strings. Allocation `requestOrdinal` is a nonnegative decimal string through the
+Seller/product/buyer creation uses POST with ID-free payloads and a stable
+`Idempotency-Key` header. Product/order generate the IDs and return them in
+entity responses. Read-only lookups by creation key recover catalog IDs.
+Dataset versions and definitions stay inside workload modules; services expose
+no dataset API. Sellers are companies with `companyName`, `region` and read-only
+`profitsEarned` currency balances. Products add `description` and `unitCost` to
+their name, price, currency and stock fields. Buyers are people with `firstName`,
+`surname`, `email`, `phone`, `address` (`line1`, `city`, `postalCode`, `countryCode`)
+and `region`. Creation accepts only the immutable payload; seller balances are
+service-owned and never supplied or reset by workloads. Prices/costs are
+nonnegative fixed-two-decimal strings; profit balances are signed canonical
+fixed-two-decimal strings, excluding negative zero. Allocation `requestOrdinal`
+is a nonnegative decimal string through the
 signed-long maximum, preserving retry-coordinate precision without making it an
 application ID. Orders allow at most 1,000 distinct seller/product pairs; duplicate
 pairs are invalid, and item order participates in the normalized fingerprint.
@@ -253,7 +272,8 @@ a published nanosecond instant into a different replay instant.
 Product store failures and unknown commits return `503 CATALOG_UNAVAILABLE`;
 strict replica failures use `503 READ_REPLICA_UNAVAILABLE`.
 
-Reject NUL and unpaired UTF-16 surrogates in names/run names before IO; correctly
+Reject NUL and unpaired UTF-16 surrogates in company/person names, descriptions,
+address text and run names before IO; correctly
 paired supplementary Unicode characters remain valid. Integer-valued JSON numbers
 such as `2`, `2.0` and `2e0` normalize to the same integer. Validate exact decimal
 values and ranges before conversion: `2.5` must never truncate to `2`. Fingerprints
@@ -450,8 +470,9 @@ separate ID for a ledger entry already uniquely identified by its order ID.
 
 ### Generator identity across processes and restarts
 
-Reserve generator **0** for deterministic fixtures generated inside product and
-order only, in disjoint timestamp ranges for each entity type. For this finite local
+Generator **0** remains reserved for historical illustrative fixtures and is
+never used by live processes or workloads. Workload datasets contain no IDs;
+all newly created entities use service live generators. For this finite local
 lab, a named `shardshop-snowflake-generators` ConfigMap keeps a monotonically
 increasing allocation counter for live IDs **1-1023**. A startup launcher reserves
 one fresh ID with a Kubernetes resource-version compare-and-set before **every
@@ -500,27 +521,69 @@ existing retry/DLQ path. Workload generation backs off with a bounded budget.
 Once an ID has been assigned to a logical request, transient failures never
 replace it with another ID.
 
-### Service-issued IDs, reproducible datasets, and routing
+### Workload datasets, service-issued IDs, and routing
 
-Product derives the fixed dataset of sellers and products with this same library and
-layout, generator 0, and an injected deterministic millisecond `TimeSource` whose
-first timestamp is above zero. A versioned dataset configuration fixes the
-timestamp/sequence schedule, seller and product counts, each product's seller and
-initial stock, the USD/EUR split within each region, and payload rules; reserve
-disjoint timestamp ranges for future dataset versions. Each seller's immutable
-`region` is the region of its ID's routed shard, derived by product; each product
-inherits its seller's region and has no independent region field or selector.
-Product exposes a paginated dataset API returning those IDs, seller/product
-relationships, seller regions, and immutable fixture payloads for a configured
-dataset version. Seeder, reader and order producer obtain that
-data over HTTP; they never reimplement the derivation or construct IDs. Dataset
-changes may select subsets but must never assign a different seller or product
-payload to an existing ID. Order similarly derives buyer fixtures in a disjoint
-reserved timestamp range, derives each buyer's immutable `region` from its routed
-shard, and exposes the IDs, regions, and immutable creation payloads through its
-own dataset API. The producer obtains those descriptors before creating buyers.
-The dataset APIs describe fixtures; creation still uses the owning service's PUT endpoints. Live
-generators never use generator 0.
+All dataset definitions live in the pure `shardshop-datasets` library under
+`shardshop-workload`. `catalog-v1` defines 50 company sellers per region (150
+in total), with two synthetic products per seller, USD then EUR (300 products).
+`buyers-v1` defines 1,000 synthetic person profiles per region (3,000 buyers).
+Regional TSVs live under the module's `src/main/resources/datasets/catalog-v1/`
+and `datasets/buyers-v1/`, with `US.tsv`, `EU.tsv` and `ASIA.tsv` in each.
+
+EU covers the EU27 single market; ASIA is limited to China, Vietnam, South Korea
+and Japan. Published brand value is the proxy for company popularity, with
+company deduplication; it is not a sales ranking. Name/surname coverage and
+selection limitations are explicit in the workload module's
+[`SOURCES.md`](shardshop-workload/shardshop-datasets/SOURCES.md). Profiles do not
+identify verified people. Email local parts normalize first name and surname to
+ASCII and use the reserved domains `example.com`, `example.net` or `example.org`.
+All regions reuse numbers from the fictional NANPA range
+`+12025550100`–`+12025550199`, so phone formats do not indicate the buyer's country.
+Phone and postal address values are stable across restarts. ASIA name pools
+contain plausible names from MIT-licensed Faker lists for the four countries;
+they do not claim population-frequency rankings.
+
+Each definition contains a stable creation retry key and its immutable payload.
+Regional groups are exposed by `sellersByRegion()` and `buyersByRegion()`;
+`productsBySeller()` groups products by their local seller key until creation
+returns a real seller ID. The library contains no entity IDs, generator, clock,
+shard router, service wire models or runtime dependencies. Versioned keys include
+the region and ordinal, for example `catalog-v1.US.seller.1` and
+`buyers-v1.US.buyer.1`. Both datasets are the initial unreleased v1. Edits before
+their first release or use keep that version; subsequent payload changes require
+new keys/version, and no retained key can be reused with a different payload.
+Unsupported versions fail locally. See the
+[dataset runbook](README.md#workload-owned-datasets-and-service-issued-ids-step-35).
+
+Workloads send `POST /api/v1/sellers`,
+`POST /api/v1/sellers/{sellerId}/products`, and `POST /api/v1/buyers` with an
+`Idempotency-Key` and ID-free creation payload. Product/order generate and persist
+the entity ID. Requested seller/buyer home regions are immutable after creation;
+the service selects a new ID whose version-2 route matches the requested region.
+Candidate generation is bounded; failure returns `503 ID_GENERATION_UNAVAILABLE`
+without partial creation. Products inherit their seller's region and have no
+independent region field.
+
+A creation retry key is not an ID. Keys are scoped by entity collection and
+requested home region for sellers/buyers, or by parent seller ID for products.
+The service durably stores the key, normalized creation payload and generated ID
+atomically. A retry, including after a lost response or process restart, returns
+the existing ID with `200`; first creation returns `201`, and a different payload
+under the same scope/key returns `409`. Retries reuse the original region/key.
+Creation-key retention must match entity retention, and existing retries must
+work without generating another ID. Steps 3.6/4.1 must first add the corresponding
+unique keys and lookup indexes through fix-forward database-layer migrations,
+alongside the enriched company/product/person fields. Existing V1 migrations
+remain immutable; no v1 HTTP provider has persisted earlier dataset payloads.
+A dataset version may select subsets, but never changes a retained key's payload.
+
+Reader and order producer load the same local definitions and resolve persisted
+catalog IDs through `GET /api/v1/sellers/by-key/{creationKey}?region=US` and
+`GET /api/v1/sellers/{sellerId}/products/by-key/{creationKey}`. These are ordinary
+entity lookups, returning `404` when absent; they do not publish fixture definitions
+or create data. Each application owns its response models, validates the response
+against the requested definition, and preserves returned canonical string IDs.
+The seeding gate requires successful primary reads before starting load.
 
 Before submitting a live order, the producer calls
 `POST /api/v1/buyers/{buyerId}/order-allocations` with its configured run name and
@@ -543,16 +606,14 @@ The allocation endpoint returns `201` for a new mapping and `200` for a retry,
 unavailable store or unknown commit, and `503 ID_GENERATION_UNAVAILABLE` if a new
 ID cannot be generated. Existing allocations require no new ID generation.
 
-Creation APIs accept only IDs issued for the addressed entity and parent by the
-owning service: product validates its seller/product fixture mapping, order its
-buyer fixture mapping and durable order allocation. Reject an unissued ID or a
-wrong parent with `400 INVALID_REQUEST`. Seller and buyer creation payloads
-include the service-issued home `region`; reject a missing/unknown region or one
-that differs from the issued fixture and routed shard with `400 INVALID_REQUEST`.
-Regions use only uppercase `US`, `EU`, and `ASIA`; they cannot be chosen or changed
-by the caller. Canonical numeric formatting alone is not proof of issuance.
-Service tests cover issuance and retry behavior; workload
-tests use recorded API responses and assert that IDs are forwarded unchanged.
+Seller/product/buyer POSTs contain no new entity ID. Services validate creation
+payloads, creation retry keys, supported home regions and existing product parents.
+Workloads cannot choose or derive a generated ID. Reads and order requests use
+the IDs returned by services; order acceptance validates its durable allocation
+and buyer binding, rejecting unissued/wrong-buyer order IDs with
+`400 INVALID_REQUEST`. Service tests cover generation, persisted key/payload
+conflicts and restart recovery; workload tests use arbitrary recorded response
+IDs and assert unchanged forwarding.
 
 Sellers and buyers use the same routing rule with their own Snowflake IDs,
 implemented once in `shardshop-sharding`. Sellers may create products only on
@@ -953,7 +1014,7 @@ not enforce confirmed publication or retention windows.
 
 ### Catalog: sellers, products, and stock
 
-`catalog.sellers` holds a seller's positive `BIGINT` ID, name, and immutable
+The implemented V1 `catalog.sellers` holds a seller's positive `BIGINT` ID, name, and immutable
 `region` (`US`, `EU`, or `ASIA`). `V1__catalog.sql` creates the region column with
 its default from the validated `shardRegion` Flyway placeholder and named checks
 that require the deployed region and an ID that hashes to this shard. The latter
@@ -984,6 +1045,13 @@ key and seller placement checks prevent product creation on another region's
 shard, even through the catalog writer's SQL privileges. Runtime grants allow no
 updates to seller identity or region. Placement is enforced by the table
 constraints and needs no function execution grants.
+
+The enriched HTTP model requires fix-forward catalog migrations in step 3.6 for
+`companyName`, product `description`/`unitCost`, creation-key mappings and
+service-owned profit storage. Keep the deployed V1 checksums intact. Step 4.1
+similarly adds buyer person/contact/address fields and durable creation keys to
+ordering, plus immutable unit-cost snapshots on accepted order items. Existing
+V1 tables and grants do not yet implement these fields or profit crediting.
 
 The implemented `ordering.buyers` table likewise persists an immutable home region
 and enforces the deployed region and ID placement. Orders and all their local
@@ -1039,31 +1107,52 @@ replenished pool, as Shopify describes; the lab does not need it. Sources:
 
 ## 4. Product generation and read load
 
-Proposed HTTP contract. Product's dataset API issues seller/product fixture IDs
-before these calls; workloads only forward the returned IDs. Creation checks
-issuance, the seller/product association, and the immutable seller home region.
-Data calls route by seller ID; product payloads expose no independent region or
-shard selector:
+Proposed HTTP contract. Product generates seller/product IDs when workloads
+send ID-free payloads. There are no embedded datasets or fixture-ID whitelists.
+Creation requires a stable `Idempotency-Key`; data calls route by returned seller
+ID. Product payloads expose no independent region or shard selector:
 
-- `PUT /api/v1/sellers/{sellerId}` creates an immutable seller with the issued
-  `region`. A missing/unknown or mismatched fixture/home region returns
-  `400 INVALID_REQUEST` before IO. Valid requests return `201` on creation,
-  `200` for an identical retry, and `409` for conflicting ID reuse.
+- `POST /api/v1/sellers` creates a company seller with requested `companyName` and immutable
+  `region`; product chooses an ID routed to that region. Invalid regions return
+  `400 INVALID_REQUEST`. Success returns the generated ID with `201`; an identical
+  durable key/payload retry returns `200`, conflicting key reuse returns `409`.
+  Responses contain current `profitsEarned` balances, initially zero in USD/EUR;
+  retries preserve these service-owned amounts.
 - `GET /api/v1/sellers/{sellerId}` returns the seller or `404`.
-- `PUT /api/v1/sellers/{sellerId}/products/{productId}` creates a product with its
-  initial stock only on its seller's home-region shard. It inherits the seller's
-  region. Return `201` on creation, `200` for an identical retry, `409` for
-  conflicting ID reuse, and `422 SELLER_NOT_FOUND` when the seller does not exist.
-  A retry is compared with the stored creation payload, including the initial
-  stock, so later stock changes never turn a retry into a conflict.
-- `GET /api/v1/sellers/{sellerId}/products/{productId}` returns the product with its
+- `GET /api/v1/sellers/by-key/{creationKey}?region=US` recovers the seller ID by
+  its persisted creation key and region, returning the seller or `404`.
+- `POST /api/v1/sellers/{sellerId}/products` creates a product with a generated ID
+  and immutable name, description, price, unit cost, currency and initial stock
+  on its seller's home shard. Return `201`, `200` for an
+  identical key/payload retry, `409` for conflicting key reuse, and
+  `422 SELLER_NOT_FOUND` when the seller does not exist. Compare the original
+  initial stock on retries, preserving any current stock changed by orders.
+- `GET /api/v1/sellers/{sellerId}/products/{productId}` returns the product with
   current stock, or `404`.
+- `GET /api/v1/sellers/{sellerId}/products/by-key/{creationKey}` recovers that
+  same stored product and generated ID without creating anything.
 
 All endpoints validate the canonical positive decimal ID contract before IO;
 invalid path/body IDs return `400 INVALID_REQUEST`. Product JSON uses string IDs
 and storage uses `BIGINT`, including the seller and product references in order
 items. Stock changes only through the order saga's reservations; no HTTP endpoint
-changes it.
+changes it. Product descriptions are nonblank and at most 2,000 Unicode scalar
+values. Unit cost uses the product's currency and may exceed its price.
+
+Seller profit is the sum of `(snapshotted unitPrice - unitCost) × quantity` for
+confirmed sales, retained separately for each currency. USD/EUR balances begin
+at `0.00`; other uppercase three-letter currency balances are allowed. A loss is
+negative; no exchange conversion or cross-currency netting occurs. Workloads
+only read these balances. They never seed a balance or infer profit from stock.
+
+Profit persistence and posting belong to future provider/saga steps. Order
+acceptance must save immutable unit-cost snapshots in ordering before a sale can
+be credited. Confirmation must create a durable credit intent; application to the
+seller's shard needs a durable per-order/item identity so retries and replay
+cannot double-credit. Pending, reserved, cancelled and rejected orders earn no
+profit. This cross-shard work requires explicit recovery and least-privilege
+storage/grant migrations; the existing order role cannot update seller balances.
+No profit engine or changed message snapshot is introduced by the dataset step.
 
 ### HTTP connection policy
 
@@ -1094,11 +1183,11 @@ sequenceDiagram
     participant Primary as Selected shard primary
     participant Replica as One of its replicas
 
-    Producer->>Service: PUT seller, then its products, with stable IDs
+    Producer->>Service: POST company, then its products, with stable retry keys
     Service->>API: Forward on the connection's selected backend
-    API->>Primary: Insert or verify identical retry on the seller's shard
+    API->>Primary: Commit generated IDs and payloads, or recover identical retry
     Primary-->>API: Commit complete
-    API-->>Producer: 201 Created or 200 OK
+    API-->>Producer: 201 Created or 200 OK, retaining service-issued IDs
     Primary-->>Replica: Replicate WAL
 
     loop Configured request rate and bounded concurrency
@@ -1139,15 +1228,19 @@ Module 3 is the saga coordinator. The workflow uses local database transactions
 and asynchronous commands/results; there is no transaction spanning PostgreSQL,
 RabbitMQ, and the ledger database.
 
-Buyers are created through the order service using its buyer dataset IDs and
-issued home regions. Buyers may purchase from any region, while their home region
-determines order storage. The producer obtains an order ID through the allocation API before constructing the
-order request. Order routes every buyer and order call by the buyer ID:
+Buyers are created through order from workload-owned person definitions containing
+first name, surname, email, phone, postal address and region.
+Order generates the buyer ID routed to its requested home region. Buyers may
+purchase from any region, while their home region determines order storage.
+The producer obtains an order ID through the allocation API before constructing
+the order request. Later buyer/order calls route by returned buyer ID:
 
-- `PUT /api/v1/buyers/{buyerId}` creates an immutable buyer with its issued
-  `region`. A missing/unknown or mismatched fixture/home region returns
-  `400 INVALID_REQUEST` before IO; valid requests return `201` on creation,
-  `200` for an identical retry, `409` for conflicting ID reuse.
+- `POST /api/v1/buyers` creates an immutable buyer using `Idempotency-Key` and an
+  ID-free person/contact/address/region payload. Missing/unknown regions return
+  `400 INVALID_REQUEST`. Names and address text are nonblank; email uses the
+  contract's ASCII form, and phone is `+` followed by 7–15 ASCII digits.
+  Success returns the generated buyer ID with `201`; an identical persisted
+  key/payload retry returns `200`, conflicting key reuse returns `409`.
   `GET /api/v1/buyers/{buyerId}` returns the buyer or `404`.
 - `PUT /api/v1/buyers/{buyerId}/orders/{orderId}` places an order with a stable
   order-service-issued Snowflake ID and immutable creation payload; each item names
@@ -1165,7 +1258,7 @@ order request. Order routes every buyer and order call by the buyer ID:
 | Condition | Response | Retry behavior |
 |---|---|---|
 | Noncanonical/out-of-range Snowflake ID, numeric JSON ID, malformed body, empty items, non-positive quantity, invalid currency code | `400 INVALID_REQUEST` | Correct the request |
-| Creation ID was not issued by its owning service, belongs to another parent, or seller/buyer region differs from the issued home region | `400 INVALID_REQUEST` | Use the owning service's ID and immutable fixture payload |
+| Order ID was not allocated by order or belongs to another buyer; a creation region/key or payload is invalid | `400 INVALID_REQUEST` | Use service-returned IDs and the original valid creation key/payload |
 | The buyer does not exist on its reachable primary | `422 BUYER_NOT_FOUND` | Create the buyer first |
 | A product is absent under its seller on the seller's reachable primary | `422 PRODUCT_NOT_FOUND` | Seed or correct the seller and product IDs |
 | Items use different currencies | `422 MIXED_CURRENCIES` | Submit an order in one currency |
@@ -1709,7 +1802,8 @@ Acceptance scenarios for implementation:
    routing and Kubernetes labels, with unchanged version-2 ID routes. Reject
    malformed regions, misaligned configuration, and reassignment of a published
    shard region; reject missing version hashes in either ConfigMap. Verify seller
-   and buyer immutable regions, rejecting a wrong issued region with HTTP 400.
+   and buyer immutable regions: reject unsupported requested regions with HTTP
+   400 and generate IDs whose routes match accepted home regions.
    Each seller's products and reservations stay on its home shard, and each
    buyer's orders on its home shard. Reject wrong-shard seller IDs or regions and
    foreign-region product creation at the database boundary. Exercise buyers in
@@ -1801,9 +1895,10 @@ Acceptance scenarios for implementation:
     Concurrent JVM starts, rolling replacements, and container restarts must obtain
     distinct generator allocations. Test lost CAS responses, stale/missing registry,
     and allocation exhaustion without emitting duplicates. Verify registry retention
-    during backup/restore. Rerun service-side dataset generation and seeding with
-    the same configuration and assert identical product IDs/payloads and
-    seller/buyer home regions; retries preserve the service-issued descriptors.
+    during backup/restore. Rerun workload definitions and creation requests with
+    the same keys/payloads; durable service state must return identical entity
+    IDs and home regions. Verify conflicting key reuse, concurrent creation and
+    unknown commit recovery, plus read-only lookup of persisted catalog IDs.
     Workloads
     obtain IDs only from APIs, have no generator dependency or allocator access,
     and preserve returned IDs on retries. Lost allocation responses, concurrent

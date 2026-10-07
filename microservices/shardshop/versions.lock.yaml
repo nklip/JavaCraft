@@ -718,6 +718,29 @@ maven:
       shardshop-product-reader: 141
       shardshop-order-producer: 141
     dependency_change: The shardshop-core POM groups common, idgen and sharding. Common supplies validation and hashing to all six applications and sharding. Idgen owns the generator, Snowflake 0.0.2 dependency and ID configuration/producer; sharding owns routing and its configuration/producer. Their tests and beans.xml files stay with each library. Only product/order consume idgen and sharding, and neither library depends on the other. Common and idgen use Mockito in tests; no application runtime contains Mockito. Common, sharding, ledger and workloads contain no generator classes or Snowflake dependency. Plugin startup agents remain.
+  dataset_qualification:
+    checked_on: '2026-10-07'
+    milestone: '3.5'
+    build: All six applications, three core libraries and the workload dataset library pass the scoped clean verify with audit; 100% line and branch coverage across ten Java modules, no warnings
+    unit_client_startup_tests: 559
+    packaged_startup_tests: 48
+    retained_datasets: catalog-v1 and buyers-v1; 50 company sellers, 100 described/costed products and 1000 person buyers per region; EU27 addresses and 250 buyers each in CN, VN, KR and JP; both datasets remain the initial unreleased v1
+    dataset_evidence: shardshop-workload/shardshop-datasets/source-manifest.json pins source and retained resource hashes; SOURCES.md documents ranking limitations and public-domain US Census, CC BY 4.0 Onomaverse and MIT Faker name sources; source notices and licenses are packaged in the dataset JAR
+    fixture_checks: All 150 seller, 300 product and 3000 buyer creation payloads pass API schemas; name/email correspondence, region coverage, unique emails at reserved example domains, shared fictional NANPA phone numbers and stable regeneration hashes pass
+    client_checks: Mocked HTTP tests verify ID-free POST payloads, stable retry keys across client restarts, unchanged service-returned IDs above 2^53, creation-key lookups, parent bindings and bounded strict JSON transport; rejected responses retain status and optional validated error code without response text, including malformed error bodies; providers remain planned in steps 3.6 and 4.1
+    contract_checks: Two OpenAPI documents, 64 inline examples, 51 response examples, two message schemas, three message examples and 424 boundary cases pass; packaged contracts match sources
+    sbom_components:
+      shardshop-common: 16
+      shardshop-idgen: 143
+      shardshop-sharding: 143
+      shardshop-ledger: 143
+      shardshop-order: 146
+      shardshop-product: 146
+      shardshop-datasets: 13
+      shardshop-order-producer: 147
+      shardshop-product-reader: 147
+      shardshop-product-seeder: 147
+    boundaries: Only workload application packages contain shardshop-datasets; services and core contain no dataset classes/resources. Direct, optional and transitive dataset dependency probes are rejected outside workloads. Workload and ledger packages contain no idgen, sharding or Snowflake JAR; no REST extension, Vert.x, Netty or Mockito runtime is packaged
   override_review: pom.xml comments name the advisory each plugin override fixes.
   plugin_dependency_overrides:
     org.apache.maven.plugins:maven-resources-plugin:
@@ -1108,11 +1131,26 @@ maven:
         concurrency, bounded overflow, clock failure and timestamp-boundary tests.
       support_refs:
       - snowflake_exception
+  step_3_5_workload_dependencies:
+    checked_on: '2026-10-07'
+    review_by: '2026-11-04'
+    platform: io.quarkus.platform:quarkus-bom:3.40.1
+    scope: ID-free datasets in the workload-only shardshop-datasets library; Jackson tree decoding and JDK HTTP creation/lookup transport in common; no service wire models in common
+    verification: Local artifact bytes match Maven Central SHA-1; SHA-256 independently computed; no REST extension, Vert.x or Netty runtime is resolved
+    support_and_advisories:
+      quarkus: Existing 3.40 LTS policy applies through 2027-09-30
+      jackson: Databind 2.21.7 fixes GHSA-wv8q-qhhj-9h54 and GHSA-cxp5-3px4-pw24; no polymorphic binding is enabled by the new clients
+    sources:
+    - https://github.com/FasterXML/jackson-databind/security/advisories/GHSA-wv8q-qhhj-9h54
+    - https://github.com/FasterXML/jackson-databind/security/advisories/GHSA-cxp5-3px4-pw24
+    artifacts:
+      com.fasterxml.jackson.core:jackson-databind: {"version":"2.21.7","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.21.7/jackson-databind-2.21.7.jar","sha256":"1290c2795e93e8a6861a6c4d9ff0d844d32f5ea178362cb2721edf5561e828b1","published_checksum":{"algorithm":"sha1","value":"a2ebbc72e3092323f0f3defa786ff3bb0c47218c","url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.21.7/jackson-databind-2.21.7.jar.sha1"}}
+      com.fasterxml.jackson.core:jackson-annotations: {"version":"2.21","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.21/jackson-annotations-2.21.jar","sha256":"53ca085f4a150f703f49e1aabd935bd03b43e1ea3d55d135438292af22cef56b","published_checksum":{"algorithm":"sha1","value":"b1bc1868bf02dc0bd6c7836257a036a331005309","url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.21/jackson-annotations-2.21.jar.sha1"}}
   quarkus_dependency_snapshot:
     source_coordinate: io.quarkus.platform:quarkus-bom:3.40.1
-    checked_on: '2026-10-06'
+    checked_on: '2026-10-07'
     review_by: '2026-11-04'
-    status: Step 3.3 common/generator/routing/application families checked against effective POMs and SBOMs; Snowflake belongs to the generator library and product/order only, Mockito is test-only in common and generator libraries, plus the plugin test agent
+    status: Step 3.5 common/generator/routing/application families checked against effective POMs and SBOMs; Snowflake belongs to the generator library and product/order only, Mockito is test-only in common, idgen and workloads, plus the plugin test agent
     quarkus: 3.40.1
     junit_jupiter: 6.1.3
     plugin_test_agent_mockito: 5.21.0
@@ -1122,6 +1160,8 @@ maven:
     jboss_logmanager: 3.2.2.Final
     slf4j: 2.0.18
     managed_netty_not_resolved: 4.1.138.Final
+    jackson_databind: 2.21.7
+    jackson_annotations: '2.21'
     lombok_processor: 1.18.46
   plugin_prerelease_exception:
     owner: io.quarkus.platform:quarkus-maven-plugin:3.40.1

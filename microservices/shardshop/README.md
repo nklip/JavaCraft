@@ -3,15 +3,13 @@
 [Architecture](ARCHITECTURE.md) · [Implementation plan](PLAN.md) ·
 [Version policy](VERSIONS.md) · [Artifact lock](versions.lock.yaml)
 
-All six application skeletons use **Quarkus 3.40.1** in JVM mode on Java 25.
-[Step 0.5](PLAN.md#milestone-0-supported-baseline-and-project-skeleton) migrated
-their dependency injection, configuration, tests and packaging. Each application
-starts its CDI container and exits through `QuarkusApplication.run()`; no HTTP
-server, database connection, messaging, seeding, or load generation is implemented
-yet. No Docker or Kubernetes is
-needed to build or test these skeletons. Product and order now require a routing
-configuration file and a live generator ID reserved by the startup launcher;
-tests supply their own disposable fixtures.
+All six applications use **Quarkus 3.40.1** in JVM mode on Java 25.
+Their entry points currently start CDI and exit. Step 3.5 provides workload-owned
+dataset definitions and HTTP client methods; database-backed creation/lookup
+providers arrive in steps 3.6 and 4.1, and workload loops in steps 3.7, 3.8 and 4.7.
+No Docker or Kubernetes is needed for these module tests. Product/order production
+starts still require the routing snapshot and a live generator ID reserved by
+the startup launcher; tests use disposable configuration.
 
 | Maven module | Quarkus application class |
 |---|---|
@@ -22,45 +20,152 @@ tests supply their own disposable fixtures.
 | `shardshop-workload/shardshop-product-reader` | `dev.nklip.javacraft.shardshop.workload.reader.ProductReaderApplication` |
 | `shardshop-workload/shardshop-order-producer` | `dev.nklip.javacraft.shardshop.workload.producer.OrderProducerApplication` |
 
-The ShardShop parent has five children and nine Java modules: six applications
-and three library JARs. `shardshop-core` is a POM parent and aggregator for
-`common`, `idgen` and `sharding`. Their artifact IDs are `shardshop-common`,
-`shardshop-idgen` and `shardshop-sharding`. Common holds reusable validation and
-utilities, including `IdParser` and `Sha256`; all six applications and sharding
-depend on it. Idgen owns bounded ID generation; sharding owns the shard-routing
-rule and topology. Each owns its relevant SmallRye configuration mappings, CDI
-producers and tests. Only product and order depend on idgen and sharding, and
-neither library depends on the other. Each has `META-INF/beans.xml` for bean
-discovery. Common has no Quarkus or generator dependency. ID and routing domain
-classes remain free of framework imports; their Quarkus wiring lives in
-`dev.nklip.javacraft.shardshop.idgen.config` and
-`dev.nklip.javacraft.shardshop.sharding.config`, respectively. The libraries have
-no independent services; idgen also supplies the product/order startup launcher.
-`shardshop-workload` aggregates its three applications and
-has no executable code. Applications have no dependencies on one another and own
-their API, DTO/model and wire documents.
+The ShardShop parent has five children and ten Java modules: six applications
+and four library JARs. `shardshop-core` aggregates `common`, `idgen` and `sharding`.
+Common provides canonical ID parsing, SHA-256 and bounded JSON HTTP transport;
+it contains no dataset definitions or service wire models. Only product/order
+use idgen and sharding; their plain domain classes and Quarkus configuration
+remain separate. Workloads and ledger have no Snowflake dependency, generator
+launcher or allocator access. Only product/order create entity and message IDs.
 
-The regional model assigns `shard-a` to US, `shard-b` to EU, and `shard-c` to
-ASIA. Sellers create products only on their home shard; buyers may buy from any
-region, including multiple regions in one order under the existing currency and
-stock rules. Service-issued seller/buyer fixtures carry immutable home regions
-derived from their ID routes; products inherit their seller's region.
+`shardshop-workload` aggregates the three applications and the pure Java
+`shardshop-datasets` library. This library contains **all workload datasets** and
+has no runtime dependencies. Only workload applications consume it. Product,
+order, ledger and the core libraries do not package dataset classes or resources.
+Applications do not depend on one another and own their service request/response
+models. All six still depend on common directly.
 
-The target architecture permits ID creation only in `shardshop-product` and
-`shardshop-order`. Product issues seller/product IDs; order issues buyer/order,
-saga, command and message IDs, including ledger result IDs. Workload modules
-obtain IDs through service APIs and reuse them on retries; they never generate
-IDs or derive fixture IDs. Ledger reuses IDs supplied by order. Workloads and
-ledger have no Snowflake dependency or generator-allocator access. Step 3.1 defines
-the wire contracts below; the APIs remain planned. Step 3.3 implements bounded
-live generators. The current applications are still skeletons.
+The regional model assigns `shard-a=US`, `shard-b=EU`, and `shard-c=ASIA`.
+Seller/buyer creation requests specify an immutable home region. The service
+generates an ID whose route matches that region; products inherit their seller's
+region. Buyers may purchase across regions under the currency and stock rules.
+There are no service dataset endpoints or fixture-ID whitelists.
+
+## Workload-owned datasets and service-issued IDs (step 3.5)
+
+All definitions and source data live in
+[`shardshop-workload/shardshop-datasets`](shardshop-workload/shardshop-datasets).
+`CatalogDataset("catalog-v1")` and `BuyerDataset("buyers-v1")` expose immutable,
+ID-free definitions. Regional TSV resources are under
+`src/main/resources/datasets/catalog-v1/{US,EU,ASIA}.tsv` and
+`src/main/resources/datasets/buyers-v1/{US,EU,ASIA}.tsv`. Both datasets are the
+initial unreleased v1; edits before their first release or use keep that version.
+Unsupported versions fail locally before any HTTP request.
+
+| Definition | Per region | Total | Payload |
+|---|---|---|---|
+| Company sellers | 50 | 150 | Published company names and immutable home region |
+| Products | 100 | 300 | Two synthetic products per seller, USD then EUR; name, description, price `19.95`, unit cost `12.50`, initial stock 1000 |
+| Person buyers | 1000 | 3000 | First name, surname, email, phone, postal address and immutable home region |
+
+The regional coverage is US, the EU27 single market, and an ASIA dataset limited
+to China, Vietnam, South Korea and Japan. Company selection uses published brand
+value as a popularity proxy, with company deduplication; it is not a ranking of
+sales or all companies. Name/surname inputs, country coverage, company selection
+and source limitations are recorded in
+[`SOURCES.md`](shardshop-workload/shardshop-datasets/SOURCES.md). Buyer profiles and
+contact details are synthetic. Emails use normalized ASCII
+`firstName.surname` at the reserved domains `example.com`, `example.net` or
+`example.org`. Every region reuses numbers from the fictional NANPA range
+`+12025550100`–`+12025550199`; these numbers do not represent local phone formats.
+Phone numbers and addresses are fixed in the resources so retries reproduce
+the same payload. ASIA name pools use MIT-licensed Faker lists for the four
+countries; these plausible names are not a population-frequency ranking.
+
+Use `CatalogDataset.sellersByRegion()` and `BuyerDataset.buyersByRegion()` to
+select regional definitions. `CatalogDataset.productsBySeller()` groups products
+by the local seller key. Retry keys include the version, region, entity type and
+regional ordinal, such as `catalog-v1.US.seller.1`, `catalog-v1.US.product.1` and
+`buyers-v1.US.buyer.1`. These groups do not generate or select entity IDs.
+
+A product definition references its local `sellerKey`, which is resolved to the
+seller ID returned by product before sending its creation request. These keys
+are **retry coordinates, not IDs**: workloads never turn them into Snowflakes or
+hash them to construct an entity ID. After a dataset has been released or used,
+changing a definition's payload requires a new key/version; a restart reuses its
+original key and exact payload.
+
+The clients send `POST /api/v1/sellers`,
+`POST /api/v1/sellers/{returnedSellerId}/products`, and `POST /api/v1/buyers`.
+`Idempotency-Key` carries the definition's stable key. The service generates and
+persists the entity ID before returning `201`; a retry returns `200` with the
+same ID. A conflicting payload under that scope/key returns `409`. Seller/buyer
+keys are scoped by requested region; product keys are scoped by parent seller ID.
+Provider steps 3.6/4.1 must add durable creation-key storage before implementing
+these endpoints; process-local caches cannot satisfy the restart contract.
+
+Seller requests contain `companyName` and `region`. Seller responses also include
+service-owned `profitsEarned` balances by currency, starting with `USD: "0.00"`
+and `EUR: "0.00"`. Additional currency codes are allowed. Profit means confirmed
+sales margin: `(unitPrice - unitCost) × quantity`, using stored order-item
+snapshots. Losses use negative amounts; currencies are never added together.
+Retries return current profits and never reset them. Workloads neither send nor
+calculate seller balances. Product requests include `description` and `unitCost`;
+products remain grouped by their returned seller ID. Buyer requests include
+`firstName`, `surname`, `email`, `phone`, and `address` with `line1`, `city`,
+`postalCode` and `countryCode`.
+
+Existing catalog/ordering V1 migrations remain immutable. Steps 3.6/4.1 must add
+fix-forward migrations for the enriched fields, durable creation keys and
+order-item unit-cost snapshots. Profit persistence and exactly-once crediting of
+confirmed order items remain future provider/saga work: pending, reserved,
+cancelled or rejected orders earn no profit. There is no runtime profit engine
+in step 3.5.
+
+The seeder retains returned seller IDs while creating products. Reader and order
+producer resolve catalog IDs through ordinary read-only resource lookups:
+`GET /api/v1/sellers/by-key/{creationKey}?region=US` and
+`GET /api/v1/sellers/{sellerId}/products/by-key/{creationKey}`. The services look
+up persisted entities and do not hold or generate workload datasets. Reader GETs
+use the recovered seller/product IDs. A seeding gate still prevents load against
+missing resources. Buyer creation retries similarly recover the same buyer ID.
+Live order IDs continue to come from order's durable allocation API.
+
+`SeederDatasets`, `ReaderDatasets` and `ProducerDatasets` use the local definitions,
+send creation/lookup requests, validate returned payloads and canonical string IDs,
+and preserve those IDs unchanged. Common's transport bounds response bytes and
+the complete response deadline, rejects invalid UTF-8/duplicate JSON properties,
+and cancels stalled or interrupted requests. Workload tests use recorded responses
+with arbitrary large IDs, including values above 2^53, rather than deriving IDs.
+Rejected responses throw `HttpResponseException` with `statusCode()` and an
+optional validated `errorCode()`. Malformed error bodies preserve the status;
+exception messages contain no response payload. Callers can distinguish a missing
+resource, a rejected request and a retryable service failure; retry policy stays
+with the workload.
+Application loops and database-backed providers remain their later plan steps.
+
+Build and test all consumers after changing common:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml \
+  -pl shardshop-product,shardshop-order,shardshop-ledger,shardshop-workload/shardshop-product-seeder,shardshop-workload/shardshop-product-reader,shardshop-workload/shardshop-order-producer \
+  -am -Paudit clean verify
+```
+
+The 2026-10-07 audit passed 559 unit/client/startup tests and 48 packaged startup
+checks without warnings, with 100% line and branch coverage across all ten Java
+modules. Packaged dependencies contain datasets only in workloads. Maven Enforcer
+rejects direct, optional and transitive dataset dependencies outside workloads.
+Contract validation also passes all examples and 424 boundary cases. The fixture
+check validates all 150 seller, 300 product and 3000 buyer creation payloads,
+regional coverage, name/email correspondence and retained source hashes. After
+setting up the [contract-validation environment](#http-and-message-contracts-step-31), run:
+
+```bash
+/tmp/shardshop-contract-validation/bin/python -B microservices/shardshop/shardshop-workload/shardshop-datasets/scripts/verify-datasets.py
+```
+
+Source notices and licenses ship in the dataset JAR under
+`META-INF/shardshop-datasets`. Name pools use US Census public-domain data,
+CC BY 4.0 Onomaverse data for EU, and MIT-licensed Faker lists for ASIA; see the
+[source terms and ranking limitations](shardshop-workload/shardshop-datasets/SOURCES.md).
 
 ## HTTP and message contracts (step 3.1)
 
 | Owner | Contract |
 |---|---|
-| Product | [OpenAPI](shardshop-product/src/main/resources/contracts/openapi.yaml): seller/product PUT and GET, plus immutable versioned dataset pages |
-| Order | [OpenAPI](shardshop-order/src/main/resources/contracts/openapi.yaml): buyer datasets and PUT/GET, durable order-ID allocation, order PUT/status GET |
+| Product | [OpenAPI](shardshop-product/src/main/resources/contracts/openapi.yaml): seller/product POST and GET, including lookup by creation key |
+| Order | [OpenAPI](shardshop-order/src/main/resources/contracts/openapi.yaml): buyer POST/GET, durable order-ID allocation, order PUT/status GET |
 | Order | [RecordOrder JSON Schema](shardshop-order/src/main/resources/contracts/record-order.schema.json) and [command example](shardshop-order/src/main/resources/contracts/examples/record-order.json) |
 | Ledger | [Result JSON Schema](shardshop-ledger/src/main/resources/contracts/ledger-result.schema.json), [recorded example](shardshop-ledger/src/main/resources/contracts/examples/ledger-recorded.json) and [rejected example](shardshop-ledger/src/main/resources/contracts/examples/ledger-rejected.json) |
 
@@ -69,14 +174,12 @@ classpath directory. Applications do not import another module's schemas or mode
 clients keep their own DTOs. HTTP examples appear inline. The two result examples
 show alternative decisions for one example command, never two outcomes for one
 retained order. Example IDs illustrate the format and are not an issued dataset.
-Provider behavior and provider contract tests arrive in steps 3.5, 3.6 and 4.1–4.5.
+Provider behavior and provider contract tests arrive in steps 3.6 and 4.1–4.5.
 
-Dataset discovery uses `GET /api/v1/datasets/{datasetVersion}/sellers`, `/products`
-on product and `/buyers` on order. Pin each service's version throughout a run;
-forward returned IDs and `creationPayload` values unchanged. Pages accept `limit`
-(1–1,000, default 100) and an opaque `cursor`; follow `nextCursor` until absent.
-Discovery creates no records. Seller/buyer regions are immutable; products inherit
-their seller's region without a separate field.
+Workloads select a pinned local dataset version and send its ID-free creation
+payloads with stable `Idempotency-Key` values. Product/order generate and return
+IDs; clients preserve those strings on subsequent requests. Catalog lookups by
+creation key recover existing IDs without creating rows or sharing a manifest.
 
 IDs are strings in `1..9223372036854775807`; money is a nonnegative decimal string
 with exactly two fractional digits. Allocation accepts `runName` and a string
@@ -87,27 +190,30 @@ message schemas define `requestFingerprint`, command/result correlation, immutab
 snapshots and timestamp-preserving replay. Cross-field arithmetic, issuance and
 stored-state checks require provider tests beyond schema validation.
 
-The examples form one EUR purchase: product fixtures use generator 0 on
-2026-02-01, buyer fixtures use a disjoint generator-0 range on 2026-03-01, and
+The examples form one EUR purchase: seller/product IDs use generator 2 on
+2026-02-01, the buyer ID uses generator 1 on 2026-03-01, and
 order/saga/command/transport IDs use generator 1 at 2026-10-06T11:59:59Z, before
 command publication. Seller and buyer regions match the existing routing rule.
-These coordinates qualify the examples; step 3.6 still owns the deployed dataset.
+These are illustrative wire examples, not workload IDs; actual creation responses
+use the services' live generators. Workload definitions contain no IDs.
 
 Message timestamps require uppercase UTC `T`/`Z` and at most six fractional digits.
 Producers truncate instants to microseconds **before** both persistence and envelope
 creation. Replays retain the saved instant and, for the same message ID, the exact
-saved envelope. Names/run names reject NUL and unpaired UTF-16 surrogates before IO,
+saved envelope. Company/person names, product descriptions, address text and run
+names reject NUL and unpaired UTF-16 surrogates before IO,
 while supplementary Unicode characters are valid. Integer fields accept `2`, `2.0`
 and `2e0` as the same exact value and reject fractional values such as `2.5`; the
 fingerprint serializes the normalized integer.
 
-Provider steps 3.5 and 4.1 must enforce strict decoding before constructing typed
+Provider steps 3.6 and 4.1 must enforce strict decoding before constructing typed
 DTOs or touching storage. Enable unknown-property rejection and duplicate-member
 detection, require JSON string tokens for string fields, and validate integral
 numeric values exactly before conversion. Do not rely on Jackson's default string
 coercion or float-to-int truncation. Contract/provider tests must include raw JSON
 with duplicate keys, numeric IDs, `2.0`, `2e0`, `2.5`, NUL and unpaired surrogates.
-The current skeletons have no HTTP providers to configure yet.
+No HTTP providers are implemented yet; this strict body-decoding requirement
+applies when creation providers are added.
 
 To validate contracts without starting infrastructure, use a temporary Python 3.11+
 environment outside the repository. The requirements file pins validation tools
@@ -118,7 +224,7 @@ records the qualification. No Maven/runtime dependency is added.
 python3 -m venv /tmp/shardshop-contract-validation
 /tmp/shardshop-contract-validation/bin/python -m pip install \
   -r microservices/shardshop/scripts/contract-validation-requirements.txt
-/tmp/shardshop-contract-validation/bin/python microservices/shardshop/scripts/verify-contracts.py
+/tmp/shardshop-contract-validation/bin/python -B microservices/shardshop/scripts/verify-contracts.py
 mvn -B -ntp -f microservices/shardshop/pom.xml \
   -pl shardshop-product,shardshop-order,shardshop-ledger -am clean verify
 ```
@@ -126,7 +232,7 @@ mvn -B -ntp -f microservices/shardshop/pom.xml \
 The verifier checks every inline HTTP request/response example (including referenced
 responses), message examples, ID and status-URL limits, money, text and timestamp
 boundaries, integer normalization, fingerprints, totals, correlation and illustrative
-fixture/live ID rules. It also rejects missing response examples. Packaged routing
+service-issued ID and home-region rules. It also rejects missing response examples. Packaged routing
 startup checks run in the default Maven `verify` lifecycle.
 
 ## ID validation and currency selection (step 3.2)
@@ -198,7 +304,8 @@ consumer delivery handling remains part of the later service milestones.
 
 Production startup requires `shardshop.id.generator-id`, also configurable through
 `SHARDSHOP_ID_GENERATOR_ID`, in `1..1023`; there is no production default.
-Generator 0 remains reserved for the service-owned fixtures in step 3.6.
+Generator 0 remains reserved for historical illustrative fixtures; no runtime
+creation path or workload emits generator-0 IDs.
 This setting accepts an already reserved ID; it does not reserve or persist one.
 The step 3.4 launcher below reserves this setting before every product/order JVM
 start. Direct manual IDs are only for disposable skeleton tests without retained
@@ -892,7 +999,7 @@ group; its credentials use the separate `order-app` Secret.
 Runtime logins do not own objects or have SQL privileges for DDL, temporary
 tables or `SELECT` on the Flyway history.
 
-`catalog.sellers` holds positive `BIGINT` seller IDs, names, and immutable
+The implemented V1 `catalog.sellers` holds positive `BIGINT` seller IDs, names, and immutable
 `US`/`EU`/`ASIA` regions. Its checks require the deployed region and the exact
 shard selected by the unchanged version-2 SHA-256 rule. A `CHECK` expression
 uses PostgreSQL's built-in SHA-256, hexadecimal encoding, exact `NUMERIC`
@@ -912,6 +1019,12 @@ retries must change stock at most once. There are no ID sequences. Products
 inherit the seller's region and store no independent region column. The local
 seller foreign key and placement checks prevent creating products on a different
 region's shard. Runtime roles cannot change a seller's region.
+
+Step 3.6 will add company-name, product-description, unit-cost and creation-key
+storage through fix-forward catalog migrations, plus the service-owned profit
+records needed by the future confirmed-sale protocol. These fields are already
+in the workload definitions and HTTP contract, but are not present in V1. The
+existing grants do not implement profit posting.
 
 The stock-column grant permits direct updates without allowing changes to product
 names, prices or other columns. There is no stock trigger: reservation writes by
@@ -961,7 +1074,10 @@ as sellers. Allocations retain a unique `(buyer_id, run_name, request_ordinal)`
 mapping; ordinals are nonnegative. Orders reference both their local buyer and
 the allocation for that buyer. Items store immutable seller/product IDs, quantity,
 name, unit price and currency snapshots, without cross-shard catalog foreign keys.
-Orders and sagas start in `PENDING_STOCK`. Sagas retain cancellation/release state,
+The future step 4.1 migration adds buyer first name/surname, contact and address
+fields, durable creation keys, and immutable unit-cost snapshots for confirmed
+profit accounting; the existing V1 migration is unchanged. Orders and sagas start
+in `PENDING_STOCK`. Sagas retain cancellation/release state,
 a zero-to-five reconciliation counter and the next eligible time (initially
 creation plus 60 seconds).
 

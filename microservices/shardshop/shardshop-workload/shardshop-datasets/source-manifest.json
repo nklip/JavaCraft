@@ -1,0 +1,89 @@
+{
+  "recordedOn": "2026-10-07",
+  "versions": {
+    "catalog": "catalog-v1",
+    "buyers": "buyers-v1"
+  },
+  "notice": "Downloaded source artifacts are identified for audit, not redistributed. Retained files below are the frozen inputs and generated fixtures. See SOURCES.md for source-specific license conditions and ranking limitations.",
+  "downloads": [
+    {
+      "artifact": "brand-finance.pdf",
+      "url": "https://static.brandirectory.com/reports/brand-finance-global-500-2026-preview.pdf",
+      "sha256": "4aca2bc4403f0431574ec2567eb848b2145614aa490d973aca4f2f5825ca92e1",
+      "bytes": 20079712
+    },
+    {
+      "artifact": "us-first.xlsx",
+      "url": "https://www2.census.gov/topics/genealogy/2020surnames/Names2020_FirstNames_Sex_Top1000.xlsx",
+      "sha256": "b7e8a8ea8cf5babe0220aa9f0f19294664a1818fc61acd43efcd3ff356fa9676",
+      "bytes": 82166
+    },
+    {
+      "artifact": "us-surname.xlsx",
+      "url": "https://www2.census.gov/topics/genealogy/2020surnames/Names2020_LastNames_RaceHispanic_Top1000.xlsx",
+      "sha256": "89108b7321fc4656fba390ea665680ac651786d51effc51da54d4b8be3fdbf6b",
+      "bytes": 107548
+    },
+    {
+      "artifact": "given-name-frequency.csv",
+      "url": "https://github.com/onomaverse/datasets/releases/download/v2026.06/given-name-frequency.csv",
+      "sha256": "42d889e8c7eab75907aba9b3c4d3c40074439c5b04e7e4eced301411cb6ea848",
+      "bytes": 3054011
+    },
+    {
+      "artifact": "surname-frequency.csv",
+      "url": "https://github.com/onomaverse/datasets/releases/download/v2026.06/surname-frequency.csv",
+      "sha256": "426aab8f6e308047576aa08b4f328ec0680b06251a2a1e2344f2136578929e60",
+      "bytes": 2208765
+    },
+    {
+      "artifact": "zh_CN-faker.py",
+      "url": "https://raw.githubusercontent.com/joke2k/faker/72e2fa4b005231cbe258fd4fc777ea22aa769e39/faker/providers/person/zh_CN/__init__.py",
+      "sha256": "c27bc139ec31885a485d5d2e1cb1d36e4df3a4a0341f1d0fe28898edb6a4865a",
+      "bytes": 16430
+    },
+    {
+      "artifact": "ja_JP-faker.py",
+      "url": "https://raw.githubusercontent.com/joke2k/faker/72e2fa4b005231cbe258fd4fc777ea22aa769e39/faker/providers/person/ja_JP/__init__.py",
+      "sha256": "03bce3b7041dd0c214420881269741f7165680938e4b9fddfab836b4c2493fdf",
+      "bytes": 10951
+    },
+    {
+      "artifact": "ko_KR-faker.py",
+      "url": "https://raw.githubusercontent.com/joke2k/faker/72e2fa4b005231cbe258fd4fc777ea22aa769e39/faker/providers/person/ko_KR/__init__.py",
+      "sha256": "c1ae8f86650374035f3d8bfe2587cdac0d260255ac79703e37b766f63a53d6d7",
+      "bytes": 5579
+    },
+    {
+      "artifact": "vi_VN-faker.py",
+      "url": "https://raw.githubusercontent.com/joke2k/faker/72e2fa4b005231cbe258fd4fc777ea22aa769e39/faker/providers/person/vi_VN/__init__.py",
+      "sha256": "fabbf13f3aacd554bc8f783e3bae006b0846d7548b31e6f59ee999ca1ab9403e",
+      "bytes": 2539
+    },
+    {
+      "artifact": "faker-license.txt",
+      "url": "https://raw.githubusercontent.com/joke2k/faker/72e2fa4b005231cbe258fd4fc777ea22aa769e39/LICENSE.txt",
+      "sha256": "cd5a5fbc8bacca52b88158ca562ac5f7c2e9adb27371cead51aaf4e61a657928",
+      "bytes": 1060
+    }
+  ],
+  "retainedFiles": {
+    "sources/names/ASIA-given.tsv": "3d4d5a8a59b7037622982627a5273374b398e187595d76b07a3545df3d6f9f24",
+    "sources/names/ASIA-surname.tsv": "daa5832821d917f025b01b2b5ca3dffb5cffa67b260bb0a686804381dd746ee4",
+    "sources/names/EU-given.tsv": "bf6884cc5f9eb381cc8ca56c74e7957367317a9e33f0e029d03b97b8f7f1ec86",
+    "sources/names/EU-surname.tsv": "233c3479f8f089da8234aa383b76a1f667b55b0ea8374734763f15bc1054573c",
+    "sources/names/US-given.tsv": "51909f2d6d392644e16ce7dbea24f75b849d06f7715c565b04f45ac8a034461c",
+    "sources/names/US-surname.tsv": "0e5b5278d39ec9c70c7dae1a64307fcfe9b3f0fa2031dddb95cec0f4bea75b82",
+    "sources/licenses/Faker-MIT.txt": "cd5a5fbc8bacca52b88158ca562ac5f7c2e9adb27371cead51aaf4e61a657928",
+    "sources/licenses/Onomaverse-CC-BY-4.0-NOTICE.txt": "eacca3b027d24d0eb846f1ed0db63bd762f25ef19c58fe27d9e176e85375a567",
+    "sources/address-patterns.tsv": "617cebef44d93720dd279f4ad22238eb7f0c874a7ab36338abb3435fed32ef1d",
+    "src/main/resources/datasets/buyers-v1/ASIA.tsv": "146ca464430a56ea46e8a983018e47e861028fb3699b9f1fc850f6223068eab0",
+    "src/main/resources/datasets/buyers-v1/EU.tsv": "fef66071c3a68cd8e4329a1007bf6c62305dfdf3fa1a368fd55a0eddf3b07f79",
+    "src/main/resources/datasets/buyers-v1/US.tsv": "80d72171b6ee4d6e381eb4c804074edc1b1cd243ba37ffa3f85bb6689c078b5a",
+    "src/main/resources/datasets/catalog-v1/ASIA.tsv": "bb55a3757cf535cdd3c46562cdb65ef0c278d27ddae046f18dbfbe8476517593",
+    "src/main/resources/datasets/catalog-v1/EU.tsv": "ab980bc8cca39de57942f2fc97fb56ee5833e16cb5ccd323ce91514c05b0d2ba",
+    "src/main/resources/datasets/catalog-v1/US.tsv": "986ccd29a9a8edfd0f446e9bc2e4120b942b1c4220e0f261687366f932ca84a9",
+    "catalog-selection.json": "0c939518c6fd478fb1eee284d1a1a614091fa97cf55e302560be800696e3f26a",
+    "scripts/generate-buyers.py": "0c91d5e6e7a2ea814e1aeff9703ebed271506e722851db7d7603d0fc3d014aef"
+  }
+}

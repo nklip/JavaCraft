@@ -190,13 +190,13 @@ class Checks:
                         ["", " \t\n", "A" * 201, "A\x00", "\ud800", "A\udfff", "\udc00\ud800"])
 
     def illustrative_ids(self, values):
-        fixtures = {key: set() for key in ("sellerId", "productId", "buyerId")}
+        entities = {key: set() for key in ("sellerId", "productId", "buyerId")}
         live = set()
         for value in values:
             for _, node in objects(value):
-                for key in fixtures:
+                for key in entities:
                     if key in node:
-                        fixtures[key].add(int(node[key]))
+                        entities[key].add(int(node[key]))
                 for key in ("orderId", "sagaId", "commandId", "messageId", "resultMessageId"):
                     if key in node:
                         live.add(int(node[key]))
@@ -206,14 +206,21 @@ class Checks:
                                  "statusUrl must contain the response buyerId and orderId")
                 if "stock" in node:
                     self.require(node["stock"] <= node["initialStock"], "stock exceeds initialStock")
-        for key, ids in fixtures.items():
+                if "region" in node:
+                    for key in ("sellerId", "buyerId"):
+                        if key in node:
+                            route = int.from_bytes(hashlib.sha256(node[key].encode("utf-8")).digest(), "big") % 3
+                            self.require(node["region"] == ("US", "EU", "ASIA")[route],
+                                         f"{key}: illustrative home region differs from its ID route")
+        for key, ids in entities.items():
             self.require(bool(ids), f"No illustrative {key} found")
-            self.require(all((value >> 12) & 1023 == 0 and value >> 22 > 0 for value in ids),
-                         f"{key}: fixture IDs require generator 0 and a positive timestamp")
-        for (left, first), (right, second) in combinations(fixtures.items(), 2):
-            self.require(max(first) >> 22 < min(second) >> 22 or
-                         max(second) >> 22 < min(first) >> 22,
-                         f"{left}/{right}: fixture timestamp ranges overlap")
+            self.require(all(0 < value <= LONG_MAX for value in ids),
+                         f"{key}: illustrative IDs must fit a positive signed long")
+            self.require(all((value >> 12) & 1023 > 0 for value in ids),
+                         f"{key}: illustrative service-generated IDs must use generators 1..1023")
+            self.require(ids.isdisjoint(live), f"{key}: illustrative IDs overlap transport IDs")
+        for (left, first), (right, second) in combinations(entities.items(), 2):
+            self.require(first.isdisjoint(second), f"{left}/{right}: illustrative IDs overlap")
         self.require(all((value >> 12) & 1023 > 0 for value in live),
                      "Live illustrative IDs must use generators 1..1023")
 
@@ -243,8 +250,16 @@ def semantic_checks(checks, product, order, command, results):
     checks.require(amount <= Decimal("99999999999999999.99"), "Snapshot total exceeds NUMERIC(19,2)")
     checks.require(len({(item['sellerId'], item['productId']) for item in snapshot["items"]}) ==
                    len(snapshot["items"]), "Snapshot contains duplicate seller/product pairs")
-    product_path = product["paths"]["/api/v1/sellers/{sellerId}/products/{productId}"]["put"]
+    product_path = product["paths"]["/api/v1/sellers/{sellerId}/products"]["post"]
     catalog = first_example(product_path["responses"]["201"], product)
+    seller = first_example(product["paths"]["/api/v1/sellers"]["post"]["responses"]["201"], product)
+    buyer = first_example(order["paths"]["/api/v1/buyers"]["post"]["responses"]["201"], order)
+    checks.require(catalog["sellerId"] == seller["sellerId"],
+                   "Product creation example uses a different parent from seller creation")
+    checks.require(accepted["buyerId"] == buyer["buyerId"],
+                   "Order creation example uses a different buyer from buyer creation")
+    checks.require(seller["profitsEarned"] == {"USD": "0.00", "EUR": "0.00"},
+                   "New seller creation must start with zero currency profit balances")
     for position, item in enumerate(snapshot["items"]):
         checks.require(item["itemPosition"] == position and item["currency"] == snapshot["currency"],
                        "Snapshot position/currency mismatch")
@@ -271,6 +286,95 @@ def semantic_checks(checks, product, order, command, results):
                     generated = EPOCH + timedelta(milliseconds=int(value) >> 22)
                     checks.require(generated <= datetime.fromisoformat(envelope["occurredAt"]),
                                    f"{envelope['type']} {key}: ID timestamp is after occurredAt")
+
+
+def entity_boundaries(checks, product, order):
+    """Exercise the company, product detail and person creation/read contracts."""
+    product_schemas = product["components"]["schemas"]
+    order_schemas = order["components"]["schemas"]
+    address = {"line1": "1 Example Road", "city": "Example City",
+               "postalCode": "000001", "countryCode": "US"}
+    buyer = {"firstName": "Jane", "surname": "Smith", "email": "jane.smith@example.com",
+             "phone": "+12025550123", "address": address, "region": "US"}
+    seller = {"companyName": "Example Company", "region": "EU"}
+    catalog = {"name": "Product", "description": "A reusable travel mug.",
+               "price": "19.95", "unitCost": "12.45", "currency": "USD", "initialStock": 10}
+    for label, document, schema, creation, forbidden in (
+            ("buyer", order, "BuyerCreation", buyer, {"buyerId": "1", "name": "Old buyer", "extra": 1}),
+            ("seller", product, "CreateSeller", seller,
+             {"sellerId": "1", "name": "Old seller", "profitsEarned": {"USD": "0.00", "EUR": "0.00"}}),
+            ("product", product, "CreateProduct", catalog,
+             {"productId": "1", "sellerId": "1", "region": "US", "stock": 10})):
+        invalid = [creation | {key: value} for key, value in forbidden.items()]
+        invalid += [{key: value for key, value in creation.items() if key != missing}
+                    for missing in creation]
+        invalid += [creation | {key: None} for key in creation]
+        checks.matrix(f"{label} request", document["components"]["schemas"][schema], document,
+                      [creation], invalid)
+    checks.matrix("seller company name", product_schemas["CreateSeller"], product,
+                  [seller | {"companyName": " Société Exemple "}],
+                  [seller | {"companyName": value} for value in (123, "", " \t", "A" * 201)] +
+                  [seller | {"region": "UNKNOWN"}])
+    checks.matrix("product description", product_schemas["Description"], product,
+                  ["A", " Café \n", "\U0001f680", "A" * 2000],
+                  [None, 123, "", " \t\n", "A" * 2001, "A\x00", "\ud800", "A\udfff"])
+    checks.matrix("product detail request", product_schemas["CreateProduct"], product,
+                  [catalog | {"unitCost": "20.00"}],
+                  [catalog | {"description": " "}, catalog | {"unitCost": "-0.01"},
+                   catalog | {"unitCost": 12.45}])
+    checks.matrix("signed profit", product_schemas["ProfitAmount"], product,
+                  ["0.00", "15.00", "-0.01", "-99999999999999999.99", "99999999999999999.99"],
+                  [0, "-0.00", "+1.00", "01.00", "-01.00", "1", "1.0", "1.000", "1e2",
+                   "1.00\n", "1.00\r\n", "100000000000000000.00", "-100000000000000000.00"])
+    profits = {"USD": "0.00", "EUR": "15.00"}
+    checks.matrix("profit balances", product_schemas["ProfitsEarned"], product,
+                  [profits, profits | {"JPY": "-1.00"}],
+                  [{}, {"USD": "0.00"}, {"EUR": "0.00"}, [],
+                   profits | {"usd": "1.00"}, profits | {"EUR": "-0.00"},
+                   profits | {"US": "1.00"}, profits | {"EUR\n": "1.00"}, profits | {"USD": 0}])
+    checks.require(product_schemas["ProfitsEarned"].get("readOnly") is True,
+                   "Seller profit balances must be read-only")
+    saved_seller = seller | {"sellerId": "1", "profitsEarned": profits}
+    checks.matrix("seller response", product_schemas["Seller"], product, [saved_seller],
+                  [seller | {"sellerId": "1"}, saved_seller | {"name": "Old seller"},
+                   saved_seller | {"profitsEarned": "15.00"}])
+    saved_product = catalog | {"sellerId": "1", "productId": "2", "stock": 7}
+    checks.matrix("product response", product_schemas["Product"], product, [saved_product],
+                  [{key: value for key, value in saved_product.items() if key != missing}
+                   for missing in ("description", "unitCost", "sellerId")])
+    checks.matrix("buyer person fields", order_schemas["BuyerCreation"], order,
+                  [buyer | {"firstName": " María ", "surname": "O'Connor"}],
+                  [buyer | {key: value} for key in ("firstName", "surname")
+                   for value in (123, "", " \t", "A" * 201, "A\x00")] +
+                  [buyer | {"region": "UNKNOWN"}])
+    long_email = "a" * 64 + "@" + ".".join(["a" * 63, "b" * 63, "c" * 61])
+    checks.require(len(long_email) == 254, "Email boundary must exercise exactly 254 characters")
+    checks.matrix("email", order_schemas["Email"], order,
+                  ["jane.smith@example.com", "jane.smith@example.net", "a+b@example.org",
+                   "O'Connor@example.org", "a" * 64 + "@example.org", long_email],
+                  [None, 1, "", "a", "a@", "@example.org", "a@example", "a b@example.org",
+                   "a..b@example.org", ".a@example.org", "a.@example.org", "a@-example.org",
+                   "a@example-.org", "a@exam_ple.org", "é@example.org", "a@exämple.org",
+                   "a@example.org\n", "a@example.org\r\n", "a" * 65 + "@example.org",
+                   long_email + "c"])
+    checks.matrix("phone", order_schemas["Phone"], order,
+                  ["+1234567", "+12025550123", "+123456789012345"],
+                  [None, 1234567, "1234567", "+123456", "+1234567890123456", "+1 2025550123",
+                   "+1-202-555-0123", "+１２３４５６７", "+1234567\n", "+1234567\r\n"])
+    checks.matrix("address", order_schemas["Address"], order,
+                  [address, {"line1": "A" * 200, "city": "A" * 100,
+                             "postalCode": "A" * 20, "countryCode": "GB"}],
+                  [{key: value for key, value in address.items() if key != missing} for missing in address] +
+                  [address | {"extra": "no"}] +
+                  [address | {key: value} for key in ("line1", "city", "postalCode")
+                   for value in (None, 123, "", " \t", "A\x00", "\ud800")] +
+                  [address | {key: "A" * size} for key, size in
+                   (("line1", 201), ("city", 101), ("postalCode", 21))] +
+                  [address | {"countryCode": value} for value in (None, "us", "USA", "U", "U1", "US\n")])
+    saved_buyer = buyer | {"buyerId": "1"}
+    checks.matrix("buyer response", order_schemas["Buyer"], order, [saved_buyer],
+                  [{key: value for key, value in saved_buyer.items() if key != missing}
+                   for missing in saved_buyer] + [saved_buyer | {"name": "Old buyer"}])
 
 
 def main():
@@ -311,9 +415,22 @@ def main():
                   [1, *integral_tokens, 2147483647], [0, *fractional_tokens, "2", True, 2147483648])
     checks.matrix("requestOrdinal", order_schemas["RequestOrdinal"], order,
                   ["0", "1", str(LONG_MAX)], [0, "00", "-1", "1.0", "1e0", "1\n", str(LONG_MAX + 1)])
-    checks.matrix("buyer request", order_schemas["BuyerCreation"], order,
-                  [{"name": "Buyer", "region": "US"}],
-                  [{"name": "Buyer", "region": "US", "extra": 1}, {"name": 123, "region": "US"}])
+    entity_boundaries(checks, product, order)
+    for owner, document in documents.items():
+        checks.matrix(f"{owner} idempotency key", document["components"]["schemas"]["IdempotencyKey"],
+                      document, ["a", "dataset-v1.entity.1", "scope:value_1-2.3", "A" * 128],
+                      ["", "A" * 129, " a", "a ", "a\n", "a\r\n", "a/b", "é", ".a", 1])
+        checks.require(not any("/datasets/" in path for path in document["paths"]),
+                       f"{owner}: dataset definitions must remain in workloads")
+    for document, path in ((product, "/api/v1/sellers"),
+                           (product, "/api/v1/sellers/{sellerId}/products"),
+                           (order, "/api/v1/buyers")):
+        operation = document["paths"][path]["post"]
+        parameters = [local_reference(document, parameter["$ref"])
+                      for parameter in operation["parameters"]]
+        checks.require(any(parameter["name"] == "Idempotency-Key" and
+                           parameter["in"] == "header" and parameter["required"]
+                           for parameter in parameters), f"{path}: required idempotency header is missing")
     checks.matrix("statusUrl", order_schemas["OrderStatus"]["properties"]["statusUrl"], order,
                   [f"/api/v1/buyers/1/orders/{LONG_MAX}", f"/api/v1/buyers/{LONG_MAX}/orders/1"],
                   [f"/api/v1/buyers/{LONG_MAX + 1}/orders/1", f"/api/v1/buyers/1/orders/{LONG_MAX + 1}",

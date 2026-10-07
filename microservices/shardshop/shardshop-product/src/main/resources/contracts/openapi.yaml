@@ -6,20 +6,21 @@ info:
   description: |
     Contract owned by shardshop-product. Clients own their DTOs and document decoding;
     this document and its schemas are not shared runtime artifacts. This contract
-    describes the planned HTTP implementation, not the current application skeleton.
+    defines resource operations planned in step 3.6.
 
-    Product issues immutable seller and product fixtures through version-pinned
-    dataset discovery. Clients forward those IDs and creationPayload values
-    unchanged, including after lost responses or restarts; they never derive IDs.
-    A syntactically valid ID is not proof that product issued it. Creation accepts
-    only product-issued IDs for the addressed entity and parent.
+    Workloads own dataset definitions and submit creation payloads. Product
+    generates seller and product IDs and returns them only after committing the
+    entity and its durable idempotency mapping. Clients retain the returned IDs;
+    they never generate entity IDs. Product accepts arbitrary valid creation
+    payloads and has no dataset versions, fixture whitelist or discovery API.
 
     All IDs are canonical ASCII decimal strings in 1..9223372036854775807. Reject
     numeric JSON tokens, signs, zero, leading zeroes, whitespace, fractions,
     exponents and overflow without coercion, before IO or routing. Seller IDs
     select placement internally. There is no public shard selector, read-profile
-    selector, or independent product region. Sellers have an immutable issued
-    home region; products inherit their seller's region.
+    selector, or independent product region. Seller creation requests a home
+    region; product generates an ID routed to that region, which is immutable
+    after creation. Products inherit their seller's region.
 
     JSON object member order is immaterial. Values are compared without trimming,
     case folding or Unicode normalization. Unknown JSON properties, duplicate
@@ -27,149 +28,74 @@ info:
     are INVALID_REQUEST. Requests use application/json. Price is a nonnegative
     fixed-two-decimal string, avoiding JSON floating-point rounding. Currency is
     exactly three uppercase ASCII letters; region does not select currency.
-    Names contain Unicode scalar values, excluding NUL and unpaired UTF-16
-    surrogates; a valid surrogate pair decodes to one scalar value. Invalid text
+    Company names, product names and descriptions contain Unicode scalar values,
+    excluding NUL and unpaired UTF-16 surrogates; a valid surrogate pair decodes
+    to one scalar value. Invalid text
     is 400 before IO. Integer fields accept exact integral JSON values: 2, 2.0
     and 2e0 normalize to integer 2. Fractional values such as 2.5, booleans,
     numeric strings and values outside the bounds are 400. Parse exactly before
     checking the range; never truncate or round through binary floating point.
 
-    Resource PUTs always use a primary and commit before reporting success. A
-    timeout or unknown commit returns CATALOG_UNAVAILABLE; retry the same path and
-    creation payload with bounded backoff. GETs use primaries by default. The
-    optional deployment-level replica profile may return stale values or a 404
+    Creation POSTs require one Idempotency-Key header and always use a primary.
+    Missing, repeated or malformed keys return INVALID_REQUEST before IO. Keys
+    are opaque case-sensitive retry coordinates, not entity IDs. Seller keys are
+    scoped to the seller collection and requested region; product keys are scoped
+    to the product collection and parent sellerId. Retain committed mappings
+    permanently. The same scoped key and normalized payload recover the same
+    generated ID after concurrent requests, lost responses and restarts. A changed
+    payload within that scope returns 409 without mutation or new ID allocation.
+    The same seller key in another requested region is a separate scope.
+
+    Creation commits before success. A timeout or unknown commit returns
+    CATALOG_UNAVAILABLE; retry the same key, path and payload with bounded backoff.
+    New IDs use live generators 1..1023. Bounded ID generation, including finding
+    a seller ID routed to the requested region, returns ID_GENERATION_UNAVAILABLE
+    when exhausted; existing mappings require no new ID generation.
+    GETs use primaries by default. The optional deployment-level replica profile may return stale values or a 404
     for a write not yet replayed. It never falls back to a primary: replica
     unavailability returns READ_REPLICA_UNAVAILABLE, never a false 404. The full
     database phase, including pool acquisition, connection setup, queries and
     retries, has a three-second budget within a four-second server deadline.
     Reader clients use a five-second overall deadline, including bounded retries.
 
-    Dataset paths, page fields, version tokens, cursor format, price text and
-    strict object validation are local wire choices established by this contract.
-    Examples demonstrate the wire format; fixture issuance is established only
-    by a configured dataset response, not by copying an example ID.
+    Price text and strict object validation are local wire choices established
+    by this contract. Seller profits are service-owned exact signed amounts per
+    currency, never mixed-currency totals or creation payload fields. Example IDs
+    demonstrate the wire format and are not issued identities; actual entity IDs
+    come only from successful creation responses.
 servers:
   - url: /
 tags:
-  - name: Datasets
   - name: Sellers
   - name: Products
 paths:
-  /api/v1/datasets/{datasetVersion}/sellers:
-    parameters:
-      - $ref: '#/components/parameters/DatasetVersion'
-      - $ref: '#/components/parameters/Limit'
-      - $ref: '#/components/parameters/Cursor'
-    get:
-      tags: [Datasets]
-      operationId: listSellerFixtures
-      summary: Discover one immutable seller fixture page
-      description: |
-        Returns descriptors whether or not the sellers have been created. Reading
-        a descriptor does not create a seller. Pin datasetVersion for the entire
-        run; there is no mutable latest alias. Enumerate in ascending numeric
-        sellerId order, preserving the returned text exactly. A version's members,
-        order, IDs and creationPayload values never change. Future versions may
-        select subsets but cannot assign a new payload to any retained ID.
-
-        Omit cursor for the first page; follow nextCursor until it is absent.
-        Cursors bind the version, collection and continuation position, are opaque
-        to clients, and remain valid while that version is retained. Changing
-        limit between pages is allowed. A continuation never repeats or skips an
-        item. Malformed or wrong-version/wrong-collection cursors return 400.
-        A syntactically valid but unknown version returns 404. Dataset discovery
-        uses the service-owned immutable configuration, not live catalog stock.
-      responses:
-        '200':
-          description: Up to limit immutable seller descriptors; empty items marks an empty or exhausted page.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SellerFixturePage'
-              examples:
-                terminalPage:
-                  value:
-                    datasetVersion: catalog-v1
-                    items:
-                      - sellerId: '11234023833600000'
-                        creationPayload:
-                          name: Asia Market
-                          region: ASIA
-        '400':
-          $ref: '#/components/responses/InvalidRequest'
-        '404':
-          $ref: '#/components/responses/DatasetNotFound'
-        '503':
-          $ref: '#/components/responses/GenerationUnavailable'
-  /api/v1/datasets/{datasetVersion}/products:
-    parameters:
-      - $ref: '#/components/parameters/DatasetVersion'
-      - $ref: '#/components/parameters/Limit'
-      - $ref: '#/components/parameters/Cursor'
-    get:
-      tags: [Datasets]
-      operationId: listProductFixtures
-      summary: Discover one immutable product fixture page
-      description: |
-        Returns each product's sellerId, productId and exact PUT creationPayload,
-        whether or not that seller/product has been created. Discovery does not
-        create resources. Products carry no independent region field: obtain the
-        seller's immutable region from the seller descriptors for the same pinned
-        version. USD and EUR fixtures exist in every region; region and currency
-        are independent.
-
-        Enumerate in ascending numeric (sellerId, productId) order. The version's
-        membership, order, relationships and payloads are immutable. Discovery
-        always returns initialStock, never a live stock snapshot. Future versions
-        may select subsets without reassigning an existing ID or changing its
-        payload. Omit cursor initially; otherwise forward the opaque nextCursor
-        unchanged. Cursors bind version, collection and position and remain valid
-        while the version is retained; limit may change. No item is skipped or
-        repeated. Missing nextCursor means complete. Malformed/mismatched cursors
-        return 400; a syntactically valid unknown version returns 404.
-      responses:
-        '200':
-          description: Up to limit immutable product descriptors; empty items marks an empty or exhausted page.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProductFixturePage'
-              examples:
-                continuedPage:
-                  value:
-                    datasetVersion: catalog-v1
-                    items:
-                      - sellerId: '11234023833600000'
-                        productId: '11234023837794304'
-                        creationPayload:
-                          name: Travel mug
-                          price: '19.95'
-                          currency: EUR
-                          initialStock: 10
-                    nextCursor: eyJwb3NpdGlvbiI6MX0
-        '400':
-          $ref: '#/components/responses/InvalidRequest'
-        '404':
-          $ref: '#/components/responses/DatasetNotFound'
-        '503':
-          $ref: '#/components/responses/GenerationUnavailable'
-  /api/v1/sellers/{sellerId}:
-    parameters:
-      - $ref: '#/components/parameters/SellerId'
-    put:
+  /api/v1/sellers:
+    post:
       tags: [Sellers]
-      operationId: putSeller
-      summary: Create a service-issued immutable seller or retry its creation
+      operationId: createSeller
+      summary: Create a seller with a service-generated ID or recover an identical retry
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       description: |
-        Validate syntax, ID issuance and the issued home region before IO. An
-        unissued/wrong-entity ID or missing, unknown or mismatched region returns
-        400, including on a retry. A caller cannot choose the region. Then compare
-        an existing seller with its stored creation payload: equal values return
-        200; a different name returns 409 SELLER_ID_CONFLICT without mutation.
-        For an absent seller, require the issued fixture's exact creationPayload
-        (otherwise 400), insert it on the seller's primary and return 201 after
-        commit. Concurrent identical calls create one seller. A lost response is
-        retried with the same ID and values, never a newly constructed ID.
+        Validate the key, companyName and requested region before IO. No sellerId is
+        accepted in the request. Look up the durable mapping for the seller
+        collection, requested region and Idempotency-Key. Equal normalized values
+        return the saved seller with 200; a different companyName in that scope returns
+        409 SELLER_IDEMPOTENCY_CONFLICT without mutation or new ID generation.
+        A missing or unknown region is 400 INVALID_REQUEST.
+
+        For a new mapping, generate a live seller ID whose route matches the
+        requested region within the bounded generation budget. Commit the seller
+        and mapping together on that region's primary, then return 201 with the
+        generated sellerId and zero profitsEarned. Profits are maintained by the
+        service from confirmed sales, grouped by currency: sum of
+        (snapshotted unitPrice - unitCost) multiplied by quantity. Pending or
+        rejected orders do not earn profit; a repeated confirmation never counts
+        twice. Retried POSTs return current profits and never reset them. No
+        caller-provided profitsEarned is accepted or compared for idempotency.
+        Concurrent identical calls create one seller. Its home region is immutable.
+        A lost response is retried with the same key and payload; no service-owned
+        dataset or issued fixture is required.
       requestBody:
         required: true
         content:
@@ -177,7 +103,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateSeller'
             example:
-              name: Asia Market
+              companyName: Asia Market
               region: ASIA
       responses:
         '201':
@@ -187,15 +113,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/Seller'
               example:
-                sellerId: '11234023833600000'
-                name: Asia Market
+                sellerId: '11234023833608192'
+                companyName: Asia Market
                 region: ASIA
+                profitsEarned: {USD: '0.00', EUR: '0.00'}
         '200':
           $ref: '#/components/responses/SellerOk'
         '400':
           $ref: '#/components/responses/InvalidRequest'
         '409':
-          description: This issued ID already has a different immutable seller creation payload.
+          description: This key in the requested region already has a different seller creation payload.
           content:
             application/json:
               schema:
@@ -203,21 +130,27 @@ paths:
                   - $ref: '#/components/schemas/Error'
                   - properties:
                       code:
-                        const: SELLER_ID_CONFLICT
+                        const: SELLER_IDEMPOTENCY_CONFLICT
               example:
-                code: SELLER_ID_CONFLICT
-                message: Seller ID already has a different creation payload.
+                code: SELLER_IDEMPOTENCY_CONFLICT
+                message: Seller idempotency key already has a different creation payload.
         '503':
-          $ref: '#/components/responses/CatalogUnavailable'
+          $ref: '#/components/responses/CreationUnavailable'
+  /api/v1/sellers/by-key/{creationKey}:
+    parameters:
+      - $ref: '#/components/parameters/CreationKey'
+      - $ref: '#/components/parameters/RequestedRegion'
     get:
       tags: [Sellers]
-      operationId: getSeller
-      summary: Read a seller by its canonical ID
+      operationId: getSellerByCreationKey
+      summary: Recover a seller using its scoped creation key
       description: |
-        Validate the ID before IO. Return the stored seller or SELLER_NOT_FOUND.
-        GET does not require an issued fixture mapping: a canonical absent ID is
-        a 404. The configured replica profile may return temporarily missing
-        data, but an unavailable selected store returns 503, not 404.
+        Validate the key and required region before IO. Resolve the durable
+        mapping for the seller collection, region and exact creation key.
+        Return the stored seller and generated sellerId, or SELLER_NOT_FOUND
+        when no mapping is visible on the selected reachable store. This read
+        creates no mapping or entity and generates no ID. The configured read
+        profile and unavailable-store behavior match seller reads by ID.
       responses:
         '200':
           $ref: '#/components/responses/SellerOk'
@@ -227,33 +160,56 @@ paths:
           $ref: '#/components/responses/SellerNotFound'
         '503':
           $ref: '#/components/responses/ReadUnavailable'
-  /api/v1/sellers/{sellerId}/products/{productId}:
+  /api/v1/sellers/{sellerId}:
     parameters:
       - $ref: '#/components/parameters/SellerId'
-      - $ref: '#/components/parameters/ProductId'
-    put:
-      tags: [Products]
-      operationId: putProduct
-      summary: Create a service-issued product or retry its creation
+    get:
+      tags: [Sellers]
+      operationId: getSeller
+      summary: Read a seller by its canonical ID
       description: |
-        Validate IDs, payload syntax and issued seller/product association before
-        IO. An unissued/wrong-entity ID or product addressed under another seller
-        is 400 INVALID_REQUEST, not a conflicting reuse. Products inherit the
-        issued seller's placement; a region or shard property is invalid.
+        Validate the ID before IO. Return the stored seller or SELLER_NOT_FOUND.
+        A canonical absent ID returns 404. The configured replica profile may
+        return temporarily missing data, but an unavailable selected store returns 503, not 404.
+      responses:
+        '200':
+          $ref: '#/components/responses/SellerOk'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '404':
+          $ref: '#/components/responses/SellerNotFound'
+        '503':
+          $ref: '#/components/responses/ReadUnavailable'
+  /api/v1/sellers/{sellerId}/products:
+    parameters:
+      - $ref: '#/components/parameters/SellerId'
+    post:
+      tags: [Products]
+      operationId: createProduct
+      summary: Create a product with a service-generated ID or recover an identical retry
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      description: |
+        Validate the canonical parent sellerId, key and payload before IO.
+        No productId is accepted in the request. Products inherit the seller's
+        placement; a region or shard property is invalid.
 
-        Compare an existing product against its stored creation payload (name,
-        price, currency and initialStock). Identical values return 200; different
-        values return 409 PRODUCT_ID_CONFLICT. Current stock is never compared
+        Compare an existing mapping for the product collection, parent sellerId
+        and Idempotency-Key against its normalized creation payload (name, description,
+        price, unitCost, currency and initialStock). Identical values return 200 with the saved
+        productId; different values return 409 PRODUCT_IDEMPOTENCY_CONFLICT
+        without mutation or new ID generation. Current stock is never compared
         and never reset by a retry, even after reservations reduce it. The 200
         response includes the current stock read from the primary.
 
-        For an absent product, require the fixture's exact creationPayload
-        (otherwise 400), then require the seller on its reachable primary
-        (otherwise 422 SELLER_NOT_FOUND). Insert with stock = initialStock on that
-        seller's primary and return 201 after commit. Concurrent identical calls
-        create one product. Store unavailability or an unknown commit returns
-        503, never a missing-seller result. Retry the exact path and creation
-        values. No HTTP operation restocks a product or changes its stock.
+        For a new mapping, require the seller on its reachable primary before
+        allocating an ID (otherwise 422 SELLER_NOT_FOUND). Generate a live product
+        ID, then commit the product and mapping together on the seller's primary
+        with stock = initialStock. Return 201 with the generated productId.
+        Concurrent identical calls create one product. Store unavailability or
+        an unknown commit returns 503, never a missing-seller result. Retry the
+        same key, path and payload. No HTTP operation restocks a product or
+        changes its stock. No service-owned fixture mapping is required.
       requestBody:
         required: true
         content:
@@ -262,7 +218,9 @@ paths:
               $ref: '#/components/schemas/CreateProduct'
             example:
               name: Travel mug
+              description: Reusable insulated travel mug with a secure lid.
               price: '19.95'
+              unitCost: '12.45'
               currency: EUR
               initialStock: 10
       responses:
@@ -273,10 +231,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/Product'
               example:
-                sellerId: '11234023833600000'
-                productId: '11234023837794304'
+                sellerId: '11234023833608192'
+                productId: '11234023837802496'
                 name: Travel mug
+                description: Reusable insulated travel mug with a secure lid.
                 price: '19.95'
+                unitCost: '12.45'
                 currency: EUR
                 initialStock: 10
                 stock: 10
@@ -285,7 +245,7 @@ paths:
         '400':
           $ref: '#/components/responses/InvalidRequest'
         '409':
-          description: This issued ID already has a different immutable product creation payload.
+          description: This key under the parent seller already has a different product creation payload.
           content:
             application/json:
               schema:
@@ -293,14 +253,43 @@ paths:
                   - $ref: '#/components/schemas/Error'
                   - properties:
                       code:
-                        const: PRODUCT_ID_CONFLICT
+                        const: PRODUCT_IDEMPOTENCY_CONFLICT
               example:
-                code: PRODUCT_ID_CONFLICT
-                message: Product ID already has a different creation payload.
+                code: PRODUCT_IDEMPOTENCY_CONFLICT
+                message: Product idempotency key already has a different creation payload.
         '422':
           $ref: '#/components/responses/SellerNotFound'
         '503':
-          $ref: '#/components/responses/CatalogUnavailable'
+          $ref: '#/components/responses/CreationUnavailable'
+  /api/v1/sellers/{sellerId}/products/by-key/{creationKey}:
+    parameters:
+      - $ref: '#/components/parameters/SellerId'
+      - $ref: '#/components/parameters/CreationKey'
+    get:
+      tags: [Products]
+      operationId: getProductByCreationKey
+      summary: Recover a product using its parent and creation key
+      description: |
+        Validate the canonical sellerId and key before IO. Resolve the durable
+        mapping for the product collection, parent sellerId and exact creation
+        key. Return the stored product, generated productId and current stock,
+        or PRODUCT_NOT_FOUND when no mapping is visible under this seller on
+        the selected reachable store. This read creates no mapping or entity,
+        generates no ID and never resets stock. The configured read profile and
+        unavailable-store behavior match product reads by ID.
+      responses:
+        '200':
+          $ref: '#/components/responses/ProductOk'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '404':
+          $ref: '#/components/responses/ProductNotFound'
+        '503':
+          $ref: '#/components/responses/ReadUnavailable'
+  /api/v1/sellers/{sellerId}/products/{productId}:
+    parameters:
+      - $ref: '#/components/parameters/SellerId'
+      - $ref: '#/components/parameters/ProductId'
     get:
       tags: [Products]
       operationId: getProduct
@@ -308,9 +297,8 @@ paths:
       description: |
         Validate both IDs before IO. Return the product stored under this seller,
         including current stock, or 404 PRODUCT_NOT_FOUND. A canonical pair that
-        is absent or names another seller's product is a 404; GET does not perform
-        creation-issuance validation. The configured replica profile may return
-        stale stock or temporarily missing data. Unavailability returns 503,
+        is absent or names another seller's product is a 404. The configured
+        replica profile may return stale stock or temporarily missing data. Unavailability returns 503,
         never 404, and replicas never fall back to primaries.
       responses:
         '200':
@@ -318,18 +306,7 @@ paths:
         '400':
           $ref: '#/components/responses/InvalidRequest'
         '404':
-          description: No product is visible under the addressed seller on the selected reachable store.
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Error'
-                  - properties:
-                      code:
-                        const: PRODUCT_NOT_FOUND
-              example:
-                code: PRODUCT_NOT_FOUND
-                message: Product was not found under this seller.
+          $ref: '#/components/responses/ProductNotFound'
         '503':
           $ref: '#/components/responses/ReadUnavailable'
 components:
@@ -338,69 +315,72 @@ components:
       name: sellerId
       in: path
       required: true
-      description: Product-issued seller ID for PUT; canonical ID for GET. Never a shard selector.
+      description: Canonical seller ID returned by seller creation. Never a shard selector.
       schema:
         $ref: '#/components/schemas/Id'
-      example: '11234023833600000'
+      example: '11234023833608192'
     ProductId:
       name: productId
       in: path
       required: true
-      description: Product-issued ID belonging to the path seller for PUT; canonical ID for GET.
+      description: Canonical product ID to read under the path seller.
       schema:
         $ref: '#/components/schemas/Id'
-      example: '11234023837794304'
-    DatasetVersion:
-      name: datasetVersion
+      example: '11234023837802496'
+    CreationKey:
+      name: creationKey
       in: path
       required: true
-      description: Exact immutable configuration version; pin it across discovery, seeding and workload restarts.
+      description: Exact Idempotency-Key used when creating the entity, interpreted only within its collection and region or parent scope.
       schema:
-        $ref: '#/components/schemas/DatasetVersion'
-      example: catalog-v1
-    Limit:
-      name: limit
+        $ref: '#/components/schemas/IdempotencyKey'
+      example: catalog-v1.seller.1
+    RequestedRegion:
+      name: region
       in: query
-      description: Maximum descriptors in this page. May change while following a cursor.
+      required: true
+      description: Exact region supplied on seller creation; part of the durable key scope.
       schema:
-        type: integer
-        minimum: 1
-        maximum: 1000
-        default: 100
-      example: 100
-    Cursor:
-      name: cursor
-      in: query
-      description: Omit initially; otherwise send the returned opaque continuation token unchanged.
+        $ref: '#/components/schemas/Region'
+      example: ASIA
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: One opaque case-sensitive retry coordinate; retain it with the same normalized creation payload after retries and restarts.
       schema:
-        $ref: '#/components/schemas/Cursor'
+        $ref: '#/components/schemas/IdempotencyKey'
+      example: catalog-v1.seller.1
   responses:
     SellerOk:
-      description: Stored seller; a PUT response confirms an identical creation retry.
+      description: Stored company with current profits; a POST response confirms an identical creation retry without resetting profits.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Seller'
           example:
-            sellerId: '11234023833600000'
-            name: Asia Market
+            sellerId: '11234023833608192'
+            companyName: Asia Market
             region: ASIA
+            profitsEarned: {USD: '0.00', EUR: '15.00'}
     ProductOk:
-      description: Stored product with current stock; a PUT response confirms an identical creation retry.
+      description: Stored product with current stock; a POST response confirms an identical creation retry.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Product'
           example:
-            sellerId: '11234023833600000'
-            productId: '11234023837794304'
+            sellerId: '11234023833608192'
+            productId: '11234023837802496'
             name: Travel mug
+            description: Reusable insulated travel mug with a secure lid.
             price: '19.95'
+            unitCost: '12.45'
             currency: EUR
             initialStock: 10
             stock: 7
     InvalidRequest:
-      description: Invalid input, issuance, parent, region, fixture payload, version token or cursor; correct the request.
+      description: Invalid syntax, fields, canonical IDs, idempotency key, region or creation payload; correct the request.
       content:
         application/json:
           schema:
@@ -411,22 +391,9 @@ components:
                     const: INVALID_REQUEST
           example:
             code: INVALID_REQUEST
-            message: Request does not match the issued fixture or input contract.
-    DatasetNotFound:
-      description: A syntactically valid requested dataset version is not configured.
-      content:
-        application/json:
-          schema:
-            allOf:
-              - $ref: '#/components/schemas/Error'
-              - properties:
-                  code:
-                    const: DATASET_NOT_FOUND
-          example:
-            code: DATASET_NOT_FOUND
-            message: Dataset version was not found.
+            message: Request does not match the input contract.
     SellerNotFound:
-      description: Seller is absent on the reachable primary for a product PUT, or not visible on the selected reachable store for a seller GET.
+      description: Seller is absent on the reachable primary for a product POST, or not visible on the selected reachable store for a seller GET.
       content:
         application/json:
           schema:
@@ -438,8 +405,8 @@ components:
           example:
             code: SELLER_NOT_FOUND
             message: Seller was not found.
-    GenerationUnavailable:
-      description: Fixture generation unavailable; retry the same dataset version and cursor with bounded backoff.
+    ProductNotFound:
+      description: No product is visible under the addressed seller by this ID or creation key on the selected reachable store.
       content:
         application/json:
           schema:
@@ -447,12 +414,12 @@ components:
               - $ref: '#/components/schemas/Error'
               - properties:
                   code:
-                    const: ID_GENERATION_UNAVAILABLE
+                    const: PRODUCT_NOT_FOUND
           example:
-            code: ID_GENERATION_UNAVAILABLE
-            message: Fixture generation is temporarily unavailable; retry the same page.
-    CatalogUnavailable:
-      description: Catalog primary is unavailable, its bounded IO timed out, or commit outcome is unknown. Retry with the same IDs and payload within a bounded backoff budget.
+            code: PRODUCT_NOT_FOUND
+            message: Product was not found under this seller.
+    CreationUnavailable:
+      description: Catalog primary unavailable, bounded IO or ID generation exhausted, or commit outcome unknown. Retry the same key, path and payload with bounded backoff.
       content:
         application/json:
           schema:
@@ -460,10 +427,16 @@ components:
               - $ref: '#/components/schemas/Error'
               - properties:
                   code:
-                    const: CATALOG_UNAVAILABLE
-          example:
-            code: CATALOG_UNAVAILABLE
-            message: Catalog is temporarily unavailable; retry the same request.
+                    enum: [CATALOG_UNAVAILABLE, ID_GENERATION_UNAVAILABLE]
+          examples:
+            catalogUnavailable:
+              value:
+                code: CATALOG_UNAVAILABLE
+                message: Creation outcome is unknown; retry the same key and payload.
+            generationUnavailable:
+              value:
+                code: ID_GENERATION_UNAVAILABLE
+                message: No ID could be generated within the bounded budget; retry the same key and payload.
     ReadUnavailable:
       description: The selected catalog primary or replica is unavailable or timed out. Replica reads never fall back to a primary. Return within the four-second server deadline.
       content:
@@ -495,17 +468,17 @@ components:
         rejecting LF/CRLF suffixes as well as all other non-digit text. Do not
         trim, parse JSON numbers, round through floating point or coerce input.
       pattern: '^(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[01][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])(?![\s\S])'
-      examples: ['1', '11234023833600000', '9223372036854775807']
+      examples: ['1', '11234023833608192', '9223372036854775807']
     Name:
       type: string
       minLength: 1
       maxLength: 200
       pattern: '^(?=[\s\S]*\S)(?:[^\u0000\uD800-\uDFFF]|[\uD800-\uDBFF][\uDC00-\uDFFF])+(?![\s\S])'
-      description: Nonblank name of at most 200 Unicode scalar values, excluding NUL and unpaired surrogates; preserve the issued text exactly.
+      description: Nonblank name of at most 200 Unicode scalar values, excluding NUL and unpaired surrogates; preserve the supplied text exactly.
     Region:
       type: string
       enum: [US, EU, ASIA]
-      description: Immutable home region issued by product from the seller's ID route, never a caller choice.
+      description: Requested home region on creation; product generates a seller ID routed here and retains this region immutably.
     Price:
       type: string
       pattern: '^(?:0|[1-9][0-9]{0,16})\.[0-9]{2}(?![\s\S])'
@@ -514,7 +487,7 @@ components:
     Currency:
       type: string
       pattern: '^[A-Z]{3}(?![\s\S])'
-      description: Three uppercase ASCII letters; USD and EUR fixtures occur in every region.
+      description: Three uppercase ASCII letters; independent of region.
       examples: [USD, EUR]
     Stock:
       type: integer
@@ -522,49 +495,82 @@ components:
       minimum: 0
       maximum: 2147483647
       description: Nonnegative PostgreSQL INTEGER count. Exact integral JSON values 2, 2.0 and 2e0 normalize to 2; strings and fractional values such as 2.5 are invalid.
+    Description:
+      type: string
+      minLength: 1
+      maxLength: 2000
+      pattern: '^(?=[\s\S]*\S)(?:[^\u0000\uD800-\uDFFF]|[\uD800-\uDBFF][\uDC00-\uDFFF])+(?![\s\S])'
+      description: Nonblank description of at most 2000 Unicode scalar values, excluding NUL and unpaired surrogates; preserve exactly.
+    ProfitAmount:
+      type: string
+      pattern: '^(?!-0\.00(?![\s\S]))-?(?:0|[1-9][0-9]{0,16})\.[0-9]{2}(?![\s\S])'
+      description: Canonical signed NUMERIC(19,2) profit; losses are negative. No negative zero, plus sign, leading zeroes, exponent, grouping or rounding.
+      examples: ['0.00', '15.00', '-0.01', '-99999999999999999.99', '99999999999999999.99']
+    ProfitsEarned:
+      type: object
+      readOnly: true
+      required: [USD, EUR]
+      propertyNames:
+        $ref: '#/components/schemas/Currency'
+      additionalProperties:
+        $ref: '#/components/schemas/ProfitAmount'
+      description: |
+        Service-maintained cumulative confirmed profit grouped by currency, using
+        snapshotted (unitPrice - unitCost) times quantity and counting each order
+        item once. USD and EUR start at 0.00; other currencies appear when earned.
+        Never sum different currencies or accept this map in creation requests.
     CreateSeller:
       type: object
       additionalProperties: false
-      required: [name, region]
+      required: [companyName, region]
       properties:
-        name:
+        companyName:
           $ref: '#/components/schemas/Name'
         region:
           $ref: '#/components/schemas/Region'
     Seller:
       type: object
       additionalProperties: false
-      required: [sellerId, name, region]
+      required: [sellerId, companyName, region, profitsEarned]
       properties:
         sellerId:
           $ref: '#/components/schemas/Id'
-        name:
+        companyName:
           $ref: '#/components/schemas/Name'
         region:
           $ref: '#/components/schemas/Region'
+        profitsEarned:
+          $ref: '#/components/schemas/ProfitsEarned'
     CreateProduct:
       type: object
       additionalProperties: false
-      required: [name, price, currency, initialStock]
+      required: [name, description, price, unitCost, currency, initialStock]
       properties:
         name:
           $ref: '#/components/schemas/Name'
+        description:
+          $ref: '#/components/schemas/Description'
         price:
+          $ref: '#/components/schemas/Price'
+        unitCost:
           $ref: '#/components/schemas/Price'
         currency:
           $ref: '#/components/schemas/Currency'
         initialStock:
           $ref: '#/components/schemas/Stock'
-      description: Exact issued immutable payload. IDs belong in the path; region is inherited and stock is service-managed.
+      description: Immutable creation payload with no product ID. The parent seller ID belongs in the path; region is inherited and stock is service-managed. Unit cost uses the product currency and may exceed its price, producing a loss on a confirmed sale.
     Product:
       type: object
       additionalProperties: false
-      required: [sellerId, productId, name, price, currency, initialStock, stock]
+      required: [sellerId, productId, name, description, price, unitCost, currency, initialStock, stock]
       description: |
-        Initial stock is immutable; current stock is changed only by order saga
-        reservations/releases. The service and database enforce stock <=
+        Products are grouped by their immutable parent sellerId. Initial stock
+        and creation fields are immutable; current stock is changed only by order
+        saga reservations/releases. The service and database enforce stock <=
         initialStock, a cross-property rule not expressible in standard JSON
-        Schema. PUT retries compare initialStock and never reset current stock.
+        Schema. POST retries compare initialStock and never reset current stock.
+        Unit cost uses the product currency; confirmed-sale profit is calculated
+        from price and cost snapshots, not current mutable balances.
       properties:
         sellerId:
           $ref: '#/components/schemas/Id'
@@ -572,7 +578,11 @@ components:
           $ref: '#/components/schemas/Id'
         name:
           $ref: '#/components/schemas/Name'
+        description:
+          $ref: '#/components/schemas/Description'
         price:
+          $ref: '#/components/schemas/Price'
+        unitCost:
           $ref: '#/components/schemas/Price'
         currency:
           $ref: '#/components/schemas/Currency'
@@ -580,68 +590,12 @@ components:
           $ref: '#/components/schemas/Stock'
         stock:
           $ref: '#/components/schemas/Stock'
-    DatasetVersion:
+    IdempotencyKey:
       type: string
       minLength: 1
-      maxLength: 64
-      pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}(?![\s\S])'
-      description: Case-sensitive immutable dataset token; not an ID or a mutable latest alias.
-    Cursor:
-      type: string
-      minLength: 1
-      maxLength: 1024
-      pattern: '^[A-Za-z0-9_-]+(?![\s\S])'
-      description: Opaque unpadded base64url continuation token. Clients must not decode, construct or modify it.
-    SellerFixture:
-      type: object
-      additionalProperties: false
-      required: [sellerId, creationPayload]
-      properties:
-        sellerId:
-          $ref: '#/components/schemas/Id'
-        creationPayload:
-          $ref: '#/components/schemas/CreateSeller'
-    ProductFixture:
-      type: object
-      additionalProperties: false
-      required: [sellerId, productId, creationPayload]
-      properties:
-        sellerId:
-          $ref: '#/components/schemas/Id'
-        productId:
-          $ref: '#/components/schemas/Id'
-        creationPayload:
-          $ref: '#/components/schemas/CreateProduct'
-    SellerFixturePage:
-      type: object
-      additionalProperties: false
-      required: [datasetVersion, items]
-      properties:
-        datasetVersion:
-          $ref: '#/components/schemas/DatasetVersion'
-        items:
-          type: array
-          maxItems: 1000
-          items:
-            $ref: '#/components/schemas/SellerFixture'
-        nextCursor:
-          $ref: '#/components/schemas/Cursor'
-      description: Echoes the requested version. Item count is at most the requested limit; nextCursor exists only if more items remain and is omitted, never null, at completion.
-    ProductFixturePage:
-      type: object
-      additionalProperties: false
-      required: [datasetVersion, items]
-      properties:
-        datasetVersion:
-          $ref: '#/components/schemas/DatasetVersion'
-        items:
-          type: array
-          maxItems: 1000
-          items:
-            $ref: '#/components/schemas/ProductFixture'
-        nextCursor:
-          $ref: '#/components/schemas/Cursor'
-      description: Echoes the requested version. Item count is at most the requested limit; nextCursor exists only if more items remain and is omitted, never null, at completion.
+      maxLength: 128
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\s\S])'
+      description: Opaque ASCII retry coordinate, not an entity ID. Preserve exactly without trimming or case folding.
     Error:
       type: object
       additionalProperties: false
@@ -651,9 +605,8 @@ components:
           type: string
           enum:
             - INVALID_REQUEST
-            - DATASET_NOT_FOUND
-            - SELLER_ID_CONFLICT
-            - PRODUCT_ID_CONFLICT
+            - SELLER_IDEMPOTENCY_CONFLICT
+            - PRODUCT_IDEMPOTENCY_CONFLICT
             - SELLER_NOT_FOUND
             - PRODUCT_NOT_FOUND
             - CATALOG_UNAVAILABLE

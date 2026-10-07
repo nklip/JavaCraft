@@ -30,6 +30,7 @@
         <jacoco.it.argLine/>
         <shardshop.failIfNoTests>false</shardshop.failIfNoTests>
         <shardshop.idGenerationBoundary.skip>false</shardshop.idGenerationBoundary.skip>
+        <shardshop.datasetBoundary.skip>false</shardshop.datasetBoundary.skip>
         <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
         <maven-failsafe-plugin.version>3.6.0</maven-failsafe-plugin.version>
@@ -78,6 +79,12 @@
             <dependency>
                 <groupId>dev.nklip.javacraft</groupId>
                 <artifactId>shardshop-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- Dataset definitions are packaged only by workload applications. -->
+            <dependency>
+                <groupId>dev.nklip.javacraft</groupId>
+                <artifactId>shardshop-datasets</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <!-- ID generation and routing are separate core libraries for product/order only. -->
@@ -350,6 +357,38 @@
                                 <requireMavenVersion>
                                     <version>[3.9.16,)</version>
                                 </requireMavenVersion>
+                            </rules>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>enforce-direct-dataset-boundary</id>
+                        <goals><goal>enforce</goal></goals>
+                        <configuration>
+                            <skip>${shardshop.datasetBoundary.skip}</skip>
+                            <rules>
+                                <bannedDependencies>
+                                    <excludes>
+                                        <exclude>dev.nklip.javacraft:shardshop-datasets</exclude>
+                                    </excludes>
+                                    <searchTransitive>false</searchTransitive>
+                                    <message>Dataset definitions belong exclusively to workload modules.</message>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>enforce-transitive-dataset-boundary</id>
+                        <goals><goal>enforce</goal></goals>
+                        <configuration>
+                            <skip>${shardshop.datasetBoundary.skip}</skip>
+                            <rules>
+                                <bannedDependencies>
+                                    <excludes>
+                                        <exclude>dev.nklip.javacraft:shardshop-datasets</exclude>
+                                    </excludes>
+                                    <searchTransitive>true</searchTransitive>
+                                    <message>Dataset definitions belong exclusively to workload modules.</message>
+                                </bannedDependencies>
                             </rules>
                         </configuration>
                     </execution>

@@ -125,8 +125,9 @@ checking the Quarkus graph. [Platform BOM](https://quarkus.io/guides/platform/).
 The platform selects compatible library versions; each artifact still needs an
 upstream maintenance and advisory review. Step 0.5 recorded the resolved versions
 and checksums in the lock: Quarkus **3.40.1**, JUnit **6.1.3**, Mockito **5.21.0**,
-JBoss Log Manager **3.2.2.Final** and SLF4J **2.0.18**. Netty **4.1.138.Final** is
-platform-managed but is not a resolved skeleton dependency.
+JBoss Log Manager **3.2.2.Final** and SLF4J **2.0.18**. The skeletons do not
+resolve platform-managed Netty **4.1.138.Final**. Requalify HTTP runtime families
+and required security patches when providers are enabled in step 3.6.
 Keep plain domain/routing tests independent of the framework, pin Testcontainers
 images, and audit any retained Lombok processor against Java 25. Add only the
 dependencies a module uses. [REST](https://quarkus.io/guides/rest/),
@@ -167,6 +168,42 @@ Every packaged application contains the common JAR. At step 3.2 common had only
 Jackson at runtime; ledger and workloads contain neither sharding nor Snowflake.
 The exact build command is in [README](README.md#id-validation-and-currency-selection-step-32).
 
+### Step 3.5 workload dataset dependencies
+
+`shardshop-datasets` is an ordinary Java library under `shardshop-workload` with
+no runtime dependencies. Only the three workload applications consume it.
+Common adds Jackson Databind **2.21.7** for strict tree decoding; its annotations
+resolve to **2.21**. Workloads use the JDK HTTP client for creation and key-based
+lookups. No REST extension, Vert.x or Netty runtime is introduced at this step.
+The client bounds response bytes and the complete asynchronous exchange, and
+rejects duplicate JSON members, malformed UTF-8 and coerced identifiers.
+
+The September Databind advisories are patched in 2.21.7:
+[unknown type-ID retention](https://github.com/FasterXML/jackson-databind/security/advisories/GHSA-wv8q-qhhj-9h54)
+and [forward-reference completion](https://github.com/FasterXML/jackson-databind/security/advisories/GHSA-cxp5-3px4-pw24).
+The new clients use tree decoding without polymorphic binding. On **2026-10-07**,
+the Databind and annotations artifacts in the lock's `step_3_5_workload_dependencies`
+matched Maven Central's published SHA-1 checksums; independent SHA-256 values
+are recorded there. Review these families with the platform by **2026-11-04**.
+The [step 3.5 audit command](README.md#workload-owned-datasets-and-service-issued-ids-step-35)
+rebuilds all six applications because common changed.
+
+The catalog-v1 and buyers-v1 datasets keep the library free of runtime dependencies. Mockito
+is test-only for resource IO failure checks (13 dataset SBOM components including
+test dependencies). The 2026-10-07 audit passes 559 unit/client/startup tests and
+48 packaged checks, with 100% line/branch coverage in ten Java modules. All 3,450
+creation payloads pass their schemas, and regenerated buyer files retain their
+hashes. Source artifacts, fixed regional pools and generated TSV checksums are
+recorded in the workload module's
+[`source-manifest.json`](shardshop-workload/shardshop-datasets/source-manifest.json).
+Its [`SOURCES.md`](shardshop-workload/shardshop-datasets/SOURCES.md) records
+attribution, ranking limits and the public-domain US Census, CC BY 4.0 Onomaverse
+and MIT Faker name sources; these notices and source licenses are packaged with
+the dataset JAR. Buyer contacts use reserved example domains and fictional NANPA
+numbers. Both datasets are the initial unreleased v1; edits before their first
+release or use keep that version. Source extraction tools do not become Java
+build/runtime dependencies.
+
 ### Explicit Snowflake library selection
 
 Pin **`de.mkammerer.snowflake-id:snowflake-id:0.0.2`** outside the framework BOM in
@@ -184,8 +221,7 @@ dependencies. Verify Java 25 operation, distribution/license obligations, artifa
 origin, and the generator's concurrency/time behavior before the application
 milestone. `shardshop-idgen`, in `shardshop-core/idgen`, declares the dependency
 for its generator implementation and unit tests. Product/order use that library
-and its shared CDI producer to enable generation, including the planned
-deterministic fixture IDs. Common and sharding have no generator dependency.
+and its shared CDI producer to generate IDs for all creation requests. Common and sharding have no generator dependency.
 Workloads consume service-issued IDs and ledger consumes order-reserved result
 IDs; neither may depend on Snowflake or access the generator allocator.
 Do not invent a supported successor version or silently substitute a different

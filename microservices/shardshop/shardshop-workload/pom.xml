@@ -13,7 +13,12 @@
     <artifactId>shardshop-workload</artifactId>
     <packaging>pom</packaging>
 
+    <properties>
+        <shardshop.datasetBoundary.skip>true</shardshop.datasetBoundary.skip>
+    </properties>
+
     <modules>
+        <module>shardshop-datasets</module>
         <module>shardshop-product-seeder</module>
         <module>shardshop-product-reader</module>
         <module>shardshop-order-producer</module>

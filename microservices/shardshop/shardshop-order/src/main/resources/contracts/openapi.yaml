@@ -4,82 +4,72 @@ info:
   title: ShardShop order API
   version: 1.0.0
   description: |
-    Design contract for PLAN step 3.1; providers are implemented in steps 3.6 and 4.1.
-    Order owns buyer fixtures and durable order allocations. Clients forward issued
-    IDs unchanged and keep their own DTOs. No public operation accepts a shard selector.
-    Buyer regions are immutable service-issued values; buyers may purchase from
+    Design contract for PLAN step 3.1; providers are implemented in step 4.1.
+    Workloads own dataset definitions and submit creation payloads. Order generates
+    buyer IDs and owns durable order allocations. Clients retain returned IDs
+    unchanged and keep their own DTOs. No public operation accepts a shard selector.
+    Buyer creation requests a home region; order generates an ID routed to that
+    region, which is immutable after creation. Buyers may purchase from
     sellers in any region. All buyer/order reads and writes use the buyer's primary.
     Unknown request fields, duplicate object member names, unknown/repeated query
     parameters, numeric JSON IDs and noncanonical text are INVALID_REQUEST.
     IDs are checked before conversion or IO, without trimming or coercion.
     Error messages are diagnostic text; clients branch on the stable code.
-    Names and run names must contain Unicode scalar values, excluding NUL and
-    unpaired UTF-16 surrogates; valid surrogate pairs decode to one scalar value.
+    Person names, address text and run names must contain Unicode scalar values,
+    excluding NUL and unpaired UTF-16 surrogates; valid surrogate pairs decode
+    to one scalar value.
     Reject invalid text as 400 before IO. Integral JSON numbers such as 2, 2.0
     and 2e0 have the same meaning and normalize to integer 2. Parse numbers exactly;
     reject a fractional value such as 2.5, out-of-range values, numeric strings and
     booleans as 400, without truncation or binary floating-point rounding.
-    Examples illustrate the wire format, not issued dataset fixtures. Issuance is
-    established by configured dataset responses and durable allocation records.
+    Order accepts arbitrary valid buyer payloads and has no dataset versions,
+    fixture whitelist or discovery API. Examples illustrate the wire format;
+    actual buyer IDs come from committed creation responses and actual order IDs
+    from durable allocation records. New IDs use live generators 1..1023.
 paths:
-  /api/v1/datasets/{datasetVersion}/buyers:
-    parameters:
-      - $ref: '#/components/parameters/DatasetVersion'
-      - $ref: '#/components/parameters/Limit'
-      - $ref: '#/components/parameters/Cursor'
-    get:
-      operationId: listBuyerFixtures
-      summary: Discover immutable buyer IDs and creation payloads
+  /api/v1/buyers:
+    post:
+      operationId: createBuyer
+      summary: Create a buyer with a service-generated ID or recover an identical retry
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       description: |
-        Describes buyers across US, EU and ASIA without creating them, using ID ranges
-        disjoint from product's seller/product fixtures. Pin the configured dataset version
-        throughout a run. Pages use ascending numeric buyerId order and contain at most
-        limit descriptors. Repeat requests return the same descriptors. Omit cursor for
-        the first page; use nextCursor unchanged to continue. It is opaque, scoped to
-        this version and collection, and remains usable while the dataset is retained.
-        Omitting nextCursor means completion; an empty collection has items: [].
-        A malformed or wrong-version/collection cursor is INVALID_REQUEST.
-        There is no mutable latest alias. Limit may change between pages without
-        skipping or repeating descriptors. Versions reserve disjoint ranges for new
-        IDs and may select retained subsets without changing an existing ID's payload.
-      responses:
-        '200':
-          description: A stable page of buyer fixtures
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BuyerPage'
-              example:
-                datasetVersion: v1
-                items:
-                  - buyerId: '21380884070400003'
-                    creationPayload: {name: Example buyer, region: ASIA}
-        '400':
-          $ref: '#/components/responses/InvalidRequest'
-        '404':
-          $ref: '#/components/responses/DatasetNotFound'
-        '503':
-          $ref: '#/components/responses/GenerationUnavailable'
-  /api/v1/buyers/{buyerId}:
-    parameters:
-      - $ref: '#/components/parameters/BuyerId'
-    put:
-      operationId: putBuyer
-      summary: Create an immutable buyer or recover an identical retry
-      description: |
-        Only order-issued buyer fixture IDs are accepted. The payload must match the
-        issued fixture on first creation. A missing/unknown region or a region differing
-        from the issued fixture and routed home region is INVALID_REQUEST before IO.
-        Once created, an otherwise valid issued ID with a different stored name is
-        BUYER_ID_CONFLICT; an identical retry returns the saved buyer. A 503 can mean
-        an unknown commit: retry the same buyerId and exact creation payload.
+        Validate firstName, surname, email, phone, address, requested region and
+        exactly one Idempotency-Key before IO. Missing, repeated or malformed keys
+        and missing/unknown regions are INVALID_REQUEST. No buyerId is accepted
+        in the request. Keys are opaque
+        case-sensitive retry coordinates, not entity IDs, scoped to the buyer
+        collection and requested region. The same key in another requested region
+        is a separate scope.
+
+        Equal normalized payloads in the same scope return the saved buyer and ID
+        with 200; a changed person/contact/address field returns
+        409 BUYER_IDEMPOTENCY_CONFLICT without mutation or new ID allocation.
+        Contact fields and address are immutable creation data. For a new mapping,
+        generate a live buyer ID
+        routed to the requested region within the bounded generation budget.
+        Commit the buyer and mapping together on that region's primary, then
+        return 201 with the generated buyerId. The region is immutable afterward.
+
+        Retain mappings permanently. Concurrent calls, lost responses and restarts
+        recover the same ID using the same scoped key and normalized payload.
+        Existing mappings require no new ID generation. Bounded generation
+        exhaustion returns ID_GENERATION_UNAVAILABLE; store failure or unknown
+        commit returns ORDER_STORE_UNAVAILABLE. Retry the same key and payload
+        with bounded backoff. No service-owned dataset or fixture is required.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/BuyerCreation'
-            example: {name: Example buyer, region: ASIA}
+            example:
+              firstName: Wei
+              surname: Wang
+              email: wei.wang@example.com
+              phone: '+12025550123'
+              address: {line1: 1 Example Road, city: Example City, postalCode: '000001', countryCode: CN}
+              region: ASIA
       responses:
         '201':
           $ref: '#/components/responses/Buyer'
@@ -90,7 +80,10 @@ paths:
         '409':
           $ref: '#/components/responses/BuyerConflict'
         '503':
-          $ref: '#/components/responses/OrderStoreUnavailable'
+          $ref: '#/components/responses/BuyerCreationUnavailable'
+  /api/v1/buyers/{buyerId}:
+    parameters:
+      - $ref: '#/components/parameters/BuyerId'
     get:
       operationId: getBuyer
       summary: Read a buyer from its primary
@@ -112,14 +105,15 @@ paths:
       description: |
         Atomically persist (buyerId, runName, requestOrdinal) -> orderId before returning.
         Concurrent calls, lost responses and producer/service restarts recover the same
-        committed mapping forever while the dataset is retained. Never recycle it.
+        committed mapping permanently. Never recycle it.
         Allocation creates no order, saga or outbox. Existing mappings require no new
         ID generation. A missing buyer is BUYER_NOT_FOUND. Unknown commits and an
         unavailable store are ORDER_STORE_UNAVAILABLE: retry the same coordinates with
-        bounded backoff. Freeze dataset versions and workload settings for a run; only
+        bounded backoff. Freeze workload-owned dataset versions and settings for a run; only
         a new independent run receives a new configured runName. requestOrdinal is a
         zero-based retry coordinate, represented as text to preserve BIGINT precision;
-        it is not a client-generated application ID. An unissued buyerId is invalid.
+        it is not a client-generated application ID. Validate canonical buyerId
+        syntax before IO; a canonical absent buyer is BUYER_NOT_FOUND.
       requestBody:
         required: true
         content:
@@ -192,7 +186,7 @@ paths:
             example:
               currency: EUR
               items:
-                - {sellerId: '11234023833600000', productId: '11234023837794304', quantity: 2}
+                - {sellerId: '11234023833608192', productId: '11234023837802496', quantity: 2}
       responses:
         '202':
           description: Committed new or existing pending order; poll the status URL
@@ -208,10 +202,10 @@ paths:
                   - properties:
                       status: {enum: [PENDING_STOCK, PENDING_LEDGER]}
               example:
-                buyerId: '21380884070400003'
+                buyerId: '21380884070404097'
                 orderId: '100925016375300096'
                 status: PENDING_STOCK
-                statusUrl: /api/v1/buyers/21380884070400003/orders/100925016375300096
+                statusUrl: /api/v1/buyers/21380884070404097/orders/100925016375300096
         '200':
           description: An identical retry found an existing terminal decision
           content:
@@ -224,16 +218,16 @@ paths:
               examples:
                 recorded:
                   value:
-                    buyerId: '21380884070400003'
+                    buyerId: '21380884070404097'
                     orderId: '100925016375300096'
                     status: CONFIRMED
-                    statusUrl: /api/v1/buyers/21380884070400003/orders/100925016375300096
+                    statusUrl: /api/v1/buyers/21380884070404097/orders/100925016375300096
                 rejected:
                   value:
-                    buyerId: '21380884070400003'
+                    buyerId: '21380884070404097'
                     orderId: '100925016375300096'
                     status: CANCELLED
-                    statusUrl: /api/v1/buyers/21380884070400003/orders/100925016375300096
+                    statusUrl: /api/v1/buyers/21380884070404097/orders/100925016375300096
                     cancellationReason: UNSUPPORTED_CURRENCY
         '400':
           $ref: '#/components/responses/InvalidRequest'
@@ -261,10 +255,10 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrderStatus'
               example:
-                buyerId: '21380884070400003'
+                buyerId: '21380884070404097'
                 orderId: '100925016375300096'
                 status: PENDING_LEDGER
-                statusUrl: /api/v1/buyers/21380884070400003/orders/100925016375300096
+                statusUrl: /api/v1/buyers/21380884070404097/orders/100925016375300096
         '400':
           $ref: '#/components/responses/InvalidRequest'
         '404':
@@ -285,21 +279,14 @@ components:
       required: true
       schema:
         $ref: '#/components/schemas/Id'
-    DatasetVersion:
-      name: datasetVersion
-      in: path
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
       required: true
+      description: One opaque case-sensitive retry coordinate; retain it with the same normalized creation payload after retries and restarts.
       schema:
-        $ref: '#/components/schemas/DatasetVersion'
-    Limit:
-      name: limit
-      in: query
-      schema: {type: integer, minimum: 1, maximum: 1000, default: 100}
-    Cursor:
-      name: cursor
-      in: query
-      schema:
-        $ref: '#/components/schemas/Cursor'
+        $ref: '#/components/schemas/IdempotencyKey'
+      example: buyers-v1.ASIA.buyer.1
   schemas:
     Id:
       type: string
@@ -310,72 +297,90 @@ components:
         The alternatives enforce the signed-long bound; the final assertion forbids
         trailing LF/CRLF or any other character. Runtime also checks the parsed range.
       pattern: '^(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[01][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])(?![\s\S])'
-      examples: ['1', '21380884070400003', '9223372036854775807']
+      examples: ['1', '21380884070404097', '9223372036854775807']
     Name:
       type: string
       minLength: 1
       maxLength: 200
       pattern: '^(?=[\s\S]*\S)(?:[^\u0000\uD800-\uDFFF]|[\uD800-\uDBFF][\uDC00-\uDFFF])+(?![\s\S])'
       description: Nonblank text of at most 200 Unicode scalar values, excluding NUL and unpaired surrogates. Preserve exactly without trimming or case folding.
-    DatasetVersion:
+    IdempotencyKey:
       type: string
       minLength: 1
-      maxLength: 64
-      pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}(?![\s\S])'
-    Cursor:
-      type: string
-      minLength: 1
-      maxLength: 1024
-      pattern: '^[A-Za-z0-9_-]+(?![\s\S])'
-      description: Opaque base64url cursor; never decoded or constructed by clients.
+      maxLength: 128
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\s\S])'
+      description: Opaque ASCII retry coordinate, not an entity ID. Preserve exactly without trimming or case folding.
     Currency:
       type: string
       pattern: '^[A-Z]{3}(?![\s\S])'
       description: Three uppercase ASCII letters; ledger support is evaluated asynchronously.
+    Email:
+      type: string
+      minLength: 3
+      maxLength: 254
+      format: email
+      pattern: '^(?=[^@]{1,64}@)[A-Za-z0-9!#$%&''*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&''*+/=?^_`{|}~-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}(?![\s\S])'
+      description: ASCII dot-atom email with a DNS-style domain and local part of at most 64 characters. Preserve exactly; the API does not restrict providers.
+    Phone:
+      type: string
+      pattern: '^\+[0-9]{7,15}(?![\s\S])'
+      description: International-format contact phone, plus followed by 7 through 15 ASCII digits. Preserve exactly.
+    Address:
+      type: object
+      additionalProperties: false
+      required: [line1, city, postalCode, countryCode]
+      properties:
+        line1:
+          $ref: '#/components/schemas/Name'
+        city:
+          allOf:
+            - $ref: '#/components/schemas/Name'
+            - maxLength: 100
+        postalCode:
+          allOf:
+            - $ref: '#/components/schemas/Name'
+            - maxLength: 20
+        countryCode:
+          type: string
+          pattern: '^[A-Z]{2}(?![\s\S])'
+      description: Required postal contact fields; all text is nonblank and preserved exactly. Country code is two uppercase ASCII letters and does not select the buyer shard.
     BuyerCreation:
       type: object
       additionalProperties: false
-      required: [name, region]
+      required: [firstName, surname, email, phone, address, region]
       properties:
-        name:
+        firstName:
           $ref: '#/components/schemas/Name'
+        surname:
+          $ref: '#/components/schemas/Name'
+        email:
+          $ref: '#/components/schemas/Email'
+        phone:
+          $ref: '#/components/schemas/Phone'
+        address:
+          $ref: '#/components/schemas/Address'
         region:
           type: string
           enum: [US, EU, ASIA]
-          description: Immutable home region issued with the fixture; never a placement choice.
+          description: Requested home region on creation; order generates a buyer ID routed here and retains this region immutably.
     Buyer:
       type: object
       additionalProperties: false
-      required: [buyerId, name, region]
+      required: [buyerId, firstName, surname, email, phone, address, region]
       properties:
         buyerId:
           $ref: '#/components/schemas/Id'
-        name:
+        firstName:
           $ref: '#/components/schemas/Name'
+        surname:
+          $ref: '#/components/schemas/Name'
+        email:
+          $ref: '#/components/schemas/Email'
+        phone:
+          $ref: '#/components/schemas/Phone'
+        address:
+          $ref: '#/components/schemas/Address'
         region: {type: string, enum: [US, EU, ASIA]}
-    BuyerFixture:
-      type: object
-      additionalProperties: false
-      required: [buyerId, creationPayload]
-      properties:
-        buyerId:
-          $ref: '#/components/schemas/Id'
-        creationPayload:
-          $ref: '#/components/schemas/BuyerCreation'
-    BuyerPage:
-      type: object
-      additionalProperties: false
-      required: [datasetVersion, items]
-      properties:
-        datasetVersion:
-          $ref: '#/components/schemas/DatasetVersion'
-        items:
-          type: array
-          maxItems: 1000
-          items:
-            $ref: '#/components/schemas/BuyerFixture'
-        nextCursor:
-          $ref: '#/components/schemas/Cursor'
     RequestOrdinal:
       description: Canonical nonnegative decimal retry coordinate, 0..9223372036854775807.
       oneOf:
@@ -472,7 +477,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Buyer'
-          example: {buyerId: '21380884070400003', name: Example buyer, region: ASIA}
+          example:
+            buyerId: '21380884070404097'
+            firstName: Wei
+            surname: Wang
+            email: wei.wang@example.com
+            phone: '+12025550123'
+            address: {line1: 1 Example Road, city: Example City, postalCode: '000001', countryCode: CN}
+            region: ASIA
     Allocation:
       description: Durable allocation (201 new, 200 recovered); creates no order or saga
       content:
@@ -480,12 +492,12 @@ components:
           schema:
             $ref: '#/components/schemas/Allocation'
           example:
-            buyerId: '21380884070400003'
+            buyerId: '21380884070404097'
             orderId: '100925016375300096'
             runName: local-run-1
             requestOrdinal: '0'
     InvalidRequest:
-      description: Invalid syntax, fields, IDs, issuance, parent, region, cursor or amount range
+      description: Invalid syntax, fields, canonical IDs, order allocation, idempotency key, region or amount range
       content:
         application/json:
           schema:
@@ -493,17 +505,7 @@ components:
               - $ref: '#/components/schemas/Error'
               - properties:
                   code: {const: INVALID_REQUEST}
-          example: {code: INVALID_REQUEST, message: Use the service-issued ID and creation payload.}
-    DatasetNotFound:
-      description: Unknown configured dataset version
-      content:
-        application/json:
-          schema:
-            allOf:
-              - $ref: '#/components/schemas/Error'
-              - properties:
-                  code: {const: DATASET_NOT_FOUND}
-          example: {code: DATASET_NOT_FOUND, message: Dataset version was not found.}
+          example: {code: INVALID_REQUEST, message: Request does not match the input contract.}
     BuyerNotFound:
       description: Buyer absent on its reachable primary (404 on GET, 422 on allocation)
       content:
@@ -525,15 +527,15 @@ components:
                   code: {const: ORDER_NOT_FOUND}
           example: {code: ORDER_NOT_FOUND, message: Order was not found under this buyer.}
     BuyerConflict:
-      description: Existing buyer has a different immutable creation payload
+      description: This key in the requested region already has a different buyer creation payload
       content:
         application/json:
           schema:
             allOf:
               - $ref: '#/components/schemas/Error'
               - properties:
-                  code: {const: BUYER_ID_CONFLICT}
-          example: {code: BUYER_ID_CONFLICT, message: Buyer ID already has a different creation payload.}
+                  code: {const: BUYER_IDEMPOTENCY_CONFLICT}
+          example: {code: BUYER_IDEMPOTENCY_CONFLICT, message: Buyer idempotency key already has a different creation payload.}
     OrderConflict:
       description: Conflicting reuse or unresolved orphan quarantine; never start a new saga
       content:
@@ -576,16 +578,20 @@ components:
               - properties:
                   code: {const: ORDER_STORE_UNAVAILABLE}
           example: {code: ORDER_STORE_UNAVAILABLE, message: Order store is temporarily unavailable; retry the same request.}
-    GenerationUnavailable:
-      description: Fixture generation unavailable; retry the same dataset version and cursor
+    BuyerCreationUnavailable:
+      description: Store failure/unknown commit or bounded ID generation exhausted; retry the same key and payload with bounded backoff
       content:
         application/json:
           schema:
             allOf:
               - $ref: '#/components/schemas/Error'
               - properties:
-                  code: {const: ID_GENERATION_UNAVAILABLE}
-          example: {code: ID_GENERATION_UNAVAILABLE, message: Fixture generation is temporarily unavailable.}
+                  code: {enum: [ORDER_STORE_UNAVAILABLE, ID_GENERATION_UNAVAILABLE]}
+          examples:
+            storeUnavailable:
+              value: {code: ORDER_STORE_UNAVAILABLE, message: Creation outcome is unknown; retry the same key and payload.}
+            generationUnavailable:
+              value: {code: ID_GENERATION_UNAVAILABLE, message: No ID could be generated within the bounded budget; retry the same key and payload.}
     AllocationUnavailable:
       description: Store failure/unknown commit or new-ID failure; retry the same coordinates
       content:

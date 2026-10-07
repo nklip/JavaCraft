@@ -1,0 +1,14 @@
+Onomaverse Names Datasets, v2026.06
+The Onomaverse Team
+
+Names data from Onomaverse (https://onomaverse.com/datasets), licensed CC BY 4.0.
+Source release: https://github.com/onomaverse/datasets/releases/tag/v2026.06
+License: https://creativecommons.org/licenses/by/4.0/
+Legal code, including disclaimer of warranties and limitation of liability:
+https://creativecommons.org/licenses/by/4.0/legalcode.en
+
+ShardShop modifications: selected EU27 rows; combined counts across countries
+and given-name genders; ranked and retained 1,000 given names and 1,000 surnames;
+added ASCII email components; combined names with synthetic fixture contacts
+and addresses to produce the EU buyer dataset. These changes are not endorsed
+by Onomaverse. Original material remains available under CC BY 4.0.
