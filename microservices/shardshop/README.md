@@ -4,10 +4,12 @@
 [Version policy](VERSIONS.md) · [Artifact lock](versions.lock.yaml)
 
 All six applications use **Quarkus 3.40.1** in JVM mode on Java 25.
-Their entry points currently start CDI and exit. Step 3.5 provides workload-owned
-dataset definitions and HTTP client methods; database-backed creation/lookup
-providers arrive in steps 3.6 and 4.1, and workload loops in steps 3.7, 3.8 and 4.7.
-No Docker or Kubernetes is needed for these module tests. Product/order production
+Product now runs the seller/product HTTP API from step 3.6; the other entry points
+start CDI and exit. Step 3.5 provides workload-owned dataset definitions and HTTP
+clients; the buyer provider remains step 4.1, and workload loops remain steps
+3.7, 3.8 and 4.7. No Docker or Kubernetes is needed for Maven module tests. The
+separate product-provider acceptance check uses disposable PostgreSQL databases.
+Product/order production
 starts still require the routing snapshot and a live generator ID reserved by
 the startup launcher; tests use disposable configuration.
 
@@ -91,8 +93,8 @@ The clients send `POST /api/v1/sellers`,
 persists the entity ID before returning `201`; a retry returns `200` with the
 same ID. A conflicting payload under that scope/key returns `409`. Seller/buyer
 keys are scoped by requested region; product keys are scoped by parent seller ID.
-Provider steps 3.6/4.1 must add durable creation-key storage before implementing
-these endpoints; process-local caches cannot satisfy the restart contract.
+Product's step 3.6 provider persists these keys in the catalog. Buyer creation-key
+storage remains step 4.1; process-local caches cannot satisfy the restart contract.
 
 Seller requests contain `companyName` and `region`. Seller responses also include
 service-owned `profitsEarned` balances by currency, starting with `USD: "0.00"`
@@ -105,12 +107,10 @@ products remain grouped by their returned seller ID. Buyer requests include
 `firstName`, `surname`, `email`, `phone`, and `address` with `line1`, `city`,
 `postalCode` and `countryCode`.
 
-Existing catalog/ordering V1 migrations remain immutable. Steps 3.6/4.1 must add
-fix-forward migrations for the enriched fields, durable creation keys and
-order-item unit-cost snapshots. Profit persistence and exactly-once crediting of
-confirmed order items remain future provider/saga work: pending, reserved,
-cancelled or rejected orders earn no profit. There is no runtime profit engine
-in step 3.5.
+Existing catalog/ordering V1 migrations remain immutable. Step 3.6 adds catalog
+creation fields, durable keys and profit storage through V2. Ordering fields and
+unit-cost snapshots remain step 4.1; confirmed-item profit crediting remains step
+4.6. Pending, reserved, cancelled or rejected orders earn no profit.
 
 The seeder retains returned seller IDs while creating products. Reader and order
 producer resolve catalog IDs through ordinary read-only resource lookups:
@@ -132,7 +132,7 @@ optional validated `errorCode()`. Malformed error bodies preserve the status;
 exception messages contain no response payload. Callers can distinguish a missing
 resource, a rejected request and a retryable service failure; retry policy stays
 with the workload.
-Application loops and database-backed providers remain their later plan steps.
+Application loops and the buyer/order providers remain their later plan steps.
 
 Build and test all consumers after changing common:
 
@@ -142,7 +142,7 @@ mvn -B -ntp -f microservices/shardshop/pom.xml \
   -am -Paudit clean verify
 ```
 
-The 2026-10-07 audit passed 559 unit/client/startup tests and 48 packaged startup
+The step 3.5 audit on 2026-10-07 passed 559 unit/client/startup tests and 48 packaged startup
 checks without warnings, with 100% line and branch coverage across all ten Java
 modules. Packaged dependencies contain datasets only in workloads. Maven Enforcer
 rejects direct, optional and transitive dataset dependencies outside workloads.
@@ -160,6 +160,137 @@ Source notices and licenses ship in the dataset JAR under
 CC BY 4.0 Onomaverse data for EU, and MIT-licensed Faker lists for ASIA; see the
 [source terms and ranking limitations](shardshop-workload/shardshop-datasets/SOURCES.md).
 
+## Seller and product provider (step 3.6)
+
+Product serves the six seller/product POST and GET routes in its
+[OpenAPI contract](shardshop-product/src/main/resources/contracts/openapi.yaml).
+Creation returns 201; an identical retry returns 200 with the same ID and current
+profits or stock. Conflicting payloads return 409. Missing product parents return
+422; missing GET resources return 404. Invalid wire input returns 400 before any
+database access, including POST bodies exceeding the 32 KiB limit, which return the
+JSON error `400 INVALID_REQUEST`. SQL failures, deadline exhaustion and uncertain commits return
+503: retry creation with the original key, path and payload.
+
+Seller keys choose a fixed shard among the inventory's ordered shards in the
+requested region: unsigned SHA-256 of UTF-8 `seller\0region\0key`, modulo the
+regional shard count (`\0` denotes one NUL byte). The service generates at most
+1024 ID candidates until the existing version-2 ID router chooses that shard.
+This works when several shards share a region. Keep inventory membership, order
+and region assignments immutable while retaining data. Product IDs are generated
+once, after parent validation, and stored on the parent's shard.
+
+Each creation transaction takes a PostgreSQL transaction advisory lock derived
+from the collection, scope and key before checking the persisted mapping. The
+database uniqueness constraint and transaction retain the entity/key together;
+retries and process restarts do not depend on in-memory state. The first seller
+transaction also creates USD/EUR profit rows at the database's zero default.
+
+Run the normal external migration workflow before starting the API. The additive
+`V2__catalog_creation.sql` preserves V1, exposes `company_name` from the existing
+stored `name`, backfills descriptions/costs and profit rows, and adds key lookup
+indexes and the per-order/product profit-credit identity. Product can initialize
+zero balances but cannot update or reset them. Applying confirmed margin remains
+step 4.6; stock mutation remains step 4.9. No SQL functions or triggers are added.
+
+Connection configuration is deployment-only. Defaults target each inventory
+cluster's `-rw` and `-ro` Services in database `shardshop`, using `product_app` and
+`sslmode=verify-full`. Mount each `<shard>-ca` Secret's `ca.crt` at
+`/etc/shardshop/catalog/<shard>/ca.crt`; `root-certificate` can override that path.
+Certificate trust and the Service hostname must both verify.
+Supply passwords through an uncommitted external configuration/Secret; no
+credentials belong in the repository. Per-shard overrides can be included beside
+the routing snapshot loaded by `shardshop.routing.config`:
+
+```properties
+shardshop.catalog.connections.shard-a.primary-url=jdbc:postgresql://shard-a-rw:5432/shardshop
+shardshop.catalog.connections.shard-a.replica-url=jdbc:postgresql://shard-a-ro:5432/shardshop
+shardshop.catalog.connections.shard-a.root-certificate=/etc/shardshop/catalog/shard-a/ca.crt
+shardshop.catalog.connections.shard-a.username=product_app
+shardshop.catalog.connections.shard-a.password=${SHARD_A_PRODUCT_PASSWORD}
+shardshop.catalog.max-pool-size=4
+shardshop.catalog.max-id-candidates=1024
+shardshop.catalog.read-profile=primary
+```
+
+Bare URL overrides also receive the secure TLS defaults. An explicit URL
+`sslmode` overrides the default; use `sslmode=disable` only for a deliberate local
+plaintext test. The isolated provider harness supplies that override.
+Repeat credentials/overrides for every shard. Unknown connection names fail
+startup. `max-pool-size` is bounded to 1..32 per shard/endpoint, with no initial
+connections; the default is four. Writes always use primaries. The optional
+`replica` read profile uses only replica endpoints and returns
+`READ_REPLICA_UNAVAILABLE` on failure, without primary fallback. Every read issues
+SQL; there is no product cache. The complete database phase has a three-second
+deadline, including pool acquisition, connection setup, locks and commit. HTTP
+requests have a four-second deadline: before response serialization it returns
+503; if output has already started, it closes the connection. Pool exhaustion
+rejects within the budget; uncertain writes are recovered through their durable key, without an internal
+write retry. `--check-startup` validates configuration and exits for packaged
+startup checks; ordinary product startup waits for shutdown and serves HTTP.
+
+Build and run the isolated acceptance checks (the Python environment is prepared
+in [contract validation](#http-and-message-contracts-step-31)):
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product -am -Paudit clean verify
+docker run -d --name shardshop-product-check -p 127.0.0.1:55436:5432 \
+  -e POSTGRES_PASSWORD=shardshop-test-only \
+  docker.io/library/postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+python3 -B microservices/shardshop/scripts/verify-catalog-migration.py shardshop-product-check
+/tmp/shardshop-contract-validation/bin/python -B \
+  microservices/shardshop/scripts/verify-product-provider.py shardshop-product-check
+docker rm -f shardshop-product-check
+/tmp/shardshop-contract-validation/bin/python -B \
+  microservices/shardshop/scripts/verify-product-transport.py
+```
+
+The scripts create and remove uniquely named test databases and roles. The
+provider check starts its own packaged JVMs and validates actual HTTP responses
+against OpenAPI across four shards, including two US shards. It exercises
+concurrent retries, changed payloads, strict input validation, current stock and
+profits, discarded responses, process restarts, bounded pools/locks, and primary
+and replica outages. It never connects to a deployed ShardShop database.
+The transport check creates and removes its own pinned PostgreSQL container and
+temporary certificates. It checks `verify-full` TLS, rejects untrusted certificates
+and hostname mismatches, and reconnects after a database restart while retaining
+the same product JVM and stored IDs. HTTPS and CNPG primary promotion remain
+deployment/recovery milestones.
+
+The disposable checks do not apply migrations to the retained kind lab. Complete
+the lab qualification separately through its normal Flyway Jobs:
+
+```bash
+bash microservices/shardshop/scripts/up.sh
+bash microservices/shardshop/scripts/migrate.sh
+bash microservices/shardshop/scripts/migrate.sh # validates history; no pending migrations
+bash microservices/shardshop/scripts/verify-catalog-lab.sh
+bash microservices/shardshop/scripts/verify-topology.sh --routing-only
+bash microservices/shardshop/scripts/verify-generator-allocation.sh
+```
+
+`verify-catalog-lab.sh` makes read-only checks on every shard instance for V2,
+object ownership, backfill invariants and effective product/order grants. The
+allocation drill consumes retained generator slots. PLAN records whether the lab
+qualification has actually passed; isolated checks alone do not complete it.
+
+Verification on **2026-10-07**, including review fixes: the product/order audit
+and final product audit pass 649 unit/startup tests and 48 packaged startup checks,
+with 100% Java line coverage in all five affected modules and no build warnings.
+Disposable PostgreSQL checks pass 74 migration/privilege cases, 163
+OpenAPI-validated provider responses and 18 default-TLS/restart responses.
+The provider checks include empty fixed/chunked/unframed POSTs, malformed media,
+32 KiB boundary/oversized bodies, client disconnects and late completion after
+the deadline. The product SBOM contains 237 components; its package contains no
+workload dataset, Mockito or Flyway runtime.
+
+The real `kind-shardshop` migration applied V2 and corrected grants on all three
+primaries through `catalog_migrator` acting as `catalog_owner`; the rerun validated
+all seven streams and applied nothing. All nine instances passed 207 read-only
+catalog checks, and the deployed routing checks passed. V1 remains unchanged.
+The allocation drill passed using `--check-startup`, consumed exactly four slots
+(high-water 8 → 12), and preserved the registry UID, routing and all 14 Cluster/PVC
+identities. Its temporary pods and images were removed.
+
 ## HTTP and message contracts (step 3.1)
 
 | Owner | Contract |
@@ -174,7 +305,8 @@ classpath directory. Applications do not import another module's schemas or mode
 clients keep their own DTOs. HTTP examples appear inline. The two result examples
 show alternative decisions for one example command, never two outcomes for one
 retained order. Example IDs illustrate the format and are not an issued dataset.
-Provider behavior and provider contract tests arrive in steps 3.6 and 4.1–4.5.
+The product provider and its contract tests are implemented in step 3.6; order and
+ledger providers remain steps 4.1–4.5.
 
 Workloads select a pinned local dataset version and send its ID-free creation
 payloads with stable `Idempotency-Key` values. Product/order generate and return
@@ -422,7 +554,11 @@ bash microservices/shardshop/scripts/verify-generator-allocation.sh
 The drill consumes real generator slots. It uses a temporary, non-root,
 shell-free verification image from the locked kind and Canonical JRE images,
 checks simultaneous product/order starts and a same-pod restart, and cleans up
-its pods. Final service images and Deployments still belong to steps 3.9/4.8.
+its pods. It passes `--check-startup` through the launcher so product exits after
+validation. Before allocating, it checks both packages against the routing
+snapshot in network-isolated containers with HTTP disabled; failed preflights
+consume no registry slots. Normal service launches omit `--check-startup`.
+Final service images and Deployments still belong to steps 3.9/4.8.
 Their entrypoint must invoke this launcher directly, use the owning service's
 ServiceAccount, and provide `SHARDSHOP_GENERATOR_REGISTRY_UID` from the immutable
 identity ConfigMap's `registryUid` key. An init container cannot replace this
@@ -535,8 +671,8 @@ Cluster setup and final application images remain separate milestones.
 ## Dependency and test validation
 
 The scoped Quarkus **3.40.1 platform BOM** manages application/test dependencies.
-The local parent aligns inherited JUnit **6.1.3**, Mockito **5.21.0** and Netty
-**4.1.138.Final** management with that platform and pins all 17 build/report
+The local parent aligns inherited JUnit **6.1.3** and Mockito **5.21.0** with that
+platform, overrides Netty to **4.1.139.Final**, and pins all 17 build/report
 plugins. Plugin security overrides are confined to their own classpaths; the
 official Quarkus plugin's three XML-library exceptions are recorded in
 [the version policy](VERSIONS.md#quarkus-plugin-xml-libraries). Comments in the
@@ -550,12 +686,12 @@ infrastructure. Opt-in `-Pintegration` runs other `*IT` tests and excludes those
 already executed routing cases. Ordinary tests disable automatic Dev Services.
 Surefire/Failsafe supply Mockito's startup agent through their plugin dependencies;
 common and idgen declare Mockito for their controlled-source tests.
-The applications have no direct Mockito dependency. `shardshop-sharding`
+Product and workload clients declare Mockito for their controlled IO tests. `shardshop-sharding`
 tests its router against golden vectors whose expected shards were computed
 independently. PostgreSQL 18.6 and RabbitMQ 4.3.6 test-image
-properties use the lock's immutable digests. No containers run at this stage;
-Testcontainers dependencies and auxiliary image pins belong to the first tests
-that actually use containers.
+properties use the lock's immutable digests. The separate provider/migration
+checks explicitly use a disposable PostgreSQL container; Maven tests do not
+automatically start containers.
 
 Idgen and sharding retain the test JVM option
 `--add-opens=java.base/java.lang.invoke=ALL-UNNAMED`. On 2026-10-06, removing their
@@ -987,9 +1123,9 @@ UIDs would need to replace.
 |---|---|---|
 | `catalog_owner` | no | Owns schema `catalog`, its tables and history |
 | `catalog_migrator` | yes | Member of `catalog_owner` without inheriting it; only Flyway uses it |
-| `catalog_reader` | no | `SELECT` on sellers and products |
-| `catalog_writer` | no | `SELECT` and `INSERT` on sellers and products |
-| `catalog_reserver` | no | `SELECT`, `INSERT`, `UPDATE` and `DELETE` on stock reservations, plus `UPDATE (stock)` on products; no `TRUNCATE` |
+| `catalog_reader` | no | `SELECT` on sellers, products and seller profits |
+| `catalog_writer` | no | Seller/product `SELECT` and `INSERT`; reads profits and inserts only seller/currency keys at the zero default |
+| `catalog_reserver` | no | Reservation CRUD and product stock updates; no profit mutation or credit access; no `TRUNCATE` |
 | `product_app` | yes | Member of `catalog_writer` |
 
 `up.sh` generates catalog login passwords into the Secrets `catalog-migrator` and
@@ -1020,11 +1156,15 @@ inherit the seller's region and store no independent region column. The local
 seller foreign key and placement checks prevent creating products on a different
 region's shard. Runtime roles cannot change a seller's region.
 
-Step 3.6 will add company-name, product-description, unit-cost and creation-key
-storage through fix-forward catalog migrations, plus the service-owned profit
-records needed by the future confirmed-sale protocol. These fields are already
-in the workload definitions and HTTP contract, but are not present in V1. The
-existing grants do not implement profit posting.
+Step 3.6 adds company-name, product-description, unit-cost and creation-key
+storage through `V2__catalog_creation.sql`, plus service-owned `seller_profits`
+and immutable `profit_credits` identities. Legacy descriptions backfill from the
+product name; legacy unit cost and initial USD/EUR balances are zero. Profit
+posting and the order role's profit-write privileges remain step 4.6. Neither
+`catalog_reserver` nor `order_app` can initialize profit currencies, change
+balances, or access profit credits. The repeatable grants revoke obsolete table
+and column permissions before reapplying the current privilege matrix, including
+premature profit permissions from earlier development revisions.
 
 The stock-column grant permits direct updates without allowing changes to product
 names, prices or other columns. There is no stock trigger: reservation writes by

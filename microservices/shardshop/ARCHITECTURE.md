@@ -571,11 +571,22 @@ atomically. A retry, including after a lost response or process restart, returns
 the existing ID with `200`; first creation returns `201`, and a different payload
 under the same scope/key returns `409`. Retries reuse the original region/key.
 Creation-key retention must match entity retention, and existing retries must
-work without generating another ID. Steps 3.6/4.1 must first add the corresponding
-unique keys and lookup indexes through fix-forward database-layer migrations,
-alongside the enriched company/product/person fields. Existing V1 migrations
-remain immutable; no v1 HTTP provider has persisted earlier dataset payloads.
+work without generating another ID. Step 3.6 adds catalog keys and lookup indexes
+through V2; buyer keys and enriched person fields remain step 4.1. Existing V1
+migrations remain immutable.
 A dataset version may select subsets, but never changes a retained key's payload.
+
+Product assigns each seller creation key a fixed home within the requested
+region's ordered shard subset using unsigned SHA-256 of UTF-8
+`seller\0region\0key` modulo that subset's size (`\0` is a NUL separator).
+It generates at most 1024 candidates by default until the existing ID router
+selects that exact shard. By-key lookup repeats this placement without generating
+an ID. A transaction advisory lock on the signed low 64 digest bits serializes
+the same region/key; products use `product\0sellerId\0key` on the parent shard.
+This preserves uniqueness with multiple shards in one region. Hash collisions
+only serialize unrelated requests; database constraints retain full key scopes.
+Changing inventory order/membership/regions still requires an explicit data
+migration, including these durable key homes.
 
 Reader and order producer load the same local definitions and resolve persisted
 catalog IDs through `GET /api/v1/sellers/by-key/{creationKey}?region=US` and
@@ -707,6 +718,11 @@ Product reads also use `-rw` by default. An optional load-test profile uses `-ro
 to demonstrate replica read scaling; it explicitly permits stale or temporarily
 missing products. Standby replay can lag behind committed primary writes. See
 [PostgreSQL standby replication](https://www.postgresql.org/docs/current/warm-standby.html).
+
+Product's generated JDBC URLs use `sslmode=verify-full`, with each shard's CA
+mounted at `/etc/shardshop/catalog/<shard>/ca.crt`. Bare URL overrides keep those
+secure defaults; an explicit TLS mode in a deployment URL overrides the mode.
+The per-connection `root-certificate` setting supports a different CA mount path.
 
 The replica read profile is strict: it **does not fall back to `-rw`**. CNPG's
 `-ro` Service selects standbys only; with three instances it has no endpoints only
@@ -870,6 +886,7 @@ database/
     catalog/
       flyway.toml
       V1__catalog.sql
+      V2__catalog_creation.sql
       R__catalog_grants.sql
     ordering/
       flyway.toml
@@ -894,9 +911,9 @@ role and its memberships, with no SQL. For the catalog:
 |---|---|---|---|
 | `catalog_owner` | no | none | Owns schema `catalog`, its objects, and its Flyway history |
 | `catalog_migrator` | yes | `catalog_owner`, without inheriting it | Runs Flyway; `flyway.toml` starts each connection with the `role` option set to `catalog_owner`, so no object belongs to a login |
-| `catalog_reader` | no | none | `SELECT` on sellers and products |
-| `catalog_writer` | no | none | `SELECT` and `INSERT` on sellers and products |
-| `catalog_reserver` | no | none | `SELECT`, `INSERT`, `UPDATE` and `DELETE` on `stock_reservations`, plus `UPDATE (stock)` on `products`; no `TRUNCATE` |
+| `catalog_reader` | no | none | `SELECT` on sellers, products and seller profits |
+| `catalog_writer` | no | none | `SELECT` and `INSERT` on sellers/products; reads profits and inserts only seller/currency keys at the zero default |
+| `catalog_reserver` | no | none | Reservation CRUD and product stock updates; no profit mutation or credit access; no `TRUNCATE` |
 | `product_app` | yes | `catalog_writer` | Product service |
 | `order_app` | yes | `catalog_reader`, `catalog_reserver`, `ordering_writer` | Order service |
 
@@ -1136,7 +1153,8 @@ All endpoints validate the canonical positive decimal ID contract before IO;
 invalid path/body IDs return `400 INVALID_REQUEST`. Product JSON uses string IDs
 and storage uses `BIGINT`, including the seller and product references in order
 items. Stock changes only through the order saga's reservations; no HTTP endpoint
-changes it. Product descriptions are nonblank and at most 2,000 Unicode scalar
+changes it. Product rejects POST bodies over 32 KiB with the same JSON
+`400 INVALID_REQUEST` error. Product descriptions are nonblank and at most 2,000 Unicode scalar
 values. Unit cost uses the product's currency and may exceed its price.
 
 Seller profit is the sum of `(snapshotted unitPrice - unitCost) × quantity` for
@@ -1151,7 +1169,10 @@ be credited. Confirmation must create a durable credit intent; application to th
 seller's shard needs a durable per-order/item identity so retries and replay
 cannot double-credit. Pending, reserved, cancelled and rejected orders earn no
 profit. This cross-shard work requires explicit recovery and least-privilege
-storage/grant migrations; the existing order role cannot update seller balances.
+storage/grant migrations; the existing order role cannot update seller balances,
+initialize profit currencies, or access profit credits. Step 3.6 creates the
+storage and permits product to initialize zero balances; profit-write grants
+remain part of step 4.6 alongside its transaction protocol.
 No profit engine or changed message snapshot is introduced by the dataset step.
 
 ### HTTP connection policy

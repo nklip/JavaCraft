@@ -32,6 +32,7 @@ cleanup() {
         k logs -l "$selector" --all-containers --prefix --tail=30 >&2 || true
     fi
     k delete pods -l "$selector" --ignore-not-found --wait=true --timeout=40s >/dev/null || true
+    docker rm --force "$run-preflight-product" "$run-preflight-order" >/dev/null 2>&1 || true
     for node in "${nodes[@]}"; do
         docker exec "$node" crictl rmi "docker.io/library/$image" >/dev/null 2>&1 || true
     done
@@ -40,6 +41,8 @@ cleanup() {
     exit "$result"
 }
 trap cleanup EXIT
+k get configmap shardshop-routing -o jsonpath='{.data.application\.properties}' >"$work/application.properties"
+chmod a+r "$work/application.properties"
 
 # Read only the two reference scalars from the lock's known image sections; no YAML
 # dependency is needed, and a missing/unpinned reference stops the drill.
@@ -67,6 +70,26 @@ USER 10001:10001
 ENV HOME=/tmp
 DOCKERFILE
 docker build --tag "$image" "$work"
+# Validate the actual packages and routing before consuming retained allocations.
+# The disposable ID cannot emit entities: preflight has no network or HTTP listener.
+python3 - "$image" "$work" "$run" <<'PY'
+import pathlib, subprocess, sys
+image, work, run = sys.argv[1:]
+routing = pathlib.Path(work, "application.properties").resolve()
+for service in ("product", "order"):
+    command = ["docker", "run", "--rm", "--name", f"{run}-preflight-{service}",
+               "--network", "none", "--read-only", "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
+               "--mount", f"type=bind,src={routing},dst=/etc/shardshop/routing/application.properties,readonly",
+               "--entrypoint", "/usr/bin/java", image, "-Dquarkus.profile=prod",
+               "-Dshardshop.routing.config=file:/etc/shardshop/routing/application.properties",
+               *(["-Dquarkus.http.host-enabled=false"] if service == "product" else []),
+               "-Dshardshop.id.generator-id=1", "-Dshardshop.launcher.reserved-generator-id=1",
+               "-jar", f"/{service}/quarkus-run.jar", "--check-startup"]
+    try:
+        subprocess.run(command, check=True, timeout=45)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        sys.exit(f"{service} startup preflight failed; no generator allocations were requested.")
+PY
 kind load docker-image --name shardshop "$image"
 
 access() {
@@ -107,7 +130,7 @@ def pod(suffix, service, restart="Never", stale=False):
             "runAsGroup": 10001, "fsGroup": 10001, "seccompProfile": {"type": "RuntimeDefault"}},
         "containers": [{"name": "launcher", "image": image, "imagePullPolicy": "Never",
             "command": ["/usr/bin/java", "-cp", f"/{service}/lib/main/*",
-                "dev.nklip.javacraft.shardshop.idgen.allocation.GeneratorLauncher", service, f"/{service}"],
+                "dev.nklip.javacraft.shardshop.idgen.allocation.GeneratorLauncher", service, f"/{service}", "--check-startup"],
             "env": [{"name": "SHARDSHOP_GENERATOR_REGISTRY_UID", **identity},
                 {"name": "SHARDSHOP_ROUTING_CONFIG", "value": "file:/etc/shardshop/routing/application.properties"}],
             "securityContext": {"allowPrivilegeEscalation": False, "readOnlyRootFilesystem": True,

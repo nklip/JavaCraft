@@ -14,6 +14,8 @@
     <packaging>jar</packaging>
 
     <properties>
+        <!-- Product uses plain Java; Quarkus augmentation does not need the inherited Lombok processor. -->
+        <maven.compiler.proc>none</maven.compiler.proc>
         <shardshop.failIfNoTests>true</shardshop.failIfNoTests>
         <shardshop.idGenerationBoundary.skip>true</shardshop.idGenerationBoundary.skip>
         <shardshop.directory>${project.basedir}/..</shardshop.directory>
@@ -38,7 +40,20 @@
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest-jackson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-jdbc-postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
             <artifactId>quarkus-junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

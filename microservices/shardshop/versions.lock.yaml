@@ -1146,11 +1146,43 @@ maven:
     artifacts:
       com.fasterxml.jackson.core:jackson-databind: {"version":"2.21.7","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.21.7/jackson-databind-2.21.7.jar","sha256":"1290c2795e93e8a6861a6c4d9ff0d844d32f5ea178362cb2721edf5561e828b1","published_checksum":{"algorithm":"sha1","value":"a2ebbc72e3092323f0f3defa786ff3bb0c47218c","url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.21.7/jackson-databind-2.21.7.jar.sha1"}}
       com.fasterxml.jackson.core:jackson-annotations: {"version":"2.21","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.21/jackson-annotations-2.21.jar","sha256":"53ca085f4a150f703f49e1aabd935bd03b43e1ea3d55d135438292af22cef56b","published_checksum":{"algorithm":"sha1","value":"b1bc1868bf02dc0bd6c7836257a036a331005309","url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.21/jackson-annotations-2.21.jar.sha1"}}
+  step_3_6_provider_dependencies:
+    checked_on: '2026-10-07'
+    review_by: '2026-11-04'
+    platform: io.quarkus.platform:quarkus-bom:3.40.1
+    scope: Product REST/Jackson and PostgreSQL JDBC/Agroal; no workload datasets or application migrations
+    qualification: 55 PostgreSQL migration checks, 147 provider responses and 12 verify-full TLS/restart responses passed; pools recover after lock timeouts and database restart. CNPG promotion remains a later deployment drill.
+    netty_override: io.netty:netty-bom:4.1.139.Final
+    netty_eol: '2027-07-01'
+    verification: Cached artifacts match Maven Central SHA-1 files; SHA-256 independently calculated. Runtime graph, provider tests and packaged startup checks qualify the selected family.
+    support_and_advisories:
+      netty: 4.1.139 applies the October 6 HTTP/HTTP2 and other networking security fixes; requalify before 4.1 EOL
+      vertx: 4.5.34 is outside the reviewed redirect-header and SNI-cache affected ranges; previous-major support policy and monthly platform review apply
+      postgresql: 42.7.13 includes 42.7.12 channel-binding enforcement fix CVE-2026-54291
+      agroal: 3.2.1 follows the platform; no fixed upstream EOL or published GitHub advisory at review
+    sources:
+    - https://github.com/netty/netty/releases/tag/netty-4.1.139.Final
+    - https://github.com/eclipse-vertx/vert.x/security
+    - https://jdbc.postgresql.org/security/
+    - https://agroal.github.io/
+    - https://github.com/agroal/agroal/security
+    artifacts:
+      io.netty:netty-bom: {"version":"4.1.139.Final","extension":"pom","artifact_url":"https://repo.maven.apache.org/maven2/io/netty/netty-bom/4.1.139.Final/netty-bom-4.1.139.Final.pom","sha256":"986031c01daf8183bfb3f54eafca1cd1f0026cc182bcdc18e98f812f0d543735","published_checksum":{"algorithm":"sha1","value":"9a13b628317d4c17374ffb7cd0dbfee601cd9200","url":"https://repo.maven.apache.org/maven2/io/netty/netty-bom/4.1.139.Final/netty-bom-4.1.139.Final.pom.sha1"}}
+      io.quarkus:quarkus-rest-jackson: {"version":"3.40.1","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/quarkus/quarkus-rest-jackson/3.40.1/quarkus-rest-jackson-3.40.1.jar","sha256":"39fe05c33c2be3008f0796e86bdd4f063796e549c4fd530f331e6c61f802080c","published_checksum":{"algorithm":"sha1","value":"d8a1a0b095a602f7a901395616a0fe5e8c615b2b","url":"https://repo.maven.apache.org/maven2/io/quarkus/quarkus-rest-jackson/3.40.1/quarkus-rest-jackson-3.40.1.jar.sha1"}}
+      io.quarkus:quarkus-jdbc-postgresql: {"version":"3.40.1","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/quarkus/quarkus-jdbc-postgresql/3.40.1/quarkus-jdbc-postgresql-3.40.1.jar","sha256":"1fc64bd684c07949bfdbec9c44b496075773ba8d8423bea70b97acb2b43eef58","published_checksum":{"algorithm":"sha1","value":"fc0ea1b7eef33e6959f40b74905e603cd3266918","url":"https://repo.maven.apache.org/maven2/io/quarkus/quarkus-jdbc-postgresql/3.40.1/quarkus-jdbc-postgresql-3.40.1.jar.sha1"}}
+      io.vertx:vertx-core: {"version":"4.5.34","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/vertx/vertx-core/4.5.34/vertx-core-4.5.34.jar","sha256":"750ec27491f9eea3df24e3a85670a0b1998827bb729ec95b2d9d3dbbfdf8792c","published_checksum":{"algorithm":"sha1","value":"264d809837e56f4adfca0909ea1fe4e94bc41244","url":"https://repo.maven.apache.org/maven2/io/vertx/vertx-core/4.5.34/vertx-core-4.5.34.jar.sha1"}}
+      io.vertx:vertx-web: {"version":"4.5.34","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/vertx/vertx-web/4.5.34/vertx-web-4.5.34.jar","sha256":"14ae3cadbac1d0794cbf5e66fdb3cc61611235ac05f57bfdb65d9c21a6b97add","published_checksum":{"algorithm":"sha1","value":"c806b6284a1df4f1315fa3cb17b84a07f875d502","url":"https://repo.maven.apache.org/maven2/io/vertx/vertx-web/4.5.34/vertx-web-4.5.34.jar.sha1"}}
+      io.agroal:agroal-api: {"version":"3.2.1","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/agroal/agroal-api/3.2.1/agroal-api-3.2.1.jar","sha256":"2a22fb1b0a0fce6b4890700257a9e7e57d80cf6752529cea6e4bd818cdbd64d3","published_checksum":{"algorithm":"sha1","value":"527cecd360c812b4cd93d6026b524f462ff92f9e","url":"https://repo.maven.apache.org/maven2/io/agroal/agroal-api/3.2.1/agroal-api-3.2.1.jar.sha1"}}
+      io.agroal:agroal-pool: {"version":"3.2.1","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/agroal/agroal-pool/3.2.1/agroal-pool-3.2.1.jar","sha256":"ea61be29058a92f5598e77279b1bb5e94d04490a137ca6629051668df6eedaf3","published_checksum":{"algorithm":"sha1","value":"815a2e7b2d78ec3f3eb9c1444412d94110494e8d","url":"https://repo.maven.apache.org/maven2/io/agroal/agroal-pool/3.2.1/agroal-pool-3.2.1.jar.sha1"}}
+      org.postgresql:postgresql: {"version":"42.7.13","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/postgresql/postgresql/42.7.13/postgresql-42.7.13.jar","sha256":"6e0e4cc2d8cae902084f8a2b18728b073a6fd9d1f87c9d8bff8f298c18185b93","published_checksum":{"algorithm":"sha1","value":"a6e1bd21b412d6ffb3df23cd13d507bc2cc9e37d","url":"https://repo.maven.apache.org/maven2/org/postgresql/postgresql/42.7.13/postgresql-42.7.13.jar.sha1"}}
+      io.netty:netty-codec-http: {"version":"4.1.139.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http/4.1.139.Final/netty-codec-http-4.1.139.Final.jar","sha256":"627cfdac2cd5dbd8a33af85977fb81fa6b46f0c00389ab4c8677a415f0f85480","published_checksum":{"algorithm":"sha1","value":"f52d30aeadc0af8c0d1cad9970e5a9c5df62bdd1","url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http/4.1.139.Final/netty-codec-http-4.1.139.Final.jar.sha1"}}
+      io.netty:netty-codec-http2: {"version":"4.1.139.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http2/4.1.139.Final/netty-codec-http2-4.1.139.Final.jar","sha256":"4cb8bc95386112f3a9da935272781d577d9e70ca4c56cf0eef603a45e9526e02","published_checksum":{"algorithm":"sha1","value":"7b86d21a5578c431d2ccf898f22b444a38a4c0b2","url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http2/4.1.139.Final/netty-codec-http2-4.1.139.Final.jar.sha1"}}
+      io.netty:netty-handler: {"version":"4.1.139.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/netty/netty-handler/4.1.139.Final/netty-handler-4.1.139.Final.jar","sha256":"ff85f00781b956d618b20f33da076c839a5e43e0084108b07bab0c19737168ec","published_checksum":{"algorithm":"sha1","value":"436b4a15bb2fe4608996a08b6d69b22f075286a4","url":"https://repo.maven.apache.org/maven2/io/netty/netty-handler/4.1.139.Final/netty-handler-4.1.139.Final.jar.sha1"}}
   quarkus_dependency_snapshot:
     source_coordinate: io.quarkus.platform:quarkus-bom:3.40.1
     checked_on: '2026-10-07'
     review_by: '2026-11-04'
-    status: Step 3.5 common/generator/routing/application families checked against effective POMs and SBOMs; Snowflake belongs to the generator library and product/order only, Mockito is test-only in common, idgen and workloads, plus the plugin test agent
+    status: Step 3.6 adds the product HTTP/JDBC runtime; families checked against effective POMs and SBOMs. Snowflake belongs to the generator library and product/order only; Mockito is test-only in common, idgen, workloads and product, plus the plugin test agent
     quarkus: 3.40.1
     junit_jupiter: 6.1.3
     plugin_test_agent_mockito: 5.21.0
@@ -1159,7 +1191,10 @@ maven:
     jackson_core: 2.21.7
     jboss_logmanager: 3.2.2.Final
     slf4j: 2.0.18
-    managed_netty_not_resolved: 4.1.138.Final
+    netty_product_runtime: 4.1.139.Final
+    vertx_product_runtime: 4.5.34
+    postgresql_product_runtime: 42.7.13
+    agroal_product_runtime: 3.2.1
     jackson_databind: 2.21.7
     jackson_annotations: '2.21'
     lombok_processor: 1.18.46

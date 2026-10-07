@@ -5,6 +5,7 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,8 +54,10 @@ public final class GeneratorLauncher {
 
     int run(String[] args, Map<String, String> environment, String javaHome, PrintStream errors) {
         try {
-            if (args.length != 2 || !("product".equals(args[0]) || "order".equals(args[0]))) {
-                throw new IllegalArgumentException("Expected <product|order> <quarkus-app-directory>");
+            if (args.length < 2 || args.length > 3
+                    || (args.length == 3 && !"--check-startup".equals(args[2]))
+                    || !("product".equals(args[0]) || "order".equals(args[0]))) {
+                throw new IllegalArgumentException("Expected <product|order> <quarkus-app-directory> [--check-startup]");
             }
             Path jar = Path.of(args[1]).toAbsolutePath().resolve("quarkus-run.jar");
             if (!Files.isRegularFile(jar)) {
@@ -62,10 +65,13 @@ public final class GeneratorLauncher {
             }
             int generatorId = allocate(environment);
             errors.println("Reserved generator ID " + generatorId + " for " + args[0] + " JVM startup.");
-            List<String> command = List.of(Path.of(javaHome, "bin", "java").toString(),
+            List<String> command = new ArrayList<>(List.of(Path.of(javaHome, "bin", "java").toString(),
                     "-Dquarkus.profile=prod", "-Dshardshop.id.generator-id=" + generatorId,
                     "-Dshardshop.launcher.reserved-generator-id=" + generatorId,
-                    "-jar", jar.toString());
+                    "-jar", jar.toString()));
+            if (args.length == 3) {
+                command.add("--check-startup");
+            }
             Map<String, String> childEnvironment = new HashMap<>(environment);
             for (String key : List.of("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS",
                     "SHARDSHOP_ID_GENERATOR_ID")) {

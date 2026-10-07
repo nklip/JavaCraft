@@ -19,8 +19,8 @@
         <argLine/>
         <maven.compiler.parameters>true</maven.compiler.parameters>
         <junit6.version>6.1.3</junit6.version>
-        <!-- Align inherited families and test agents with the Quarkus platform BOM. -->
-        <netty.version>4.1.138.Final</netty.version>
+        <!-- Keep Quarkus-compatible families; Netty 4.1.139 fixes October HTTP advisories. -->
+        <netty.version>4.1.139.Final</netty.version>
         <mockito.version>5.21.0</mockito.version>
         <lombok.version>1.18.46</lombok.version>
         <test.jvm.args>-Xshare:off -XX:-EnableDynamicAgentLoading</test.jvm.args>
@@ -62,6 +62,14 @@
 
     <dependencyManagement>
         <dependencies>
+            <!-- The provider enables Netty; override the platform's 4.1.138 HTTP security baseline as a family. -->
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-bom</artifactId>
+                <version>${netty.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>io.quarkus.platform</groupId>
                 <artifactId>quarkus-bom</artifactId>

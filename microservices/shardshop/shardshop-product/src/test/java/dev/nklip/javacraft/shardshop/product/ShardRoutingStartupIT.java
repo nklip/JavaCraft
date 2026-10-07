@@ -147,7 +147,9 @@ class ShardRoutingStartupIT {
                 Path.of(System.getProperty("java.home"), "bin", "java").toString(),
                 "-Dshardshop.routing.config=" + config.toUri(),
                 "-Dquarkus.profile=prod",
-                "-jar", Path.of("target", "quarkus-app", "quarkus-run.jar").toAbsolutePath().toString())
+                "-Dquarkus.http.port=0",
+                "-jar", Path.of("target", "quarkus-app", "quarkus-run.jar").toAbsolutePath().toString(),
+                "--check-startup")
                 .directory(directory.toFile())
                 .redirectErrorStream(true)
                 .redirectOutput(directory.resolve("startup.log").toFile());

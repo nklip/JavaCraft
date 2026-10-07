@@ -125,14 +125,45 @@ checking the Quarkus graph. [Platform BOM](https://quarkus.io/guides/platform/).
 The platform selects compatible library versions; each artifact still needs an
 upstream maintenance and advisory review. Step 0.5 recorded the resolved versions
 and checksums in the lock: Quarkus **3.40.1**, JUnit **6.1.3**, Mockito **5.21.0**,
-JBoss Log Manager **3.2.2.Final** and SLF4J **2.0.18**. The skeletons do not
-resolve platform-managed Netty **4.1.138.Final**. Requalify HTTP runtime families
-and required security patches when providers are enabled in step 3.6.
+JBoss Log Manager **3.2.2.Final** and SLF4J **2.0.18**. The original skeletons did
+not resolve platform-managed Netty **4.1.138.Final**. Step 3.6 enables the product
+HTTP runtime with the family override described below.
 Keep plain domain/routing tests independent of the framework, pin Testcontainers
 images, and audit any retained Lombok processor against Java 25. Add only the
 dependencies a module uses. [REST](https://quarkus.io/guides/rest/),
 [datasources](https://quarkus.io/guides/datasource/),
 [testing](https://quarkus.io/guides/getting-started-testing/).
+
+### Step 3.6 provider dependencies
+
+The product provider adds the platform's REST/Jackson and PostgreSQL JDBC/Agroal
+extensions. On **2026-10-07**, its runtime selects Vert.x **4.5.34**, Agroal
+**3.2.1**, pgJDBC **42.7.13** and Jackson **2.21.7**. Mockito **5.21.0** is test-only.
+Quarkus remains **3.40.1**; no application migration extension is added. The lock
+records Maven Central checksums and local SHA-256 hashes of the new runtime
+artifacts. Review these families again by **2026-11-04**.
+Product disables the inherited Lombok annotation processor because its sources
+are plain Java; Quarkus still performs its normal build-time augmentation.
+
+ShardShop imports the Netty **4.1.139.Final** BOM before the Quarkus BOM to apply
+the October 6 HTTP/HTTP2 security fixes consistently across the runtime family.
+The previous 4.1.138 pin belonged to the earlier CDI-only skeletons, which did
+not expose this HTTP stack. Netty 4.1 maintenance ends **2027-07-01**; qualify a
+compatible maintained successor before that date.
+[Netty release and security notes](https://github.com/netty/netty/releases/tag/netty-4.1.139.Final).
+
+Vert.x 4.5.34 is beyond the affected ranges of the reviewed redirect-header and
+SNI-cache advisories. Its upstream policy supports the previous major for up to
+two years after the next major's release; review the Quarkus-compatible line
+monthly. pgJDBC 42.7.13 includes the channel-binding enforcement fix from 42.7.12.
+Agroal publishes no fixed EOL and had no published GitHub advisories at review;
+its use remains tied to the maintained Quarkus platform and monthly review.
+[Vert.x support policy](https://github.com/eclipse-vertx/vert.x/security),
+[redirect advisory](https://github.com/eclipse-vertx/vert.x/security/advisories/GHSA-5x9c-p4p5-8v9w),
+[SNI advisory](https://github.com/eclipse-vertx/vert.x/security/advisories/GHSA-3g76-f9xq-8vp6),
+[pgJDBC security](https://jdbc.postgresql.org/security/),
+[Agroal releases](https://agroal.github.io/),
+[Agroal advisories](https://github.com/agroal/agroal/security).
 
 ### Step 3.2 ID parsing dependency
 

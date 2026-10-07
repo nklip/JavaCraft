@@ -112,6 +112,26 @@ class GeneratorLauncherTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"product", "order"})
+    void startupChecksForwardOnlyTheExplicitApplicationArgument(String service) throws Exception {
+        reserve(1);
+        when(application.run(anyList(), anyMap())).thenReturn(19);
+
+        assertEquals(19, launcher.run(new String[]{service, directory.toString(), "--check-startup"},
+                environment(), JAVA_HOME, new PrintStream(errors)));
+
+        List<String> expected = new ArrayList<>(command(2));
+        assertTrue(expected.add("--check-startup"));
+        InOrder calls = inOrder(registry, application);
+        calls.verify(registry).read(any());
+        calls.verify(registry).reserve(eq(new RegistryState(UID, "17", 1)), eq(2), any());
+        calls.verify(application).run(eq(expected), eq(environment()));
+        calls.verifyNoMoreInteractions();
+        assertEquals("Reserved generator ID 2 for " + service + " JVM startup." + System.lineSeparator(),
+                errors.toString(StandardCharsets.UTF_8));
+    }
+
+    @ParameterizedTest
     @NullAndEmptySource
     void inClusterLaunchesUseThePodCredentialsWithoutAHostContext(String context) throws Exception {
         reserve(3);
@@ -230,9 +250,16 @@ class GeneratorLauncherTest {
         verifyNoInteractions(registry);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"7", "-Dshardshop.id.generator-id=7", "--check-startup=true", ""})
+    void commandLineCannotSupplyExtraOptionsOrAnId(String argument) {
+        assertFailure(new String[]{"product", directory.toString(), argument}, environment());
+        verifyNoInteractions(registry);
+    }
+
     @Test
-    void commandLineCannotSupplyExtraOptionsOrAnId() {
-        assertFailure(new String[]{"product", directory.toString(), "7"}, environment());
+    void startupChecksCannotSupplyAdditionalArguments() {
+        assertFailure(new String[]{"product", directory.toString(), "--check-startup", "7"}, environment());
         verifyNoInteractions(registry);
     }
 
