@@ -60,7 +60,8 @@ utilities to all applications and `shardshop-sharding`. Only product/order use
 `shardshop-idgen` for bounded ID generation and `shardshop-sharding` for routing.
 Idgen and sharding each own their Quarkus wiring, while their domain classes
 remain free of framework imports. They do not depend on one another. All three
-libraries are ordinary Java JARs with no runtime process. PostgreSQL and RabbitMQ
+libraries are ordinary Java JARs with no independent service; idgen also supplies
+the product/order startup launcher. PostgreSQL and RabbitMQ
 are supporting infrastructure.
 
 No module owns a database schema or ships migrations: schemas, roles and
@@ -461,6 +462,24 @@ Workload and ledger pods have no allocator access. Concurrent starts retry CAS
 conflicts with a bounded deadline.
 An uncertain reservation burns that slot and obtains another; it never guesses
 or reuses one. The live generator receives its allocation only after success.
+
+Step 3.4 implements this in the JDK-only `idgen.allocation` package. Its launcher
+starts and supervises one application JVM after reservation, without a shell.
+Each request is bounded by five seconds within a 30-second allocation deadline;
+CAS retries back off from 25 to 500 milliseconds. The ConfigMap stores
+`data.highWaterMark`; a separate immutable `shardshop-generator-identity`
+ConfigMap pins its original UID. Among ShardShop application ServiceAccounts,
+only product/order receive `get`/`patch` on the registry. Cluster infrastructure
+accounts, including CNPG and Kubernetes controllers, can have broader ClusterRole
+permissions; the admission guard also applies to their ordinary API requests.
+The infrastructure's fail-closed admission policy matches the admitted object's
+name and rejects individual or collection deletion, non-increasing counters and
+identity changes. Namespace deletion consequently leaves the namespace terminating
+with the two allocator objects retained. Registry creation
+is an explicit one-time operation outside Helm; normal startup only checks it.
+The [startup runbook](README.md#generator-allocation-at-jvm-startup-step-34)
+defines launch commands, initialization and verification. Final service image and
+Deployment wiring remain steps 3.9/4.8.
 
 Never reuse a slot while any data from that lab can be restored/replayed. This
 allows at most 1,023 ID-producing process starts, including burned reservations,

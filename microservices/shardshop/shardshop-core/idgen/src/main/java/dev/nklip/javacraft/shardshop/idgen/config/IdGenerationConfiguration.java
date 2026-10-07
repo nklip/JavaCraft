@@ -12,6 +12,12 @@ class IdGenerationConfiguration {
     @Singleton
     @Startup
     IdGenerator idGenerator(IdConfiguration configuration) {
-        return new IdGenerator(configuration.generatorId());
+        long generatorId = configuration.generatorId();
+        // Read the launcher's reservation directly; higher-ordinal config sources cannot replace it.
+        String reservedId = System.getProperty("shardshop.launcher.reserved-generator-id");
+        if (reservedId != null && !Long.toString(generatorId).equals(reservedId)) {
+            throw new IllegalStateException("Live generator ID does not match its reserved identity");
+        }
+        return new IdGenerator(generatorId);
     }
 }

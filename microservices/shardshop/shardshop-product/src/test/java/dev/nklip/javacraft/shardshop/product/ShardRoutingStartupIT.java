@@ -8,6 +8,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -96,6 +97,34 @@ class ShardRoutingStartupIT {
         assertTrue(output().contains("shardshop.id.generator-id"), output());
     }
 
+    @Test
+    void rejectsAProfileEnvironmentOverrideOfTheReservedGeneratorId() throws Exception {
+        assertNotEquals(0, launch(VALID_ROUTING, "1", null, "1", Map.of(
+                "CONFIG_ORDINAL", "500", "_PROD_SHARDSHOP_ID_GENERATOR_ID", "2",
+                "SHARDSHOP_LAUNCHER_RESERVED_GENERATOR_ID", "2")));
+        assertTrue(output().contains("Live generator ID does not match its reserved identity"), output());
+    }
+
+    @Test
+    void rejectsAnExternalFileOverrideOfTheReservedGeneratorId() throws Exception {
+        assertNotEquals(0, launch(VALID_ROUTING + "config_ordinal=500\nshardshop.id.generator-id=2\n",
+                "1", null, "1", Map.of()));
+        assertTrue(output().contains("Live generator ID does not match its reserved identity"), output());
+    }
+
+    @Test
+    void matchingProfileEnvironmentConfigurationKeepsTheRawReservation() throws Exception {
+        assertEquals(0, launch(VALID_ROUTING, "1", null, "1", Map.of(
+                "CONFIG_ORDINAL", "500", "_PROD_SHARDSHOP_ID_GENERATOR_ID", "1",
+                "SHARDSHOP_LAUNCHER_RESERVED_GENERATOR_ID", "2")), output());
+    }
+
+    @Test
+    void matchingExternalFileConfigurationKeepsTheRawReservation() throws Exception {
+        assertEquals(0, launch(VALID_ROUTING + "config_ordinal=500\nshardshop.id.generator-id=1\n",
+                "1", null, "1", Map.of()), output());
+    }
+
     private int launch(String properties) throws Exception {
         return launch(properties, "1");
     }
@@ -105,6 +134,11 @@ class ShardRoutingStartupIT {
     }
 
     private int launch(String properties, String generatorId, String environmentGeneratorId) throws Exception {
+        return launch(properties, generatorId, environmentGeneratorId, null, Map.of());
+    }
+
+    private int launch(String properties, String generatorId, String environmentGeneratorId,
+                       String reservedGeneratorId, Map<String, String> environment) throws Exception {
         Path config = directory.resolve("external-routing-snapshot.properties");
         if (properties != null) {
             assertEquals(config, Files.writeString(config, properties));
@@ -120,8 +154,12 @@ class ShardRoutingStartupIT {
         if (generatorId != null) {
             builder.command().add(1, "-Dshardshop.id.generator-id=" + generatorId);
         }
+        if (reservedGeneratorId != null) {
+            builder.command().add(1, "-Dshardshop.launcher.reserved-generator-id=" + reservedGeneratorId);
+        }
         // Local configuration and JVM environment options must not supply a missing setting.
         builder.environment().clear();
+        builder.environment().putAll(environment);
         if (environmentGeneratorId != null) {
             assertNull(builder.environment().put("SHARDSHOP_ID_GENERATOR_ID", environmentGeneratorId));
         }

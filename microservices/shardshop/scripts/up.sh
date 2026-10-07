@@ -101,4 +101,5 @@ for database in "${databases[@]}"; do
 done
 # Publications remain pending until ordering migrations create their outbox tables.
 # CNPG retries reconciliation; migrate.sh waits for them before activating routing.
+bash "$root/scripts/generator-registry.sh" check
 echo "Provisioned ${#shards[@]} shards and the ledger database. Run scripts/migrate.sh to publish routing configuration."

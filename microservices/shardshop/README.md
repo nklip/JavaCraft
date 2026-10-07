@@ -10,8 +10,8 @@ starts its CDI container and exits through `QuarkusApplication.run()`; no HTTP
 server, database connection, messaging, seeding, or load generation is implemented
 yet. No Docker or Kubernetes is
 needed to build or test these skeletons. Product and order now require a routing
-configuration file and an explicit live generator ID when launched; tests supply
-their own fixtures.
+configuration file and a live generator ID reserved by the startup launcher;
+tests supply their own disposable fixtures.
 
 | Maven module | Quarkus application class |
 |---|---|
@@ -35,7 +35,8 @@ discovery. Common has no Quarkus or generator dependency. ID and routing domain
 classes remain free of framework imports; their Quarkus wiring lives in
 `dev.nklip.javacraft.shardshop.idgen.config` and
 `dev.nklip.javacraft.shardshop.sharding.config`, respectively. The libraries have
-no runtime processes. `shardshop-workload` aggregates its three applications and
+no independent services; idgen also supplies the product/order startup launcher.
+`shardshop-workload` aggregates its three applications and
 has no executable code. Applications have no dependencies on one another and own
 their API, DTO/model and wire documents.
 
@@ -199,9 +200,9 @@ Production startup requires `shardshop.id.generator-id`, also configurable throu
 `SHARDSHOP_ID_GENERATOR_ID`, in `1..1023`; there is no production default.
 Generator 0 remains reserved for the service-owned fixtures in step 3.6.
 This setting accepts an already reserved ID; it does not reserve or persist one.
-Step 3.4 supplies the durable launcher that must reserve a fresh ID before every
-product/order JVM start. Manual IDs below are only for disposable skeleton smoke
-tests without retained data, not deployment allocations.
+The step 3.4 launcher below reserves this setting before every product/order JVM
+start. Direct manual IDs are only for disposable skeleton tests without retained
+data; deployed processes must use the launcher.
 
 Controlled-clock tests exercise concurrency, sequence exhaustion/recovery, source
 failures, backwards time, epoch/layout compatibility, exact timestamp limits and
@@ -237,6 +238,93 @@ product/order application packages contain them. Maven Enforcer rejects direct
 in unauthorized consumers during `validate`. The audited idgen and sharding dependency graphs remain independent.
 Idgen also has separate direct and transitive rules banning common and sharding,
 including direct optional dependencies; sharding's inherited rules ban idgen.
+
+## Generator allocation at JVM startup (step 3.4)
+
+`GeneratorLauncher` in `shardshop-idgen` runs before each product/order application
+JVM, including container restarts in the same pod. It invokes `kubectl` directly
+without a shell, reads `shardshop-snowflake-generators`, and atomically tests its
+UID, resource version and `data.highWaterMark` before advancing the counter.
+Only an acknowledged reservation reaches the application's
+`shardshop.id.generator-id` property. The launcher supervises that one child JVM;
+every new launcher invocation reserves again.
+The generator's CDI producer compares its effective configured ID with a separate
+raw JVM reservation pin before constructing the generator. Higher-priority
+environment/profile or external-file configuration cannot substitute another ID.
+
+Allocation has a 30-second budget, requests of at most five seconds, and retry
+backoff from 25 to 500 milliseconds. Failed or uncertain CAS attempts burn their
+candidate: the next attempt advances beyond both the observed counter and the
+uncertain candidate. A late acknowledgement cannot start the application.
+Missing, malformed, inaccessible, replaced or exhausted state fails startup.
+Launcher diagnostics identify exhaustion, stale identity, allocation deadlines,
+context/pin configuration errors, an unavailable kubectl executable, and registry
+read/access failures with their next checks. Only fixed local diagnostics are
+printed; external exception text and command stderr remain suppressed.
+Generator 0 remains reserved; at most 1,023 starts, including burned slots, fit
+one retained lab dataset.
+
+The infrastructure chart creates only product/order ServiceAccounts and grants
+them `get`/`patch` on the single named allocator ConfigMap. Ledger, workloads and
+the default account have no allocation permissions or launcher dependency.
+A fail-closed admission policy rejects counter rollback, out-of-range values,
+individual and collection deletion, and changes to the immutable `shardshop-generator-identity`
+ConfigMap. That identity pins the registry's original UID. Neither state object
+is rendered by Helm, so reapplying the chart cannot reset it.
+The guard matches the admitted object's name, including collection deletes with
+an empty request name. `generator-registry.sh check` probes both allocator objects
+through raw collection requests with `dryRun=All`, as well as individual requests
+with `--dry-run=server`. Namespace deletion cannot remove those two objects and
+leaves the namespace terminating while the guard is active; other ConfigMaps
+remain outside the guard.
+The guard uses Kubernetes' [validating admission policy](https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/)
+and the allocator uses [conditional API updates](https://kubernetes.io/docs/reference/using-api/api-concepts/#updates-to-existing-resources).
+
+On first setup, `up.sh` applies infrastructure and then stops if allocator state
+is missing. Initialize it explicitly only for a lab that has never issued retained
+IDs, then rerun the startup check:
+
+```bash
+bash microservices/shardshop/scripts/up.sh
+# First setup only, after up.sh reports missing allocator state:
+bash microservices/shardshop/scripts/generator-registry.sh initialize
+bash microservices/shardshop/scripts/up.sh
+bash microservices/shardshop/scripts/generator-registry.sh check
+```
+
+`initialize` preserves an existing valid pair and refuses partial state. A lost
+creation response can leave partial state; neither startup nor initialization
+repairs it by guessing. Establish its history before operator recovery. Normal
+stop/start, pod replacement and database restore preserve the ConfigMaps. Keep
+the latest allocator identity and high-water backup outside kind, separately
+from database dumps. Never apply an older allocator snapshot over live state.
+Restoring an entire older etcd/cluster snapshot also restores its admission
+history; that is unsupported without independently establishing the latest mark.
+If that mark is unavailable, keep ID-producing services stopped. Removing the
+guard or resetting state is allowed only after retiring all prior emitters,
+databases, broker data, backups and other replay inputs.
+
+Build and verify the affected modules, then run the live restart/RBAC drill:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml \
+  -pl shardshop-product,shardshop-order -am clean verify
+bash microservices/shardshop/scripts/verify-generator-allocation.sh
+```
+
+The drill consumes real generator slots. It uses a temporary, non-root,
+shell-free verification image from the locked kind and Canonical JRE images,
+checks simultaneous product/order starts and a same-pod restart, and cleans up
+its pods. Final service images and Deployments still belong to steps 3.9/4.8.
+Their entrypoint must invoke this launcher directly, use the owning service's
+ServiceAccount, and provide `SHARDSHOP_GENERATOR_REGISTRY_UID` from the immutable
+identity ConfigMap's `registryUid` key. An init container cannot replace this
+entrypoint. In-cluster kubectl uses an explicit temporary kubeconfig that references
+the projected service-account token file and cluster CA; it never discovers a
+user kubeconfig from `KUBECONFIG` or the home directory. The token is not copied
+into the file or command arguments. The temporary file is removed after allocation;
+host launches require `SHARDSHOP_KUBE_CONTEXT=kind-shardshop`. No tool binaries
+are downloaded or stored in the repository.
 
 ## Java and Maven
 
@@ -278,9 +366,15 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product -am clean v
 kubectl --context kind-shardshop -n shardshop get configmap shardshop-routing \
     -o jsonpath='{.data.application\.properties}' > /tmp/shardshop-routing.properties
 export SHARDSHOP_ROUTING_CONFIG=file:/tmp/shardshop-routing.properties
-# One disposable skeleton smoke launch, without retained IDs/data:
-"$JAVA_HOME/bin/java" -Dshardshop.id.generator-id=1 \
-  -jar microservices/shardshop/shardshop-product/target/quarkus-app/quarkus-run.jar
+export SHARDSHOP_KUBE_CONTEXT=kind-shardshop
+export SHARDSHOP_GENERATOR_REGISTRY_UID=$(kubectl --context kind-shardshop \
+  -n shardshop get configmap shardshop-generator-identity -o jsonpath='{.data.registryUid}')
+# Every successful reservation in this host example permanently consumes one real slot,
+# even if the application subsequently fails or exits immediately.
+"$JAVA_HOME/bin/java" \
+  -cp 'microservices/shardshop/shardshop-product/target/quarkus-app/lib/main/*' \
+  dev.nklip.javacraft.shardshop.idgen.allocation.GeneratorLauncher product \
+  microservices/shardshop/shardshop-product/target/quarkus-app
 ```
 
 Verify all six one at a time, without installing anything. Product/order run their
@@ -311,7 +405,9 @@ injection of the configured topology and router; idgen tests injection of its
 singleton ID generator. Each library owns its test configuration, and
 product/order each verify packaged startup. JaCoCo reports go to each Java module's
 `target/site/jacoco/`. JVM packages live in `target/quarkus-app/`;
-deploy that entire directory and launch `quarkus-run.jar` inside it.
+deploy that entire directory. Product and order must start through
+`GeneratorLauncher`, as in the host example above; ledger and workloads launch
+`quarkus-run.jar` directly.
 
 Product/order load the external routing file through `quarkus.config.locations`,
 retaining the `SHARDSHOP_ROUTING_CONFIG` override and default path
@@ -341,8 +437,8 @@ parent POM explain the aligned JUnit/Netty/Mockito/Lombok properties and name th
 advisory each plugin override fixes.
 No application dependency is added merely because the BOM manages it.
 
-Surefire runs `*Test` during `test`. Product/order each run twenty packaged routing
-and generator startup cases through Failsafe during **every `verify`**, without a profile or
+Surefire runs `*Test` during `test`. Product/order each run twenty-four packaged routing, generator and reservation-pin
+startup cases through Failsafe during **every `verify`**, without a profile or
 infrastructure. Opt-in `-Pintegration` runs other `*IT` tests and excludes those
 already executed routing cases. Ordinary tests disable automatic Dev Services.
 Surefire/Failsafe supply Mockito's startup agent through their plugin dependencies;

@@ -1,0 +1,93 @@
+{{- if eq .Values.render "infrastructure" }}
+{{/* The registry and immutable identity are deliberately not chart resources.
+Only scripts/generator-registry.sh initialize creates them, once per fresh lab. */}}
+{{- range $service := list "product" "order" }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: shardshop-{{ $service }}
+  namespace: {{ $.Release.Namespace | quote }}
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: shardshop-generator-allocator
+  namespace: {{ .Release.Namespace | quote }}
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [shardshop-snowflake-generators]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: shardshop-generator-allocator
+  namespace: {{ .Release.Namespace | quote }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: shardshop-generator-allocator
+subjects:
+  - kind: ServiceAccount
+    name: shardshop-product
+    namespace: {{ .Release.Namespace | quote }}
+  - kind: ServiceAccount
+    name: shardshop-order
+    namespace: {{ .Release.Namespace | quote }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ .Release.Namespace }}-generator-retention
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [configmaps]
+        scope: Namespaced
+  matchConditions:
+    - name: shardshop-namespace
+      expression: request.namespace == {{ .Release.Namespace | squote }}
+    # Collection deletes have an empty request name; match each admitted object.
+    - name: shardshop-generator-objects
+      expression: >-
+        (request.operation == 'DELETE' ? oldObject.metadata.name : object.metadata.name) in
+        ['shardshop-snowflake-generators', 'shardshop-generator-identity']
+  validations:
+    - expression: request.operation != 'DELETE'
+      message: ShardShop generator state cannot be deleted while lab data is retained.
+    - expression: >-
+        request.operation == 'DELETE' || object.metadata.name != 'shardshop-snowflake-generators' ||
+        (has(object.data) && size(object.data) == 1 && 'highWaterMark' in object.data &&
+        object.data.highWaterMark.matches('^(0|[1-9][0-9]{0,3})$') &&
+        int(object.data.highWaterMark) <= 1023 &&
+        (!has(object.binaryData) || size(object.binaryData) == 0) &&
+        (!has(object.immutable) || !object.immutable) &&
+        (request.operation == 'CREATE' ? object.data.highWaterMark == '0' :
+        (has(oldObject.data) && 'highWaterMark' in oldObject.data &&
+        oldObject.data.highWaterMark.matches('^(0|[1-9][0-9]{0,3})$') &&
+        object.metadata.uid == oldObject.metadata.uid &&
+        int(object.data.highWaterMark) > int(oldObject.data.highWaterMark))))
+      message: ShardShop generator high-water must start at zero and only increase through 1023.
+    - expression: >-
+        request.operation == 'DELETE' || object.metadata.name != 'shardshop-generator-identity' ||
+        (request.operation == 'CREATE' && has(object.immutable) && object.immutable &&
+        has(object.data) && size(object.data) == 1 && 'registryUid' in object.data &&
+        object.data.registryUid.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') &&
+        (!has(object.binaryData) || size(object.binaryData) == 0))
+      message: ShardShop generator identity must be created immutable and cannot be changed.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ .Release.Namespace }}-generator-retention
+spec:
+  policyName: {{ .Release.Namespace }}-generator-retention
+  validationActions: [Deny]
+{{- end }}

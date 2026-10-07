@@ -226,6 +226,17 @@ dependencies; all six negative fixtures fail at the expected rule. The
 Quarkus tests retain `--add-opens`. Commands are in the
 [step 3.3 runbook](README.md#bounded-snowflake-generation-step-33).
 
+Step 3.4 adds JDK-only allocation/launcher code to the same idgen JAR, with no new
+Java dependencies or artifact pins. Its Java 25 instance entrypoint is tested
+both directly and through the actual `java` launcher. The **2026-10-07** checks use
+OpenJDK **25+36-3489**, Maven **3.9.16**, host kubectl **1.36.3**, and the existing
+Kubernetes **1.36.4** lab. The temporary container drill copies kubectl from the
+locked kind node image into the locked Canonical OpenJDK 25 JRE image; both source
+digests remain unchanged. That image exists only for verification and does not
+replace the final service image qualification in steps 3.9/4.8. The
+[step 3.4 runbook](README.md#generator-allocation-at-jvm-startup-step-34) records
+the scoped Maven and live verification commands.
+
 The fixed 41/10/12 profile, epoch, process allocation, overflow handling, decimal
 wire/storage types, and tests are defined in [ARCHITECTURE.md](ARCHITECTURE.md).
 Requalify that contract on a library update; changing library configuration can affect uniqueness even when
