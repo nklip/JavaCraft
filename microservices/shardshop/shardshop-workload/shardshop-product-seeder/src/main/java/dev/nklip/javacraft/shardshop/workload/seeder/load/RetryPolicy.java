@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.shardshop.workload.seeder;
+package dev.nklip.javacraft.shardshop.workload.seeder.load;
 
 import dev.nklip.javacraft.shardshop.common.HttpResponseException;
 

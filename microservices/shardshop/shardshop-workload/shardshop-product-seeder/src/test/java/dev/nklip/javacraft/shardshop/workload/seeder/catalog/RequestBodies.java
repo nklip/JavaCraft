@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.shardshop.workload.seeder;
+package dev.nklip.javacraft.shardshop.workload.seeder.catalog;
 
 import org.mockito.ArgumentCaptor;
 
@@ -13,12 +13,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 /** Reads the complete body that a JDK request publisher sends. */
-final class RequestBodies {
+public final class RequestBodies {
     private RequestBodies() {
         // Static test helper. No instances are necessary.
     }
 
-    static String of(HttpRequest request) {
+    public static String of(HttpRequest request) {
         Flow.Subscriber<ByteBuffer> subscriber = mock();
         doAnswer(invocation -> {
             Flow.Subscription subscription = invocation.getArgument(0);

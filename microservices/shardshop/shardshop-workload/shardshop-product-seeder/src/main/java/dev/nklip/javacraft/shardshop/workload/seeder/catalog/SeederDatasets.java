@@ -1,4 +1,4 @@
-package dev.nklip.javacraft.shardshop.workload.seeder;
+package dev.nklip.javacraft.shardshop.workload.seeder.catalog;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;

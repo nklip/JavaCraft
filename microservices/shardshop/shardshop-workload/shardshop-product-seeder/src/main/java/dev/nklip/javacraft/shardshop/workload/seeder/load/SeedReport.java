@@ -1,8 +1,8 @@
-package dev.nklip.javacraft.shardshop.workload.seeder;
+package dev.nklip.javacraft.shardshop.workload.seeder.load;
 
 import dev.nklip.javacraft.shardshop.common.Sha256;
-import dev.nklip.javacraft.shardshop.workload.seeder.SeederDatasets.CreatedProduct;
-import dev.nklip.javacraft.shardshop.workload.seeder.SeederDatasets.CreatedSeller;
+import dev.nklip.javacraft.shardshop.workload.seeder.catalog.SeederDatasets.CreatedProduct;
+import dev.nklip.javacraft.shardshop.workload.seeder.catalog.SeederDatasets.CreatedSeller;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;

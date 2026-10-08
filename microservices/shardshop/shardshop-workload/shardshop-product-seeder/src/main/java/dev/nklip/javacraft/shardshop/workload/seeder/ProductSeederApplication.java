@@ -1,5 +1,7 @@
 package dev.nklip.javacraft.shardshop.workload.seeder;
 
+import dev.nklip.javacraft.shardshop.workload.seeder.load.CatalogSeeder;
+import dev.nklip.javacraft.shardshop.workload.seeder.load.SeedingException;
 import io.quarkus.runtime.QuarkusApplication;
 import io.quarkus.runtime.annotations.QuarkusMain;
 import jakarta.inject.Inject;

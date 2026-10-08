@@ -1,9 +1,10 @@
-package dev.nklip.javacraft.shardshop.workload.seeder;
+package dev.nklip.javacraft.shardshop.workload.seeder.load;
 
 import dev.nklip.javacraft.shardshop.workload.dataset.CatalogDataset.ProductDefinition;
 import dev.nklip.javacraft.shardshop.workload.dataset.CatalogDataset.SellerDefinition;
-import dev.nklip.javacraft.shardshop.workload.seeder.SeederDatasets.CreatedProduct;
-import dev.nklip.javacraft.shardshop.workload.seeder.SeederDatasets.CreatedSeller;
+import dev.nklip.javacraft.shardshop.workload.seeder.catalog.SeederDatasets;
+import dev.nklip.javacraft.shardshop.workload.seeder.catalog.SeederDatasets.CreatedProduct;
+import dev.nklip.javacraft.shardshop.workload.seeder.catalog.SeederDatasets.CreatedSeller;
 
 import java.util.ArrayList;
 import java.util.HashMap;

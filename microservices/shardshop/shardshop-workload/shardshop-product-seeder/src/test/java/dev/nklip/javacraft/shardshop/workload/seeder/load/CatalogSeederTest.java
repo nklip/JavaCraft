@@ -1,12 +1,14 @@
-package dev.nklip.javacraft.shardshop.workload.seeder;
+package dev.nklip.javacraft.shardshop.workload.seeder.load;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.nklip.javacraft.shardshop.common.JsonHttpClient;
 import dev.nklip.javacraft.shardshop.workload.dataset.CatalogDataset;
-import dev.nklip.javacraft.shardshop.workload.seeder.SeederDatasets.CreatedProduct;
-import dev.nklip.javacraft.shardshop.workload.seeder.SeederDatasets.CreatedSeller;
+import dev.nklip.javacraft.shardshop.workload.seeder.catalog.RequestBodies;
+import dev.nklip.javacraft.shardshop.workload.seeder.catalog.SeederDatasets;
+import dev.nklip.javacraft.shardshop.workload.seeder.catalog.SeederDatasets.CreatedProduct;
+import dev.nklip.javacraft.shardshop.workload.seeder.catalog.SeederDatasets.CreatedSeller;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;

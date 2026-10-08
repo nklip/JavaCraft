@@ -1,9 +1,9 @@
 package dev.nklip.javacraft.shardshop.workload.seeder.config;
 
 import dev.nklip.javacraft.shardshop.common.JsonHttpClient;
-import dev.nklip.javacraft.shardshop.workload.seeder.CatalogSeeder;
-import dev.nklip.javacraft.shardshop.workload.seeder.RetryPolicy;
-import dev.nklip.javacraft.shardshop.workload.seeder.SeederDatasets;
+import dev.nklip.javacraft.shardshop.workload.seeder.catalog.SeederDatasets;
+import dev.nklip.javacraft.shardshop.workload.seeder.load.CatalogSeeder;
+import dev.nklip.javacraft.shardshop.workload.seeder.load.RetryPolicy;
 import jakarta.enterprise.inject.Disposes;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Singleton;
