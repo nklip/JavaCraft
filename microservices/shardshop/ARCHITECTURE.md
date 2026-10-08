@@ -1180,13 +1180,29 @@ No profit engine or changed message snapshot is introduced by the dataset step.
 
 ### HTTP connection policy
 
-Use HTTP/1.1 for the load profile, with 16 connections per reader pod to the
-product Service, at least 16 concurrent workers, a maximum connection lifetime
-of 30 seconds with up to three seconds of jitter, and a 10-second idle timeout.
-Warm up the pool with concurrent requests. Retire aged connections after their
+Use HTTP/1.1 for the load profile, with a pool of up to 16 connections per
+reader pod to the product Service and at least as many concurrent workers as
+connections. Saturation tests can increase both. Use a maximum connection
+lifetime of 30 seconds and a 10-second idle timeout. Warm up the pool with
+concurrent requests. After the first lifetime, the number of open connections
+follows the load: request rate multiplied by latency. Retire aged connections after their
 current request and discard failed connections immediately. Use a two-second
 connect timeout and five-second overall request deadline; retries stay inside
 that deadline. Configure the Service with `sessionAffinity: None`.
+
+The reader (step 3.8) uses the Apache HttpClient 5 classic pool, which the
+Quarkus platform manages: a strict connection limit, a time to live checked when a
+connection is leased, and an idle-connection evictor. The JDK HTTP client has no
+connection limit or lifetime setting. The reader's concurrent startup lookups by
+creation key open the pool; a failed lookup stops the reader before the load
+starts. A scheduled cancel ends each read at the deadline, including the wait for
+a connection and all attempts. The reader sends a request again only after a
+failure without an HTTP response, at a fixed interval. An HTTP status, including
+`503`, is a measured outcome, because product already limits and repeats its own
+database work. The reader rejects a deadline shorter than five seconds, so that
+product's `503` within its four-second server deadline stays measurable. It
+reports request rate, latency percentiles, outcomes, seller-region distribution
+and the pool state as one log line for each interval, and a total line at shutdown.
 
 Kubernetes selects a backend for a TCP connection; repeated HTTP requests on
 that connection stay on that backend. Pool size and connection rotation create

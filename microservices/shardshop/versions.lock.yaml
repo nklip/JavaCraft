@@ -1178,6 +1178,23 @@ maven:
       io.netty:netty-codec-http: {"version":"4.1.139.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http/4.1.139.Final/netty-codec-http-4.1.139.Final.jar","sha256":"627cfdac2cd5dbd8a33af85977fb81fa6b46f0c00389ab4c8677a415f0f85480","published_checksum":{"algorithm":"sha1","value":"f52d30aeadc0af8c0d1cad9970e5a9c5df62bdd1","url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http/4.1.139.Final/netty-codec-http-4.1.139.Final.jar.sha1"}}
       io.netty:netty-codec-http2: {"version":"4.1.139.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http2/4.1.139.Final/netty-codec-http2-4.1.139.Final.jar","sha256":"4cb8bc95386112f3a9da935272781d577d9e70ca4c56cf0eef603a45e9526e02","published_checksum":{"algorithm":"sha1","value":"7b86d21a5578c431d2ccf898f22b444a38a4c0b2","url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http2/4.1.139.Final/netty-codec-http2-4.1.139.Final.jar.sha1"}}
       io.netty:netty-handler: {"version":"4.1.139.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/netty/netty-handler/4.1.139.Final/netty-handler-4.1.139.Final.jar","sha256":"ff85f00781b956d618b20f33da076c839a5e43e0084108b07bab0c19737168ec","published_checksum":{"algorithm":"sha1","value":"436b4a15bb2fe4608996a08b6d69b22f075286a4","url":"https://repo.maven.apache.org/maven2/io/netty/netty-handler/4.1.139.Final/netty-handler-4.1.139.Final.jar.sha1"}}
+  step_3_8_reader_dependencies:
+    checked_on: '2026-10-08'
+    review_by: '2026-11-05'
+    platform: io.quarkus.platform:quarkus-bom:3.40.1
+    scope: Product reader connection pool, time to live, idle eviction, connect timeout and retries through the Apache HttpClient 5 classic API; the seeder and order producer keep the JDK client in common
+    reason: The JDK HTTP client has no connection limit or connection lifetime setting, which the reader's HTTP connection policy requires
+    verification: Cached artifacts match Maven Central SHA-1 files; SHA-256 independently calculated. No Vert.x or Netty runtime is resolved in workload packages
+    support_and_advisories:
+      httpclient5: 5.6.x is the current stable HttpClient line; OSV lists no advisory for 5.6.4 on 2026-10-08
+      httpcore5: 5.4.x is the current stable HttpCore line; OSV lists no advisory for httpcore5 or httpcore5-h2 5.4.3 on 2026-10-08
+    sources:
+    - https://hc.apache.org/status.html
+    - https://osv.dev/
+    artifacts:
+      org.apache.httpcomponents.client5:httpclient5: {"version":"5.6.4","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/apache/httpcomponents/client5/httpclient5/5.6.4/httpclient5-5.6.4.jar","sha256":"bdef5f8841145cd76c4c605ff301bc840eea0d5292332b7b892a93316c0d8ee1","published_checksum":{"algorithm":"sha1","value":"2a8ff1366303ac253e0ea64dab1e5abb5b7687bd","url":"https://repo.maven.apache.org/maven2/org/apache/httpcomponents/client5/httpclient5/5.6.4/httpclient5-5.6.4.jar.sha1"}}
+      org.apache.httpcomponents.core5:httpcore5: {"version":"5.4.3","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/apache/httpcomponents/core5/httpcore5/5.4.3/httpcore5-5.4.3.jar","sha256":"18bfbbabb478dfb67f31aeaf428c387f3c3df654582e1309f708ee1f3086830a","published_checksum":{"algorithm":"sha1","value":"32a0699fbcb103f5621c00983ee8f5aac080e4a6","url":"https://repo.maven.apache.org/maven2/org/apache/httpcomponents/core5/httpcore5/5.4.3/httpcore5-5.4.3.jar.sha1"}}
+      org.apache.httpcomponents.core5:httpcore5-h2: {"version":"5.4.3","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/apache/httpcomponents/core5/httpcore5-h2/5.4.3/httpcore5-h2-5.4.3.jar","sha256":"c7db7026b8e2dea39132b04a6069f6671e2858309b20a146ec5c7dd6ed73a0b6","published_checksum":{"algorithm":"sha1","value":"33bcd37d645539d27c65e17420843fd7f6c0ebf4","url":"https://repo.maven.apache.org/maven2/org/apache/httpcomponents/core5/httpcore5-h2/5.4.3/httpcore5-h2-5.4.3.jar.sha1"}}
   quarkus_dependency_snapshot:
     source_coordinate: io.quarkus.platform:quarkus-bom:3.40.1
     checked_on: '2026-10-07'
@@ -1195,6 +1212,8 @@ maven:
     vertx_product_runtime: 4.5.34
     postgresql_product_runtime: 42.7.13
     agroal_product_runtime: 3.2.1
+    httpclient5_reader_runtime: 5.6.4
+    httpcore5_reader_runtime: 5.4.3
     jackson_databind: 2.21.7
     jackson_annotations: '2.21'
     lombok_processor: 1.18.46

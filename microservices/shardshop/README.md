@@ -6,11 +6,12 @@
 All six applications use **Quarkus 3.40.1** in JVM mode on Java 25.
 Product now runs the seller/product HTTP API from step 3.6. The product seeder
 from step 3.7 seeds and verifies the catalog through that API and then exits. The
-other entry points start CDI and exit. Step 3.5 provides workload-owned dataset
-definitions and HTTP clients; the buyer provider remains step 4.1, and workload
-loops remain steps 3.8 and 4.7. No Docker or Kubernetes is needed for Maven module
-tests. The separate product-provider and seeder acceptance checks use disposable
-PostgreSQL databases.
+product reader from step 3.8 reads the seeded products at a bounded rate until it
+stops. The other entry points start CDI and exit. Step 3.5 provides workload-owned
+dataset definitions and HTTP clients; the buyer provider remains step 4.1, and the
+order workload loop remains step 4.7. No Docker or Kubernetes is needed for Maven
+module tests. The separate product-provider, seeder and reader acceptance checks
+use disposable PostgreSQL databases.
 Product/order production
 starts still require the routing snapshot and a live generator ID reserved by
 the startup launcher; tests use disposable configuration.
@@ -376,6 +377,153 @@ products, two complete runs then stored identical rows, and the replica-profile 
 failed. One complete seeder JVM run took 3.9 seconds. The seeder POM and its
 dependencies are unchanged (147 SBOM components). The kind lab was not used,
 because product deployment and the seeder Job are step 3.9.
+
+## Product reader (step 3.8)
+
+`shardshop-product-reader` is the long-running application for the reader
+Deployment. At startup, it looks up each `catalog-v1` seller by its creation key
+and region. Then it looks up each product by its creation key under the returned
+seller ID. Each response must agree with the dataset payload. The reader keeps the
+returned IDs; it never generates or derives an ID. Then it logs one line:
+
+```text
+Resolved catalog-v1 [US 50 sellers, 100 products; EU 50 sellers, 100 products; ASIA 50 sellers, 100 products], key-to-ID SHA-256 <hex>
+```
+
+The digest uses the same lines as the [seeder digest](#product-seeder-step-37).
+Equal digests show that the reader found the IDs that the seeder verified. If a
+lookup fails, the reader logs one error line and exits with code 1 before the load
+starts.
+
+After the lookups, the workers read randomly selected products with
+`GET /api/v1/sellers/{sellerId}/products/{productId}`. One shared schedule gives
+the request starts a fixed total rate. After a stall, the reader does not send the
+missed requests later. Each response must keep the issued IDs and the dataset
+payload; only the stock can change.
+
+The reader sends HTTP requests with the classic Apache HttpClient 5 client,
+which the Quarkus platform manages. The JDK HTTP client has no setting for a
+connection limit or a connection lifetime. The defaults agree with the
+[HTTP connection policy](ARCHITECTURE.md#http-connection-policy):
+
+| Item | Reader behavior |
+|---|---|
+| Pool | A strict pool of up to 16 HTTP/1.1 connections. Apache opens a connection only when no free connection exists, and uses free connections in FIFO order. After the first lifetime, the number of open connections follows the load: request rate multiplied by latency |
+| Warm-up | 16 workers send the 450 startup lookups at the same time, thus all 16 connections open before the load starts |
+| Rotation | Apache's time to live of 30 s: the pool closes an older connection when it would lease it again, thus after its current request. The replacement connection gives the Service a new backend selection |
+| Idle connection | Apache's idle-connection evictor checks each second and closes a connection that is not used for 10 s |
+| Failed connection | Apache closes a connection after a failure or a cancel |
+| Deadlines | 2 s to connect. A scheduled cancel ends the complete read after 5 s, including the wait for a connection and all attempts |
+| Repeated attempts | Only after a failure without an HTTP response, for example a refused, reset or closed connection: a maximum of 3 attempts, 100 ms apart. Timeouts are not repeated |
+| Response body | A body larger than 2 MiB is an invalid response; the reader reads at most 2 MiB plus one byte |
+
+An HTTP status is a result, not a reason to send the request again, because
+product already limits and repeats its own database work. Each read has one of
+these outcomes:
+
+| Outcome | Meaning |
+|---|---|
+| `OK` | `200` with the issued IDs and the dataset payload |
+| `NOT_FOUND` | `404`, for example a product that a standby has not replayed yet |
+| `REPLICA_UNAVAILABLE` | `503 READ_REPLICA_UNAVAILABLE` |
+| `UNAVAILABLE` | Another `503`, for example `CATALOG_UNAVAILABLE` |
+| `HTTP_ERROR` | A different status |
+| `INVALID_RESPONSE` | A body that is too large or not valid JSON, or that has a different ID or payload |
+| `DEADLINE` | No result in 5 s |
+| `TRANSPORT` | No HTTP response after the permitted attempts, for example a refused connection |
+
+The reader logs one metric line for each report interval:
+
+```text
+Product reads, interval 30.0 s: 6000 requests, 200.0/s, outcomes {OK=6000}, latency ms {p50=2, p95=4, p99=7, max=15}, regions {ASIA=1996, EU=2009, US=1995}, pool {leased=3, pending=0, available=13, max=16}
+```
+
+The latency percentiles are in whole milliseconds, rounded up. They include the
+wait for a connection and all attempts. `regions` counts reads by seller home
+region. `pool` is the state of Apache's pool when the line is written: `leased`
+connections are in use, `pending` reads wait for a connection, and `available`
+connections are open and free. The level is INFO when all reads are `OK`, and
+WARN when they are not. At SIGTERM, the reader stops its workers and writes one
+`Product reads, total` line as the last report. The deadline of each read limits
+this stop. Log lines contain no response payloads. The reader has no HTTP server,
+thus workload packages still contain no Vert.x or Netty runtime.
+
+| Property | Default | Purpose |
+|---|---|---|
+| `shardshop.reader.product-url` | None. Startup fails without it | Base URL of the product Service |
+| `shardshop.reader.catalog-version` | `catalog-v1` | Dataset version. Other versions fail before HTTP |
+| `shardshop.reader.request-rate` | `200` | Request starts per second for all workers, 1–10000 |
+| `shardshop.reader.workers` | `16` | Concurrent workers, from the number of connections to 256 |
+| `shardshop.reader.connections` | `16` | HTTP/1.1 connections, 1–64 |
+| `shardshop.reader.connect-timeout` | `2s` | Connection deadline. It cannot be longer than the request deadline |
+| `shardshop.reader.request-deadline` | `5s` | Complete deadline of one read. Startup fails below 5 s, because product returns `503` within its 4-second server deadline |
+| `shardshop.reader.max-attempts` | `3` | Attempts after failures without an HTTP response, 1–5 |
+| `shardshop.reader.retry-interval` | `100ms` | Fixed delay before a new attempt |
+| `shardshop.reader.max-connection-lifetime` | `30s` | Apache time to live of a connection |
+| `shardshop.reader.idle-timeout` | `10s` | Time before an unused connection closes |
+| `shardshop.reader.report-interval` | `30s` | Time between metric lines, at least 1 s |
+
+For a saturation test, increase `request-rate`, and increase `workers` and
+`connections` together. One pod sends at most `workers` divided by the latency:
+16 workers at 3 ms send approximately 5,300 requests/s. When product saturates,
+the reader does not send missed requests later, thus the reported rate is the
+accepted rate. Environment variables such as `SHARDSHOP_READER_PRODUCT_URL` also set these
+properties. `--check-startup` validates the configuration, including the URL and
+the timeouts, and exits without HTTP requests. An unexpected worker failure logs
+one error line and stops the reader with exit code 1. The Deployment, its resource
+budget, per-pod product counters and the seeding gate are step 3.9.
+
+Build the three packages, and then run the isolated acceptance check. The check
+needs `lsof` and the Python environment of
+[contract validation](#http-and-message-contracts-step-31). It takes approximately
+90 seconds:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-workload/shardshop-product-seeder,shardshop-workload/shardshop-product-reader -am -Paudit clean verify
+docker run -d --name shardshop-reader-check -p 127.0.0.1:55438:5432 \
+  -e POSTGRES_PASSWORD=shardshop-test-only \
+  docker.io/library/postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+/tmp/shardshop-contract-validation/bin/python -B \
+  microservices/shardshop/scripts/verify-product-reader.py shardshop-reader-check
+docker rm -f shardshop-reader-check
+```
+
+The check uses the provider harness of step 3.6 and seeds the catalog with the
+packaged seeder. It does not connect to the kind lab. The reader runs with its
+default policy and 5-second reports:
+
+1. Against product without read replicas, the reader must exit with code 1 and one
+   `REPLICA_UNAVAILABLE` lookup error, before the load starts.
+2. Against the primary profile, the resolution digest must equal the seeder digest
+   and the digest of the stored IDs. For 38 seconds, all reads must be `OK` at a
+   maximum of 201 requests/s, with all three regions, and no read waits for a
+   connection. `lsof` must show 16 TCP connections after the warm-up. After 38
+   seconds, it must show 1–16 connections, and none from the warm-up.
+3. While product is paused with SIGSTOP for 7 seconds, reads must end with
+   `DEADLINE` after 5.0–5.1 seconds. After SIGCONT, the reads must become `OK`
+   again.
+4. While product stops, then starts without replicas, and then starts with
+   primaries, the reader must record `TRANSPORT` and `REPLICA_UNAVAILABLE`
+   outcomes, continue to run, and recover.
+5. After SIGTERM, the total line must be the last report. The stored rows must not
+   change.
+
+Verification on **2026-10-08**: the six-application audit, with its libraries,
+passes 872 unit/startup tests and 48 packaged startup checks, with no warnings.
+The 67 reader tests cover 420 of 421 lines and 176 of 179 branches; the remaining
+items are the warning for threads that do not stop in 10 seconds, race paths and a
+connect timeout. The `ProductRequests` tests use a loopback HTTP server for
+connection reuse, each status, invalid and oversized bodies, repeated attempts at
+the fixed interval, refused connections, the deadline, the pool limit, the time to
+live, idle closing and interruption. A Quarkus startup test rejects a 4.999 s
+deadline. Common's strict JSON decoding moved into `JsonResponses`; the 195 common
+tests cover all lines and branches. The reader adds Apache HttpClient 5.6.4,
+HttpCore 5.4.3 and HttpCore H2 5.4.3 (150 SBOM components, previously 147); the
+package contains no Vert.x or Netty. The isolated check passed twice, in 89 and 88
+seconds. The second run: 200.0 requests/s; 16 `DEADLINE` reads during the pause,
+the longest in 5019 ms; 528 `TRANSPORT` and 1219 `REPLICA_UNAVAILABLE` reads
+during the restarts; 12629 reads in total. A previous run showed that, at 200
+requests/s on loopback, the pool kept 5 connections after the first lifetime.
 
 ## HTTP and message contracts (step 3.1)
 

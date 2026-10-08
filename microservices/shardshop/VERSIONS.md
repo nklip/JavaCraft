@@ -235,6 +235,24 @@ numbers. Both datasets are the initial unreleased v1; edits before their first
 release or use keep that version. Source extraction tools do not become Java
 build/runtime dependencies.
 
+### Step 3.8 reader HTTP client
+
+The product reader adds the platform-managed Apache HttpClient **5.6.4** (classic
+API) with HttpCore **5.4.3** and HttpCore H2 **5.4.3**. Its SLF4J API resolves to
+the platform's **2.0.18** and logs through JBoss Log Manager. The JDK HTTP client
+has no setting for a connection limit or a connection lifetime, which the
+[HTTP connection policy](ARCHITECTURE.md#http-connection-policy) requires. Only the
+reader uses this client; the seeder and the order producer keep the JDK client in
+common. No Vert.x or Netty runtime enters a workload package.
+
+HttpClient 5.6.x and HttpCore 5.4.x are the current stable HttpComponents lines;
+HttpClient 4.5.x receives only security fixes. On **2026-10-08**, OSV listed no
+advisories for the three versions, and the cached artifacts matched Maven
+Central's published SHA-1 checksums. The lock's `step_3_8_reader_dependencies`
+records them with independent SHA-256 values. Review these families with the
+platform by **2026-11-05**.
+[HttpComponents status](https://hc.apache.org/status.html), [OSV](https://osv.dev/).
+
 ### Explicit Snowflake library selection
 
 Pin **`de.mkammerer.snowflake-id:snowflake-id:0.0.2`** outside the framework BOM in
