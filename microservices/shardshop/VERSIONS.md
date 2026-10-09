@@ -98,6 +98,21 @@ also require a different retry design. Qualify a maintained compatible community
 successor before EOL. If none is available, stop deployment past EOL or design
 and validate a supported community replacement; commercial support is outside scope.
 
+### Step 6.7 request balancer candidates
+
+Step 6.7 needs a request-level balancer for HTTP/2, because a Kubernetes Service
+balances only TCP connections. The review on 2026-10-08 found these candidates:
+
+- Istio ambient mode with a waypoint: Istio 1.30 supports Kubernetes 1.32–1.36.
+  This is the candidate.
+- Envoy Gateway had no supported release for Kubernetes 1.36.
+- Stable Linkerd releases are commercial.
+- Cilium replaces the kind network plugin. Thus it needs a new cluster without the
+  current PVCs.
+
+Step 6.7 selects the component and records its versions, support window and
+resource use here.
+
 ## 2. Java libraries and build tools
 
 Use `io.quarkus.platform:quarkus-bom:3.40.1` for all six applications, scoped

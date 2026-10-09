@@ -17,7 +17,8 @@ The primary target is a local kind lab on one machine: every contract, drill, an
 acceptance scenario in this document must run and pass there. A later AWS target
 (EKS provisioned with Terraform, PLAN milestone 7) is optional. It reuses the same
 shared Helm templates through environment values and the same verified operator
-Helm charts and values, delivers the applications through GitOps, and may add cloud-only
+Helm charts and values, delivers the database layer and the applications through
+Argo CD GitOps, and may add cloud-only
 durability such as S3 backups with WAL archiving and a three-broker RabbitMQ. No
 local behavior or check may depend on a cloud service.
 
@@ -26,14 +27,9 @@ applications on OpenJDK 25. The Maven toolchain uses the installation selected b
 `JAVA_HOME`, without a vendor or exact-patch restriction; preview features remain
 disabled. Container bases are the verified
 Canonical OpenJDK 25 JDK/JRE images on Ubuntu 26.04 in the version lock. The JRE
-is shell-free; implement the startup allocator launcher as a Java/native executable
-and explicitly configure a non-root container user. Final application images
+is shell-free, thus the startup allocator launcher is a Java program (step 3.4).
+Configure a non-root container user explicitly. Final application images
 retain the deployment qualification gates in the version policy.
-This runtime selection includes Java migration tools. Flyway's final image uses
-the same Canonical JRE, with only libraries, drivers, configuration and licenses
-copied from the pinned upstream Flyway distribution image. Its bundled Temurin
-runtime is not copied. Local Maven continues to use the selected `JAVA_HOME`
-installation, including the existing upstream OpenJDK `25-open` installation.
 
 ## 1. Goal and module boundaries
 
@@ -75,13 +71,13 @@ buyer, order, saga, command, and message IDs, including IDs reserved for ledger
 results. Workload modules and ledger only consume and reuse service-issued IDs;
 they never generate, derive, or allocate them locally.
 
-| # | Proposed module | Responsibility | Initial deployment | Database access |
+| # | Module | Responsibility | Initial deployment | Database access |
 |---|---|---|---|---|
 | 1 | `shardshop-workload` | Aggregate the three workload applications below | No aggregator pod; one seeder Job and two load Deployments | None: no tables, migrations, or database credentials |
 | 2 | `shardshop-product` | Accept seller and product creation and product reader HTTP requests | Two identical product service pods behind one Kubernetes Service | Creates and reads sellers and products in schema `catalog` of the shared sharded PostgreSQL deployment |
 | 3 | `shardshop-order` | Accept buyer and order HTTP requests, coordinate the saga including stock reservation, and relay captured order-outbox inserts to RabbitMQ | One stateless order service pod initially | Buyers, orders, items, saga state, inbox, outbox, and CDC offsets in schema `ordering`; reads sellers and products and writes stock reservations and product stock in `catalog` |
 | 4 | `shardshop-ledger` | Consume ledger commands and persist order ledger records | One ledger consumer pod plus a separate PostgreSQL pod initially | Schema `ledger` in a dedicated ledger database: entries, decisions, permanent result bindings, inbox, outbox, and command quarantine |
-| 5 | `shardshop-core` | Aggregate `common` (canonical-ID parsing and UTF-8 SHA-256), `idgen` (bounded Snowflake generation) and `sharding` (seller/buyer routing); idgen and sharding own their SmallRye/CDI wiring (section 3) | No aggregator pod; common is inside all six applications, idgen and sharding are inside product/order | None |
+| 5 | `shardshop-core` | Aggregate `common` (canonical-ID parsing, UTF-8 SHA-256 and the bounded JSON HTTP client), `idgen` (bounded Snowflake generation) and `sharding` (seller/buyer routing); idgen and sharding own their SmallRye/CDI wiring (section 3) | No aggregator pod; common is inside all six applications, idgen and sharding are inside product/order | None |
 
 Module 1 contains exactly three independently runnable submodules:
 
@@ -112,16 +108,20 @@ Dataset definitions and service-side creation follow section 3.
    sellers first, then their products with initial stock. Product generates each
    entity ID; the seeder uses the returned seller ID for product creation. It exits
    successfully only after every seller and product has been acknowledged and
-   verified through primary reads, by returned ID and by creation key. A retry
-   repeats the same creation keys and payloads and recovers the same IDs. Within a
-   run, the seeder sends a request again only after a transport failure or a `503`
-   response, with bounded backoff. Other statuses and reads that differ from the
-   acknowledged ID or payload stop the run.
+   verified through product reads, by returned ID and by creation key. In the
+   default profile, these reads use primaries. A retry repeats the same creation
+   keys and payloads and recovers the same IDs. Within a run, the seeder sends a
+   request again only after a transport failure or a `503` response, with bounded
+   backoff. It also repeats a verification read that gets `404` for a limited
+   time, because a standby can replay a commit later in the replica profile.
+   Other statuses and reads that differ from the acknowledged ID or payload stop
+   the run.
 3. The startup script waits for that run's Job `Complete` condition with a
    300-second deadline. A failed Job or deadline stops startup; it never starts
    load against a partially seeded dataset. Only after success does it scale the
    reader and order producer to one replica each. Their startup checks verify the
-   same dataset configuration; replica-profile reads may still observe lag.
+   same dataset configuration. Their startup lookups repeat a `404` for a limited
+   time, because replica-profile reads can observe lag.
 4. The baseline performs **no continuous seller or product creation after
    seeding**; orders change only stock, through reservations. The Job
    stays completed rather than being restarted as a Deployment. Reader and order
@@ -129,8 +129,8 @@ Dataset definitions and service-side creation follow section 3.
    receives a distinct run name in its deployment configuration and has a fresh
    seeding gate; a previous Job cannot satisfy it. Workloads do not generate run IDs.
 
-Seed sellers, buyers, and products across US, EU, and ASIA, with both USD and
-EUR product fixtures in every region. Region and currency are independent: the
+The seeder creates sellers and products, and the order producer creates buyers,
+in US, EU, and ASIA, with both USD and EUR product fixtures in every region. Region and currency are independent: the
 order producer must exercise purchases from other regions and orders mixing
 sellers from all three regions within one currency. For deterministic saga
 rejection, select the separate USD and EUR fixtures.
@@ -159,7 +159,9 @@ responsibilities. `shardshop-common`, in `shardshop-core/common`, owns reusable
 logic used across ShardShop: `IdParser` validates
 canonical positive IDs from text or a current JSON string token, and
 `Sha256.unsignedDigest` hashes unchanged UTF-8 text as an unsigned big-endian
-integer. Their unit tests and boundary vectors live in common. Add reusable
+integer. Step 3.5 added the bounded JSON HTTP client `JsonHttpClient` and the
+strict JSON readers `JsonFields` and `JsonResponses`. Their unit tests and
+boundary vectors live in common. Add reusable
 validation and utilities here when multiple modules need them. Common has no
 Quarkus startup/CDI wiring, application dependencies, shard topology, ID generation,
 database access or messaging. Its JSON parser uses the platform-managed Jackson
@@ -202,31 +204,12 @@ running applications adopt a common change when their rebuilt artifacts are
 deployed. This couples release qualification without introducing a shared runtime
 service or requiring simultaneous deployment for wire-compatible changes.
 
-Step 3.5 places generic bounded JSON HTTP transport and strict field readers
-in common. It contains no datasets or service wire models. The workload-owned
+Common contains no datasets or service wire models. The workload-owned
 dataset library holds ID-free definitions; each application owns its service
 response decoding and request construction.
 
-Proposed source layout:
-
-```text
-shardshop/
-  pom.xml                         # parent aggregator, no runtime process
-  shardshop-core/                 # library POM parent and aggregator, no runtime process
-    common/                       # shared validation and utilities; all applications
-    idgen/                        # ID generation and its Quarkus wiring; product/order only
-    sharding/                     # routing and its Quarkus wiring; product/order only
-  shardshop-workload/
-    shardshop-datasets/            # ID-free definitions; workload consumers only
-    shardshop-product-seeder/
-    shardshop-product-reader/
-    shardshop-order-producer/
-  shardshop-product/
-  shardshop-order/
-  shardshop-ledger/
-  database/                       # Flyway migration streams, one per schema (section 3)
-  infra/                          # Kubernetes, PostgreSQL, RabbitMQ configuration
-```
+The [planned layout](PLAN.md#8-planned-layout-and-verification) in PLAN shows the
+source tree.
 
 ### Wire contracts (step 3.1)
 
@@ -260,7 +243,8 @@ nonnegative fixed-two-decimal strings; profit balances are signed canonical
 fixed-two-decimal strings, excluding negative zero. Allocation `requestOrdinal`
 is a nonnegative decimal string through the
 signed-long maximum, preserving retry-coordinate precision without making it an
-application ID. Orders allow at most 1,000 distinct seller/product pairs; duplicate
+application ID. It permits `"0"`, which `IdParser` rejects, thus step 4.1 needs
+a separate validator. Orders allow at most 1,000 distinct seller/product pairs; duplicate
 pairs are invalid, and item order participates in the normalized fingerprint.
 The order API specifies its exact SHA-256 serialization. The message field is
 `requestFingerprint`; envelope `occurredAt` is distinct from the ledger's permanent
@@ -402,7 +386,8 @@ flowchart TB
 Each shard has the same catalog/ordering schema definitions but different rows.
 A replica copies its own primary; replication does not distribute rows between
 A, B, and C. Use three CloudNativePG clusters with three instances each, one per
-worker node, as described in [PLAN.md](PLAN.md). Each is a replication quorum: a
+worker node. One cluster with nine instances is one shard with one primary and
+eight standbys. Each shard cluster is a replication quorum: a
 commit is acknowledged once any one of its two standbys has durably flushed it
 (`ANY 1`), so a shard tolerates losing one instance without losing acknowledged
 commits or blocking writes. Quorum-based failover (`failoverQuorum`) promotes a
@@ -459,8 +444,6 @@ The shared `IdParser` in `shardshop-common` enforces this contract once for all
 consumers. Malformed string content detected while reading the current JSON token
 uses the same fixed validation error; plain stream `IOException` propagates.
 Providers still validate the surrounding document and map its syntax errors.
-Allocation `requestOrdinal` is a separate nonnegative coordinate that permits
-`"0"` and requires its own validator in step 4.1.
 
 The order producer obtains each order ID from order before its first PUT and
 retains it with the exact creation payload through bounded retries/status
@@ -480,8 +463,9 @@ lab, a named `shardshop-snowflake-generators` ConfigMap keeps a monotonically
 increasing allocation counter for live IDs **1-1023**. A startup launcher reserves
 one fresh ID with a Kubernetes resource-version compare-and-set before **every
 product or order JVM start**, including a container restart in the same pod. This
-must not run only in an init container. Use the pinned kubectl/tooling and narrow
-RBAC for this one precreated ConfigMap, granted only to product and order.
+must not run only in an init container. Take kubectl from a digest-pinned image.
+The step 3.4 drill copies it from the kind node image. Give narrow RBAC for this
+one precreated ConfigMap only to product and order.
 Workload and ledger pods have no allocator access. Concurrent starts retry CAS
 conflicts with a bounded deadline.
 An uncertain reservation burns that slot and obtains another; it never guesses
@@ -597,7 +581,9 @@ catalog IDs through `GET /api/v1/sellers/by-key/{creationKey}?region=US` and
 entity lookups, returning `404` when absent; they do not publish fixture definitions
 or create data. Each application owns its response models, validates the response
 against the requested definition, and preserves returned canonical string IDs.
-The seeding gate requires successful primary reads before starting load.
+The seeding gate requires successful reads before load starts. The
+[workload lifecycle](#workload-lifecycle) defines the limited `404` retry for
+replica lag.
 
 Before submitting a live order, the producer calls
 `POST /api/v1/buyers/{buyerId}/order-allocations` with its configured run name and
@@ -680,7 +666,9 @@ inventory with this saved topology as well as the published routing snapshot,
 including when no versioned migration is pending. Both existing ConfigMaps must
 contain matching `version` and `regionVersion` values; absent snapshots are allowed
 for initial bootstrap. The reservation survives a partial migration or failed
-first publication and matching reruns reuse it.
+first publication and matching reruns reuse it. Keep this ConfigMap while you keep
+the dataset, because versioned SQL checksums do not detect changed Flyway
+placeholder values.
 Retaining populated data across topology changes needs a separate migration/cutover
 protocol; never probe all shards as a
 fallback. Generator IDs
@@ -691,6 +679,8 @@ are independent of database shard IDs.
 | `catalog.sellers` | `seller_id` | Product service |
 | `catalog.products` | the product's `seller_id` | Product service creates them; the order service reads them and updates only `stock` in its reservation transactions |
 | `catalog.stock_reservations` | the product's `seller_id` | Order service, writing reservations and adjusting product stock in the same shard transaction |
+| `catalog.seller_profits` | `seller_id` | Product service inserts the zero USD/EUR balances. From step 4.6, the order service applies confirmed credits |
+| `catalog.profit_credits` | the product's `seller_id` | From step 4.6, the order service inserts one immutable credit for each order and product |
 | `ordering.buyers` | `buyer_id` | Order service |
 | `ordering.order_allocations` | `buyer_id` | Order service; permanent allocation retry mappings |
 | `ordering.orders`, `ordering.order_items` | the order's `buyer_id` | Order service |
@@ -746,8 +736,9 @@ Select the shard before opening a transaction, and keep it fixed until commit.
 Order creation and initial saga state commit together on one primary. After stock
 reservation, the transition to `PENDING_LEDGER` and its outgoing command commit
 together on that primary. The order CDC relay captures committed outbox inserts
-from every shard's WAL, rather than polling for unpublished rows. Freeze the hash and
-three-shard mapping: changing the divisor requires a data migration strategy.
+from every shard's WAL, rather than polling for unpublished rows. Freeze the hash
+rule and the published inventory: changing the divisor requires a data migration
+strategy.
 Public APIs expose decimal-string Snowflake business IDs, never shard selectors:
 catalog calls carry the seller ID and order calls the buyer ID, and the services
 derive the shard from them.
@@ -851,13 +842,13 @@ run on the kind lab and on EKS (PLAN milestone 7), where Argo CD applies them.
 SQL files and a `flyway.toml` that fixes the schema, the history table
 `<schema>.flyway_schema_history`, the location, retries, and session timeouts.
 The migration Jobs run Flyway OSS 13.8.1 on the pinned Canonical OpenJDK 25 JRE
-as the stream's migrator. `infra/images/flyway/Dockerfile` assembles this image
-without an application JAR or Maven build and invokes Flyway's main class directly
-because the JRE image has no shell. The image and Jobs select UID/GID 10001.
-After the topology guard, `migrate.sh` calls `scripts/build-migration-image.sh`
-before creating migration resources. That helper builds with Docker Buildx,
-pinned source/runtime images and `SOURCE_DATE_EPOCH=0`, loads the result into kind,
-and checks the CRI manifest digest on every node against the configured image pin.
+as the stream's migrator. The applications use the same runtime.
+`infra/images/flyway/Dockerfile` assembles this image without an application JAR
+or Maven build and invokes Flyway's main class directly because the JRE image has
+no shell. It copies only the libraries, drivers, configuration and licenses of the
+pinned upstream Flyway image, not its Temurin runtime. The image and Jobs select
+UID/GID 10001. `migrate.sh` builds the image and loads it into kind, as the
+[migration runbook](README.md#database-schemas-and-migrations-step-23) describes.
 This is the local ARM64 delivery path; a future cloud deployment must publish and
 qualify the same final image for its target architecture.
 
@@ -997,13 +988,10 @@ The outbox's deferred composite foreign key requires its result ID and attempt
 to match the permanent binding at commit. An index on unpublished outbox rows
 supports the future polling relay; ledger has no CDC publication.
 
-For a duplicate command, Java must increment the durable counter and reset the
-existing outbox row to pending or recreate it in the same transaction. An inbox
-hit must still perform this replay work. SQL checks positive attempts and their
-committed consistency; Java controls monotonic increments. After confirmation,
-the publisher compares both `message_id` and the sent `publication_attempt`
-before setting `published_at`, so an older in-flight confirm cannot mark a newer
-attempt published. No replay changes the immutable envelope or generates an ID.
+SQL checks positive attempts and their committed consistency; Java controls
+monotonic increments. Section 5 defines the
+[replay of a duplicate command](#reconciliation-and-replayed-outcomes) and the
+publisher confirmation of each attempt.
 
 `conflicting_commands` retains the received envelope and expected/received
 identity snapshots without foreign keys that could obstruct quarantine. Its
@@ -1047,13 +1035,9 @@ version numbers. `verify-topology.sh --routing-only` checks PostgreSQL's calcula
 and the deployed seller and buyer placement constraints on every primary against
 the same golden fixtures used by Java, using read-only queries without a failure drill.
 
-The migration script reserves the ordered names and assigned regions before any
-shard changes, using the two version hashes in `shardshop-migration-topology`.
-Both existing topology ConfigMaps must include both matching hashes. `up.sh` and
-`migrate.sh` reject missing hashes or a different inventory before applying changes,
-even when no migration is pending.
-Keep this ConfigMap while retaining the dataset: versioned SQL checksums alone
-do not detect changed Flyway placeholder values.
+The [topology reservation](#workload-datasets-service-issued-ids-and-routing)
+keeps the `shardRegion`, `shardIndex` and `shardCount` placeholder values stable
+for the retained dataset.
 
 `catalog.products` references its seller with a local foreign key and carries the
 name, price, currency, `initial_stock` and `stock`, with `0 <= stock <= initial_stock`.
@@ -1066,12 +1050,12 @@ shard, even through the catalog writer's SQL privileges. Runtime grants allow no
 updates to seller identity or region. Placement is enforced by the table
 constraints and needs no function execution grants.
 
-The enriched HTTP model requires fix-forward catalog migrations in step 3.6 for
-`companyName`, product `description`/`unitCost`, creation-key mappings and
-service-owned profit storage. Keep the deployed V1 checksums intact. Step 4.1
-similarly adds buyer person/contact/address fields and durable creation keys to
-ordering, plus immutable unit-cost snapshots on accepted order items. Existing
-V1 tables and grants do not yet implement these fields or profit crediting.
+The fix-forward catalog migration V2 of step 3.6 added `companyName`, product
+`description`/`unitCost`, creation-key mappings and service-owned profit storage.
+The deployed V1 checksums did not change. Step 4.1 similarly adds buyer
+person/contact/address fields and durable creation keys to ordering, plus
+immutable unit-cost snapshots on accepted order items. Step 4.6 adds the profit
+crediting.
 
 The implemented `ordering.buyers` table likewise persists an immutable home region
 and enforces the deployed region and ID placement. Orders and all their local
@@ -1127,8 +1111,9 @@ replenished pool, as Shopify describes; the lab does not need it. Sources:
 
 ## 4. Product generation and read load
 
-Proposed HTTP contract. Product generates seller/product IDs when workloads
-send ID-free payloads. There are no embedded datasets or fixture-ID whitelists.
+Step 3.6 implements this HTTP contract. Product generates seller/product IDs
+when workloads send ID-free payloads. There are no embedded datasets or
+fixture-ID whitelists.
 Creation requires a stable `Idempotency-Key`; data calls route by returned seller
 ID. Product payloads expose no independent region or shard selector:
 
@@ -1166,16 +1151,17 @@ at `0.00`; other uppercase three-letter currency balances are allowed. A loss is
 negative; no exchange conversion or cross-currency netting occurs. Workloads
 only read these balances. They never seed a balance or infer profit from stock.
 
-Profit persistence and posting belong to future provider/saga steps. Order
+Step 3.6 added the profit storage. Profit posting belongs to the future saga
+steps. Order
 acceptance must save immutable unit-cost snapshots in ordering before a sale can
 be credited. Confirmation must create a durable credit intent; application to the
 seller's shard needs a durable per-order/item identity so retries and replay
 cannot double-credit. Pending, reserved, cancelled and rejected orders earn no
 profit. This cross-shard work requires explicit recovery and least-privilege
 storage/grant migrations; the existing order role cannot update seller balances,
-initialize profit currencies, or access profit credits. Step 3.6 creates the
-storage and permits product to initialize zero balances; profit-write grants
-remain part of step 4.6 alongside its transaction protocol.
+initialize profit currencies, or access profit credits. Step 3.6 permits product
+to initialize zero balances; profit-write grants remain part of step 4.6
+alongside its transaction protocol.
 No profit engine or changed message snapshot is introduced by the dataset step.
 
 ### HTTP connection policy
@@ -1195,7 +1181,8 @@ Quarkus platform manages: a strict connection limit, a time to live checked when
 connection is leased, and an idle-connection evictor. The JDK HTTP client has no
 connection limit or lifetime setting. The reader's concurrent startup lookups by
 creation key open the pool; a failed lookup stops the reader before the load
-starts. A scheduled cancel ends each read at the deadline, including the wait for
+starts. A `404` counts as a failure only after the limited retry time of the
+[workload lifecycle](#workload-lifecycle). A scheduled cancel ends each read at the deadline, including the wait for
 a connection and all attempts. The reader sends a request again only after a
 failure without an HTTP response, at a fixed interval. An HTTP status, including
 `503`, is a measured outcome, because product already limits and repeats its own
@@ -1298,8 +1285,8 @@ the order request. Later buyer/order calls route by returned buyer ID:
 | Condition | Response | Retry behavior |
 |---|---|---|
 | Noncanonical/out-of-range Snowflake ID, numeric JSON ID, malformed body, empty items, non-positive quantity, invalid currency code | `400 INVALID_REQUEST` | Correct the request |
-| Order ID was not allocated by order or belongs to another buyer; a creation region/key or payload is invalid | `400 INVALID_REQUEST` | Use service-returned IDs and the original valid creation key/payload |
-| The buyer does not exist on its reachable primary | `422 BUYER_NOT_FOUND` | Create the buyer first |
+| Order ID was not allocated by order or belongs to another buyer, also when the buyer does not exist; a creation region/key or payload is invalid | `400 INVALID_REQUEST` | Use service-returned IDs and the original valid creation key/payload |
+| An order allocation names a buyer that does not exist on its reachable primary | `422 BUYER_NOT_FOUND` | Create the buyer first |
 | A product is absent under its seller on the seller's reachable primary | `422 PRODUCT_NOT_FOUND` | Seed or correct the seller and product IDs |
 | Items use different currencies | `422 MIXED_CURRENCIES` | Submit an order in one currency |
 | Order currency differs from an item's product currency | `422 CURRENCY_MISMATCH` | Correct the order currency; no currency conversion |
@@ -1320,8 +1307,8 @@ order:
    that the order allocation belongs to this buyer, then check the existing
    order: a different fingerprint returns `409 ORDER_ID_CONFLICT`,
    and an identical fingerprint returns its saved status without catalog access.
-   A new order whose buyer does not exist returns `422 BUYER_NOT_FOUND`; the buyer
-   lives on the same shard, so this needs no extra IO. Failure to perform these
+   Only an existing buyer has allocations, thus an unknown buyer gets
+   `400 INVALID_REQUEST` from the allocation check. Failure to perform these
    checks returns `503 ORDER_STORE_UNAVAILABLE`. For a new order, release the
    transaction, lock, and connection before catalog IO.
 3. Resolve all distinct seller and product pairs through their sellers'
@@ -1370,8 +1357,8 @@ ordering. No order transaction or advisory lock is held during these writes.
   to `PENDING_LEDGER` and inserts the `RecordOrder` outbox envelope, so the ledger
   only ever sees orders whose stock is held.
 - When a conditional decrement affects no row, the coordinator reports
-  `OUT_OF_STOCK`, releases any earlier committed reservations, and cancels the
-  order. The ledger never receives it. No trigger-specific SQLSTATE is used.
+  `OUT_OF_STOCK`, cancels the order, and then releases any earlier committed
+  reservations. The ledger never receives it. No trigger-specific SQLSTATE is used.
 - An unavailable catalog shard or an unknown outcome leaves the saga in
   `PENDING_STOCK`. The coordinator retries with bounded backoff; a retried insert
   of an existing reservation does nothing, so no second decrement occurs.
@@ -1518,9 +1505,12 @@ counter, and persist its next eligible time in the same transaction.
 The five waits before attempts are 60, 120, 240, 300, and 300 seconds, giving
 approximately 17 minutes from creation through attempt five, plus scan/IO delay.
 An unpublished outbox row can extend this schedule. After attempt five, disable
-further automatic enqueueing and alert if the saga remains pending; operator
-replay is explicit. Transport cleanup, restarts, or duplicate deliveries never
-reset the saga's counter or schedule. Keep this state even after outbox rows are
+further automatic enqueueing and alert if the saga remains pending. Only a manual
+reconciliation reset gives the saga a new budget. The reset sets
+`reconciliation_attempts` to zero and `next_reconciliation_at` to the current time
+for selected `PENDING_LEDGER` sagas. A repeated reset causes no duplicate ledger
+effect, and a reset never changes a terminal saga. Transport cleanup, restarts, or
+duplicate deliveries never reset the saga's counter or schedule. Keep this state even after outbox rows are
 deleted, and retain it with the saga through terminal-state retention and backups.
 
 The ledger looks up the permanent operation decision before short-circuiting on
@@ -1601,8 +1591,9 @@ section 6, instead of declaring the order missing. A long failover can exceed
 the transport retry window, especially if both standbys are lost and synchronous
 writes block until one returns. For a surviving pending saga with attempts remaining,
 reconciliation regenerates a result after recovery while the old delivery may
-remain parked. A lost order/saga or exhausted budget requires the operator audit
-and explicit replay/restore path below; replaying an old delivery remains safe.
+remain parked. An exhausted budget requires a manual reconciliation reset. A lost
+order or saga requires the operator audit and the restore path below. The old
+parked delivery is only a diagnostic copy.
 Serialize order creation, result application, and quarantine changes by order ID
 even before an order row exists, using a transaction-scoped advisory lock; check
 quarantine while holding that lock so concurrent creation cannot bypass it.
@@ -1622,8 +1613,9 @@ service's runtime. It also lists stock reservations whose order is missing; they
 are released only after that order's fate is decided.
 
 Restore the order and original saga identity from a verified backup or retained
-creation record, then replay the command/result and clear quarantine only after
-the identities and outcome agree. If the original order cannot be recovered,
+creation record. If the restored saga is pending, reset its reconciliation budget,
+so that the ledger sends its stored result again. Clear quarantine only after the
+identities and outcome agree. If the original order cannot be recovered,
 retain the ledger entry and unresolved incident for an explicit business decision.
 Never silently delete a ledger row, fabricate a confirmed order, or treat absence
 as cancellation. Automatic reconciliation repairs missing messages; it cannot
@@ -1656,11 +1648,11 @@ retry. This is a rolling-support component, not a multi-year LTS release. Rechec
 the maintained GA release and runtime matrix under [VERSIONS.md](VERSIONS.md)
 before pinning; earlier broker versions need a separately specified retry design. See
 [RabbitMQ release information](https://www.rabbitmq.com/release-information).
-RabbitMQ 4.3.x community support ends **30 November 2026**. By 15 November 2026,
-select and pin a supported successor release with native delayed retry (4.3 or
-later), verify its upgrade path and policies, and rerun scenarios 6 and 7 before
-cutover once they are implemented. Recheck the support schedule when implementing; 4.3.6 is a dated lab
-baseline, not an indefinite deployment target.
+VERSIONS.md and the lock record the support end date of 4.3.x and the date to
+qualify a successor. The successor must also have native delayed retry (4.3 or
+later). Before the cutover, verify its upgrade path and policies, and run
+scenarios 6 and 7 again when they exist. 4.3.6 is a dated lab baseline, not an
+indefinite deployment target.
 
 Declare both processing queues as durable quorum queues. Install one complete
 policy per source queue so each has its own dead-letter routing key; do not rely
@@ -1714,8 +1706,8 @@ Bind each durable quorum parking queue to the durable direct exchange
 `order.ledger-results.dlq`. Declare
 parking queues with `x-delivery-limit=-1`, no TTL/expiry, no automatic consumer,
 and no onward DLX. Their capacity policy above rejects new arrivals when full,
-so the source retains unconfirmed dead letters. Repeated failures of a manual
-replay tool must not discard the parked message. Processing queues keep the
+so the source retains unconfirmed dead letters. Parked messages are diagnostic
+copies, and an operator removes them after inspection. Processing queues keep the
 bounded delivery limit above.
 Declare `x-quorum-initial-group-size=1` explicitly for this one-broker lab and use
 a PVC; quorum queue type alone does not give a single broker high availability.
@@ -1729,8 +1721,9 @@ This is a short transient-retry budget. Longer outages, including primary
 failover and a synchronous wait while both standbys are down, are expected to
 park messages in a DLQ. Pending-saga reconciliation then regenerates commands and
 stored results after recovery, subject to its durable five-attempt budget; after
-exhaustion, recovery requires operator replay. Old parked deliveries can remain
-until audited manual replay or resolution. Retry exhaustion never cancels an order.
+exhaustion, recovery requires a manual reconciliation reset. Old parked deliveries
+remain until an operator inspects and removes them. Retry exhaustion never cancels
+an order.
 
 - Store outgoing messages in an outbox in the same transaction as their business
   change. Use durable exchanges/queues, persistent messages, publisher confirms,
@@ -1752,7 +1745,7 @@ until audited manual replay or resolution. Retry exhaustion never cancels an ord
   quorum queue increments its failure count and delays redelivery in that same
   queue. RabbitMQ 4.3 `basic.nack` does not increment that count. Do not cycle
   messages through TTL retry queues or republish them to reset the delivery limit.
-  A malformed message uses `basic.reject(requeue=false)` for immediate quarantine.
+  A malformed message uses `basic.reject(requeue=false)` for immediate dead-lettering.
 - On delivery-limit exhaustion, at-least-once dead-lettering retains the source
   message until its DLQ accepts it. A missing/unavailable destination causes
   retention; retained dead letters consume the source's capacity. Once its finite
@@ -1761,10 +1754,10 @@ until audited manual replay or resolution. Retry exhaustion never cancels an ord
   advance past those failed publishes. Provision/bind the DLQs first
   and monitor capacity; never downgrade to drop-head or classic dead-lettering.
   See [quorum retry and dead-letter semantics](https://www.rabbitmq.com/docs/quorum-queues).
-- For manual replay, publish the original payload and logical IDs persistently
-  with mandatory routing and publisher confirms. Acknowledge the DLQ delivery
-  only after confirmation with no return. A crash in that gap may duplicate it.
-  Retry exhaustion leaves the saga pending; reconciliation follows section 5.
+- Never publish parked messages again. Reconciliation in section 5 creates their
+  commands and results again from saga state and permanent ledger decisions.
+  After the last automatic attempt, only a manual reconciliation reset or a
+  restore continues the saga.
 
 Resume the CDC readers for all order shards and the ledger result relay after
 restart. Monitor CDC lag, reader restarts, offset checkpoints, replication-slot retained WAL,
@@ -1774,7 +1767,8 @@ finite WAL retention budget. If that budget invalidates a slot, require the
 explicit recovery procedure in section 3 rather than skipping missing changes.
 Use bounded consumer prefetch and database timeouts. The queue delivery limit
 bounds one transport message's attempts; the coordinator's separate persisted
-limit bounds automatic logical-command reconciliation. Manual replay is explicit.
+limit bounds automatic logical-command reconciliation. Only a manual reconciliation
+reset gives a saga a new budget.
 Queue admission limits are not exact process-memory or disk ceilings: in-flight
 publishes can overshoot quorum limits, and byte limits exclude broker overhead.
 Bound consumer prefetch and publisher concurrency, monitor broker resource alarms
@@ -1802,9 +1796,9 @@ Keep cleanup deletes out of the command stream. Reconciliation counters and
 timestamps belong to `ordering.order_sagas` and are unaffected by that cleanup.
 Never remove unpublished outbox rows, unresolved `ordering.orphan_results`,
 `ordering.conflicting_results`, or `ledger.conflicting_commands`, or the permanent
-business decisions. An arbitrarily old manual DLQ replay remains safe after
-transport cleanup because operation identity and outcome
-checks still apply. Backups and restores must preserve those permanent decisions.
+business decisions. A manual reconciliation reset is safe also after transport
+cleanup, because operation identity and outcome checks still apply. Backups and
+restores must preserve those permanent decisions.
 
 ## 7. Consistency, tradeoffs, and verification
 
@@ -1818,8 +1812,8 @@ Asynchronous PostgreSQL replication may lose acknowledged commits on failover,
 so an accepted order can disappear; outbox/idempotency logic does not repair that
 loss. Because CDC waits for WAL the standbys have flushed, such an order's command
 never reached the ledger. A shard restored from an older backup, however, can lack
-orders whose ledger commands were already delivered. Use the asynchronous profile
-for explicit loss demonstrations. The default saga durability profile requires
+orders whose ledger commands were already delivered. Use the optional asynchronous
+profile only for explicit loss demonstrations. The default saga durability profile requires
 a durable acknowledgement from any one of the shard's two standbys and promotes
 only a standby confirmed to hold every such commit. One lost instance neither
 blocks writes nor loses acknowledged commits; writes block only while both
@@ -1835,9 +1829,9 @@ Acceptance scenarios for implementation:
 
 1. Verify the seeder Job succeeds before either load Deployment starts; failed or
    partially completed seeding must block startup. Keep workloads free of SQL
-   credentials/tables. With 16 connections and bounded connection lifetimes,
-   observe positive request-counter deltas on both ready product pods within
-   120 seconds, then repeat after one pod restarts.
+   credentials/tables. With up to 16 connections and the 30-second connection
+   lifetime, observe positive request-counter deltas on both ready product pods
+   within 120 seconds. Then replace one pod and repeat the check.
 2. Verify `shard-a=US`, `shard-b=EU`, and `shard-c=ASIA` in inventory, runtime
    routing and Kubernetes labels, with unchanged version-2 ID routes. Reject
    malformed regions, misaligned configuration, and reassignment of a published
@@ -1853,7 +1847,8 @@ Acceptance scenarios for implementation:
    resources and migrate the catalog and ordering streams without history
    collisions on all primaries. Assert the role matrix: `order_app` can select
    sellers and products, write stock reservations without `TRUNCATE`, and update
-   only the `stock` column of products; no other catalog writes or DDL are allowed.
+   only the `stock` column of products. No other catalog writes or DDL are allowed,
+   except the profit-credit writes that step 4.6 adds.
    `product_app` cannot touch reservations or
    ordering tables; Flyway creates no custom functions or triggers, and no login
    role owns an object.
@@ -1871,14 +1866,17 @@ Acceptance scenarios for implementation:
 3. Exercise heavy product reads, primary read-after-write behavior, and explicitly
    stale replica reads under controlled lag.
 4. Verify an accepted order reaches `CONFIRMED` with exactly one ledger row, one
-   reservation per item, and stock reduced exactly once; duplicate HTTP requests
-   and duplicate messages create no additional records.
-5. Use fixed order IDs and EUR-only products selected by the configured rejection
-   share. Verify `202` becomes `CANCELLED` with no ledger entry and that its
-   reservations are released and stock restored. Change the ledger
-   allowlist to include EUR, clean transport inbox/outbox rows, and replay the
-   old command: the permanent rejected decision must still win. Test conflicting
-   payloads separately from identical retries.
+   reservation per item, and stock reduced exactly once. Each item credits its
+   margin once to its seller's balance in the order currency. Duplicate HTTP
+   requests and duplicate messages create no additional records or credits.
+5. Use the order IDs that the allocation API returns, and EUR-only products
+   selected by the configured rejection share. Verify `202` becomes `CANCELLED`
+   with no ledger entry and no seller profit, and that its reservations are
+   released and stock restored. Change the ledger allowlist to include EUR, and
+   clean transport inbox/outbox rows. Then a test harness publishes the original
+   `RecordOrder` envelope again, which it saved before the cleanup. This is fault
+   injection, not an operator tool. The permanent rejected decision must still
+   win. Test conflicting payloads separately from identical retries.
 6. Inject crashes before/after database commit, broker confirmation, and consumer
    acknowledgement; verify replay completes the saga without duplicate effects.
    On each shard, verify a committed order/outbox insert reaches the ledger through
@@ -1896,12 +1894,13 @@ Acceptance scenarios for implementation:
    and then test a full DLQ: verify retained source messages reach its limits,
    negative publisher confirms leave outboxes unpublished, and broker-wide alarms
    remain clear. Keep the broker/source running; a single-broker shutdown cannot
-   isolate the DLQ. Restore the binding or drain parking safely and verify progress.
+   isolate the DLQ. Restore the binding or remove the parked messages, and verify
+   progress.
    Drop a result and verify replay regenerates the immutable outcome. Delete each
    confirmed-published and CDC-checkpointed replay outbox row between reconciliation
    attempts, restart the coordinator, and use an injected clock to prove no sixth
-   automatic attempt is enqueued. Recover through explicit manual replay without duplicate ledger
-   effects or changes to terminal decisions. Verify conflicting command/result
+   automatic attempt is enqueued. Recover through a manual reconciliation reset
+   without duplicate ledger effects or changes to terminal decisions. Verify conflicting command/result
    quarantine commits precede acknowledgements and survive transport cleanup.
 8. Remove one standby: replica-profile reads continue through the other, writes
    continue, and CDC pauses until it returns. Remove both: replica-profile reads
@@ -1912,7 +1911,7 @@ Acceptance scenarios for implementation:
    complete database phase to three seconds and assert an HTTP response rather
    than a client timeout. Test primary promotion separately, including any
    interval with no `-ro` endpoints.
-   In an asynchronous-loss drill, verify that lost acknowledged orders leave no
+   In the optional asynchronous-loss drill, verify that lost acknowledged orders leave no
    ledger records and that the audit finds none. After restoring a shard from an
    older backup, verify both late results and the operator audit detect orphan
    ledger records and block ID reuse; restoring the original order must allow
@@ -1921,7 +1920,8 @@ Acceptance scenarios for implementation:
    preserves acknowledged saga commits, and that losing the primary together with
    one standby triggers no automatic promotion when the survivor cannot be
    confirmed current.
-9. Assert the HTTP validation table: malformed input, unknown buyers, missing products, mixed or
+9. Assert the HTTP validation table: malformed input, unknown buyers (400 for an
+   order, 422 for an allocation), missing products, mixed or
    mismatched currencies, unavailable catalog shards, ID conflicts, and unknown
    commit outcomes. Validation failures create no saga/outbox rows; identical
    retries of an existing order still work with its product shard unavailable.
@@ -1965,4 +1965,4 @@ outcome replay, and injected-clock reconciliation schedules. Use PostgreSQL and
 RabbitMQ integration tests for transaction boundaries, privileges, CDC capture
 and checkpoint recovery, and delivery policies, and bounded Kubernetes drills
 for seeding, traffic, and failover.
-Module-scoped build and drill commands are maintained in [PLAN.md](PLAN.md).
+The [README](README.md) runbooks contain the module-scoped build and drill commands.

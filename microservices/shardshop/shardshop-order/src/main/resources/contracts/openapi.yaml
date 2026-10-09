@@ -153,8 +153,9 @@ paths:
         1. Validate syntax, canonical IDs, field constraints and duplicate seller/product
            pairs before IO; invalid input is 400 INVALID_REQUEST.
         2. In a short locked order transaction check unresolved quarantine first (409
-           ORDER_RECONCILIATION_REQUIRED), then allocation ownership (400), existing
-           fingerprint (409 ORDER_ID_CONFLICT or saved status), then missing buyer (422).
+           ORDER_RECONCILIATION_REQUIRED), then allocation ownership (400), then the
+           existing fingerprint (409 ORDER_ID_CONFLICT or saved status). Only an existing
+           buyer has allocations, thus an unknown buyer also gets 400.
            Failure to perform the checks is 503 ORDER_STORE_UNAVAILABLE.
         3. Release the transaction, lock and connection before bounded catalog IO.
            Catalog errors rank CATALOG_UNAVAILABLE (503), PRODUCT_NOT_FOUND (422),
@@ -551,17 +552,15 @@ components:
             quarantine:
               value: {code: ORDER_RECONCILIATION_REQUIRED, message: Operator reconciliation is required before reusing this order ID.}
     OrderValidationFailed:
-      description: Missing buyer/product or incompatible product currencies; creates no order
+      description: Missing product or incompatible product currencies; creates no order
       content:
         application/json:
           schema:
             allOf:
               - $ref: '#/components/schemas/Error'
               - properties:
-                  code: {enum: [BUYER_NOT_FOUND, PRODUCT_NOT_FOUND, MIXED_CURRENCIES, CURRENCY_MISMATCH]}
+                  code: {enum: [PRODUCT_NOT_FOUND, MIXED_CURRENCIES, CURRENCY_MISMATCH]}
           examples:
-            missingBuyer:
-              value: {code: BUYER_NOT_FOUND, message: Create the buyer before placing an order.}
             missingProduct:
               value: {code: PRODUCT_NOT_FOUND, message: Product was not found under its seller.}
             mixedCurrencies:
