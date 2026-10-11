@@ -1,5 +1,7 @@
 package dev.nklip.javacraft.shardshop.workload.reader;
 
+import dev.nklip.javacraft.shardshop.workload.reader.config.CatalogWait;
+import dev.nklip.javacraft.shardshop.workload.reader.load.CatalogNotReadyException;
 import dev.nklip.javacraft.shardshop.workload.reader.load.ProductReader;
 import dev.nklip.javacraft.shardshop.workload.reader.load.ReaderException;
 import io.quarkus.runtime.Quarkus;
@@ -11,24 +13,27 @@ import org.jboss.logging.Logger;
 import java.util.Objects;
 
 /**
- * Long-running Deployment entry point: it reads until the pod stops. Exit code 1 means that the catalog resolution
- * or a worker failed.
+ * Long-running Deployment entry point. It waits until product serves the complete catalog, then reads until the pod
+ * stops. Exit code 1 means that the catalog was not ready within the wait, or that the resolution or a worker failed.
  */
 @QuarkusMain
 public class ProductReaderApplication implements QuarkusApplication {
     private static final Logger LOG = Logger.getLogger(ProductReaderApplication.class);
 
     private final ProductReader reader;
+    private final CatalogWait catalogWait;
     private final Runnable waitForExit;
     private final Runnable exitAfterFailure;
 
     @Inject
-    public ProductReaderApplication(ProductReader reader) {
-        this(reader, Quarkus::waitForExit, () -> Quarkus.asyncExit(1));
+    public ProductReaderApplication(ProductReader reader, CatalogWait catalogWait) {
+        this(reader, catalogWait, Quarkus::waitForExit, () -> Quarkus.asyncExit(1));
     }
 
-    ProductReaderApplication(ProductReader reader, Runnable waitForExit, Runnable exitAfterFailure) {
+    ProductReaderApplication(ProductReader reader, CatalogWait catalogWait, Runnable waitForExit,
+                             Runnable exitAfterFailure) {
         this.reader = Objects.requireNonNull(reader);
+        this.catalogWait = Objects.requireNonNull(catalogWait);
         this.waitForExit = Objects.requireNonNull(waitForExit);
         this.exitAfterFailure = Objects.requireNonNull(exitAfterFailure);
     }
@@ -39,8 +44,12 @@ public class ProductReaderApplication implements QuarkusApplication {
             return 0;
         }
         try {
-            reader.start(exitAfterFailure);
+            reader.start(catalogWait.resolve(reader), exitAfterFailure);
             waitForExit.run();
+        } catch (CatalogNotReadyException failure) {
+            LOG.error("Product reader startup failed: the catalog was not complete within the wait. Last failure: "
+                    + failure.getMessage());
+            return 1;
         } catch (ReaderException failure) {
             LOG.error("Product reader startup failed: " + failure.getMessage());
             return 1;

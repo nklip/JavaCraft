@@ -2,6 +2,13 @@
 render: infrastructure
 migrationShard: ""
 migrationStream: catalog
+# scripts/deploy.sh sets the run name and the image digests that
+# scripts/build-application-images.sh loaded into kind.
+run: ""
+images:
+  product: ""
+  product-seeder: ""
+  product-reader: ""
 shards: []
 
 postgresql:
@@ -52,3 +59,33 @@ migration:
     limits:
       cpu: "1"
       memory: 256Mi
+
+# Resource budgets of the applications, measured on the lab. The 2-CPU limits avoid long
+# CPU throttling while the JVMs start. Each product pod runs two JVMs: the generator
+# launcher and the application that it supervises.
+product:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 384Mi
+    limits:
+      cpu: "2"
+      memory: 512Mi
+
+productSeeder:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      cpu: "2"
+      memory: 256Mi
+
+productReader:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      cpu: "2"
+      memory: 384Mi

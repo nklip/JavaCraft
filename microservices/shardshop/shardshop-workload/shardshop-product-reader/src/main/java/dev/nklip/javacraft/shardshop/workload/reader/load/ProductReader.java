@@ -13,11 +13,13 @@ import org.jboss.logging.Logger;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
@@ -40,6 +42,9 @@ import java.util.random.RandomGenerator;
 public final class ProductReader {
     private static final Logger LOG = Logger.getLogger(ProductReader.class);
     private static final Duration STOP_TIMEOUT = Duration.ofSeconds(10);
+    /** Outcomes that a later resolution can change: a missing entity, or an unavailable, slow or absent product. */
+    private static final Set<Outcome> NOT_READY = EnumSet.of(Outcome.NOT_FOUND, Outcome.UNAVAILABLE,
+            Outcome.REPLICA_UNAVAILABLE, Outcome.DEADLINE, Outcome.TRANSPORT);
 
     private final ReaderDatasets datasets;
     private final ProductRequests requests;
@@ -52,6 +57,7 @@ public final class ProductReader {
     private final AtomicBoolean failed = new AtomicBoolean();
     private ExecutorService executor;
     private ScheduledExecutorService scheduler;
+    private boolean started;
     private boolean stopped;
 
     public ProductReader(ReaderDatasets datasets, ProductRequests requests, RatePacer pacer, ReaderMetrics metrics,
@@ -70,21 +76,43 @@ public final class ProductReader {
     }
 
     /**
-     * Resolves every seller and product with concurrent lookups, which also open the connections, and starts the
-     * workers. A worker that fails unexpectedly marks the reader as failed and runs {@code onFailure}.
+     * Resolves every seller and product with concurrent lookups, which also open the connections. A missing entity
+     * or an unavailable product throws {@link CatalogNotReadyException}; the caller can then resolve again. Other
+     * outcomes throw {@link ReaderException}.
      */
-    public void start(Runnable onFailure) throws ReaderException, InterruptedException {
-        Objects.requireNonNull(onFailure);
+    public Catalog resolve() throws ReaderException, InterruptedException {
         ExecutorService lookups;
         synchronized (this) {
-            if (executor != null || stopped) {
-                throw new IllegalStateException("The product reader starts only once");
+            if (started) {
+                throw new IllegalStateException("The product reader resolves the catalog only before it starts");
             }
-            executor = Executors.newFixedThreadPool(workers, Thread.ofPlatform().name("product-reader-", 1).factory());
+            if (stopped) {
+                throw new InterruptedException("Catalog resolution was stopped");
+            }
+            if (executor == null) {
+                executor = Executors.newFixedThreadPool(workers,
+                        Thread.ofPlatform().name("product-reader-", 1).factory());
+            }
             lookups = executor;
         }
-        List<Target> targets = resolve(lookups);
+        return new Catalog(this, resolveTargets(lookups));
+    }
+
+    /**
+     * Starts the workers on a catalog that {@link #resolve()} of this reader returned. A worker that fails
+     * unexpectedly marks the reader as failed and runs {@code onFailure}. After {@link #stop()}, no load starts.
+     */
+    public void start(Catalog catalog, Runnable onFailure) {
+        Objects.requireNonNull(catalog);
+        Objects.requireNonNull(onFailure);
+        if (catalog.owner != this) {
+            throw new IllegalArgumentException("The catalog belongs to a different product reader");
+        }
         synchronized (this) {
+            if (started) {
+                throw new IllegalStateException("The product reader starts only once");
+            }
+            started = true;
             if (stopped) {
                 return;
             }
@@ -94,7 +122,7 @@ public final class ProductReader {
             long interval = reportInterval.toMillis();
             scheduler.scheduleAtFixedRate(this::report, interval, interval, TimeUnit.MILLISECONDS);
             for (int worker = 0; worker < workers; worker++) {
-                executor.submit(() -> read(targets, onFailure));
+                executor.submit(() -> read(catalog.targets, onFailure));
             }
         }
         LOG.info("Reading at " + pacer.requestsPerSecond() + " requests/s with " + workers + " workers and "
@@ -147,7 +175,7 @@ public final class ProductReader {
         return failed.get();
     }
 
-    private List<Target> resolve(ExecutorService lookups) throws ReaderException, InterruptedException {
+    private List<Target> resolveTargets(ExecutorService lookups) throws ReaderException, InterruptedException {
         List<SellerDescriptor> sellers = lookUpAll(lookups, datasets.sellers(),
                 seller -> lookUp("Look up seller " + seller.key(), datasets.lookupSeller(seller)));
         Map<String, SellerDescriptor> sellersByKey = new HashMap<>();
@@ -207,10 +235,11 @@ public final class ProductReader {
 
     private <T> T lookUp(String operation, Read<T> read) throws ReaderException, InterruptedException {
         ReadResult<T> result = requests.get(read);
-        if (result.outcome() != Outcome.OK) {
-            throw new ReaderException(operation + " failed with " + result.outcome());
+        if (result.outcome() == Outcome.OK) {
+            return result.value();
         }
-        return result.value();
+        String message = operation + " failed with " + result.outcome();
+        throw NOT_READY.contains(result.outcome()) ? new CatalogNotReadyException(message) : new ReaderException(message);
     }
 
     private void read(List<Target> targets, Runnable onFailure) {
@@ -273,6 +302,17 @@ public final class ProductReader {
                     .append(product.productId()).append('\n');
         }
         return String.format("%064x", Sha256.unsignedDigest(mapping.toString()));
+    }
+
+    /** The issued IDs of the complete dataset, which {@link #resolve()} of one reader returned. */
+    public static final class Catalog {
+        private final ProductReader owner;
+        private final List<Target> targets;
+
+        private Catalog(ProductReader owner, List<Target> targets) {
+            this.owner = owner;
+            this.targets = targets;
+        }
     }
 
     private record Target(String region, Read<ProductDescriptor> read) { }

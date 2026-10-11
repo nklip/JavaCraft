@@ -1,0 +1,589 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/nklip/JavaCraft/blob/main/microservices/shardshop/infra/images/application/vex/jre-pebble.openvex.json",
+  "author": "ShardShop image review",
+  "timestamp": "2026-10-10T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "CVE-2026-56857"
+      },
+      "products": [
+        {
+          "@id": "pkg:docker/shardshop-product@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-ledger@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-seeder@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-reader@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order-producer@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-56866"
+      },
+      "products": [
+        {
+          "@id": "pkg:docker/shardshop-product@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-ledger@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-seeder@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-reader@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order-producer@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-78659"
+      },
+      "products": [
+        {
+          "@id": "pkg:docker/shardshop-product@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-ledger@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-seeder@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-reader@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order-producer@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-78660"
+      },
+      "products": [
+        {
+          "@id": "pkg:docker/shardshop-product@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-ledger@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-seeder@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-reader@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order-producer@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-78663"
+      },
+      "products": [
+        {
+          "@id": "pkg:docker/shardshop-product@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-ledger@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-seeder@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-reader@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order-producer@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-78667"
+      },
+      "products": [
+        {
+          "@id": "pkg:docker/shardshop-product@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-ledger@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-seeder@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-reader@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order-producer@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-78669"
+      },
+      "products": [
+        {
+          "@id": "pkg:docker/shardshop-product@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-ledger@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-seeder@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-reader@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order-producer@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-94439"
+      },
+      "products": [
+        {
+          "@id": "pkg:docker/shardshop-product@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-ledger@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-seeder@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-reader@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order-producer@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-94440"
+      },
+      "products": [
+        {
+          "@id": "pkg:docker/shardshop-product@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-ledger@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-seeder@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-reader@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order-producer@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-97031"
+      },
+      "products": [
+        {
+          "@id": "pkg:docker/shardshop-product@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-ledger@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-seeder@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-reader@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order-producer@local",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+    }
+  ]
+}

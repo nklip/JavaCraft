@@ -37,6 +37,10 @@ final class FakeProductServer implements AutoCloseable {
     final AtomicInteger reads = new AtomicInteger();
     final Set<InetSocketAddress> connections = ConcurrentHashMap.newKeySet();
     final Set<String> missingKeys = ConcurrentHashMap.newKeySet();
+    /** Seller keys whose lookup returns a different company name, as if another dataset created them. */
+    final Set<String> conflictingKeys = ConcurrentHashMap.newKeySet();
+    /** Lookup keys that product rejects with a status and error code, for example 503 CATALOG_UNAVAILABLE. */
+    final Map<String, Rejection> rejectedKeys = new ConcurrentHashMap<>();
     volatile long lookupDelayMillis;
     volatile long readDelayMillis;
 
@@ -85,18 +89,24 @@ final class FakeProductServer implements AutoCloseable {
         connections.add(exchange.getRemoteAddress());
         String path = exchange.getRequestURI().getPath();
         ObjectNode body = null;
+        Rejection rejection = null;
         Matcher matcher;
         if ((matcher = SELLER_KEY.matcher(path)).matches()) {
             sellerLookups.incrementAndGet();
             pause(lookupDelayMillis);
+            rejection = rejectedKeys.get(matcher.group(1));
             SellerDefinition seller = sellersByKey.get(matcher.group(1));
             if (seller != null && !missingKeys.contains(seller.key())
                     && ("region=" + seller.region()).equals(exchange.getRequestURI().getQuery())) {
                 body = seller(seller);
+                if (conflictingKeys.contains(seller.key())) {
+                    body.put("companyName", "Another company");
+                }
             }
         } else if ((matcher = PRODUCT_KEY.matcher(path)).matches()) {
             productLookups.incrementAndGet();
             pause(lookupDelayMillis);
+            rejection = rejectedKeys.get(matcher.group(2));
             ProductDefinition product = productsByKey.get(matcher.group(2));
             if (product != null && !missingKeys.contains(product.key())
                     && matcher.group(1).equals(ids.get(product.sellerKey()))) {
@@ -108,11 +118,18 @@ final class FakeProductServer implements AutoCloseable {
             ProductDefinition product = productsByIssuedIds.get(matcher.group(1) + "/" + matcher.group(2));
             body = product == null ? null : product(product);
         }
-        byte[] response = (body == null ? JsonNodeFactory.instance.objectNode().put("code", "PRODUCT_NOT_FOUND")
-                .put("message", "Not found.") : body).toString().getBytes(StandardCharsets.UTF_8);
+        int status = 200;
+        if (rejection != null) {
+            status = rejection.status();
+            body = error(rejection.code(), "Rejected.");
+        } else if (body == null) {
+            status = 404;
+            body = error("PRODUCT_NOT_FOUND", "Not found.");
+        }
+        byte[] response = body.toString().getBytes(StandardCharsets.UTF_8);
         try (OutputStream output = exchange.getResponseBody()) {
             exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(body == null ? 404 : 200, response.length);
+            exchange.sendResponseHeaders(status, response.length);
             output.write(response);
         } catch (IOException closedByClient) {
             // The reader closed this connection after its deadline.
@@ -134,6 +151,10 @@ final class FakeProductServer implements AutoCloseable {
                 .put("initialStock", product.initialStock()).put("stock", product.initialStock());
     }
 
+    private static ObjectNode error(String code, String message) {
+        return JsonNodeFactory.instance.objectNode().put("code", code).put("message", message);
+    }
+
     private static void pause(long millis) {
         try {
             Thread.sleep(millis);
@@ -141,4 +162,6 @@ final class FakeProductServer implements AutoCloseable {
             Thread.currentThread().interrupt();
         }
     }
+
+    record Rejection(int status, String code) { }
 }

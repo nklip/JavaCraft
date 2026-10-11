@@ -12,7 +12,9 @@ stops. The other entry points start CDI and exit. Step 3.5 provides workload-own
 dataset definitions and HTTP clients; the buyer provider remains step 4.1, and the
 order workload loop remains step 4.7. No Docker or Kubernetes is needed for Maven
 module tests. The separate product-provider, seeder and reader acceptance checks
-use disposable PostgreSQL databases.
+use disposable PostgreSQL databases. Step 3.9 deploys product, the seeder Job and
+the reader on the kind lab. The reader starts its load only after product serves
+the complete dataset ([seeding gate](#product-deployment-and-seeding-gate-step-39)).
 Product/order production
 starts still require the routing snapshot and a live generator ID reserved by
 the startup launcher; tests use disposable configuration.
@@ -121,8 +123,8 @@ producer resolve catalog IDs through ordinary read-only resource lookups:
 `GET /api/v1/sellers/by-key/{creationKey}?region=US` and
 `GET /api/v1/sellers/{sellerId}/products/by-key/{creationKey}`. The services look
 up persisted entities and do not hold or generate workload datasets. Reader GETs
-use the recovered seller/product IDs. A seeding gate still prevents load against
-missing resources. Buyer creation retries similarly recover the same buyer ID.
+use the recovered seller/product IDs. The workloads start their load only after
+these lookups succeed, thus no load runs against missing resources. Buyer creation retries similarly recover the same buyer ID.
 Live order IDs continue to come from order's durable allocation API.
 
 `SeederDatasets`, `ReaderDatasets` and `ProducerDatasets` use the local definitions,
@@ -318,10 +320,11 @@ failure type. Then the seeder exits with code 1. Log lines contain no response p
 | `shardshop.seeder.max-retry-backoff` | `5s` | Maximum delay |
 
 With the defaults, one request stops after a maximum of approximately 33 seconds.
-The Job deadline of 300 seconds (step 3.9) limits the complete run. Environment
+The Job deadline of 300 seconds limits the complete run. Environment
 variables such as `SHARDSHOP_SEEDER_PRODUCT_URL` also set these properties.
 `--check-startup` validates the configuration and exits without HTTP requests.
-The Kubernetes Job and the seeding gate of the startup script are step 3.9.
+Step 3.9 runs the seeder as a Kubernetes Job, beside the reader that waits for its
+data ([seeding gate](#seeding-gate)).
 
 Build the product and seeder packages, and then run the isolated acceptance check
 (the Python environment is prepared in
@@ -361,10 +364,11 @@ Resolved catalog-v1 [US 50 sellers, 100 products; EU 50 sellers, 100 products; A
 ```
 
 The digest uses the same lines as the [seeder digest](#product-seeder-step-37).
-Equal digests show that the reader found the IDs that the seeder verified. If a
-lookup fails, the reader logs one error line and exits with code 1 before the load
-starts. Step 6.1 makes the startup lookups repeat a `404` for a limited time,
-because replica-profile reads can lag.
+Equal digests show that the reader found the IDs that the seeder verified. While
+an entity is missing or product is unavailable, the reader waits and repeats the
+lookups, as the [seeding gate](#seeding-gate) defines. Another failed lookup, or
+the end of the wait, logs one error line, and the reader exits with code 1 before
+the load starts.
 
 After the lookups, the workers read randomly selected products with
 `GET /api/v1/sellers/{sellerId}/products/{productId}`. One shared schedule gives
@@ -441,8 +445,8 @@ the reader does not send missed requests later, thus the reported rate is the
 accepted rate. Environment variables such as `SHARDSHOP_READER_PRODUCT_URL` also set these
 properties. `--check-startup` validates the configuration, including the URL and
 the timeouts, and exits without HTTP requests. An unexpected worker failure logs
-one error line and stops the reader with exit code 1. The Deployment, its resource
-budget, per-pod product counters and the seeding gate are step 3.9.
+one error line and stops the reader with exit code 1. Step 3.9 adds the Deployment,
+its resource budget, the per-pod product counters and the [seeding gate](#seeding-gate).
 
 Build the three packages, and then run the isolated acceptance check. The check
 needs `lsof` and the Python environment of
@@ -478,6 +482,176 @@ default policy and 5-second reports:
    outcomes, continue to run, and recover.
 5. After SIGTERM, the total line must be the last report. The stored rows must not
    change.
+
+## Product deployment and seeding gate (step 3.9)
+
+Product, the seeder Job and the reader run on the lab. Build the packages, make the
+images, and deploy a run:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-workload/shardshop-product-seeder,shardshop-workload/shardshop-product-reader -am -Paudit clean verify
+bash microservices/shardshop/scripts/up.sh
+bash microservices/shardshop/scripts/build-application-images.sh product product-seeder product-reader
+bash microservices/shardshop/scripts/deploy.sh run-1
+```
+
+Run `migrate.sh` before `deploy.sh` if the routing is not published yet.
+
+### Application images
+
+`infra/images/application/Dockerfile` is the one recipe for the six application
+images. Its context is the complete `target/quarkus-app` directory of one
+application. All images use the pinned Canonical OpenJDK 25 JRE, the working
+directory `/app`, user `10001:10001` and `HOME=/tmp`. The `product` and `order`
+targets copy kubectl from the digest-pinned `registry.k8s.io/kubectl` image, and
+their entrypoint is `GeneratorLauncher`. The `direct` target starts
+`quarkus-run.jar` for ledger and the workloads, which have no kubectl.
+
+`build-application-images.sh` accepts `product`, `order`, `ledger`,
+`product-seeder`, `product-reader` and `order-producer`. Step 4.8 uses it again for
+the order, ledger and order producer images. For each image, the script:
+
+1. Builds the ARM64 image `docker.io/library/shardshop-<application>:local` with
+   Docker Buildx, from the Maven package that exists.
+2. Prints the OS package inventory (`docker scout sbom`) and the advisories of all
+   package types and severities (`docker scout cves`). Docker Scout does not index
+   six Ubuntu packages of the JRE base, glibc among them. Thus the inventory and the
+   gate do not include them. [VERSIONS.md](VERSIONS.md#os-packages-without-an-advisory-check)
+   records this gap.
+3. Stops if Docker Scout finds a critical or high advisory without a reviewed
+   statement in `infra/images/application/vex/`. Then the image is not loaded.
+4. Loads the image into the kind nodes, one node at a time, and requires the same
+   manifest digest on each node. Then it registers that digest under the image name.
+
+`deploy.sh` uses the digest that is registered on every node. Thus it deploys the
+images of the last successful script run, not the Maven packages. Docker Scout
+needs a network connection. [VERSIONS.md](VERSIONS.md#step-39-application-images)
+records the scan results and the reviewed statements.
+
+### Seeding gate
+
+The reader owns its start condition, as the
+[workload lifecycle](ARCHITECTURE.md#workload-lifecycle) defines. It sees the
+catalog only through product's HTTP API. At startup, it looks up the 150 sellers
+and 300 products of `catalog-v1` by creation key, and it sends load only after all
+lookups succeed and match the dataset:
+
+- While an entity is missing or product is unavailable, slow or not reachable,
+  SmallRye Fault Tolerance repeats the lookups with exponential backoff from 1 to
+  15 seconds. Each repeat logs one INFO line that names the failed lookup. The
+  reader sets the Apache `HttpRequestRetryExec` logger to WARN, thus a refused
+  connection adds no line for each repeated request.
+- After 5 minutes, the reader stops with exit code 1, and Kubernetes restarts the
+  pod.
+- A response that differs from the dataset stops startup at once.
+
+The MicroProfile Fault Tolerance keys
+`dev.nklip.javacraft.shardshop.workload.reader.config.CatalogWait/resolve/Retry/maxDuration`,
+`.../Retry/delay` and `.../ExponentialBackoff/maxDelay` change these bounds, in
+milliseconds.
+
+`deploy.sh <run-name>` applies the product ConfigMap, Service and Deployment and
+the reader Deployment with one replica. Then it creates the seeder Job
+`shardshop-product-seeder-<run-name>` with `restartPolicy: Never`,
+`backoffLimit: 3` and `activeDeadlineSeconds: 300`, and it ends. It does not wait
+for the Job or the pods.
+
+A run name has 1–32 lowercase letters, digits and hyphens, and starts and ends with
+a letter or digit. A name that an earlier run used stops the script before it
+changes the lab, because each run has its own Job. Completed and failed Jobs stay
+in the namespace. The reader pods carry the run name in the label
+`shardshop.javacraft/run`, thus each run replaces the reader pod. The seeder
+recovers the same IDs in each run. If the catalog is already complete, the new
+reader starts its load at once, also while the Job of the run sends the same data
+again. Watch a run:
+
+```bash
+kubectl --context kind-shardshop -n shardshop get job shardshop-product-seeder-run-1
+kubectl --context kind-shardshop -n shardshop logs deployment/shardshop-product-reader
+```
+
+### Product pods
+
+| Item | Value |
+|---|---|
+| Pods | Two replicas behind the Service `shardshop-product:8080` with `sessionAffinity: None` |
+| Start | `GeneratorLauncher` reserves a generator ID with the projected token of the `shardshop-product` ServiceAccount, then starts the application JVM. `SHARDSHOP_GENERATOR_REGISTRY_UID` comes from the `shardshop-generator-identity` ConfigMap |
+| Routing | The `application.properties` key of the `shardshop-routing` ConfigMap at `/etc/shardshop/routing` |
+| Database TLS | Only the `ca.crt` key of each `<shard>-ca` Secret, at `/etc/shardshop/catalog/<shard>/ca.crt`. The CA Secrets also hold `ca.key` |
+| Password | `PRODUCT_APP_PASSWORD` from the `product-app` Secret. The `shardshop-product-config` ConfigMap, at `/app/config`, sets each shard's password to `${PRODUCT_APP_PASSWORD}`. Quarkus reads `config/application.properties` in the working directory of the JVM |
+| Readiness | A TCP probe on port 8080 every 2 s. Quarkus opens the port only after the routing, generator and catalog checks |
+| Security | Restricted Pod Security without fixed user IDs in the pod, a read-only root file system and an `emptyDir` at `/tmp` |
+
+Each product pod start reserves one generator slot: a rollout, a replacement or a
+container restart. `deploy.sh` changes the product pods only when the image or the
+manifest changed.
+
+Product counts its HTTP requests with the Quarkus Micrometer Prometheus extension.
+`/q/metrics` on port 8080 shows the counter
+`http_server_requests_seconds_count{method,outcome,status,uri}`, with the route
+template as `uri`. Each pod has its own counters. Read them through the API server
+pod proxy:
+
+```bash
+kubectl --context kind-shardshop get --raw \
+  "/api/v1/namespaces/shardshop/pods/<product-pod>:8080/proxy/q/metrics" |
+  grep '^http_server_requests_seconds_count.*products/{productId}'
+```
+
+### Workload pods
+
+The seeder and the reader get only the product URL
+`http://shardshop-product.shardshop.svc:8080` in `SHARDSHOP_SEEDER_PRODUCT_URL` and
+`SHARDSHOP_READER_PRODUCT_URL`. They have no API token, no Secret, no database
+setting and no Service variables. The reader Deployment uses the `Recreate`
+strategy, thus a maximum of one reader runs.
+
+The resource budgets come from measurements on the lab on 2026-10-09. At 200
+reads/s, each product pod used approximately 10% of one core and 310 MiB of
+anonymous memory for its two JVMs. The reader used 7% of one core and 148 MiB.
+With a 1-CPU limit, the JVM starts were throttled for many seconds, and the reader's
+startup lookups failed. Thus each container has a 2-CPU limit.
+
+| Container | CPU request | CPU limit | Memory request | Memory limit |
+|---|---|---|---|---|
+| Product | 250m | 2 | 384Mi | 512Mi |
+| Seeder | 100m | 2 | 192Mi | 256Mi |
+| Reader | 100m | 2 | 192Mi | 384Mi |
+
+After a product rollout, the new product JVMs are cold. The 16 concurrent startup
+lookups of the reader can then receive `503`, because product allows one second to
+open or lease a database connection. The reader then waits and repeats the lookups,
+as the [seeding gate](#seeding-gate) defines. Against warm product pods, the lookups
+take less than one second.
+
+### Live check
+
+```bash
+python3 -B microservices/shardshop/scripts/verify-product-workload.py
+```
+
+The check needs the lab after `up.sh` and `migrate.sh`, and the three images. It
+calls `deploy.sh` for two new runs:
+
+1. In a complete run, the seeder Job must complete and log a seeder digest. The
+   seeder and reader pods must have no API token and no Secret. The reader of this
+   run must resolve the same digest, and the catalog must keep 150 sellers and 300
+   products.
+2. Scenario 1: within 120 seconds, the read counters of both ready product pods
+   must increase. Scenario 3 for primary reads: a report interval must have only
+   `OK` reads at 180/s or more.
+3. The check deletes one product pod. When the replacement is ready, it repeats
+   step 2 with a report interval that starts after the replacement.
+4. A second complete run must recover the same digest and pass steps 2 and 3 again.
+
+On the lab, the catalog is already complete, thus the reader does not wait there.
+`CatalogWaitTest` of the reader module shows the wait: the reader sends no load
+while an entity is missing, starts after the entity appears, and stops after the
+maximum wait.
+
+At the end, the check scales the reader to zero. Product keeps running. Each check
+uses approximately two generator slots for the pod replacements, and more if the
+product image or manifest changed.
 
 ## HTTP and message contracts (step 3.1)
 
@@ -725,11 +899,11 @@ its pods. It passes `--check-startup` through the launcher so product exits afte
 validation. Before allocating, it checks both packages against the routing
 snapshot in network-isolated containers with HTTP disabled; failed preflights
 consume no registry slots. Normal service launches omit `--check-startup`.
-Final service images and Deployments still belong to steps 3.9/4.8.
-Their entrypoint must invoke this launcher directly, use the owning service's
-ServiceAccount, and provide `SHARDSHOP_GENERATOR_REGISTRY_UID` from the immutable
-identity ConfigMap's `registryUid` key. An init container cannot replace this
-entrypoint. In-cluster kubectl uses an explicit temporary kubeconfig that references
+The [product image and Deployment](#product-deployment-and-seeding-gate-step-39)
+(step 3.9) and the order image and Deployment (step 4.8) invoke this launcher directly
+as their entrypoint. They use the owning service's ServiceAccount and provide
+`SHARDSHOP_GENERATOR_REGISTRY_UID` from the immutable identity ConfigMap's
+`registryUid` key. An init container cannot replace this entrypoint. In-cluster kubectl uses an explicit temporary kubeconfig that references
 the projected service-account token file and cluster CA; it never discovers a
 user kubeconfig from `KUBECONFIG` or the home directory. The token is not copied
 into the file or command arguments. The temporary file is removed after allocation;
@@ -833,7 +1007,7 @@ user-authorized kind 1.36.4 fallback and Canonical OpenJDK 25 JDK/JRE images on
 Ubuntu 26.04, and the lock records their verified digests.
 Steps 1.1–2.1 create the cluster, as the
 [cluster section](#local-kubernetes-cluster-operator-and-databases-steps-1121)
-describes. Step 3.9 builds the final application images.
+describes. Step 3.9 builds the [application images](#application-images).
 
 ## Dependency and test validation
 
@@ -952,6 +1126,11 @@ placeholders or region labels. The chart rejects ledger streams on shards and
 shard streams on `ledger-db`. `up.sh` provisions all three schemas and their roles;
 `migrate.sh` runs catalog on every shard, then ordering on every shard, then ledger
 once. It waits for the ordering outbox publications before activating routing.
+`applications RUN [APPLICATION=IMAGE ...]` and `seeding RUN [APPLICATION=IMAGE ...]`
+render the [step 3.9 manifests](#seeding-gate) for `deploy.sh`. The chart requires a
+valid run name and a digest reference for each image that the mode uses. The script
+gives these values to Helm with `--set-literal`. Thus Helm does not divide a value at
+a comma or remove a backslash, and the chart checks the value that you typed.
 
 The scripts use Python 3's standard JSON library and Helm, with no YAML package to
 install. The [changelog](CHANGELOG.md#step-24) records the live inventory and

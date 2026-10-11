@@ -3,7 +3,7 @@
 ## 1. Implementation milestones
 
 This is the implementation checklist for `microservices/shardshop`, updated on
-2026-10-09. Every step starts as **Planned**; existing design documents and routing
+2026-10-11. Every step starts as **Planned**; existing design documents and routing
 vectors do not mean the corresponding application behavior is implemented.
 
 **Framework:** all six applications use **Quarkus 3.40.1** (3.40 LTS line) in JVM
@@ -42,10 +42,12 @@ Retained baselines are now immutable. Later schema changes use fix-forward migra
    Snowflake contracts, and absence of shard selectors in public APIs.
 4. Add the behavior and edge/error tests required by the repository instructions.
    Run the affected module's checks; never build the repository root reactor.
-   Use real database/broker integration tests where IO matters and bounded polling
-   for Kubernetes checks. Infrastructure steps are verified by live runs against
-   `kind-shardshop`, recorded as evidence. Add a script only when a step needs a
-   repeatable live check or lab operation. Set the `kind-shardshop` context
+   Test Java behavior only with Maven tests. Where IO matters, use integration
+   tests in the `integration` profile with Testcontainers and pinned images, for
+   example a real PostgreSQL or RabbitMQ. Do not add a bash or Python check for
+   Java behavior. Use bounded polling for Kubernetes checks. Infrastructure steps
+   are verified by live runs against `kind-shardshop`, recorded as evidence. Add a
+   script only as instruction 9 permits. Set the `kind-shardshop` context
    explicitly in every command ([§5](#5-local-infrastructure-details)).
 5. Mark the row **Done** only after its acceptance condition and relevant checks
    pass. Then add the date and one result sentence to its acceptance cell. Record
@@ -58,9 +60,8 @@ Retained baselines are now immutable. Later schema changes use fix-forward migra
    no project-local tool folders such as `.local/bin` and no Maven Wrapper. Record
    tested versions in [VERSIONS.md](VERSIONS.md) instead. Third-party charts and
    manifests are artifacts, not tools: vendor them only with a verified checksum
-   in the lock. Write lab start, stop and deploy scripts as short bash. Write
-   checks in bash or Python 3. A Python check uses only the standard library and
-   the packages pinned in `scripts/contract-validation-requirements.txt`. Record
+   in the lock. Write lab start, stop and deploy scripts as short bash. Write lab
+   checks in bash or Python 3 with only the standard library. Record
    evidence as short text in [CHANGELOG.md](CHANGELOG.md), and do not commit dated scan or report
    files.
 7. Milestones 0–6 run and are verified entirely on this machine, on the local
@@ -76,6 +77,21 @@ Retained baselines are now immutable. Later schema changes use fix-forward migra
    - the successor and its compatibility checks
    - the upgrade and recovery procedure
    - the results of the checks that exist at that time
+9. Give each behavior to the tool that owns it. A script is the last choice.
+   - Kubernetes: restarts, readiness, scaling, Secrets and admission rules.
+   - Flyway: schema changes and their validation.
+   - Maven: builds, tests and dependency checks.
+   - Java: application and workload behavior, with platform-managed libraries
+     before custom code.
+
+   Write a script only for a lab operation that none of these tools can do, or for
+   a lab check that a named later step runs again. Each milestone gate has one lab
+   check, and later steps extend it instead of adding a script. Workload
+   applications own their lifecycle: their Java code decides when they feed or
+   read data, and deploy scripts only start and stop them. Product and order get
+   their generator IDs from Java code in their own JVM, without an external binary,
+   a separate service or a separate pod. Images use the OpenJDK runtime of the
+   selected Ubuntu JRE image, never a Temurin runtime.
 
 Execute steps in dependency order. Use the table order, except for step 0.5,
 which follows step 2.4. “Depends on” lists direct prerequisites and includes
@@ -124,13 +140,16 @@ Milestone numbers 0-7 remain stable for references from other documents.
 | 3.6 Seller and product API on primaries | 0.4, 2.3, 3.2, 3.4, 3.5 | Done | Product serves the seller/product API of [ARCHITECTURE §4](ARCHITECTURE.md#4-product-generation-and-read-load) on primaries, with the fix-forward catalog migration V2. **2026-10-07:** 163 OpenAPI-validated provider responses pass, and the lab applied V2 on all primaries. [Evidence](CHANGELOG.md#step-36) |
 | 3.7 Product seeder application | 3.5, 3.6 | Done | Repeated seeding recovers the same service-issued IDs for all 150 sellers and 300 products, and completion requires successful verification reads. **2026-10-07:** `verify-product-seeder.py` passes on four disposable shards. [Evidence](CHANGELOG.md#step-37) |
 | 3.8 Product reader application | 3.5, 3.6 | Done | The reader sends bounded read load and reports request, latency and error metrics, as the [HTTP connection policy](ARCHITECTURE.md#http-connection-policy) defines. **2026-10-08:** `verify-product-reader.py` passes twice on four disposable shards. [Evidence](CHANGELOG.md#step-38) |
-| 3.9 Product deployment and seeding gate | 3.7, 3.8 | Planned | Product, the seeder Job and the reader run on the lab behind the [seeding gate](ARCHITECTURE.md#workload-lifecycle). Repeated runs pass scenario 1 for the reader and scenario 3 for primary reads. One image build and scan script makes the application images, with an OS package inventory and advisory check, and step 4.8 uses it again. The product and order images take kubectl from a digest-pinned image, as the step 3.4 drill does. Product counts the requests of each pod with the Micrometer Prometheus extension ([§4](#quarkus-framework-migration)). Do not tune the reader's connection rotation, because step 6.7 replaces the HTTP/1.1 client. The order producer joins the gate in step 4.8. |
+| 3.9 Product deployment and seeding gate | 3.7, 3.8 | Done | Product, the seeder Job and the reader run on the lab. The reader owns its [lifecycle](ARCHITECTURE.md#workload-lifecycle) in Java: it sends load only after it resolves the complete `catalog-v1` dataset through product, and it stops with an error after a bounded wait. `deploy.sh` only renders and applies the manifests; it does not wait for the Job or scale the reader. Maven tests show that the reader sends no load while the dataset is incomplete. Repeated runs pass scenario 1 for the reader and scenario 3 for primary reads. One image build and scan script makes the application images, with an OS package inventory and advisory check, and step 4.8 uses it again. Product counts the requests of each pod with the Micrometer Prometheus extension ([§4](#quarkus-framework-migration)). Do not tune the reader's connection rotation, because step 6.7 replaces the HTTP/1.1 client. **2026-10-11:** `CatalogWaitTest` shows the wait of the reader, and `verify-product-workload.py` passes on the lab with a `deploy.sh` that only renders and applies. [Evidence](CHANGELOG.md#step-39) |
+| 3.10 Maven integration tests with Testcontainers | 3.6, 3.7, 3.8, 3.9 | Planned | Qualify Testcontainers and its pinned images in VERSIONS.md and the lock. Maven integration tests in the `integration` profile run product, the seeder and the reader against real PostgreSQL containers, and they apply the catalog migrations with the Flyway Java API. They cover the cases of `verify-product-provider.py`, `verify-product-transport.py`, `verify-product-seeder.py`, `verify-product-reader.py` and `verify-catalog-migration.py` that the architecture needs. Then delete these five scripts and `verify-catalog-lab.sh`, because Flyway validates the applied migrations on the lab. Their CHANGELOG evidence stays. |
+| 3.11 Generator IDs in the application JVM | 3.4, 3.9, 3.10 | Planned | Product, and order from step 4.1, reserve a fresh generator ID with Java code in their own JVM at every start, also after a container restart. The Kubernetes API calls use Apache HttpClient 5, which the workloads already use. The registry, compare-and-set, retention and RBAC rules of [ARCHITECTURE](ARCHITECTURE.md#generator-identity-across-processes-and-restarts) stay, and that section is updated. No kubectl binary, launcher process, init container, sidecar, separate pod or service takes part. The application images contain no kubectl: remove the kubectl stage, its VEX document, its image pin and its advisory records. Maven integration tests with Testcontainers cover concurrent reservations, restarts and registry failures against a real Kubernetes API, and they replace `verify-generator-allocation.sh`. The step 3.9 lab check shows a new ID after a pod replacement. |
+| 3.12 Contract checks in Maven and one image script | 3.10 | Planned | Each module that owns an OpenAPI document or a message schema checks it, its examples and its boundaries in a Maven unit test, as `verify-contracts.py` does. Then delete `verify-contracts.py` and `contract-validation-requirements.txt`. `build-application-images.sh` also builds, scans and loads the Flyway migration image on the OpenJDK runtime, and `build-migration-image.sh` is deleted. |
 
 ### Milestone 4: Complete order-to-ledger saga
 
 | Step / deliverable | Depends on | Status | Acceptance condition |
 |---|---|---|---|
-| 4.1 Order validation and atomic acceptance | 2.5, 3.4, 3.6 | Planned | Order serves buyer creation, order allocation and order PUT/GET, as [ARCHITECTURE §5](ARCHITECTURE.md#5-order-creation-and-ledger-saga) and the order OpenAPI define. Fix-forward ordering migrations add the buyer person fields, creation keys and unit-cost snapshots, and V1 stays unchanged. Scenario 9 passes, and provider tests match the order OpenAPI. |
+| 4.1 Order validation and atomic acceptance | 2.5, 3.6, 3.11, 3.12 | Planned | Order serves buyer creation, order allocation and order PUT/GET, as [ARCHITECTURE §5](ARCHITECTURE.md#5-order-creation-and-ledger-saga) and the order OpenAPI define. Fix-forward ordering migrations add the buyer person fields, creation keys and unit-cost snapshots, and V1 stays unchanged. Scenario 9 passes, and provider tests match the order OpenAPI. |
 | 4.9 Stock reservation step | 2.5, 4.1 | Planned | Order reserves and releases stock as the [stock reservation rules](ARCHITECTURE.md#stock-reservation) define. Scenario 11 passes. |
 | 4.2 RabbitMQ topology and policies | 1.1, 0.5, 3.1 | Planned | The persistent broker and its queues, policies, feature flags and limits match [ARCHITECTURE §6](ARCHITECTURE.md#6-rabbitmq-and-delivery-reliability). Select a release inside its support window when the step starts, and record it in VERSIONS.md and the lock. The broker runs with an arbitrary user ID ([portability rule 5](#portability-beyond-kind)). |
 | 4.3 Order outbox CDC relay | 4.2, 4.9 | Planned | Pin and qualify Debezium in VERSIONS.md. The relay obeys the [CDC rules](ARCHITECTURE.md#cdc-from-shard-writes-to-the-ledger), and published `RecordOrder` envelopes match the order-owned message schema. The relay checks of scenario 6 pass. Steps 5.5 and 6.2 add its crash and failover cases. |
@@ -138,7 +157,7 @@ Milestone numbers 0-7 remain stable for references from other documents.
 | 4.5 Ledger result publisher | 4.4 | Planned | The result relay publishes stored outcomes with the reserved IDs and the publication-attempt checks of [ARCHITECTURE §5](ARCHITECTURE.md#reconciliation-and-replayed-outcomes). Result envelopes match the ledger message schema. |
 | 4.6 Order result consumer | 4.3, 4.5 | Planned | Order applies results, releases stock after a cancellation, and quarantines absent or conflicting results, as [ARCHITECTURE §5](ARCHITECTURE.md#5-order-creation-and-ledger-saga) defines. Confirmation credits seller profit exactly once for each item, as the [profit rules](ARCHITECTURE.md#4-product-generation-and-read-load) define. Results with invalid IDs are rejected without requeue. |
 | 4.7 Order producer application | 3.5, 4.1 | Planned | The HTTP-only order producer creates the buyers, then allocates and submits orders, as [ARCHITECTURE](ARCHITECTURE.md#workload-datasets-service-issued-ids-and-routing) sections 1 and 3 define. This includes cross-region, mixed-region and EUR-rejection orders. The producer keeps the returned IDs over retries and restarts, and it polls the order status within bounded deadlines. |
-| 4.8 Saga deployment and first end-to-end run | 3.9, 4.6, 4.7 | Planned | Order, ledger and the order producer run on the lab, with images from the step 3.9 script. The seeding gate also blocks the order producer, and a replacement order pod on either worker resumes CDC from the stored offsets. Scenarios 4, 5 and 11 pass end to end. |
+| 4.8 Saga deployment and first end-to-end run | 3.9, 4.6, 4.7 | Planned | Order, ledger and the order producer run on the lab, with images from the step 3.9 script. Like the reader, the order producer sends load only after it verifies the seeded catalog. A replacement order pod on either worker resumes CDC from the stored offsets. Scenarios 4, 5 and 11 pass end to end, and the step 3.9 lab check covers them. |
 
 ### Milestone 5: Recovery, retention, and backpressure
 
@@ -154,7 +173,7 @@ Milestone numbers 0-7 remain stable for references from other documents.
 
 | Step / deliverable | Depends on | Status | Acceptance condition |
 |---|---|---|---|
-| 6.1 Strict replica-read drill | 3.9 | Planned | Deploy product's strict replica read profile from step 3.6 on the lab, and test it with the reader. Add the limited `404` retry of the [workload lifecycle](ARCHITECTURE.md#workload-lifecycle) to the seeder's verification reads and the workloads' startup lookups. The read checks of scenarios 3 and 8 pass. |
+| 6.1 Strict replica-read drill | 3.9 | Planned | Deploy product's strict replica read profile from step 3.6 on the lab, and test it with the reader. Add the limited `404` retry of the [workload lifecycle](ARCHITECTURE.md#workload-lifecycle) to the seeder's verification reads; the workloads' startup lookups already wait (step 3.9). The read checks of scenarios 3 and 8 pass. |
 | 6.2 Synchronous failover drills | 5.5, 6.1 | Planned | The failover parts of scenarios 6 and 8 pass for switchover and primary failure. Each drill proves a real promotion, not a restart. The former primary rejoins safely, and a shard never has two writable primaries. Design the drills for the [CNPG failover behavior](https://cloudnative-pg.io/docs/1.30/failover/). |
 | 6.3 Coordinated backup and isolated restore | 5.3, 6.2 | Planned | Isolated restores retain schema/routing metadata, permanent outcomes, quarantine, and the latest allocator high-water mark; backup artifacts live outside kind. After each restore, checks prove schema/routing compatibility and the consistency of orders, sagas and the ledger. |
 | 6.4 Restore audit and recovery | 6.3 | Planned | The restore and audit parts of scenario 8 pass, as [ARCHITECTURE §5](ARCHITECTURE.md#orders-lost-by-asynchronous-failover-or-restore) defines. This step also runs the optional asynchronous-loss drill. |
@@ -219,7 +238,7 @@ Follow the dated baseline and lifecycle evidence in [VERSIONS.md](VERSIONS.md).
 
 | Concern | Planned choice |
 |---|---|
-| Java | JDK 25 or newer for build and tests (bytecode targets release 25); OpenJDK 25 application runtime; no vendor or exact-patch restriction |
+| Java | JDK 25 or newer for build and tests (bytecode targets release 25), with no vendor or exact-patch restriction; the application and migration images use the OpenJDK 25 runtime of the Ubuntu JRE image, never Temurin |
 | Local Kubernetes | Kubernetes 1.36.x on kind with a digest-pinned node image; `docker`, `kind`, `kubectl`, and `helm` come from the user's `PATH` (tested with Docker Desktop 4.92.0, kind 0.33.0, kubectl 1.36, and Helm 4.3.0) |
 | Node layout | One control-plane node and three worker nodes; Docker Desktop VM with at least 12 GB of memory |
 | Database lifecycle | CloudNativePG 1.30.1 initially, installed from its verified Helm chart, with upgrades before operator EOL; three independent three-instance quorum shard clusters and separate ledger storage |
@@ -227,7 +246,7 @@ Follow the dated baseline and lifecycle evidence in [VERSIONS.md](VERSIONS.md).
 | Application | Six Quarkus 3.40.1 applications and four library JARs (common, idgen, sharding and datasets), under five top-level Maven children; JVM mode, a scoped platform BOM, and supported branch upgrades |
 | Persistence | Explicit JDBC repositories with PostgreSQL JDBC and Agroal; bounded pools per service, pod, shard, and endpoint |
 | Identifiers | Explicitly pinned `de.mkammerer.snowflake-id:snowflake-id:0.0.2`; decimal strings on the wire and positive `BIGINT` in PostgreSQL; reviewed support-policy exception |
-| Database change management | CNPG `DatabaseRole`, `Database` and `Publication` resources for roles, schemas and CDC publications; the official Flyway OSS CLI image (13.8.1 initially), pinned by digest, for one migration stream per schema under `database/`, run as Kubernetes Jobs by that schema's migrator |
+| Database change management | CNPG `DatabaseRole`, `Database` and `Publication` resources for roles, schemas and CDC publications; the Flyway OSS CLI (13.8.1 initially) from its official image, pinned by digest, on the OpenJDK runtime of the Ubuntu JRE image, for one migration stream per schema under `database/`, run as Kubernetes Jobs by that schema's migrator |
 | Messaging | Stable RabbitMQ 4.3 or later (native quorum delayed retry) with its bundled Erlang/OTP. Step 4.2 installs a release inside its support window, and VERSIONS.md and the lock record it. The [architecture's retry/DLQ contract](ARCHITECTURE.md#6-rabbitmq-and-delivery-reliability) applies |
 | Change data capture | Debezium Engine and its PostgreSQL connector (`pgoutput`), embedded in the order service with one reader per shard and offsets in each shard database (JDBC offset store); pinned and qualified under VERSIONS.md in step 4.3 |
 | Deployment packaging | Vendored, verified Helm charts for third-party operators (the CloudNativePG chart 0.29.1 today); one ordered shard inventory and shared Helm templates with environment values for ShardShop's own manifests. The same inventory/templates serve the later cloud target |
@@ -306,10 +325,11 @@ These rules apply to the remaining steps:
 - Run applications in Kubernetes for the demo so Service DNS resolves normally.
   Keep database/broker endpoints internal; expose APIs by port-forward.
   Document separate port-forwards for IDE debugging if needed.
-- Start infrastructure and services, run the idempotent product seeder Job, and
-  wait for its successful completion before starting reader and order producer
-  Deployments. Fail the startup gate if seeding fails. The default workload
-  performs no continuous product writes after seeding.
+- Start infrastructure and services, then the idempotent product seeder Job and
+  the workload Deployments. Each workload decides in Java when it sends load: the
+  reader and the order producer start only after they verify the complete seeded
+  dataset through product, and they stop with an error after a bounded wait. The
+  default workload performs no continuous product writes after seeding.
 
 Multiple local nodes share one physical machine. This setup teaches pod/process
 failure handling but cannot protect against laptop or disk failure.
@@ -425,15 +445,16 @@ microservices/shardshop/
     eks-values.yaml              # milestone 7: EKS storage class and zone placement
   infra/helm/cnpg/                # vendored CloudNativePG chart and pinned values
   infra/images/flyway/            # Flyway migration image on the Canonical JRE
+  infra/images/application/       # application images on the OpenJDK runtime, without kubectl
   infra/terraform/               # milestone 7: AWS infrastructure (optional)
-  scripts/                       # up.sh (Kubernetes), migrate.sh (schemas), verification, backup, restore
+  scripts/                       # lab operations (up, down, migrate, images, deploy, backup, restore) and lab checks (instruction 9)
 ```
 
 ShardShop's parent aggregator is registered in `microservices/pom.xml` (step 0.2).
 Tests obey the testing rules in [AGENTS.md](../../AGENTS.md). HTTP client tests use
-in-process loopback servers. Local containers and Kubernetes drills run in
-explicit integration profiles. Turn every architecture acceptance scenario into a
-reproducible check.
+in-process loopback servers. Testcontainers tests run in the `integration` Maven
+profile, and Kubernetes drills are the lab checks of instruction 9. Turn every
+architecture acceptance scenario into a reproducible check.
 
 The planned commands below run from the repository root after the module,
 profiles, and scripts are implemented. Build only Shardshop or the affected
@@ -447,9 +468,11 @@ kubectl --context kind-shardshop -n shardshop get clusters.postgresql.cnpg.io -L
 kubectl --context kind-shardshop -n shardshop get pods,pvc,svc
 bash microservices/shardshop/scripts/verify-topology.sh --routing-only
 bash microservices/shardshop/scripts/verify-topology.sh
-bash microservices/shardshop/scripts/verify-sagas.sh
-bash microservices/shardshop/scripts/verify-failover.sh
+python3 -B microservices/shardshop/scripts/verify-product-workload.py
 ```
+
+Step 4.8 extends the workload lab check, and step 6.2 extends the topology lab
+check, instead of adding scripts.
 
 Verification scripts must restrict mutations to this disposable lab and report
 their scenarios. Keep destructive volume/cluster cleanup separate from startup

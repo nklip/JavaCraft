@@ -98,6 +98,90 @@ also require a different retry design. Qualify a maintained compatible community
 successor before EOL. If none is available, stop deployment past EOL or design
 and validate a supported community replacement; commercial support is outside scope.
 
+### Step 3.9 application images
+
+`infra/images/application/Dockerfile` builds the application images on the pinned
+Canonical OpenJDK 25 JRE (`application_jre`, unchanged). The product and order
+targets copy kubectl **1.36.5** from the official image
+`registry.k8s.io/kubectl:v1.36.5`, pinned by its index digest. That binary matches
+the published SHA-256 of the linux/arm64 kubectl 1.36.5 release in the lock. It is
+built with Go **1.26.8**, and it stays inside the Kubernetes 1.36 support window
+(**2027-06-28**). The kind node image of the step 3.4 drill has kubectl 1.36.4 with
+Go 1.26.5, which has more advisories. The images use user `10001:10001`.
+
+On **2026-10-10**, Docker Scout **1.24.0** (Docker Desktop 4.92.0) scanned the
+product, seeder and reader images. It indexed 265, 70 and 73 packages. On
+**2026-10-11**, the rebuilt reader image with fault tolerance indexed 89 packages
+and passed the gate with the same statements. Scout reports
+no advisory for the Maven packages and for the six Ubuntu packages that it indexes:
+nspr, nss, openjdk-25, pcsc-lite, sqlite3 and zlib. It does not index six other
+Ubuntu packages of the base image ([gap](#os-packages-without-an-advisory-check)).
+All critical and high advisories that Scout reports are in Go binaries:
+
+| Binary | Images | Package | Critical | High | Other |
+|---|---|---|---|---|---|
+| `/usr/bin/pebble` of the JRE base | All | Go stdlib 1.26.7 | 2 | 8 | 3 unrated |
+| `/usr/bin/kubectl` | Product, order | Go stdlib 1.26.8 | 2 | 8 | 3 unrated |
+| `/usr/bin/kubectl` | Product, order | golang.org/x/net 0.56.0 | 1 | 3 | 1 unrated |
+| `/usr/bin/kubectl` | Product, order | golang.org/x/text 0.39.0 | 0 | 1 | 0 |
+| `/usr/bin/kubectl` | Product, order | k8s.io/kubernetes 1.36.5, go.opentelemetry.io/otel 1.41.0 | 0 | 0 | 2 medium, 1 low |
+
+The fixes need Go 1.26.9, golang.org/x/net 0.60.0 and golang.org/x/text 0.41.0.
+On 2026-10-10, no kubectl
+1.36.6 image was published. The newest `ubuntu/jre:25-26.04_stable` digest
+(`sha256:a27b7c6734762d8c7d373018b6dd921a7d42a021490c1497ee9904ca06f21853`) changes
+only pebble, to 1.33.1 with Go 1.27.1, and that pebble still has 2 critical and 8
+high advisories. Thus the base pin stays the same as for the migration image.
+
+Reviewed OpenVEX statements cover the remaining findings. The two documents in
+`infra/images/application/vex/` contain 23 `not_affected` statements for 11 CVE
+IDs. Each statement names the image and the exact package version:
+
+- Pebble: the images replace its entrypoint with Java, thus it never runs.
+- kubectl: the launcher runs only `kubectl get` and `patch` as an HTTPS client of
+  the in-cluster API server, without a proxy. The binary does not contain
+  `golang.org/x/text/secure/precis`, the HTTP/2 server of golang.org/x/net or
+  `os.Root.Mkdir`. The other statements name server, proxy, file-server, multipart
+  or TLS-server code that kubectl does not run. For CVE-2026-78669, a malicious
+  HTTP/2 peer is necessary, but the only peer is the API server that kubectl
+  verifies with the service account CA.
+
+`build-application-images.sh` applies only statements with the author
+`ShardShop image review`. A new package version or a new advisory has no statement,
+thus the gate stops again. Review the statements with the JRE base by
+**2026-10-28**, and when a kubectl or base image digest changes. The migration image
+contains the same pebble binary; its next review must also handle these advisories.
+
+#### OS packages without an advisory check
+
+The JRE base records 12 Ubuntu packages in `/usr/share/rocks/dpkg.query`.
+`/var/lib/chisel/manifest.wall` records 11 of them, without the JRE package
+`openjdk-25-jdk-headless`, thus a complete check reads both files. Docker Scout does
+not index six of the 12: libc6
+**2.43-2ubuntu2.4** (glibc), libgcc-s1, libstdc++6 and gcc-16-base
+**16-20260322-1ubuntu1**, base-files **14ubuntu6.2** and base-passwd **3.6.8**.
+Thus the inventory of `build-application-images.sh` does not show them, and its gate
+does not examine them.
+
+On **2026-10-10**, OSV's Ubuntu 26.04 data listed 14 advisories for these images.
+Docker Scout reports none of them:
+
+| Source package | Version | Advisories |
+|---|---|---|
+| glibc | 2.43-2ubuntu2.4 | 6 |
+| openjdk-25 | 25.0.4.1+1-1~26.04.4 | 7 |
+| zlib | 1:1.3.dfsg+really1.3.1-1ubuntu3.1 | 1 |
+
+Ubuntu gives all 14 the priority medium, and none has a fix for 26.04. Their CVSS 3.1
+vectors give six of them a high base score of 7.0–8.1: five openjdk-25 advisories
+and the zlib advisory. OSV listed no advisory for gcc-16, base-files, base-passwd,
+nspr, nss, pcsc-lite and sqlite3. No reviewed statement covers these advisories.
+`SBOM-AND-RUNTIME` in the lock stays open and blocks step 4.8, which builds the other
+images with the same script. It lists the advisory IDs. Close it
+only when a check covers every package of the base image and a review handles these
+advisories. [OSV](https://osv.dev/),
+[Ubuntu CVE tracker](https://ubuntu.com/security/cves).
+
 ### Step 6.7 request balancer candidates
 
 Step 6.7 needs a request-level balancer for HTTP/2, because a Kubernetes Service
@@ -267,6 +351,59 @@ Central's published SHA-1 checksums. The lock's `step_3_8_reader_dependencies`
 records them with independent SHA-256 values. Review these families with the
 platform by **2026-11-05**.
 [HttpComponents status](https://hc.apache.org/status.html), [OSV](https://osv.dev/).
+
+### Step 3.9 product metrics
+
+Product adds the platform-managed `quarkus-micrometer-registry-prometheus`
+**3.40.1** for its per-pod request counters. The runtime adds Micrometer **1.17.1**
+(core, commons, observation and the simpleclient Prometheus registry), Prometheus
+simpleclient **0.16.0** with its common and tracer artifacts, HdrHistogram **2.2.2**,
+LatencyUtils **2.0.3** and Vert.x codegen **4.5.34**, which `quarkus-micrometer`
+requires. The product SBOM has 251 components, 237 before.
+
+Micrometer 1.17.x has community support until **2027-07**. Prometheus simpleclient
+0.16.0 is from **2022-06-15** and is the last release of the 0.x line; the
+Prometheus Java client continues as the 1.x line. The Quarkus 3.40 extension uses
+the simpleclient registry, and the platform BOM selects these versions. Thus
+simpleclient is not a maintained release under this policy. It stays only as a
+transitive dependency of the platform extension, until a Quarkus release moves the
+extension to the 1.x client. Vert.x codegen comes from the Vert.x 4.5.34 release that
+[step 3.6](#step-36-provider-dependencies) qualified, thus that support policy
+applies. On **2026-10-10**, OSV listed no advisories for the 14
+artifacts, and the cached artifacts matched Maven Central's published SHA-1
+checksums. The lock's `step_3_9_product_metrics` records them with independent
+SHA-256 values. Review these families with the platform by **2026-11-04**.
+[Micrometer support](https://micrometer.io/support/),
+[Prometheus Java client](https://github.com/prometheus/client_java),
+[OSV](https://osv.dev/).
+
+### Step 3.9 reader fault tolerance
+
+The reader adds the platform-managed `quarkus-smallrye-fault-tolerance` **3.40.1**
+for its wait for the complete catalog. The runtime adds SmallRye Fault Tolerance
+**6.11.4** (seven artifacts), the MicroProfile Fault Tolerance API **4.1.2**,
+SmallRye Context Propagation **2.3.0** (three artifacts), Mutiny context propagation
+**3.3.0**, the Quarkus Mutiny and context propagation extensions **3.40.1**, and the
+Commons Logging bridge `commons-logging-jboss-logging` **2.0.0.Final**. Thus the
+package has 66 artifacts, 50 before. The reader SBOM has 165 components, 150 before,
+because it already listed the bridge as a test dependency. The package contains no
+Vert.x or Netty.
+
+SmallRye released Fault Tolerance 7.0.0 and the maintenance releases 6.11.4, 6.10.2
+and 6.9.4 on **2026-09-16**, thus the 6.11 line is maintained. The MicroProfile
+Fault Tolerance API 4.1.2 is the newest release of its specification line.
+SmallRye Context Propagation 2.3.0 is from **2025-11-25**, and 2.4.0 followed on
+**2026-09-24**. That project publishes no support term, and the Quarkus 3.40.1
+platform selects 2.3.0. Thus it stays without an override until a Quarkus patch
+moves it. The bridge 2.0.0.Final from **2026-01-26** is the newest release of
+JBoss Logging's Commons Logging bridge. Product also contains it.
+On **2026-10-11**, OSV listed no advisories for the 16 artifacts, and the
+cached artifacts matched Maven Central's published SHA-1 checksums. The lock's
+`step_3_9_reader_fault_tolerance` records them with independent SHA-256 values.
+Review these families with the platform by **2026-11-04**.
+[SmallRye Fault Tolerance releases](https://github.com/smallrye/smallrye-fault-tolerance/releases),
+[SmallRye Context Propagation releases](https://github.com/smallrye/smallrye-context-propagation/releases),
+[OSV](https://osv.dev/).
 
 ### Explicit Snowflake library selection
 
@@ -589,8 +726,9 @@ Canonical OpenJDK **25.0.4.1** JRE as UID/GID **584792**, with networking disabl
 a read-only root filesystem and all capabilities dropped. Product also passed
 `-pl shardshop-product -am -Pintegration clean verify` in an isolated copy on the
 pinned JDK image, using the installed Maven 3.9.16 and an offline dependency cache.
-No image digest, database, migration or Kubernetes resource changed. Final
-application images and their advisory inventory still belong to step 3.9.
+No image digest, database, migration or Kubernetes resource changed. Step 3.9
+qualifies the final application images and their advisory inventory
+([record](#step-39-application-images)).
 
 ### Step 1.1 verification record
 

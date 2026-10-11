@@ -1,0 +1,204 @@
+{{- if or (eq .Values.render "applications") (eq .Values.render "seeding") }}
+{{- $run := required "render=applications|seeding requires a run name" .Values.run -}}
+{{- $productUrl := printf "http://shardshop-product.%s.svc:8080" .Release.Namespace -}}
+{{- if eq .Values.render "applications" }}
+{{- $product := required "render=applications requires images.product" .Values.images.product }}
+{{- $reader := required "render=applications requires images.product-reader" (index .Values.images "product-reader") }}
+# Quarkus reads config/application.properties in the working directory of the product JVM.
+# All shards share the product_app login; its password stays in the product-app Secret.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shardshop-product-config
+  namespace: {{ .Release.Namespace | quote }}
+data:
+  application.properties: |
+    {{- range .Values.shards }}
+    shardshop.catalog.connections.{{ .name }}.password=${PRODUCT_APP_PASSWORD}
+    {{- end }}
+---
+# Kubernetes selects a product pod for each TCP connection, without affinity.
+apiVersion: v1
+kind: Service
+metadata:
+  name: shardshop-product
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/name: shardshop-product
+    app.kubernetes.io/part-of: shardshop
+spec:
+  selector:
+    app.kubernetes.io/name: shardshop-product
+  sessionAffinity: None
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shardshop-product
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/name: shardshop-product
+    app.kubernetes.io/part-of: shardshop
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: shardshop-product
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: shardshop-product
+        app.kubernetes.io/part-of: shardshop
+    spec:
+      # The generator launcher reserves an ID with this account's projected token.
+      serviceAccountName: shardshop-product
+      enableServiceLinks: false
+      {{- include "shardshop.podSecurity" . | nindent 6 }}
+      containers:
+        - name: product
+          image: {{ $product }}
+          env:
+            - name: SHARDSHOP_GENERATOR_REGISTRY_UID
+              valueFrom:
+                configMapKeyRef:
+                  name: shardshop-generator-identity
+                  key: registryUid
+            - name: PRODUCT_APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: product-app
+                  key: password
+          ports:
+            - name: http
+              containerPort: 8080
+          # Quarkus opens the port only after the routing, generator and catalog checks.
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 2
+          resources:
+            {{- toYaml .Values.product.resources | nindent 12 }}
+          {{- include "shardshop.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - name: routing
+              mountPath: /etc/shardshop/routing
+              readOnly: true
+            - name: catalog-ca
+              mountPath: /etc/shardshop/catalog
+              readOnly: true
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: routing
+          configMap:
+            name: shardshop-routing
+            items:
+              - key: application.properties
+                path: application.properties
+        # Only ca.crt: the CA Secrets also hold ca.key.
+        - name: catalog-ca
+          projected:
+            sources:
+              {{- range .Values.shards }}
+              - secret:
+                  name: {{ .name }}-ca
+                  items:
+                    - key: ca.crt
+                      path: {{ .name }}/ca.crt
+              {{- end }}
+        - name: config
+          configMap:
+            name: shardshop-product-config
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shardshop-product-reader
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/name: shardshop-product-reader
+    app.kubernetes.io/part-of: shardshop
+spec:
+  # The reader owns its lifecycle: it sends load only after product serves the complete dataset.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: shardshop-product-reader
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: shardshop-product-reader
+        app.kubernetes.io/part-of: shardshop
+        shardshop.javacraft/run: {{ $run | quote }}
+    spec:
+      {{- include "shardshop.workloadPod" . | nindent 6 }}
+      containers:
+        - name: reader
+          image: {{ $reader }}
+          env:
+            - name: SHARDSHOP_READER_PRODUCT_URL
+              value: {{ $productUrl | quote }}
+          resources:
+            {{- toYaml .Values.productReader.resources | nindent 12 }}
+          {{- include "shardshop.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+{{- else }}
+{{- $seeder := required "render=seeding requires images.product-seeder" (index .Values.images "product-seeder") }}
+# Each run has its own Job, thus a new run needs a new run name.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: shardshop-product-seeder-{{ $run }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/name: shardshop-product-seeder
+    app.kubernetes.io/part-of: shardshop
+    shardshop.javacraft/run: {{ $run | quote }}
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: shardshop-product-seeder
+        app.kubernetes.io/part-of: shardshop
+        shardshop.javacraft/run: {{ $run | quote }}
+    spec:
+      restartPolicy: Never
+      {{- include "shardshop.workloadPod" . | nindent 6 }}
+      containers:
+        - name: seeder
+          image: {{ $seeder }}
+          env:
+            - name: SHARDSHOP_SEEDER_PRODUCT_URL
+              value: {{ $productUrl | quote }}
+          resources:
+            {{- toYaml .Values.productSeeder.resources | nindent 12 }}
+          {{- include "shardshop.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+{{- end }}
+{{- end }}

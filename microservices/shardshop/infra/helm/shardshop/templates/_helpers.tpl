@@ -63,3 +63,26 @@ affinity:
   {{- toYaml $affinity | nindent 2 }}
 {{- end -}}
 {{- end -}}
+
+{{/* Restricted Pod Security without fixed IDs: each application image selects its non-root user. */}}
+{{- define "shardshop.podSecurity" -}}
+securityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+{{- end -}}
+
+{{- define "shardshop.containerSecurity" -}}
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+{{- end -}}
+
+{{/* Workloads use only HTTP: no Kubernetes API token, database Secret or Service variables. */}}
+{{- define "shardshop.workloadPod" -}}
+automountServiceAccountToken: false
+enableServiceLinks: false
+{{ include "shardshop.podSecurity" . }}
+{{- end -}}

@@ -101,8 +101,9 @@ Dataset definitions and service-side creation follow section 3.
 
 ### Workload lifecycle
 
-1. Start the infrastructure and product, order, and ledger services. Keep reader
-   and order producer Deployments at zero replicas.
+1. Start the infrastructure and product, order, and ledger services. Start the
+   seeder Job and the reader and order producer Deployments together. Each
+   workload application decides in Java when it sends load.
 2. Run `shardshop-product-seeder` as a Job with `restartPolicy: Never`,
    `backoffLimit: 3`, and `activeDeadlineSeconds: 300`. Its idempotent POSTs seed
    sellers first, then their products with initial stock. Product generates each
@@ -116,18 +117,24 @@ Dataset definitions and service-side creation follow section 3.
    time, because a standby can replay a commit later in the replica profile.
    Other statuses and reads that differ from the acknowledged ID or payload stop
    the run.
-3. The startup script waits for that run's Job `Complete` condition with a
-   300-second deadline. A failed Job or deadline stops startup; it never starts
-   load against a partially seeded dataset. Only after success does it scale the
-   reader and order producer to one replica each. Their startup checks verify the
-   same dataset configuration. Their startup lookups repeat a `404` for a limited
-   time, because replica-profile reads can observe lag.
+3. The reader and the order producer own their start condition. They see the
+   catalog only through product's HTTP API, without database credentials or a
+   Kubernetes API token. They send load only after their startup lookups resolve
+   every seller and product of the configured dataset and match its definitions.
+   While an entity is missing or product is unavailable, slow or not reachable,
+   they repeat the lookups with exponential backoff from 1 to 15 seconds, for at
+   most 5 minutes. Then they stop with an error, and Kubernetes restarts the pod. A
+   response that differs from its definition stops startup at once. Thus they never
+   start load against a partially seeded dataset. The same wait covers a `404`
+   that replica lag causes in the replica profile.
 4. The baseline performs **no continuous seller or product creation after
    seeding**; orders change only stock, through reservations. The Job
    stays completed rather than being restarted as a Deployment. Reader and order
    producer run until the scenario controller scales them to zero. Each new run
-   receives a distinct run name in its deployment configuration and has a fresh
-   seeding gate; a previous Job cannot satisfy it. Workloads do not generate run IDs.
+   receives a distinct run name in its deployment configuration and its own seeder
+   Job. If the dataset is already complete, a workload can start its load before
+   the Job of its run completes, because the seeder sends the same keys and
+   payloads again. Workloads do not generate run IDs.
 
 The seeder creates sellers and products, and the order producer creates buyers,
 in US, EU, and ASIA, with both USD and EUR product fixtures in every region. Region and currency are independent: the
@@ -464,8 +471,9 @@ increasing allocation counter for live IDs **1-1023**. A startup launcher reserv
 one fresh ID with a Kubernetes resource-version compare-and-set before **every
 product or order JVM start**, including a container restart in the same pod. This
 must not run only in an init container. Take kubectl from a digest-pinned image.
-The step 3.4 drill copies it from the kind node image. Give narrow RBAC for this
-one precreated ConfigMap only to product and order.
+The step 3.4 drill copies it from the kind node image, and the application images
+of step 3.9 copy it from the official `registry.k8s.io/kubectl` image. Give narrow
+RBAC for this one precreated ConfigMap only to product and order.
 Workload and ledger pods have no allocator access. Concurrent starts retry CAS
 conflicts with a bounded deadline.
 An uncertain reservation burns that slot and obtains another; it never guesses
@@ -486,8 +494,8 @@ identity changes. Namespace deletion consequently leaves the namespace terminati
 with the two allocator objects retained. Registry creation
 is an explicit one-time operation outside Helm; normal startup only checks it.
 The [startup runbook](README.md#generator-allocation-at-jvm-startup-step-34)
-defines launch commands, initialization and verification. Final service image and
-Deployment wiring remain steps 3.9/4.8.
+defines launch commands, initialization and verification. Step 3.9 wires the
+product image and Deployment; step 4.8 wires order.
 
 Never reuse a slot while any data from that lab can be restored/replayed. This
 allows at most 1,023 ID-producing process starts, including burned reservations,
@@ -581,9 +589,9 @@ catalog IDs through `GET /api/v1/sellers/by-key/{creationKey}?region=US` and
 entity lookups, returning `404` when absent; they do not publish fixture definitions
 or create data. Each application owns its response models, validates the response
 against the requested definition, and preserves returned canonical string IDs.
-The seeding gate requires successful reads before load starts. The
-[workload lifecycle](#workload-lifecycle) defines the limited `404` retry for
-replica lag.
+A workload starts its load only after these reads succeed. The
+[workload lifecycle](#workload-lifecycle) defines the bounded wait, which also
+covers a `404` of replica lag.
 
 Before submitting a live order, the producer calls
 `POST /api/v1/buyers/{buyerId}/order-allocations` with its configured run name and
@@ -1180,9 +1188,9 @@ The reader (step 3.8) uses the Apache HttpClient 5 classic pool, which the
 Quarkus platform manages: a strict connection limit, a time to live checked when a
 connection is leased, and an idle-connection evictor. The JDK HTTP client has no
 connection limit or lifetime setting. The reader's concurrent startup lookups by
-creation key open the pool; a failed lookup stops the reader before the load
-starts. A `404` counts as a failure only after the limited retry time of the
-[workload lifecycle](#workload-lifecycle). A scheduled cancel ends each read at the deadline, including the wait for
+creation key open the pool. A missing entity or an unavailable product makes the
+reader wait, as the [workload lifecycle](#workload-lifecycle) defines; another
+failed lookup stops the reader before the load starts. A scheduled cancel ends each read at the deadline, including the wait for
 a connection and all attempts. The reader sends a request again only after a
 failure without an HTTP response, at a fixed interval. An HTTP status, including
 `503`, is a measured outcome, because product already limits and repeats its own

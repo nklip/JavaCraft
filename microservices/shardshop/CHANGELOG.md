@@ -304,3 +304,109 @@ requests/s on loopback, the pool kept 5 connections after the first lifetime. Th
 step did not use the kind lab.
 
 **Commands:** [reader runbook](README.md#product-reader-step-38).
+
+## Step 3.9
+
+**2026-10-10:** the product audit build passes 651 unit/startup tests and 24
+packaged startup checks, with no warnings at the normal log level. The new
+`ProductMetricsTest` checks that product counts reads by route template on
+`/q/metrics` and makes no metric series for raw paths. Product keeps 100% line
+coverage (622 lines). The Micrometer Prometheus extension adds 14 runtime artifacts,
+Vert.x codegen 4.5.34 among them (251 SBOM components, previously 237).
+
+`build-application-images.sh` built the product, seeder and reader images. Two
+builds from the same packages gave the same manifest digests. Docker Scout 1.24.0
+found critical and high advisories only in two Go binaries: pebble of the JRE base
+image and kubectl. The newest JRE base digest and kubectl 1.36.5 do not remove them.
+23 reviewed OpenVEX statements cover them, and the three images pass the gate. The
+copied kubectl matches the published checksum of the 1.36.5 release. Docker Scout
+does not index 6 of the 12 Ubuntu packages of the JRE base, glibc among them. OSV
+lists 14 Ubuntu advisories of medium priority for glibc, openjdk-25 and zlib, which
+Scout does not report. `SBOM-AND-RUNTIME` stays open
+([gap](VERSIONS.md#os-packages-without-an-advisory-check)).
+
+On `kind-shardshop`, `verify-product-workload.py` passed in 6 minutes 53 seconds.
+A held advisory lock made four seeder pods fail at `catalog-v1.EU.seller.10`. The
+Job failed, and the reader stayed at zero replicas. Two complete runs recovered the
+key-to-ID digest `97af5c774026fb993e04a7b80e3c74bc2ad6c8c6ff7ccc6b27ffe56a7f57ca88`
+and kept 150 sellers and 300 products. Each reader started after the completion of
+its Job. Both product pods received reads within 5 seconds, and within 26 seconds
+after each pod replacement. Each report interval had only `OK` reads at 200/s. An
+earlier run with the same images and scripts also passed.
+
+Cluster and PVC identities and the registry UID did not change. The generator
+high-water mark went from 16 to 26 during development and the checks. With a 1-CPU
+limit, CPU throttling slowed the product JVM starts, and the reader's startup
+lookups failed. The 2-CPU limits removed this problem. After a product rollout, the
+reader can still restart one or two times, because the cold product JVMs return
+`503`. One run stopped because the clock of the Docker Desktop VM jumped and the
+kubelets stopped their pod synchronization. A kubelet restart on each node recovered
+the lab, and the next run passed.
+
+**2026-10-11:** fixes of the validation findings. The Job controller adds `Complete`
+14–196 ms after `SuccessCriteriaMet`, in a different update. Thus `deploy.sh` now
+waits for `Complete` after the first condition, and `verify-product-workload.py`
+waits for `Failed` after `deploy.sh` stops at `FailureTarget`. After the fixes,
+`verify-product-workload.py` passed in 8 minutes 20 seconds. The validation and this
+run moved the generator high-water mark from 26 to 29.
+
+**2026-10-11:** revalidation. `helm --set-string` divides a value at each comma and
+removes backslashes. On the lab, `deploy.sh 'reval-20261011-ok\'` rendered the Job of
+the earlier run `reval-20261011-ok`, stopped the reader, and failed only at
+`k create`. `render.sh` now gives the run name and the image arguments to Helm with
+`--set-literal`, and the chart schema rejects such names before `deploy.sh` changes
+the lab. The rendered manifests for valid input did not change. The revalidation
+runs did not restart product, thus the high-water mark stayed at 29. Then the user
+reopened the step, because the workload applications must own their lifecycle
+([PLAN 3.9](PLAN.md#milestone-3-product-contracts-ids-and-workloads)).
+
+**2026-10-11:** workload-owned lifecycle. The reader owns its start condition:
+`CatalogWait` repeats the catalog resolution with SmallRye Fault Tolerance while an
+entity is missing or product is unavailable, for at most 5 minutes. A response that
+differs from the dataset stops startup at once. `deploy.sh` only renders and applies
+the manifests, and the reader Deployment has one replica. The 73 reader tests pass.
+In them, `CatalogWaitTest` shows that the reader sends no load while an entity is
+missing, starts after the entity appears, stops after the maximum wait, and does not
+repeat a conflicting response. The tests cover 449 of 450 lines and 183 or 184 of
+187 branches, with the same remaining items as step 3.8: one race path depends on
+thread timing. The audit build has no warning lines. The extension adds 16 runtime
+artifacts, without Vert.x or Netty: the package went from 50 to 66 artifacts. The
+SBOM went from 150 to 165 components, because it already listed
+`commons-logging-jboss-logging` as a test dependency. After a Quarkus test
+application stops, Quarkus adds `[Error Occurred After Shutdown]` to later ERROR
+messages in the same test JVM, thus one log assertion checks only the start of the
+message. The rebuilt reader image indexed 89 packages and passed the gate with the
+same statements.
+
+The lab nodes were stopped. After their start, the product container restarts moved
+the generator high-water mark from 29 to 31. Then `verify-product-workload.py`
+passed in 5 minutes 14 seconds. Two runs recovered the digest
+`97af5c774026fb993e04a7b80e3c74bc2ad6c8c6ff7ccc6b27ffe56a7f57ca88`. Both product
+pods received reads within 5 seconds, and within 21 seconds after each pod
+replacement. Each report interval that the check examined had only `OK` reads, at
+186–200/s. The pod replacements moved the high-water mark from 31 to 33.
+
+**2026-10-11:** fixes of the lifecycle validation.
+
+- **Tests:** in a scratch copy, the wait ignored `503` and the lookup deadline, and
+  all 73 reader tests still passed. New `ProductReaderTest` cases show that
+  `503 CATALOG_UNAVAILABLE`, `503 READ_REPLICA_UNAVAILABLE` and a lookup after its
+  deadline make the reader wait. A `500` stops startup at once. The new cases fail
+  when the wait ignores these outcomes, and also when it repeats a `500`. The 77
+  reader tests pass.
+- **Logs:** the reader sets the Apache `HttpRequestRetryExec` logger to WARN. Against
+  a closed port, the packaged reader logged 206 lines in 33 seconds before this
+  change, and 14 lines after it: one line for each repeat.
+- **Records:** VERSIONS.md and the lock now record the 16th runtime artifact,
+  `commons-logging-jboss-logging` **2.0.0.Final**.
+- **Lab:** the lab nodes were stopped. After their start, the reader with the old
+  image repeated its lookups 7 times (`TRANSPORT`, then `503` from the cold product
+  pods). Then it resolved the digest `97af5c77…`. In the next run, the reader
+  started its load 5 seconds before its seeder Job completed. The seeder completed
+  in its first pod, and all reads were `OK`.
+- **New reader image:** the image passed the gate with 89 packages. On the lab, it
+  logged one wait line for a `503`, resolved the same digest, and read only `OK` at
+  181–200/s. The node starts moved the high-water mark from 33 to 38. The `deploy.sh`
+  runs did not restart product.
+
+**Commands:** [deployment runbook](README.md#product-deployment-and-seeding-gate-step-39).

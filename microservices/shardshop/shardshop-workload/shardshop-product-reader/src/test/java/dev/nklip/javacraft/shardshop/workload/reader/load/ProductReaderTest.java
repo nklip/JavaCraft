@@ -13,6 +13,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
 import java.math.BigInteger;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
@@ -83,7 +86,7 @@ class ProductReaderTest {
     @Test
     void resolvesTheIssuedIdsThenReadsAtTheConfiguredRateAndRotatesEachConnection() throws Exception {
         reader = reader(2, 3, 50, Duration.ofMillis(300), Duration.ofSeconds(5));
-        reader.start(failures::incrementAndGet);
+        reader.start(reader.resolve(), failures::incrementAndGet);
         long started = System.nanoTime();
         assertEquals(150, product.sellerLookups.get());
         assertEquals(300, product.productLookups.get());
@@ -113,7 +116,7 @@ class ProductReaderTest {
     void endsAReadAtItsDeadlineClosesThatConnectionAndRecovers() throws Exception {
         product.readDelayMillis = 2_000;
         reader = reader(1, 1, 20, Duration.ofSeconds(30), Duration.ofMillis(300));
-        reader.start(failures::incrementAndGet);
+        reader.start(reader.resolve(), failures::incrementAndGet);
         awaitUntil(() -> outcomes(Outcome.DEADLINE) >= 2);
         product.readDelayMillis = 0;
         awaitUntil(() -> outcomes(Outcome.OK) >= 2);
@@ -164,7 +167,7 @@ class ProductReaderTest {
         log.addHandler(capture);
         try {
             reader = reader(1, 1, 50, Duration.ofSeconds(30), Duration.ofSeconds(5));
-            reader.start(failures::incrementAndGet);
+            reader.start(reader.resolve(), failures::incrementAndGet);
             assertTrue(reporting.await(5, TimeUnit.SECONDS));
             reader.stop();
         } finally {
@@ -177,14 +180,63 @@ class ProductReaderTest {
 
     @ParameterizedTest
     @CsvSource({"catalog-v1.EU.seller.10, Look up seller", "catalog-v1.ASIA.product.7, Look up product"})
-    void stopsStartupWithoutLoadWhenAnEntityIsMissing(String key, String operation) throws Exception {
+    void reportsAMissingEntityAsNotReadyAndResolvesAgainAfterItAppears(String key, String operation) throws Exception {
         product.missingKeys.add(key);
         reader = reader(2, 2, 50, Duration.ofSeconds(30), Duration.ofSeconds(5));
-        ReaderException failure = assertThrows(ReaderException.class, () -> reader.start(failures::incrementAndGet));
+        CatalogNotReadyException failure = assertThrows(CatalogNotReadyException.class, reader::resolve);
         assertEquals(operation + " " + key + " failed with NOT_FOUND", failure.getMessage());
-        reader.stop();
-        assertEquals(0, product.reads.get());
         assertEquals(List.of(), messages());
+
+        product.missingKeys.remove(key);
+        ProductReader.Catalog catalog = reader.resolve();
+        assertEquals(1, messages().size());
+        assertTrue(messages().getFirst().startsWith("INFO Resolved catalog-v1 "), messages().getFirst());
+        assertEquals(0, product.reads.get());
+        reader.start(catalog, failures::incrementAndGet);
+        awaitUntil(() -> product.reads.get() > 0);
+    }
+
+    @Test
+    void reportsAConflictingEntityAsAFailureThatAWaitCannotRepair() {
+        product.conflictingKeys.add("catalog-v1.US.seller.3");
+        reader = reader(1, 1, 50, Duration.ofSeconds(30), Duration.ofSeconds(5));
+        ReaderException failure = assertThrows(ReaderException.class, reader::resolve);
+        assertFalse(failure instanceof CatalogNotReadyException, failure.getClass().getName());
+        assertEquals("Look up seller catalog-v1.US.seller.3 failed with INVALID_RESPONSE", failure.getMessage());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"503, CATALOG_UNAVAILABLE, UNAVAILABLE, true", "503, READ_REPLICA_UNAVAILABLE, REPLICA_UNAVAILABLE, true",
+            "500, INTERNAL_ERROR, HTTP_ERROR, false"})
+    void reportsOnlyARejectionThatAWaitCanRepairAsNotReady(int status, String code, Outcome outcome, boolean notReady) {
+        product.rejectedKeys.put("catalog-v1.EU.seller.10", new FakeProductServer.Rejection(status, code));
+        reader = reader(2, 2, 50, Duration.ofSeconds(30), Duration.ofSeconds(5));
+        ReaderException failure = assertThrows(ReaderException.class, reader::resolve);
+        assertEquals("Look up seller catalog-v1.EU.seller.10 failed with " + outcome, failure.getMessage());
+        assertEquals(notReady, failure instanceof CatalogNotReadyException, failure.getClass().getName());
+    }
+
+    @Test
+    void reportsALookupAfterItsDeadlineAsNotReady() {
+        product.lookupDelayMillis = 2_000;
+        reader = reader(1, 1, 50, Duration.ofSeconds(30), Duration.ofMillis(300));
+        CatalogNotReadyException failure = assertThrows(CatalogNotReadyException.class, reader::resolve);
+        assertEquals("Look up seller catalog-v1.US.seller.1 failed with DEADLINE", failure.getMessage());
+    }
+
+    @Test
+    void reportsAnAbsentProductServiceAsNotReady() throws Exception {
+        URI closed;
+        try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            closed = URI.create("http://127.0.0.1:" + socket.getLocalPort());
+        }
+        requests = new ProductRequests(new ProductRequests.Settings(closed, 1, Duration.ofMillis(200),
+                Duration.ofSeconds(5), Duration.ofSeconds(30), Duration.ofSeconds(10), 2, Duration.ofMillis(10)));
+        metrics = new ReaderMetrics(System::nanoTime);
+        reader = new ProductReader(new ReaderDatasets(CatalogDataset.VERSION), requests,
+                new RatePacer(50, System::nanoTime, SLEEP), metrics, 1, Duration.ofSeconds(1), System::nanoTime, random);
+        CatalogNotReadyException failure = assertThrows(CatalogNotReadyException.class, reader::resolve);
+        assertEquals("Look up seller catalog-v1.US.seller.1 failed with TRANSPORT", failure.getMessage());
     }
 
     @Test
@@ -195,7 +247,7 @@ class ProductReaderTest {
         AtomicReference<Throwable> outcome = new AtomicReference<>();
         Thread starter = Thread.ofPlatform().start(() -> {
             try {
-                reader.start(failures::incrementAndGet);
+                reader.resolve();
             } catch (Throwable failure) {
                 outcome.set(failure);
             }
@@ -230,7 +282,7 @@ class ProductReaderTest {
         };
         log.addHandler(stopOnResolved);
         try {
-            reader.start(failures::incrementAndGet);
+            reader.start(reader.resolve(), failures::incrementAndGet);
         } finally {
             log.removeHandler(stopOnResolved);
         }
@@ -241,21 +293,21 @@ class ProductReaderTest {
     @Test
     void aFailedWorkerMarksTheReaderFailedAndRequestsExitOnce() throws Exception {
         reader = reader(2, 2, 50, Duration.ofMillis(200), Duration.ofSeconds(5));
-        reader.start(failures::incrementAndGet);
+        reader.start(reader.resolve(), failures::incrementAndGet);
         requests.close();
         awaitUntil(reader::failed);
         reader.stop();
         assertEquals(1, failures.get());
+        // After a Quarkus test application in this JVM stops, Quarkus logging adds a suffix to ERROR messages.
         assertTrue(logs.stream().anyMatch(record -> record.getLevel().intValue() >= Level.SEVERE.intValue()
-                && "A product reader worker failed".equals(record.getMessage())));
+                && record.getMessage().startsWith("A product reader worker failed")), messages().toString());
     }
 
     @Test
     void doesNotHideAnUnexpectedLookupFailure() {
         reader = reader(1, 1, 50, Duration.ofSeconds(30), Duration.ofSeconds(5));
         requests.close();
-        IllegalStateException failure = assertThrows(IllegalStateException.class,
-                () -> reader.start(failures::incrementAndGet));
+        IllegalStateException failure = assertThrows(IllegalStateException.class, reader::resolve);
         assertEquals("A catalog lookup failed unexpectedly", failure.getMessage());
         assertInstanceOf(RuntimeException.class, failure.getCause());
     }
@@ -263,8 +315,10 @@ class ProductReaderTest {
     @Test
     void startsOnceStopsOnceAndRestoresAnInterruptOfTheStoppingThread() throws Exception {
         reader = reader(1, 1, 50, Duration.ofSeconds(30), Duration.ofSeconds(5));
-        reader.start(failures::incrementAndGet);
-        assertThrows(IllegalStateException.class, () -> reader.start(failures::incrementAndGet));
+        ProductReader.Catalog catalog = reader.resolve();
+        reader.start(catalog, failures::incrementAndGet);
+        assertThrows(IllegalStateException.class, () -> reader.start(catalog, failures::incrementAndGet));
+        assertThrows(IllegalStateException.class, reader::resolve);
         Thread.currentThread().interrupt();
         reader.stop();
         assertTrue(Thread.interrupted());
@@ -273,9 +327,12 @@ class ProductReaderTest {
         assertEquals(logged, logs.size());
 
         ProductReader unused = reader(1, 1, 50, Duration.ofSeconds(30), Duration.ofSeconds(5));
+        assertThrows(IllegalArgumentException.class, () -> unused.start(catalog, failures::incrementAndGet));
+        assertThrows(NullPointerException.class, () -> unused.start(null, failures::incrementAndGet));
+        assertThrows(NullPointerException.class, () -> unused.start(catalog, null));
         unused.stop();
-        assertThrows(IllegalStateException.class, () -> unused.start(failures::incrementAndGet));
-        assertThrows(NullPointerException.class, () -> unused.start(null));
+        assertEquals("Catalog resolution was stopped",
+                assertThrows(InterruptedException.class, unused::resolve).getMessage());
     }
 
     @Test
