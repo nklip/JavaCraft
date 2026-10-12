@@ -10,9 +10,10 @@ from step 3.7 seeds and verifies the catalog through that API and then exits. Th
 product reader from step 3.8 reads the seeded products at a bounded rate until it
 stops. The other entry points start CDI and exit. Step 3.5 provides workload-owned
 dataset definitions and HTTP clients; the buyer provider remains step 4.1, and the
-order workload loop remains step 4.7. No Docker or Kubernetes is needed for Maven
-module tests. The separate product-provider, seeder and reader acceptance checks
-use disposable PostgreSQL databases. Step 3.9 deploys product, the seeder Job and
+order workload loop remains step 4.7. Maven module tests need no Docker or
+Kubernetes. The Cucumber scenarios of `shardshop-testing` run product, the seeder
+and the reader against a PostgreSQL container in the `integration` profile
+([step 3.10](#integration-tests-with-testcontainers-step-310)). Step 3.9 deploys product, the seeder Job and
 the reader on the kind lab. The reader starts its load only after product serves
 the complete dataset ([seeding gate](#product-deployment-and-seeding-gate-step-39)).
 Product/order production
@@ -28,8 +29,9 @@ the startup launcher; tests use disposable configuration.
 | `shardshop-workload/shardshop-product-reader` | `dev.nklip.javacraft.shardshop.workload.reader.ProductReaderApplication` |
 | `shardshop-workload/shardshop-order-producer` | `dev.nklip.javacraft.shardshop.workload.producer.OrderProducerApplication` |
 
-The ShardShop parent has five children and ten Java modules: six applications
-and four library JARs. `shardshop-core` aggregates `common`, `idgen` and `sharding`.
+The ShardShop parent has six children and eleven Java modules: six applications,
+four library JARs and the test-only `shardshop-testing` module. `shardshop-core`
+aggregates `common`, `idgen` and `sharding`.
 Common provides canonical ID parsing, SHA-256 and bounded JSON HTTP transport;
 it contains no dataset definitions or service wire models. Only product/order
 use idgen and sharding; their plain domain classes and Quarkus configuration
@@ -213,7 +215,7 @@ shardshop.catalog.read-profile=primary
 
 Bare URL overrides also receive the secure TLS defaults. An explicit URL
 `sslmode` overrides the default; use `sslmode=disable` only for a deliberate local
-plaintext test. The isolated provider harness supplies that override.
+plaintext test. The step 3.10 scenarios keep `verify-full` with a test CA.
 Repeat credentials/overrides for every shard. Unknown connection names fail
 startup. `max-pool-size` is bounded to 1..32 per shard/endpoint, with no initial
 connections; the default is four. Writes always use primaries. The optional
@@ -227,49 +229,30 @@ rejects within the budget; uncertain writes are recovered through their durable 
 write retry. `--check-startup` validates configuration and exits for packaged
 startup checks; ordinary product startup waits for shutdown and serves HTTP.
 
-Build and run the isolated acceptance checks (the Python environment is prepared
-in [contract validation](#http-and-message-contracts-step-31)):
+Build product and run its scenarios of step 3.10:
 
 ```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product -am -Paudit clean verify
-docker run -d --name shardshop-product-check -p 127.0.0.1:55436:5432 \
-  -e POSTGRES_PASSWORD=shardshop-test-only \
-  docker.io/library/postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
-python3 -B microservices/shardshop/scripts/verify-catalog-migration.py shardshop-product-check
-/tmp/shardshop-contract-validation/bin/python -B \
-  microservices/shardshop/scripts/verify-product-provider.py shardshop-product-check
-docker rm -f shardshop-product-check
-/tmp/shardshop-contract-validation/bin/python -B \
-  microservices/shardshop/scripts/verify-product-transport.py
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
 ```
 
-The scripts create and remove uniquely named test databases and roles. The
-provider check starts its own packaged JVMs and validates actual HTTP responses
-against OpenAPI across four shards, including two US shards. It exercises
-concurrent retries, changed payloads, strict input validation, current stock and
-profits, discarded responses, process restarts, bounded pools/locks, and primary
-and replica outages. It never connects to a deployed ShardShop database.
-The transport check creates and removes its own pinned PostgreSQL container and
-temporary certificates. It checks `verify-full` TLS, rejects untrusted certificates
-and hostname mismatches, and reconnects after a database restart while retaining
-the same product JVM and stored IDs. HTTPS and CNPG primary promotion remain
-deployment/recovery milestones.
+`CatalogMigration.feature`, `ProductApi.feature` and `ProductTransport.feature`
+apply the catalog stream with Flyway, run the packaged product against four shard
+databases (two US) over `verify-full` TLS, and check the stored rows. The
+[integration tests](#integration-tests-with-testcontainers-step-310) section lists
+their cases. HTTPS and CNPG primary promotion remain deployment/recovery milestones.
 
-The disposable checks do not apply migrations to the retained kind lab. Complete
-the lab qualification separately through its normal Flyway Jobs:
+The scenarios do not apply migrations to the retained kind lab. Apply them there
+with the normal Flyway Jobs. Flyway validates the applied migrations at each run:
 
 ```bash
 bash microservices/shardshop/scripts/up.sh
 bash microservices/shardshop/scripts/migrate.sh
 bash microservices/shardshop/scripts/migrate.sh # validates history; no pending migrations
-bash microservices/shardshop/scripts/verify-catalog-lab.sh
 bash microservices/shardshop/scripts/verify-topology.sh --routing-only
 bash microservices/shardshop/scripts/verify-generator-allocation.sh
 ```
 
-`verify-catalog-lab.sh` makes read-only checks on every shard instance for V2,
-object ownership, backfill invariants and effective product/order grants. The
-allocation drill consumes retained generator slots. The
+The allocation drill consumes retained generator slots. The
 [changelog](CHANGELOG.md#step-36) records whether the lab qualification has
 actually passed; isolated checks alone do not complete it.
 
@@ -326,30 +309,21 @@ variables such as `SHARDSHOP_SEEDER_PRODUCT_URL` also set these properties.
 Step 3.9 runs the seeder as a Kubernetes Job, beside the reader that waits for its
 data ([seeding gate](#seeding-gate)).
 
-Build the product and seeder packages, and then run the isolated acceptance check
-(the Python environment is prepared in
-[contract validation](#http-and-message-contracts-step-31)):
-
-```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-workload/shardshop-product-seeder -am -Paudit clean verify
-docker run -d --name shardshop-seeder-check -p 127.0.0.1:55437:5432 \
-  -e POSTGRES_PASSWORD=shardshop-test-only \
-  docker.io/library/postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
-/tmp/shardshop-contract-validation/bin/python -B \
-  microservices/shardshop/scripts/verify-product-seeder.py shardshop-seeder-check
-docker rm -f shardshop-seeder-check
-```
-
-The check uses the provider harness of step 3.6: four disposable shard databases
-(two US) and its own product JVMs. It does not connect to the kind lab. It holds
-the advisory lock of `catalog-v1.EU.seller.10`, so the first seeder run fails with
+`ProductSeeder.feature` of [step 3.10](#integration-tests-with-testcontainers-step-310)
+runs the packaged seeder against the packaged product and four shard databases
+(two US). It does not connect to the kind lab. A database session holds the
+advisory lock of `catalog-v1.EU.seller.10`, so the first seeder run fails with
 `503` after 59 sellers and 118 products. After a product restart with a new
 generator ID, a complete run must keep those rows unchanged. Two complete runs
-must store identical rows and log the same digest. The script calculates the
+must store identical rows and log the same digest. The scenario calculates the
 expected payloads from the dataset TSVs and the digest from the stored IDs. It
 also checks seller ID routes, creation-key homes, product colocation and zero
 USD/EUR profits. A last run against product with unavailable replica reads must
-fail and leave the rows unchanged.
+fail and leave the rows unchanged:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
+```
 
 ## Product reader (step 3.8)
 
@@ -448,40 +422,36 @@ the timeouts, and exits without HTTP requests. An unexpected worker failure logs
 one error line and stops the reader with exit code 1. Step 3.9 adds the Deployment,
 its resource budget, the per-pod product counters and the [seeding gate](#seeding-gate).
 
-Build the three packages, and then run the isolated acceptance check. The check
-needs `lsof` and the Python environment of
-[contract validation](#http-and-message-contracts-step-31). It takes approximately
-90 seconds:
+`ProductReader.feature` of [step 3.10](#integration-tests-with-testcontainers-step-310)
+runs the packaged reader with its default policy and 5-second reports against the
+packaged product, and seeds the catalog with the packaged seeder. It does not
+connect to the kind lab. It takes approximately 70 seconds:
+
+1. The reader starts before the seeder. It must wait for the catalog and must not
+   start its load. After the seeder run, it must start its load, and its resolution
+   digest must equal the seeder digest.
+2. Three report intervals must have only `OK` reads at 180–201 requests/s, with all
+   three regions, the 16 open connections of the warm-up and no read that waits for
+   a connection.
+3. While product stops, then starts without replicas, and then starts with
+   primaries, the reader must record `TRANSPORT` and `REPLICA_UNAVAILABLE`
+   outcomes, continue to run, and recover. No read takes longer than 5.1 seconds.
+4. After SIGTERM, the total line must be the last report. The stored rows must not
+   change.
+5. Against product without read replicas, a reader with a 10-second maximum wait
+   must exit with code 1 and one `REPLICA_UNAVAILABLE` lookup error, before the load
+   starts.
+
+The connection rotation after the 30-second lifetime and the 5-second read deadline
+are client behavior. `ProductRequestsTest` and `ProductReaderTest` check them
+against a loopback server. `ReaderConfigurationTest` checks that the packaged
+defaults are the time limits of the
+[HTTP connection policy](ARCHITECTURE.md#http-connection-policy): a 2-second connect
+timeout, a 5-second deadline, a 30-second lifetime and a 10-second idle timeout.
 
 ```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-workload/shardshop-product-seeder,shardshop-workload/shardshop-product-reader -am -Paudit clean verify
-docker run -d --name shardshop-reader-check -p 127.0.0.1:55438:5432 \
-  -e POSTGRES_PASSWORD=shardshop-test-only \
-  docker.io/library/postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
-/tmp/shardshop-contract-validation/bin/python -B \
-  microservices/shardshop/scripts/verify-product-reader.py shardshop-reader-check
-docker rm -f shardshop-reader-check
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
 ```
-
-The check uses the provider harness of step 3.6 and seeds the catalog with the
-packaged seeder. It does not connect to the kind lab. The reader runs with its
-default policy and 5-second reports:
-
-1. Against product without read replicas, the reader must exit with code 1 and one
-   `REPLICA_UNAVAILABLE` lookup error, before the load starts.
-2. Against the primary profile, the resolution digest must equal the seeder digest
-   and the digest of the stored IDs. For 38 seconds, all reads must be `OK` at a
-   maximum of 201 requests/s, with all three regions, and no read waits for a
-   connection. `lsof` must show 16 TCP connections after the warm-up. After 38
-   seconds, it must show 1–16 connections, and none from the warm-up.
-3. While product is paused with SIGSTOP for 7 seconds, reads must end with
-   `DEADLINE` after 5.0–5.1 seconds. After SIGCONT, the reads must become `OK`
-   again.
-4. While product stops, then starts without replicas, and then starts with
-   primaries, the reader must record `TRANSPORT` and `REPLICA_UNAVAILABLE`
-   outcomes, continue to run, and recover.
-5. After SIGTERM, the total line must be the last report. The stored rows must not
-   change.
 
 ## Product deployment and seeding gate (step 3.9)
 
@@ -652,6 +622,48 @@ maximum wait.
 At the end, the check scales the reader to zero. Product keeps running. Each check
 uses approximately two generator slots for the pod replacements, and more if the
 product image or manifest changed.
+
+## Integration tests with Testcontainers (step 3.10)
+
+The test-only module `shardshop-testing` holds Cucumber scenarios that run the
+packaged product, seeder and reader against a real PostgreSQL. Failsafe runs them
+with `-Pintegration`, as the `*-testing` modules of the other projects in this
+repository do. The module has no main classes and installs nothing. Its POM
+dependencies on the three applications have no transitive dependencies; they only
+make `-am` package the applications first. Docker must run:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
+```
+
+The scenarios take approximately two and a half minutes. Cucumber writes its
+reports to `shardshop-testing/target/cucumber-reports`, and the application logs
+stay in `shardshop-testing/target/scenario-runs`. Run them only through Maven,
+which sets the image digest and the source directory.
+
+| Item | Test setup |
+|---|---|
+| PostgreSQL | One container of the pinned `tc.image.postgresql` (18.6) for the run, with its port bound to `127.0.0.1`. Each scenario creates its own databases and drops them at its end |
+| Roles and databases | The catalog roles and memberships of the CNPG `DatabaseRole`s, the bootstrap hardening, and the schema `catalog` of `catalog_owner`, as on the lab |
+| Migrations | The Flyway **13.8.1** Java API applies `database/shard/catalog` as `catalog_migrator` with the settings of its `flyway.toml` and the inventory placeholders, as the migration Jobs do |
+| TLS | `openssl` in the container makes a test CA and a server certificate for `localhost` only. Product connects with its `verify-full` default |
+| Applications | The packaged `quarkus-app` folders, started as JVMs with an empty environment. Product gets a new generator ID at each start, four shards (`shard-d` is a second US shard) and at most two connections for each endpoint |
+| Logs | After each scenario, a hook stops product and fails the scenario if a product JVM logged a WARN or ERROR line. This also covers the invalid requests, deadlines and outages that the scenarios cause |
+| Cleanup | Testcontainers runs without its Ryuk reaper, which publishes a port on all host interfaces and runs privileged with the Docker socket. A JVM shutdown hook removes the container; only a killed test JVM leaves it. Testcontainers logs one `Ryuk has been disabled` WARN line for each run |
+
+| Feature | Replaces | Cases |
+|---|---|---|
+| `CatalogMigration.feature` | `verify-catalog-migration.py`, `verify-catalog-lab.sh` | V1 to V2 upgrade of legacy rows and backfill, history validation of a rerun, object owners, no functions or triggers, creation-key and product constraints, profit-credit identities, the privileges of each role and login, and a changed grants file that Flyway reapplies and that removes stale privileges |
+| `ProductApi.feature` | `verify-product-provider.py` | Seller and product creation, retries and conflicts on the shard of the key or seller, current stock and profits, integer forms, concurrent creation, lost responses, invalid input over the real HTTP stack, 32 KiB bodies, an incomplete body, a held lock with a full pool, restarts, and unavailable primaries or replicas |
+| `ProductTransport.feature` | `verify-product-transport.py` | TLS sessions, an untrusted CA, a host name that the certificate does not name, and pool recovery after a PostgreSQL restart without a product restart |
+| `ProductSeeder.feature` | `verify-product-seeder.py` | The [seeder runbook](#product-seeder-step-37) cases |
+| `ProductReader.feature` | `verify-product-reader.py` | The [reader runbook](#product-reader-step-38) cases |
+
+The expected bodies come from the product OpenAPI document; an error body has only
+a code and a nonempty message. Step 3.12 adds the schema validation of the OpenAPI
+documents. The scenarios calculate routes, key homes and advisory locks again with
+the JDK, and they read the dataset TSV files, not the Java definitions. On the lab,
+each `migrate.sh` run validates the applied migrations with Flyway.
 
 ## HTTP and message contracts (step 3.1)
 
@@ -1030,9 +1042,9 @@ common and idgen declare Mockito for their controlled-source tests.
 Product and workload clients declare Mockito for their controlled IO tests. `shardshop-sharding`
 tests its router against golden vectors whose expected shards were computed
 independently. PostgreSQL 18.6 and RabbitMQ 4.3.6 test-image
-properties use the lock's immutable digests. The separate provider/migration
-checks explicitly use a disposable PostgreSQL container; Maven tests do not
-automatically start containers.
+properties use the lock's immutable digests. Only the `shardshop-testing`
+scenarios start a container, and only with `-Pintegration`
+([step 3.10](#integration-tests-with-testcontainers-step-310)).
 
 Idgen and sharding retain the test JVM option
 `--add-opens=java.base/java.lang.invoke=ALL-UNNAMED`. On 2026-10-06, removing their

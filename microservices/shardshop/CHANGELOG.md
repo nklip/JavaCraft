@@ -410,3 +410,84 @@ replacement. Each report interval that the check examined had only `OK` reads, a
   runs did not restart product.
 
 **Commands:** [deployment runbook](README.md#product-deployment-and-seeding-gate-step-39).
+
+## Step 3.10
+
+**2026-10-12:** the new test-only module `shardshop-testing` holds 27 Cucumber 8.0.4
+scenarios in five features, as the `*-testing` modules of the other projects in
+this repository do. Failsafe runs them only with `-Pintegration`. They start the
+packaged product, seeder and reader against one PostgreSQL 18.6 container with
+the lab's catalog roles, and Flyway 13.8.1 applies `database/shard/catalog` through
+its Java API as `catalog_migrator`. Product connects with `verify-full` TLS to four
+shard databases (two US). The scenarios replace these checks:
+
+| Feature | Scenarios | Replaced check |
+|---|---|---|
+| `CatalogMigration.feature` | 5 | `verify-catalog-migration.py`, `verify-catalog-lab.sh` |
+| `ProductApi.feature` | 15 | `verify-product-provider.py` |
+| `ProductTransport.feature` | 4 | `verify-product-transport.py` |
+| `ProductSeeder.feature` | 1 | `verify-product-seeder.py` |
+| `ProductReader.feature` | 2 | `verify-product-reader.py` |
+
+The six scripts are deleted; their evidence in the entries of steps 3.6–3.9 stays.
+These cases of the scripts were not moved, because other checks own them:
+
+- The SHA-256 constant of V1: Flyway validates the checksums of the applied
+  migrations at each `migrate.sh` run on the lab.
+- The `lsof` connection counts and the paused product (SIGSTOP) of the reader check:
+  connection rotation and the read deadline are client behavior, and
+  `ProductRequestsTest` and `ProductReaderTest` check them against a loopback server.
+  `ReaderConfigurationTest` checks that the packaged defaults are the time limits of
+  the HTTP connection policy, and the reader scenario checks the 16 open connections
+  of the warm-up in the pool counts of the reports.
+- The OpenAPI schema validation of each response: the scenarios compare the exact
+  bodies, and step 3.12 adds the schema validator.
+- The rollback of one transaction after a duplicate key: that is PostgreSQL
+  behavior, not a catalog rule.
+
+Since step 3.9, the reader waits for the catalog. Thus the reader check without
+replicas now starts the reader with a 10-second maximum wait and a 2-second maximum
+backoff, and the reader check also shows that the reader does not read before the
+seeder runs.
+
+Five temporary mutations showed that the scenarios detect regressions: a stale
+grant in `R__catalog_grants.sql`, a product that always returns `201`, product TLS
+with `sslmode=require`, a seeder digest with swapped IDs, and a reader that does not
+wait for `REPLICA_UNAVAILABLE`. 14 scenarios failed, each at the expected step. The
+files were then restored.
+
+The validation of the step found two gaps against the deleted scripts, both with
+temporary mutations in a copy of the tree:
+
+- Only 3 of the 15 product API scenarios checked the product log. A product that
+  logged a WARN line for each rejected body and an ERROR line for each expired
+  deadline passed all scenarios. Now a hook stops product after each scenario and
+  checks the logs of all its JVMs, also the shutdown. The same mutation now fails the
+  3 scenarios that send invalid input, oversized bodies and an incomplete body.
+- No test checked the packaged defaults of the reader. A 300-second connection
+  lifetime and a 30-second deadline each passed all tests. Now each of them fails
+  `ReaderConfigurationTest`.
+
+After these changes, the full ShardShop build with `-Pintegration,audit clean verify`
+passed in 4 minutes: 884 unit/startup tests, 48 packaged routing checks and the 27
+scenarios (2 minutes 15 seconds). The documented command of the module, with `-am`,
+also passed. The product, seeder and reader SBOMs did not
+change (251, 147 and 165 components); the SBOM of `shardshop-testing` lists 71
+test-scope components. The only warning line is the
+`Ryuk has been disabled` WARN line of Testcontainers.
+
+Qualification: Testcontainers 2.0.5 is the platform version. The parent pins Flyway
+13.8.1 for the tests, because the platform manages 12.0.0. The module imports
+`cucumber-bom` 8.0.4 to replace the version ranges of the Cucumber libraries. The 39
+artifacts that no other ShardShop module resolves matched Maven Central's SHA-1
+files, and OSV listed no advisories for them. The PostgreSQL test pin moved to the
+2026-10-07 build of `postgres:18.6-trixie`. Docker Scout reports 6 critical and 36
+high advisories for it, which the user accepted for local test containers.
+Testcontainers runs without its Ryuk reaper: Ryuk 0.14.0 publishes its port on all
+host interfaces, runs privileged with the Docker socket, and contains Go stdlib
+1.23.12 with 4 critical and 29 high advisories. A JVM shutdown hook removes the
+container ([details](VERSIONS.md#step-310-integration-test-dependencies)).
+
+The step did not use the kind lab.
+
+**Commands:** [integration tests](README.md#integration-tests-with-testcontainers-step-310).

@@ -405,6 +405,43 @@ Review these families with the platform by **2026-11-04**.
 [SmallRye Context Propagation releases](https://github.com/smallrye/smallrye-context-propagation/releases),
 [OSV](https://osv.dev/).
 
+### Step 3.10 integration test dependencies
+
+The test-only module `shardshop-testing` adds these test-scope dependencies. None
+of them enters an application package or runtime.
+
+| Family | Selection and qualification |
+|---|---|
+| Testcontainers | **2.0.5**, the version of the Quarkus 3.40.1 platform and the newest release (2026-04-20): `testcontainers`, `testcontainers-jdbc`, `testcontainers-database-commons` and `testcontainers-postgresql`, with docker-java **3.7.1** (API, transport and zero-dependency transport), duct-tape **1.0.8** and JetBrains annotations **26.1.0** |
+| JNA | **5.8.0** (2021-03-22), which the platform selects. docker-java 3.7.1 declares 5.18.1, and 5.19.1 (2026-06-12) is the newest release. As with SmallRye Context Propagation in step 3.9, it stays without an override until a Quarkus patch moves it |
+| Flyway Java API | **13.8.1** core and PostgreSQL plugin, the release of the lab's [migration image](#current-migration-runtime). The platform manages 12.0.0, thus the ShardShop parent pins `flyway.version` explicitly for the tests. The test classpath excludes the CockroachDB plugin, as the image does. Change the image and this property together |
+| Cucumber JVM | **8.0.4** (2026-10-02, the newest release of the 8.0 line from 2026-09-24): Java 17 baseline and JUnit Platform 6.1.2. Its libraries declare version ranges for each other; the imported `cucumber-bom` 8.0.4 manages 31 exact versions, and 23 of them resolve in the module. The reports need Jackson 2 with the platform's `jackson-datatype-jdk8` **2.21.7**. The repository root keeps 7.34.6 for its other modules |
+| PicoContainer | **2.16** (2026-08-15) through `cucumber-picocontainer`, which gives the step classes of one scenario the same state objects, as `cucumber-spring` does in the Spring modules |
+| JUnit Platform Suite | **6.1.3**, managed by the platform |
+
+The logging, JDBC and Jackson libraries of the module also resolve in other
+ShardShop modules. On **2026-10-12**, the 39 artifacts that no other ShardShop
+module resolves matched Maven Central's published SHA-1 checksums, and OSV listed
+no advisories for them. The lock's `step_3_10_integration_test_dependencies`
+records them with independent SHA-256 values. Review these families with the
+platform by **2026-11-04**, and Flyway with its image by **2026-10-30**.
+[Testcontainers releases](https://github.com/testcontainers/testcontainers-java/releases),
+[Cucumber JVM releases](https://github.com/cucumber/cucumber-jvm/releases),
+[OSV](https://osv.dev/).
+
+The scenarios use one image. The `postgresql_test` pin moves to the 2026-10-07
+build of `postgres:18.6-trixie` (PostgreSQL `18.6-1.pgdg13+2`, gosu 1.19), with
+newer Debian packages than the 2026-09-28 pin. Docker Scout reports 6 critical, 36
+high, 28 medium and 49 low advisories for it: Go stdlib 1.24.6 of gosu (4 critical,
+29 high), gnutls, libxml2, cyrus-sasl2 and zlib; no newer build fixes them. The user
+accepted them on 2026-10-12 for local test containers that run only during an
+integration build, with the port bound to `127.0.0.1`. Recheck them by
+**2026-10-28**. Testcontainers runs without its Ryuk reaper
+(`TESTCONTAINERS_RYUK_DISABLED=true`): Ryuk 0.14.0, the newest release, publishes
+its port on all host interfaces, runs privileged with the Docker socket, and
+contains Go stdlib 1.23.12 with 4 critical and 29 high advisories. A JVM shutdown
+hook removes the container instead.
+
 ### Explicit Snowflake library selection
 
 Pin **`de.mkammerer.snowflake-id:snowflake-id:0.0.2`** outside the framework BOM in

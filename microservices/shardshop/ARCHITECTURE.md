@@ -47,8 +47,10 @@ This design embeds Debezium Engine in the existing order relay so it can retain
 the publication bookkeeping and mandatory-routing protocol defined below;
 Kafka and a separate Debezium Server deployment are not required.
 
-There are five top-level Maven modules and ten Java modules: six deployable
-applications and four library JARs. `shardshop-core` is a POM parent and aggregator
+There are six top-level Maven modules and eleven Java modules: six deployable
+applications, four library JARs and the test-only `shardshop-testing` module.
+`shardshop-testing` has no main classes and no runtime dependency on another module;
+its Cucumber scenarios start the packaged applications (step 3.10). `shardshop-core` is a POM parent and aggregator
 for `common`, `idgen` and `sharding`. The workload module is a POM aggregator
 containing three applications and the ID-free `shardshop-datasets` library;
 product, order and ledger are the other three
@@ -78,6 +80,7 @@ they never generate, derive, or allocate them locally.
 | 3 | `shardshop-order` | Accept buyer and order HTTP requests, coordinate the saga including stock reservation, and relay captured order-outbox inserts to RabbitMQ | One stateless order service pod initially | Buyers, orders, items, saga state, inbox, outbox, and CDC offsets in schema `ordering`; reads sellers and products and writes stock reservations and product stock in `catalog` |
 | 4 | `shardshop-ledger` | Consume ledger commands and persist order ledger records | One ledger consumer pod plus a separate PostgreSQL pod initially | Schema `ledger` in a dedicated ledger database: entries, decisions, permanent result bindings, inbox, outbox, and command quarantine |
 | 5 | `shardshop-core` | Aggregate `common` (canonical-ID parsing, UTF-8 SHA-256 and the bounded JSON HTTP client), `idgen` (bounded Snowflake generation) and `sharding` (seller/buyer routing); idgen and sharding own their SmallRye/CDI wiring (section 3) | No aggregator pod; common is inside all six applications, idgen and sharding are inside product/order | None |
+| 6 | `shardshop-testing` | Cucumber integration scenarios that start the packaged applications against a PostgreSQL test container | Not deployed; runs only in Maven builds with `-Pintegration` | Its own test databases, migrated by Flyway with the lab's roles |
 
 Module 1 contains exactly three independently runnable submodules:
 

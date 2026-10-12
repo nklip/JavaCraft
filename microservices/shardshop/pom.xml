@@ -26,6 +26,9 @@
         <test.jvm.args>-Xshare:off -XX:-EnableDynamicAgentLoading</test.jvm.args>
         <mockito.agent.argLine>-javaagent:"${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar"</mockito.agent.argLine>
         <snowflake-id.version>0.0.2</snowflake-id.version>
+        <!-- Test-only Flyway Java API. Keep it equal to the lab's Flyway image in infra/images/flyway/Dockerfile. -->
+        <flyway.version>13.8.1</flyway.version>
+        <cucumber.version>8.0.4</cucumber.version>
         <shardshop.directory>${project.basedir}</shardshop.directory>
         <jacoco.it.argLine/>
         <shardshop.failIfNoTests>false</shardshop.failIfNoTests>
@@ -48,7 +51,7 @@
         <versions-maven-plugin.version>2.22.0</versions-maven-plugin.version>
         <exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>
         <sisu.version>1.1.0</sisu.version>
-        <tc.image.postgresql>docker.io/library/postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722</tc.image.postgresql>
+        <tc.image.postgresql>docker.io/library/postgres@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336</tc.image.postgresql>
         <tc.image.rabbitmq>docker.io/library/rabbitmq@sha256:cdf40d8cb363d145e377ed88d59696a42386ffe54b30125f10eb128b862eea95</tc.image.rabbitmq>
     </properties>
 
@@ -58,6 +61,7 @@
         <module>shardshop-product</module>
         <module>shardshop-order</module>
         <module>shardshop-ledger</module>
+        <module>shardshop-testing</module>
     </modules>
 
     <dependencyManagement>
@@ -105,6 +109,17 @@
                 <groupId>dev.nklip.javacraft</groupId>
                 <artifactId>shardshop-sharding</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <!-- The platform manages Flyway 12.0.0; the integration tests apply migrations with the lab's release. -->
+            <dependency>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-core</artifactId>
+                <version>${flyway.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-database-postgresql</artifactId>
+                <version>${flyway.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -159,6 +174,13 @@
                             <tc.image.postgresql>${tc.image.postgresql}</tc.image.postgresql>
                             <tc.image.rabbitmq>${tc.image.rabbitmq}</tc.image.rabbitmq>
                         </systemPropertyVariables>
+                        <environmentVariables>
+                            <!--
+                                No Ryuk resource reaper: it publishes its port on all host interfaces and runs
+                                privileged with the Docker socket. A JVM shutdown hook removes the containers instead.
+                            -->
+                            <TESTCONTAINERS_RYUK_DISABLED>true</TESTCONTAINERS_RYUK_DISABLED>
+                        </environmentVariables>
                     </configuration>
                 </plugin>
                 <plugin>
