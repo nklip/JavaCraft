@@ -25,6 +25,7 @@
             "I/O error reading dependency state". The stale-source check is sufficient for test sources only.
         -->
         <maven.compiler.useIncrementalCompilation>false</maven.compiler.useIncrementalCompilation>
+        <shardshop.generatorAllocation>${project.build.directory}/chart/shardshop/templates/generator-allocation.yaml</shardshop.generatorAllocation>
     </properties>
 
     <dependencyManagement>
@@ -178,9 +179,60 @@
                         <shardshop.directory>${shardshop.directory}</shardshop.directory>
                         <!-- Logs, routing files and certificates of the scenarios; mvn clean removes them. -->
                         <shardshop.testing.work>${project.build.directory}/scenario-runs</shardshop.testing.work>
+                        <!-- The generator RBAC and retention policy that the integration profile renders. -->
+                        <shardshop.testing.generator-allocation>${shardshop.generatorAllocation}</shardshop.testing.generator-allocation>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>integration</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <!--
+                            The generator scenarios apply the real RBAC and retention policy of the chart. helm comes
+                            from the PATH, as for the lab scripts, and render.sh uses the same values. Helm 4.3 ignores
+                            show-only with output-dir, thus it writes all infrastructure templates; the scenarios read
+                            only generator-allocation.yaml. Its "wrote" lines go to the debug log, and errors stay visible.
+                        -->
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>render-generator-allocation</id>
+                                <phase>pre-integration-test</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>helm</executable>
+                                    <arguments>
+                                        <argument>template</argument>
+                                        <argument>shardshop</argument>
+                                        <argument>${shardshop.directory}/infra/helm/shardshop</argument>
+                                        <argument>--namespace</argument>
+                                        <argument>shardshop</argument>
+                                        <argument>--values</argument>
+                                        <argument>${shardshop.directory}/infra/helm/shardshop/kind-values.yaml</argument>
+                                        <argument>--values</argument>
+                                        <argument>${shardshop.directory}/infra/shards.yaml</argument>
+                                        <argument>--set-string</argument>
+                                        <argument>render=infrastructure</argument>
+                                        <argument>--output-dir</argument>
+                                        <argument>${project.build.directory}/chart</argument>
+                                    </arguments>
+                                    <useMavenLogger>true</useMavenLogger>
+                                    <quietLogs>true</quietLogs>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

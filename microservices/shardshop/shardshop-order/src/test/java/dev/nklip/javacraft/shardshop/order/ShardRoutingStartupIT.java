@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -20,6 +21,7 @@ class ShardRoutingStartupIT {
 
     private static final String VALID_ROUTING = "shardshop.routing.shards=shard-b,shard-a\n"
             + "shardshop.routing.regions=EU,US\n";
+    private static final String REGISTRY_UID = "3b439d70-a189-4a6e-8045-ab5b1fa140ac";
 
     @TempDir
     Path directory;
@@ -98,31 +100,51 @@ class ShardRoutingStartupIT {
     }
 
     @Test
-    void rejectsAProfileEnvironmentOverrideOfTheReservedGeneratorId() throws Exception {
-        assertNotEquals(0, launch(VALID_ROUTING, "1", null, "1", Map.of(
-                "CONFIG_ORDINAL", "500", "_PROD_SHARDSHOP_ID_GENERATOR_ID", "2",
-                "SHARDSHOP_LAUNCHER_RESERVED_GENERATOR_ID", "2")));
-        assertTrue(output().contains("Live generator ID does not match its reserved identity"), output());
+    void rejectsAProfileEnvironmentGeneratorIdNextToTheRegistry() throws Exception {
+        assertNotEquals(0, launch(VALID_ROUTING, null, null, Map.of("CONFIG_ORDINAL", "500",
+                "_PROD_SHARDSHOP_ID_GENERATOR_ID", "2", "SHARDSHOP_ID_REGISTRY_UID", REGISTRY_UID)));
+        assertTrue(output().contains("Set shardshop.id.registry.uid or shardshop.id.generator-id, not both"), output());
     }
 
     @Test
-    void rejectsAnExternalFileOverrideOfTheReservedGeneratorId() throws Exception {
-        assertNotEquals(0, launch(VALID_ROUTING + "config_ordinal=500\nshardshop.id.generator-id=2\n",
-                "1", null, "1", Map.of()));
-        assertTrue(output().contains("Live generator ID does not match its reserved identity"), output());
+    void rejectsAnExternalFileGeneratorIdNextToTheRegistry() throws Exception {
+        assertNotEquals(0, launch(VALID_ROUTING + "config_ordinal=500\nshardshop.id.generator-id=2\n", null, null,
+                Map.of("SHARDSHOP_ID_REGISTRY_UID", REGISTRY_UID)));
+        assertTrue(output().contains("Set shardshop.id.registry.uid or shardshop.id.generator-id, not both"), output());
     }
 
     @Test
-    void matchingProfileEnvironmentConfigurationKeepsTheRawReservation() throws Exception {
-        assertEquals(0, launch(VALID_ROUTING, "1", null, "1", Map.of(
-                "CONFIG_ORDINAL", "500", "_PROD_SHARDSHOP_ID_GENERATOR_ID", "1",
-                "SHARDSHOP_LAUNCHER_RESERVED_GENERATOR_ID", "2")), output());
+    void rejectsAFixedGeneratorIdInAKubernetesPod() throws Exception {
+        assertNotEquals(0, launch(VALID_ROUTING, "1", null, Map.of("KUBERNETES_SERVICE_HOST", "10.96.0.1")));
+        assertTrue(output().contains("A Kubernetes pod must reserve its generator ID"), output());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"not-a-uid", "3B439D70-A189-4A6E-8045-AB5B1FA140AC"})
+    void rejectsANonCanonicalRegistryUid(String uid) throws Exception {
+        assertNotEquals(0, launch(VALID_ROUTING, null, null, Map.of("SHARDSHOP_ID_REGISTRY_UID", uid)));
+        assertTrue(output().contains("A pinned generator registry UID is required"), output());
     }
 
     @Test
-    void matchingExternalFileConfigurationKeepsTheRawReservation() throws Exception {
-        assertEquals(0, launch(VALID_ROUTING + "config_ordinal=500\nshardshop.id.generator-id=1\n",
-                "1", null, "1", Map.of()), output());
+    void failsWithoutTheCaFileOfTheApiServerBeforeAnyRequest() throws Exception {
+        assertNotEquals(0, launch(VALID_ROUTING, null, null, reservationWithoutCaFile()));
+        assertTrue(output().contains("Kubernetes API access is not configured correctly"), output());
+        assertFalse(output().contains("Reserved generator ID"), output());
+    }
+
+    @Test
+    void checksTheRoutingSnapshotBeforeTheGeneratorReservation() throws Exception {
+        assertNotEquals(0, launch("shardshop.routing.shards=shard-a,shard-a\nshardshop.routing.regions=US,EU\n", null,
+                null, reservationWithoutCaFile()));
+        assertTrue(output().contains("Shard topology must contain a nonempty list of distinct shards"), output());
+        assertFalse(output().contains("Kubernetes API access is not configured correctly"), output());
+    }
+
+    /** A reservation stops at its missing CA file, before any request; an earlier failure never reaches it. */
+    private Map<String, String> reservationWithoutCaFile() {
+        return Map.of("SHARDSHOP_ID_REGISTRY_UID", REGISTRY_UID,
+                "SHARDSHOP_ID_REGISTRY_CA_FILE", directory.resolve("missing-ca.crt").toString());
     }
 
     private int launch(String properties) throws Exception {
@@ -134,11 +156,11 @@ class ShardRoutingStartupIT {
     }
 
     private int launch(String properties, String generatorId, String environmentGeneratorId) throws Exception {
-        return launch(properties, generatorId, environmentGeneratorId, null, Map.of());
+        return launch(properties, generatorId, environmentGeneratorId, Map.of());
     }
 
     private int launch(String properties, String generatorId, String environmentGeneratorId,
-                       String reservedGeneratorId, Map<String, String> environment) throws Exception {
+                       Map<String, String> environment) throws Exception {
         Path config = directory.resolve("external-routing-snapshot.properties");
         if (properties != null) {
             assertEquals(config, Files.writeString(config, properties));
@@ -153,9 +175,6 @@ class ShardRoutingStartupIT {
                 .redirectOutput(directory.resolve("startup.log").toFile());
         if (generatorId != null) {
             builder.command().add(1, "-Dshardshop.id.generator-id=" + generatorId);
-        }
-        if (reservedGeneratorId != null) {
-            builder.command().add(1, "-Dshardshop.launcher.reserved-generator-id=" + reservedGeneratorId);
         }
         // Local configuration and JVM environment options must not supply a missing setting.
         builder.environment().clear();

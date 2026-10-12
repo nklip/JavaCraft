@@ -229,7 +229,7 @@ original registry UID.
 **Commands:** `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-order -am clean verify`;
 `bash microservices/shardshop/scripts/verify-generator-allocation.sh`;
 `bash microservices/shardshop/scripts/up.sh`;
-[lifecycle and launch runbook](README.md#generator-allocation-at-jvm-startup-step-34).
+[lifecycle and launch runbook](README.md#generator-allocation-at-jvm-startup-steps-34-and-311).
 
 ## Step 3.5
 
@@ -491,3 +491,148 @@ container ([details](VERSIONS.md#step-310-integration-test-dependencies)).
 The step did not use the kind lab.
 
 **Commands:** [integration tests](README.md#integration-tests-with-testcontainers-step-310).
+
+## Step 3.11
+
+**2026-10-13:** product and order reserve their generator ID with Java code in their
+own JVM. At each start, the eager CDI producer of `shardshop-idgen` reads the registry
+ConfigMap and sends one JSON patch through the Kubernetes API with Apache HttpClient
+5.6.4, the client of the reader. The patch tests the UID, the resource version and the
+counter. The request uses the projected service account token, and the client trusts
+only the service account CA. The registry, compare-and-set, retention and RBAC rules
+stay. These items are deleted: `GeneratorLauncher`, `ApplicationProcess`,
+`KubectlRegistry`, `ProcessCommandRunner` and their tests, the kubectl stage of the
+application images, `vex/kubectl.openvex.json`, the kubectl image pin with its
+advisory records, and `verify-generator-allocation.sh`.
+
+Behavior changes:
+
+- `KubernetesRegistry` bounds each request with a scheduled cancel at its timeout
+  (at most 5 seconds) and reads the token file again for each request. A refused
+  PATCH (401, 403 or 404) now stops the start at once, with a fixed message. A
+  conflict, a policy denial, a server error or a lost response burns the candidate,
+  as before.
+- `shardshop.id.registry.uid` selects the reservation; `url`, `namespace`,
+  `token-file` and `ca-file` have in-cluster defaults. A fixed
+  `shardshop.id.generator-id` together with a registry UID stops the start, and a
+  packaged JVM in a pod refuses a fixed ID. These rules replace the reservation pin
+  `shardshop.launcher.reserved-generator-id` of the launcher.
+- The product Deployment sets `SHARDSHOP_ID_REGISTRY_UID`. All six images start
+  `quarkus-run.jar`, and product runs one JVM per pod.
+- The generator producer has a later startup priority than the other startup beans.
+  Thus an invalid routing snapshot or catalog configuration stops the start before a
+  reservation, also in a crash loop. The launcher reserved before each JVM start, thus
+  such a crash loop used one slot for each restart.
+
+Tests:
+
+- idgen has 158 unit tests (163 before). `KubernetesRegistryTest` uses an in-process
+  HTTP server: the request format, the token of each request, the state validation,
+  the 64 KiB response limit, each status, a lost response and the request timeout.
+  One line has no unit coverage: the return of a successful reservation in the
+  producer. The scenarios run it.
+- Product has 28 and order has 27 packaged startup checks (24 each before). Tests for
+  a fixed ID next to a registry UID (from the environment and from a file), a fixed ID
+  in a pod, a non-canonical UID and a missing CA file replace the four tests of the
+  launcher pin. Other tests show that an invalid routing snapshot (product and order)
+  and an invalid catalog configuration (product) stop the start before the
+  reservation.
+- `GeneratorAllocation.feature` has 11 scenarios. Each scenario starts one
+  unprivileged k3s v1.36.5 container and applies the generator objects of the chart,
+  which `helm template` renders in the integration profile. The scenarios check the
+  reservation at each start and restart, the generator ID of new sellers, six
+  concurrent starts (IDs 1 to 6), the permissions of seven service accounts, the
+  retention policy, and the failures: another registry UID, an exhausted, missing or
+  unreadable registry, a refused PATCH, an untrusted CA, a host name that the server
+  certificate does not name and an API server that does not answer. Product stopped
+  5.6 seconds after it started against the paused API server. The scenarios replace
+  the step 3.4 drill and use no lab slots.
+
+Six temporary mutations in a copy of the tree showed that the tests detect
+regressions. The scenarios failed for five of them, each at the expected step:
+
+- An allocator without the UID check: product started with the UID of another
+  registry.
+- A refused PATCH that is retried as a conflict: the deadline message replaced the
+  update failure.
+- A generator that does not use the reserved ID: a seller had generator ID 1, not 2.
+- A client that trusts every certificate: product started with the client CA.
+- A client without the request deadline: product did not stop within 60 seconds.
+
+A patch without the version and counter tests did not fail the concurrent scenario,
+because the retention policy also rejects a counter that does not increase.
+`KubernetesRegistryTest` failed for it, because it checks the exact patch body. The
+unit tests also failed for the first two mutations. The copy was then deleted.
+
+The validation of the step found three gaps, with mutations in a copy of the tree
+and checks against a separate k3s container. The fixes are part of the step:
+
+- No test checked the host name of the API server certificate. A client without the
+  host name check passed all tests, because the k3s certificate names 127.0.0.1. A
+  new scenario gives product an OpenJDK hosts file (`jdk.net.hosts.file`) with a name
+  that the certificate does not name. The same mutation fails it now: product
+  started and reserved an ID.
+- Product reserved its ID before it checked its routing snapshot: an invalid routing
+  file used one slot at each start. The three new packaged startup tests failed
+  before the change of the startup priority, with the message of the API client.
+- The permission table did not check `patch` on `shardshop-generator-identity` and
+  `shardshop-routing`, as the deleted drill did. A Role that allows `patch` on
+  `shardshop-routing` now fails the scenario at these cells.
+
+After the fixes, the full ShardShop build with `-Pintegration,audit clean verify`
+passed in 5 minutes 25 seconds, with the kind lab stopped: 879 unit/startup tests, 55
+packaged routing checks and 38 scenarios (3 minutes 31 seconds). Before the fixes, it
+passed in 8 minutes, with 52 packaged routing checks and 37 scenarios. The only
+warning line is the `Ryuk has been disabled` WARN line of Testcontainers. Compared
+with a build of HEAD, the SBOMs of product (251 to 254) and
+order (146 to 149) add only httpclient5 5.6.4, httpcore5 5.4.3 and httpcore5-h2 5.4.3,
+which step 3.8 qualified; idgen (143 to 149) also adds jackson-databind 2.21.7 and its
+two Jackson artifacts. No component was removed. OSV listed no advisories for them on
+2026-10-12 ([details](VERSIONS.md#step-311-generator-allocation-dependencies)).
+
+`build-application-images.sh` built the product, seeder and reader images. Docker
+Scout indexed 187 product packages (265 before), 70 and 89. The only Go binary is
+`/usr/bin/pebble`, the pebble statements cover its findings, and `/usr/bin/kubectl`
+does not exist in the product image. The product image was
+`sha256:3995a73f6fcb38705cdb1e8c5a1fe44e28728c50215a8724349ac75a748c2992`. After the
+fixes, the product image is
+`sha256:94f6261486e7b2871f9615353956290587f178e231294fac5a61f709a59763f0`, again with
+187 packages. The seeder and reader packages do not contain idgen, thus their images
+did not change.
+
+Lab run:
+
+- `up.sh` started the stopped lab with the registry at high-water 38 and its original
+  UID. The two old product pods first failed while the API server started, then
+  their launchers reserved IDs 39 and 40.
+- `deploy.sh step311-deploy` rolled out the new product image. The two new product
+  JVMs logged `Reserved generator ID 41` and `42`.
+- `verify-product-workload.py` passed in 197 seconds. Both runs recovered the
+  key-to-ID SHA-256 `97af5c774026fb993e04a7b80e3c74bc2ad6c8c6ff7ccc6b27ffe56a7f57ca88`,
+  and both product pods received reads before and after each pod replacement. The
+  replacement pods reserved the new IDs 43 and 44.
+- The host example of the README reserved ID 45 through the kind API server, with a
+  `kubectl create token` token and the CA of the kubeconfig. The high-water is now 45.
+- At approximately 190 reads/s, each product pod used 17–23% of one core and 268 MiB
+  of anonymous memory with one JVM (310 MiB with two JVMs in step 3.9).
+
+Lab run after the fixes:
+
+- The validation moved the high-water from 45 to 49. A container restart in the same
+  pod (SIGTERM to the JVM) and a pod replacement each reserved a new ID.
+- `up.sh` started the stopped lab, and the old product pods reserved IDs 50 and 51.
+  `deploy.sh step311-fix` rolled out the new product image, and its two JVMs reserved
+  IDs 52 and 53.
+- A pod of the new image in a scratch namespace, with an invalid routing snapshot and
+  the registry UID, stopped with the routing message. It used no slot.
+- `verify-product-workload.py` passed in 194 seconds. Both runs recovered the same
+  key-to-ID SHA-256, and the replacement pods reserved the new IDs 54 and 55. The
+  high-water is now 55.
+
+**Commands:** `mvn -B -ntp -f microservices/shardshop/pom.xml -Pintegration,audit clean verify`;
+`bash microservices/shardshop/scripts/up.sh`;
+`bash microservices/shardshop/scripts/build-application-images.sh product product-seeder product-reader`
+(only `product` after the fixes);
+`bash microservices/shardshop/scripts/deploy.sh step311-deploy` (`step311-fix` after the fixes);
+`python3 -B microservices/shardshop/scripts/verify-product-workload.py`;
+[generator runbook](README.md#generator-allocation-at-jvm-startup-steps-34-and-311).

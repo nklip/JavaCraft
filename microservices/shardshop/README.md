@@ -17,8 +17,9 @@ and the reader against a PostgreSQL container in the `integration` profile
 the reader on the kind lab. The reader starts its load only after product serves
 the complete dataset ([seeding gate](#product-deployment-and-seeding-gate-step-39)).
 Product/order production
-starts still require the routing snapshot and a live generator ID reserved by
-the startup launcher; tests use disposable configuration.
+starts still require the routing snapshot and a live generator ID, which the JVM
+reserves through the Kubernetes API at each start; tests use a fixed test ID or a
+k3s API server.
 
 | Maven module | Quarkus application class |
 |---|---|
@@ -36,7 +37,7 @@ Common provides canonical ID parsing, SHA-256 and bounded JSON HTTP transport;
 it contains no dataset definitions or service wire models. Only product/order
 use idgen and sharding; their plain domain classes and Quarkus configuration
 remain separate. Workloads and ledger have no Snowflake dependency, generator
-launcher or allocator access. Only product/order create entity and message IDs.
+allocation or allocator access. Only product/order create entity and message IDs.
 
 `shardshop-workload` aggregates the three applications and the pure Java
 `shardshop-datasets` library. This library contains **all workload datasets** and
@@ -249,11 +250,9 @@ bash microservices/shardshop/scripts/up.sh
 bash microservices/shardshop/scripts/migrate.sh
 bash microservices/shardshop/scripts/migrate.sh # validates history; no pending migrations
 bash microservices/shardshop/scripts/verify-topology.sh --routing-only
-bash microservices/shardshop/scripts/verify-generator-allocation.sh
 ```
 
-The allocation drill consumes retained generator slots. The
-[changelog](CHANGELOG.md#step-36) records whether the lab qualification has
+The [changelog](CHANGELOG.md#step-36) records whether the lab qualification has
 actually passed; isolated checks alone do not complete it.
 
 ## Product seeder (step 3.7)
@@ -472,10 +471,9 @@ Run `migrate.sh` before `deploy.sh` if the routing is not published yet.
 `infra/images/application/Dockerfile` is the one recipe for the six application
 images. Its context is the complete `target/quarkus-app` directory of one
 application. All images use the pinned Canonical OpenJDK 25 JRE, the working
-directory `/app`, user `10001:10001` and `HOME=/tmp`. The `product` and `order`
-targets copy kubectl from the digest-pinned `registry.k8s.io/kubectl` image, and
-their entrypoint is `GeneratorLauncher`. The `direct` target starts
-`quarkus-run.jar` for ledger and the workloads, which have no kubectl.
+directory `/app`, user `10001:10001` and `HOME=/tmp`, and their entrypoint starts
+`quarkus-run.jar`. The images contain no kubectl: since step 3.11, product and order
+reserve their generator IDs with Java code in their own JVM.
 
 `build-application-images.sh` accepts `product`, `order`, `ledger`,
 `product-seeder`, `product-reader` and `order-producer`. Step 4.8 uses it again for
@@ -545,7 +543,7 @@ kubectl --context kind-shardshop -n shardshop logs deployment/shardshop-product-
 | Item | Value |
 |---|---|
 | Pods | Two replicas behind the Service `shardshop-product:8080` with `sessionAffinity: None` |
-| Start | `GeneratorLauncher` reserves a generator ID with the projected token of the `shardshop-product` ServiceAccount, then starts the application JVM. `SHARDSHOP_GENERATOR_REGISTRY_UID` comes from the `shardshop-generator-identity` ConfigMap |
+| Start | The product JVM reserves a generator ID at startup with the projected token of the `shardshop-product` ServiceAccount, before it opens its port. `SHARDSHOP_ID_REGISTRY_UID` comes from the `shardshop-generator-identity` ConfigMap |
 | Routing | The `application.properties` key of the `shardshop-routing` ConfigMap at `/etc/shardshop/routing` |
 | Database TLS | Only the `ca.crt` key of each `<shard>-ca` Secret, at `/etc/shardshop/catalog/<shard>/ca.crt`. The CA Secrets also hold `ca.key` |
 | Password | `PRODUCT_APP_PASSWORD` from the `product-app` Secret. The `shardshop-product-config` ConfigMap, at `/app/config`, sets each shard's password to `${PRODUCT_APP_PASSWORD}`. Quarkus reads `config/application.properties` in the working directory of the JVM |
@@ -579,6 +577,9 @@ strategy, thus a maximum of one reader runs.
 The resource budgets come from measurements on the lab on 2026-10-09. At 200
 reads/s, each product pod used approximately 10% of one core and 310 MiB of
 anonymous memory for its two JVMs. The reader used 7% of one core and 148 MiB.
+Since step 3.11, each product pod runs one JVM. On 2026-10-13, at approximately 190
+reads/s and a few minutes after a pod replacement, each product pod used 17–23% of
+one core and 268 MiB of anonymous memory. The budgets stay the same.
 With a 1-CPU limit, the JVM starts were throttled for many seconds, and the reader's
 startup lookups failed. Thus each container has a 2-CPU limit.
 
@@ -611,7 +612,10 @@ calls `deploy.sh` for two new runs:
    must increase. Scenario 3 for primary reads: a report interval must have only
    `OK` reads at 180/s or more.
 3. The check deletes one product pod. When the replacement is ready, it repeats
-   step 2 with a report interval that starts after the replacement.
+   step 2 with a report interval that starts after the replacement. The JVM of the
+   replacement pod must log a new generator ID: higher than the IDs of the earlier
+   pods, and not higher than the registry high-water (step 3.11). The two product
+   pods must always have different IDs.
 4. A second complete run must recover the same digest and pass steps 2 and 3 again.
 
 On the lab, the catalog is already complete, thus the reader does not wait there.
@@ -626,20 +630,25 @@ product image or manifest changed.
 ## Integration tests with Testcontainers (step 3.10)
 
 The test-only module `shardshop-testing` holds Cucumber scenarios that run the
-packaged product, seeder and reader against a real PostgreSQL. Failsafe runs them
-with `-Pintegration`, as the `*-testing` modules of the other projects in this
-repository do. The module has no main classes and installs nothing. Its POM
-dependencies on the three applications have no transitive dependencies; they only
-make `-am` package the applications first. Docker must run:
+packaged product, seeder and reader against a real PostgreSQL and a real Kubernetes
+API server. Failsafe runs them with `-Pintegration`, as the `*-testing` modules of
+the other projects in this repository do. The module has no main classes and
+installs nothing. Its POM dependencies on the three applications have no transitive
+dependencies; they only make `-am` package the applications first. Docker must run,
+and `helm` must be on the `PATH` (tested with 4.3.0), because the integration
+profile renders the generator objects of the chart:
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
 ```
 
-The scenarios take approximately two and a half minutes. Cucumber writes its
+On 2026-10-13, the 38 scenarios took approximately three and a half minutes with the
+kind lab stopped. While the lab runs, they take approximately six minutes. Cucumber
+writes its
 reports to `shardshop-testing/target/cucumber-reports`, and the application logs
 stay in `shardshop-testing/target/scenario-runs`. Run them only through Maven,
-which sets the image digest and the source directory.
+which sets the image digests, the source directory and the path of the rendered chart
+objects.
 
 | Item | Test setup |
 |---|---|
@@ -647,8 +656,9 @@ which sets the image digest and the source directory.
 | Roles and databases | The catalog roles and memberships of the CNPG `DatabaseRole`s, the bootstrap hardening, and the schema `catalog` of `catalog_owner`, as on the lab |
 | Migrations | The Flyway **13.8.1** Java API applies `database/shard/catalog` as `catalog_migrator` with the settings of its `flyway.toml` and the inventory placeholders, as the migration Jobs do |
 | TLS | `openssl` in the container makes a test CA and a server certificate for `localhost` only. Product connects with its `verify-full` default |
-| Applications | The packaged `quarkus-app` folders, started as JVMs with an empty environment. Product gets a new generator ID at each start, four shards (`shard-d` is a second US shard) and at most two connections for each endpoint |
-| Logs | After each scenario, a hook stops product and fails the scenario if a product JVM logged a WARN or ERROR line. This also covers the invalid requests, deadlines and outages that the scenarios cause |
+| Kubernetes API | For each generator scenario, one container of the pinned `tc.image.k3s` (k3s v1.36.5) with `server --disable-agent`: no kubelet, no privileges, and the API port bound to `127.0.0.1`. The `pre-integration-test` phase renders the chart with `helm template` and the values of `render.sh`. Each scenario applies the rendered `generator-allocation.yaml` and creates the registry, as `generator-registry.sh initialize` does. For the host name check, product gets an OpenJDK hosts file (`jdk.net.hosts.file`) that points a name in the `.test` domain to `127.0.0.1`. The k3s certificate does not name it |
+| Applications | The packaged `quarkus-app` folders, started as JVMs with an empty environment. Product gets a new fixed test generator ID at each start, or in the generator scenarios it reserves an ID in the k3s API server with a service account token. It gets four shards (`shard-d` is a second US shard) and at most two connections for each endpoint |
+| Logs | After each scenario, a hook stops product and fails the scenario if a product JVM logged a WARN or ERROR line. This also covers the invalid requests, deadlines and outages that the scenarios cause. The generator scenarios check their expected startup failures separately: the log has only the fixed message, without the token or API response text |
 | Cleanup | Testcontainers runs without its Ryuk reaper, which publishes a port on all host interfaces and runs privileged with the Docker socket. A JVM shutdown hook removes the container; only a killed test JVM leaves it. Testcontainers logs one `Ryuk has been disabled` WARN line for each run |
 
 | Feature | Replaces | Cases |
@@ -658,6 +668,7 @@ which sets the image digest and the source directory.
 | `ProductTransport.feature` | `verify-product-transport.py` | TLS sessions, an untrusted CA, a host name that the certificate does not name, and pool recovery after a PostgreSQL restart without a product restart |
 | `ProductSeeder.feature` | `verify-product-seeder.py` | The [seeder runbook](#product-seeder-step-37) cases |
 | `ProductReader.feature` | `verify-product-reader.py` | The [reader runbook](#product-reader-step-38) cases |
+| `GeneratorAllocation.feature` | `verify-generator-allocation.sh` (step 3.11) | A reservation at each start and restart, the generator ID of new sellers, six concurrent starts, the permissions of the product, order, ledger, workload and default service accounts, the retention policy, and the failures: another registry UID, an exhausted, missing or unreadable registry, a refused PATCH, an untrusted CA, a host name that the server certificate does not name and an API server that does not answer |
 
 The expected bodies come from the product OpenAPI document; an error body has only
 a code and a nonempty message. Step 3.12 adds the schema validation of the OpenAPI
@@ -803,14 +814,13 @@ HTTP providers map this exception to `503 ID_GENERATION_UNAVAILABLE` and abort t
 transaction. Since step 3.6, product does this. Consumer delivery handling remains
 part of the later service milestones.
 
-Production startup requires `shardshop.id.generator-id`, also configurable through
-`SHARDSHOP_ID_GENERATOR_ID`, in `1..1023`; there is no production default.
-Generator 0 remains reserved for historical illustrative fixtures; no runtime
-creation path or workload emits generator-0 IDs.
-This setting accepts an already reserved ID; it does not reserve or persist one.
-The step 3.4 launcher below reserves this setting before every product/order JVM
-start. Direct manual IDs are only for disposable skeleton tests without retained
-data; deployed processes must use the launcher.
+A production start requires a generator ID in `1..1023`; there is no production
+default. Generator 0 remains reserved for historical illustrative fixtures; no
+runtime creation path or workload emits generator-0 IDs. A deployed JVM reserves its
+ID through the registry ([steps 3.4 and 3.11](#generator-allocation-at-jvm-startup-steps-34-and-311)).
+The fixed `shardshop.id.generator-id`, also configurable through
+`SHARDSHOP_ID_GENERATOR_ID`, is only for disposable tests without retained data. It
+does not reserve or persist an ID, and a packaged JVM in a Kubernetes pod refuses it.
 
 Controlled-clock tests exercise concurrency, sequence exhaustion/recovery, source
 failures, backwards time, epoch/layout compatibility, exact timestamp limits and
@@ -831,34 +841,53 @@ mvn -B -ntp -f microservices/shardshop/pom.xml \
 The [six-application audit](#dependency-and-test-validation) produces the
 dependency/SBOM reports for the ownership checks.
 
-## Generator allocation at JVM startup (step 3.4)
+## Generator allocation at JVM startup (steps 3.4 and 3.11)
 
-`GeneratorLauncher` in `shardshop-idgen` runs before each product/order application
-JVM, including container restarts in the same pod. It invokes `kubectl` directly
-without a shell, reads `shardshop-snowflake-generators`, and atomically tests its
-UID, resource version and `data.highWaterMark` before advancing the counter.
-Only an acknowledged reservation reaches the application's
-`shardshop.id.generator-id` property. The launcher supervises that one child JVM;
-every new launcher invocation reserves again.
-The generator's CDI producer compares its effective configured ID with a separate
-raw JVM reservation pin before constructing the generator. Higher-priority
-environment/profile or external-file configuration cannot substitute another ID.
+Product and order reserve a fresh generator ID in their own JVM at every start, also
+after a container restart in the same pod (step 3.11). The eager CDI producer of the
+generator in `shardshop-idgen` does this before the generator exists:
+
+1. It reads `shardshop-snowflake-generators` through the Kubernetes API with Apache
+   HttpClient 5. The request has the token of the pod's service account. The client
+   trusts only the CA of the service account volume, and the server certificate must
+   name the host of the URL.
+2. It sends one JSON patch that tests the UID, the resource version and
+   `data.highWaterMark` of the registry, and replaces the counter.
+3. Only an acknowledged reservation becomes the generator ID. The JVM then logs
+   `Reserved generator ID <n> for this JVM start.` at INFO.
+
+No kubectl binary, launcher process, init container or sidecar takes part.
+Higher-priority configuration cannot substitute an ID for the reservation: a fixed
+`shardshop.id.generator-id` together with a registry UID stops the start. The
+producer has a later startup priority than the other startup beans. Thus the checks
+of the routing snapshot and of the catalog configuration come first, and a local
+configuration error stops the start before a reservation.
+
+| Property | Environment variable | Default and rule |
+|---|---|---|
+| `shardshop.id.registry.uid` | `SHARDSHOP_ID_REGISTRY_UID` | None. A value selects the reservation. The product Deployment takes it from the `registryUid` key of the immutable `shardshop-generator-identity` ConfigMap |
+| `shardshop.id.registry.url` | `SHARDSHOP_ID_REGISTRY_URL` | `https://kubernetes.default.svc`. Only `https`, with a host and an optional port, and no path, query or user information |
+| `shardshop.id.registry.namespace` | `SHARDSHOP_ID_REGISTRY_NAMESPACE` | `shardshop` |
+| `shardshop.id.registry.token-file` | `SHARDSHOP_ID_REGISTRY_TOKEN_FILE` | `/var/run/secrets/kubernetes.io/serviceaccount/token`, read again for each request |
+| `shardshop.id.registry.ca-file` | `SHARDSHOP_ID_REGISTRY_CA_FILE` | `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt` |
+| `shardshop.id.generator-id` | `SHARDSHOP_ID_GENERATOR_ID` | None. A fixed ID for disposable tests outside Kubernetes. A packaged JVM in a pod (`KUBERNETES_SERVICE_HOST` is set) refuses it |
 
 Allocation has a 30-second budget, requests of at most five seconds, and retry
-backoff from 25 to 500 milliseconds. Failed or uncertain CAS attempts burn their
-candidate: the next attempt advances beyond both the observed counter and the
-uncertain candidate. A late acknowledgement cannot start the application.
+backoff from 25 to 500 milliseconds. A conflict, a policy denial, a server error or a
+lost response burns its candidate: the next attempt advances beyond both the
+observed counter and the uncertain candidate. A late acknowledgement cannot start the
+application. A refused PATCH (401, 403 or 404) stops the start at once.
 Missing, malformed, inaccessible, replaced or exhausted state fails startup.
-Launcher diagnostics identify exhaustion, stale identity, allocation deadlines,
-context/pin configuration errors, an unavailable kubectl executable, and registry
-read/access failures with their next checks. Only fixed local diagnostics are
-printed; external exception text and command stderr remain suppressed.
+The diagnostics identify exhaustion, stale identity, allocation deadlines, the API
+client configuration, and read and update failures of the registry, with their next
+checks. Only these fixed messages reach the log; API responses, exception texts and
+tokens do not.
 Generator 0 remains reserved; at most 1,023 starts, including burned slots, fit
 one retained lab dataset.
 
 The infrastructure chart creates only product/order ServiceAccounts and grants
 them `get`/`patch` on the single named allocator ConfigMap. Ledger, workloads and
-the default account have no allocation permissions or launcher dependency.
+the default account have no allocation permissions.
 A fail-closed admission policy rejects counter rollback, out-of-range values,
 individual and collection deletion, and changes to the immutable `shardshop-generator-identity`
 ConfigMap. That identity pins the registry's original UID. Neither state object
@@ -896,31 +925,25 @@ If that mark is unavailable, keep ID-producing services stopped. Removing the
 guard or resetting state is allowed only after retiring all prior emitters,
 databases, broker data, backups and other replay inputs.
 
-Build and verify the affected modules, then run the live restart/RBAC drill:
+Build and verify the affected modules, then run the generator scenarios:
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml \
   -pl shardshop-product,shardshop-order -am clean verify
-bash microservices/shardshop/scripts/verify-generator-allocation.sh
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
 ```
 
-The drill consumes real generator slots. It uses a temporary, non-root,
-shell-free verification image from the locked kind and Canonical JRE images,
-checks simultaneous product/order starts and a same-pod restart, and cleans up
-its pods. It passes `--check-startup` through the launcher so product exits after
-validation. Before allocating, it checks both packages against the routing
-snapshot in network-isolated containers with HTTP disabled; failed preflights
-consume no registry slots. Normal service launches omit `--check-startup`.
-The [product image and Deployment](#product-deployment-and-seeding-gate-step-39)
-(step 3.9) and the order image and Deployment (step 4.8) invoke this launcher directly
-as their entrypoint. They use the owning service's ServiceAccount and provide
-`SHARDSHOP_GENERATOR_REGISTRY_UID` from the immutable identity ConfigMap's
-`registryUid` key. An init container cannot replace this entrypoint. In-cluster kubectl uses an explicit temporary kubeconfig that references
-the projected service-account token file and cluster CA; it never discovers a
-user kubeconfig from `KUBECONFIG` or the home directory. The token is not copied
-into the file or command arguments. The temporary file is removed after allocation;
-host launches require `SHARDSHOP_KUBE_CONTEXT=kind-shardshop`. No tool binaries
-are downloaded or stored in the repository.
+`GeneratorAllocation.feature` of [`shardshop-testing`](#integration-tests-with-testcontainers-step-310)
+runs the packaged product against a real Kubernetes API with the RBAC and the
+retention policy of the chart. It checks concurrent starts, restarts, the IDs of the
+created sellers, the permissions of each service account, the policy, and the
+failures. It replaces the step 3.4 drill and consumes no lab slots. The
+[step 3.9 lab check](#live-check) shows a new generator ID after a product pod
+replacement. The [product image and Deployment](#product-deployment-and-seeding-gate-step-39)
+(step 3.9) and the order image and Deployment (step 4.8) start `quarkus-run.jar`
+directly. They use the owning service's ServiceAccount and set
+`SHARDSHOP_ID_REGISTRY_UID` from the identity ConfigMap. The images contain no
+kubectl, and no tool binaries are downloaded or stored in the repository.
 
 ## Java and Maven
 
@@ -960,16 +983,20 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product -am clean v
 # After up.sh and migrate.sh have provisioned the lab:
 kubectl --context kind-shardshop -n shardshop get configmap shardshop-routing \
     -o jsonpath='{.data.application\.properties}' > /tmp/shardshop-routing.properties
+kubectl --context kind-shardshop -n shardshop create token shardshop-product \
+    --duration=10m > /tmp/shardshop-product.token
+kubectl --context kind-shardshop config view --raw --minify \
+    -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' | base64 -d > /tmp/kind-shardshop-ca.crt
 export SHARDSHOP_ROUTING_CONFIG=file:/tmp/shardshop-routing.properties
-export SHARDSHOP_KUBE_CONTEXT=kind-shardshop
-export SHARDSHOP_GENERATOR_REGISTRY_UID=$(kubectl --context kind-shardshop \
+export SHARDSHOP_ID_REGISTRY_URL=$(kubectl --context kind-shardshop config view --minify \
+  -o jsonpath='{.clusters[0].cluster.server}')
+export SHARDSHOP_ID_REGISTRY_TOKEN_FILE=/tmp/shardshop-product.token
+export SHARDSHOP_ID_REGISTRY_CA_FILE=/tmp/kind-shardshop-ca.crt
+export SHARDSHOP_ID_REGISTRY_UID=$(kubectl --context kind-shardshop \
   -n shardshop get configmap shardshop-generator-identity -o jsonpath='{.data.registryUid}')
 # Every successful reservation in this host example permanently consumes one real slot,
 # even if the application subsequently fails or exits immediately.
-"$JAVA_HOME/bin/java" \
-  -cp 'microservices/shardshop/shardshop-product/target/quarkus-app/lib/main/*' \
-  dev.nklip.javacraft.shardshop.idgen.allocation.GeneratorLauncher product \
-  microservices/shardshop/shardshop-product/target/quarkus-app
+"$JAVA_HOME/bin/java" -jar microservices/shardshop/shardshop-product/target/quarkus-app/quarkus-run.jar
 ```
 
 Verify all six one at a time, without installing anything. Product/order run their
@@ -1000,9 +1027,8 @@ injection of the configured topology and router; idgen tests injection of its
 singleton ID generator. Each library owns its test configuration, and
 product/order each verify packaged startup. JaCoCo reports go to each Java module's
 `target/site/jacoco/`. JVM packages live in `target/quarkus-app/`;
-deploy that entire directory. Product and order must start through
-`GeneratorLauncher`, as in the host example above; ledger and workloads launch
-`quarkus-run.jar` directly.
+deploy that entire directory. All six applications start with `quarkus-run.jar`.
+Product and order then reserve their generator ID, as in the host example above.
 
 Product/order load the external routing file through `quarkus.config.locations`,
 retaining the `SHARDSHOP_ROUTING_CONFIG` override and default path
@@ -1192,7 +1218,7 @@ For a different topology, reset this disposable lab:
    lab's data.
 4. Run `up.sh`. It stops because the allocator state is not there.
 5. Run `generator-registry.sh initialize`, then `up.sh` again, as
-   [step 3.4](#generator-allocation-at-jvm-startup-step-34) describes.
+   [step 3.4](#generator-allocation-at-jvm-startup-steps-34-and-311) describes.
 6. Run `migrate.sh`, export the new configuration, and reseed before you restart
    the workloads.
 

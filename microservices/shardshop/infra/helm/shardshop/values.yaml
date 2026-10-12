@@ -61,8 +61,8 @@ migration:
       memory: 256Mi
 
 # Resource budgets of the applications, measured on the lab. The 2-CPU limits avoid long
-# CPU throttling while the JVMs start. Each product pod runs two JVMs: the generator
-# launcher and the application that it supervises.
+# CPU throttling while the JVMs start. Each product pod runs one JVM, which reserves its
+# generator ID at startup.
 product:
   resources:
     requests:

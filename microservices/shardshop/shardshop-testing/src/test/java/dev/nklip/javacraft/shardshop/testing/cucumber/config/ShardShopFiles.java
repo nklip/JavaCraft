@@ -14,6 +14,15 @@ public final class ShardShopFiles {
         return Path.of(property("shardshop.directory")).resolve(relativePath).toAbsolutePath().normalize();
     }
 
+    /** The generator RBAC and retention policy of the chart, which helm template renders in the integration build. */
+    public static Path generatorAllocation() {
+        Path manifest = Path.of(property("shardshop.testing.generator-allocation"));
+        if (!Files.isRegularFile(manifest)) {
+            throw new IllegalStateException("Build shardshop-testing with -Pintegration, which renders " + manifest);
+        }
+        return manifest;
+    }
+
     /** A new directory under target/scenario-runs for the logs and files of one test object; mvn clean removes it. */
     public static Path newWorkDirectory(String prefix) throws IOException {
         Path runs = Files.createDirectories(Path.of(property("shardshop.testing.work")));

@@ -391,6 +391,36 @@ images:
       (index sha256:7c1a8a9a47c780ed0f983770a662f80deb115d95cce3e2daa3d12115b8cd28f0), publishes its port on all
       host interfaces, runs privileged with the Docker socket, and contains Go stdlib 1.23.12 with 4 critical and
       29 high advisories. Thus no Ryuk image is pinned; a JVM shutdown hook removes the containers.
+  k3s_test:
+    version: v1.36.5+k3s1
+    purpose: Kubernetes API server of the generator scenarios of shardshop-testing (step 3.11); the POM property
+      tc.image.k3s
+    support_refs:
+    - kubernetes_1_36
+    tag_observed: docker.io/rancher/k3s:v1.36.5-k3s1
+    reference: docker.io/rancher/k3s@sha256:057cfd5a9d51b89f1f0ee139c28d5d5fdd5aa7ddeac2742a0ba90c6dbc0329bb
+    index_digest: sha256:057cfd5a9d51b89f1f0ee139c28d5d5fdd5aa7ddeac2742a0ba90c6dbc0329bb
+    linux_arm64_digest: sha256:4ceb591dd1e592b98b7c51ff3bdb7143914e1bee0677e7bf3c4f6addde2c93b3
+    linux_arm64_config_digest: sha256:fdca60133c41721cc54efafaa58dd32a0517a3f9a340685ead17f44553939edc
+    manifest_url: https://registry-1.docker.io/v2/rancher/k3s/manifests/sha256:057cfd5a9d51b89f1f0ee139c28d5d5fdd5aa7ddeac2742a0ba90c6dbc0329bb
+    config_url: https://registry-1.docker.io/v2/rancher/k3s/blobs/sha256:fdca60133c41721cc54efafaa58dd32a0517a3f9a340685ead17f44553939edc
+    checked_on: '2026-10-12'
+    review_by: '2026-10-28'
+    created_observed: '2026-09-30T16:09:51Z'
+    revision_observed: 3dd98cc58ec34991e7e59b93663eee2e26fc1f65
+    verification: Raw index, linux/arm64 manifest and config SHA-256 recomputed on 2026-10-12. The pulled image has
+      the same index and config digests. The 11 scenarios of GeneratorAllocation.feature pass on it.
+    runtime: A plain Testcontainers GenericContainer runs "server --disable-agent
+      --disable=traefik,servicelb,metrics-server,local-storage,coredns". It has no kubelet and no containerd, it is not
+      privileged, and its API port is bound to 127.0.0.1. Each scenario starts one container; it is ready in about 5 s
+      with about 300 MiB of memory. The Testcontainers K3sContainer module is not used, because it always sets
+      privileged mode, the host cgroup namespace and a read-write /sys/fs/cgroup bind.
+    advisories: 'Docker Scout 1.24.0 on 2026-10-12: 12 critical, 31 high, 23 medium, 8 low, 7 unspecified. The
+      alternative upstream images kube-apiserver v1.36.5 (3 critical, 20 high) and etcd 3.6.15-0 (3 critical, 13 high)
+      need a custom certificate and flag harness.'
+    acceptance: The user selected this unprivileged container with these findings on 2026-10-12, for local test
+      containers that run only during a Maven integration build, with the port bound to 127.0.0.1. Recheck by the
+      review date.
   flyway_cli:
     version: 13.8.1
     purpose: owner-only schema migration Jobs on the selected Canonical OpenJDK runtime
@@ -471,44 +501,19 @@ images:
     config_url: https://registry-1.docker.io/v2/library/rabbitmq/blobs/sha256:6fc2c1102eeb2ad1cc1c8a2b9daf0ec23a5005a9d88280fe08c059bf73ec9f4f
     version_environment_observed:
     - RABBITMQ_VERSION=4.3.6
-  kubectl:
-    version: 1.36.5
-    purpose: kubectl for the generator launcher in the product and order images
-    support_refs:
-    - kubernetes_1_36
-    tag_observed: registry.k8s.io/kubectl:v1.36.5
-    reference: registry.k8s.io/kubectl:v1.36.5@sha256:0667e3f3e6ef435d7cd4c16684244703ebd67314c17511c2a9f87ea44f6cdf6b
-    index_digest: sha256:0667e3f3e6ef435d7cd4c16684244703ebd67314c17511c2a9f87ea44f6cdf6b
-    linux_arm64_digest: sha256:91ba6a07ee2d4cfa597aa1b3970bc659ec867c3aa08b0557b17eb757e464e6c7
-    linux_arm64_config_digest: sha256:528352582ff90bdc25b5a531215d65795118de8c3abb505cf3785037f4a122a8
-    checked_on: '2026-10-10'
-    review_by: '2026-10-28'
-    binary: /bin/kubectl
-    go_version: 1.26.8
-    verification: The image contains only /bin/kubectl. Its SHA-256 matches
-      tools.kubectl.artifacts.linux_arm64 (the published release checksum), and it
-      reports v1.36.5 go1.26.8 linux/arm64.
-    advisories: 'Docker Scout 1.24.0 on 2026-10-10: Go stdlib 1.26.8 2 critical, 8
-      high; golang.org/x/net 0.56.0 1 critical, 3 high; golang.org/x/text 0.39.0 1
-      high; 2 medium and 1 low in k8s.io/kubernetes and go.opentelemetry.io/otel. No
-      kubectl 1.36.6 image was published. Reviewed not_affected statements are in
-      infra/images/application/vex/kubectl.openvex.json.'
   shardshop_applications:
     purpose: Application images of product, order, ledger and the three workloads
     dockerfile: infra/images/application/Dockerfile
     build_script: scripts/build-application-images.sh
     build_inputs:
     - application_jre
-    - kubectl
-    targets:
-      product: GeneratorLauncher entrypoint and kubectl
-      order: GeneratorLauncher entrypoint and kubectl
-      direct: java -jar quarkus-run.jar for ledger and the workloads
+    entrypoint: java -jar /app/quarkus-run.jar for all six applications. Since step 3.11,
+      product and order reserve their generator ID in this JVM; the images contain no kubectl
     image_names: docker.io/library/shardshop-<application>:local; deploy.sh uses the
       manifest digest that the build script registers on every kind node
     image_user_observed: '10001:10001'
     source_date_epoch: 0
-    checked_on: '2026-10-10'
+    checked_on: '2026-10-13'
     review_by: '2026-10-28'
     scan_tool: Docker Scout 1.24.0 from Docker Desktop 4.92.0
     advisory_gate: docker scout cves --exit-code --only-severity critical,high with
@@ -519,14 +524,21 @@ images:
       shardshop-product-reader: sha256:77b9be6658d4082eb6cb83f5fecc5950f1200d47bea8a009f135a0d2166fcd19
     observed_digests_2026_10_11:
       shardshop-product-reader: sha256:8dec62cadbf73006b68be497bdbee800f10a58dd74785311c3cee08dbbb1636e
+    observed_digests_2026_10_13:
+      shardshop-product: sha256:94f6261486e7b2871f9615353956290587f178e231294fac5a61f709a59763f0
+      shardshop-product-seeder: sha256:3b89c9f078cd5f0a08bb6fda7f050cac5f2e484a9dd77b6604455855ffdaf479
+      shardshop-product-reader: sha256:1c1b91d3c6a467a8258e1cff39c104a8b65c221b5df7d3ce930e96314dcef64c
     verification: Two builds from the same packages gave the same manifest digests.
       Product, seeder and reader indexed 265, 70 and 73 packages; on 2026-10-11 the
       rebuilt reader with fault tolerance indexed 89 packages, also after the change of
-      its HttpRequestRetryExec log level. Docker Scout reports
+      its HttpRequestRetryExec log level. On 2026-10-13 the step 3.11 images indexed 187,
+      70 and 89 packages; /usr/bin/pebble is the only Go binary. Docker Scout reports
       no advisory for the Maven packages and the six Ubuntu packages that it indexes.
       It does not index six other Ubuntu packages of the base image, glibc among them
       (unresolved SBOM-AND-RUNTIME). The pebble binary of the base image (Go stdlib
-      1.26.7, 2 critical, 8 high) and kubectl pass only through the reviewed statements.
+      1.26.7, 2 critical, 8 high) passes only through the reviewed statements. Until
+      step 3.11, the product and order images also contained kubectl 1.36.5 from
+      registry.k8s.io/kubectl; step 3.11 removed it with its pin and VEX document.
     note: The digests change with each application build, thus the lock records the
       recipe and the observed digests, not a deployment pin.
   application_jre:
@@ -667,13 +679,6 @@ tools:
         verification: Downloaded executable matched published SHA-256; client reports
           v1.36.5 go1.26.8 darwin/arm64. Tested version; kubectl comes from the user's PATH.
         purpose: Host administration
-      linux_arm64:
-        url: https://dl.k8s.io/release/v1.36.5/bin/linux/arm64/kubectl
-        sha256: 88fc1aca8fd0c1b44fe379f67c39bd6858bdfc50241dc55775f84d0f5b31da3a
-        checksum_url: https://dl.k8s.io/release/v1.36.5/bin/linux/arm64/kubectl.sha256
-        verification: Published checksum fetched. On 2026-10-10 the /bin/kubectl of
-          images.kubectl and of the product image matched this SHA-256.
-        purpose: Generator launcher in the product and order images (images.kubectl).
   helm:
     version: 4.3.0
     platform: darwin/arm64
@@ -1437,6 +1442,21 @@ maven:
     testcontainers_testing: 2.0.5
     flyway_testing: 13.8.1
     cucumber_testing: 8.0.4
+  step_3_11_generator_allocation:
+    checked_on: '2026-10-12'
+    review_by: '2026-11-05'
+    platform: io.quarkus.platform:quarkus-bom:3.40.1
+    scope: The idgen library declares the platform-managed httpclient5 and jackson-databind. The product and order
+      packages add httpclient5 5.6.4, httpcore5 5.4.3 and httpcore5-h2 5.4.3; both packages already contained
+      jackson-databind 2.21.7 and slf4j-api 2.0.18
+    reason: Step 3.11 reserves the generator ID in the product/order JVM through the Kubernetes API with Apache
+      HttpClient 5, the client of the reader, instead of the kubectl binary
+    artifacts_ref: step_3_8_reader_dependencies
+    verification: A comparison of quarkus-app/lib/main with a build of HEAD shows only these three new JARs in each
+      package. The cached JARs match the SHA-256 values of step_3_8_reader_dependencies, and OSV listed no advisories
+      for the three JARs and jackson-databind 2.21.7 on 2026-10-12
+    test_tools: The integration profile of shardshop-testing runs helm template (helm from the user's PATH, tested
+      4.3.0) through the pinned exec-maven-plugin 3.6.4, and the k3s_test image serves the Kubernetes API
   plugin_prerelease_exception:
     owner: io.quarkus.platform:quarkus-maven-plugin:3.40.1
     checked_on: '2026-10-04'

@@ -18,17 +18,15 @@ nodes=$(kind get nodes --name shardshop)
 
 for application in "$@"; do
     case "$application" in
-        product|order) module="shardshop-$application" target=$application ;;
-        ledger) module=shardshop-ledger target=direct ;;
-        product-seeder|product-reader|order-producer)
-            module="shardshop-workload/shardshop-$application" target=direct ;;
+        product|order|ledger) module="shardshop-$application" ;;
+        product-seeder|product-reader|order-producer) module="shardshop-workload/shardshop-$application" ;;
         *) echo "$usage" >&2; exit 1 ;;
     esac
     package="$root/$module/target/quarkus-app"
     [[ -f "$package/quarkus-run.jar" ]] || { echo "Build $module with Maven first" >&2; exit 1; }
     tag="docker.io/library/shardshop-$application:local"
     docker buildx build --platform linux/arm64 --build-arg SOURCE_DATE_EPOCH=0 \
-        --provenance=false --sbom=false --load --target "$target" \
+        --provenance=false --sbom=false --load \
         --file "$root/infra/images/application/Dockerfile" --tag "$tag" "$package"
 
     echo "OS package inventory of $tag:"

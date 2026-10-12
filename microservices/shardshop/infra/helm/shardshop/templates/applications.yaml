@@ -54,7 +54,7 @@ spec:
         app.kubernetes.io/name: shardshop-product
         app.kubernetes.io/part-of: shardshop
     spec:
-      # The generator launcher reserves an ID with this account's projected token.
+      # The product JVM reserves its generator ID with this account's projected token at each start.
       serviceAccountName: shardshop-product
       enableServiceLinks: false
       {{- include "shardshop.podSecurity" . | nindent 6 }}
@@ -62,7 +62,7 @@ spec:
         - name: product
           image: {{ $product }}
           env:
-            - name: SHARDSHOP_GENERATOR_REGISTRY_UID
+            - name: SHARDSHOP_ID_REGISTRY_UID
               valueFrom:
                 configMapKeyRef:
                   name: shardshop-generator-identity

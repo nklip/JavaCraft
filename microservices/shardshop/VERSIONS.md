@@ -70,7 +70,7 @@ The lock records OCI index and native **linux/arm64** manifest/config digests fo
 the selected upstream images, including kind and the Canonical OpenJDK JDK/JRE pair.
 Use their `reference` fields for deployment pins; tags identify what was reviewed.
 Both Java images execute GA OpenJDK 25.0.4.1; the JDK passes a product build and
-unit/integration checks, and the JRE starts all six skeleton JARs. Final launcher
+unit/integration checks, and the JRE starts all six skeleton JARs. Final application
 images, image OS advisory scans and infrastructure behavior remain later
 qualification work. Other CPU architectures require their own qualification.
 
@@ -101,55 +101,44 @@ and validate a supported community replacement; commercial support is outside sc
 ### Step 3.9 application images
 
 `infra/images/application/Dockerfile` builds the application images on the pinned
-Canonical OpenJDK 25 JRE (`application_jre`, unchanged). The product and order
-targets copy kubectl **1.36.5** from the official image
-`registry.k8s.io/kubectl:v1.36.5`, pinned by its index digest. That binary matches
-the published SHA-256 of the linux/arm64 kubectl 1.36.5 release in the lock. It is
-built with Go **1.26.8**, and it stays inside the Kubernetes 1.36 support window
-(**2027-06-28**). The kind node image of the step 3.4 drill has kubectl 1.36.4 with
-Go 1.26.5, which has more advisories. The images use user `10001:10001`.
+Canonical OpenJDK 25 JRE (`application_jre`, unchanged). The images use user
+`10001:10001`, and all six start `quarkus-run.jar`. Until step 3.11, the product and
+order images also contained kubectl **1.36.5** from `registry.k8s.io/kubectl` for
+the generator launcher. Step 3.11 removed kubectl, its image pin, its VEX document
+and its advisory records: product and order now reserve their generator IDs with Java
+code in their own JVM.
 
 On **2026-10-10**, Docker Scout **1.24.0** (Docker Desktop 4.92.0) scanned the
 product, seeder and reader images. It indexed 265, 70 and 73 packages. On
-**2026-10-11**, the rebuilt reader image with fault tolerance indexed 89 packages
-and passed the gate with the same statements. Scout reports
+**2026-10-11**, the rebuilt reader image with fault tolerance indexed 89 packages.
+On **2026-10-13**, the images of step 3.11 indexed 187, 70 and 89 packages. The
+product image lost the Go modules of kubectl and gained the three HttpComponents JARs
+of step 3.11. Its only Go binary is now `/usr/bin/pebble`, and `/usr/bin/kubectl`
+does not exist. Scout reports
 no advisory for the Maven packages and for the six Ubuntu packages that it indexes:
 nspr, nss, openjdk-25, pcsc-lite, sqlite3 and zlib. It does not index six other
 Ubuntu packages of the base image ([gap](#os-packages-without-an-advisory-check)).
-All critical and high advisories that Scout reports are in Go binaries:
+All critical and high advisories that Scout reports are in the Go binary of the base
+image:
 
 | Binary | Images | Package | Critical | High | Other |
 |---|---|---|---|---|---|
 | `/usr/bin/pebble` of the JRE base | All | Go stdlib 1.26.7 | 2 | 8 | 3 unrated |
-| `/usr/bin/kubectl` | Product, order | Go stdlib 1.26.8 | 2 | 8 | 3 unrated |
-| `/usr/bin/kubectl` | Product, order | golang.org/x/net 0.56.0 | 1 | 3 | 1 unrated |
-| `/usr/bin/kubectl` | Product, order | golang.org/x/text 0.39.0 | 0 | 1 | 0 |
-| `/usr/bin/kubectl` | Product, order | k8s.io/kubernetes 1.36.5, go.opentelemetry.io/otel 1.41.0 | 0 | 0 | 2 medium, 1 low |
 
-The fixes need Go 1.26.9, golang.org/x/net 0.60.0 and golang.org/x/text 0.41.0.
-On 2026-10-10, no kubectl
-1.36.6 image was published. The newest `ubuntu/jre:25-26.04_stable` digest
+The newest `ubuntu/jre:25-26.04_stable` digest
 (`sha256:a27b7c6734762d8c7d373018b6dd921a7d42a021490c1497ee9904ca06f21853`) changes
 only pebble, to 1.33.1 with Go 1.27.1, and that pebble still has 2 critical and 8
 high advisories. Thus the base pin stays the same as for the migration image.
 
-Reviewed OpenVEX statements cover the remaining findings. The two documents in
-`infra/images/application/vex/` contain 23 `not_affected` statements for 11 CVE
-IDs. Each statement names the image and the exact package version:
-
-- Pebble: the images replace its entrypoint with Java, thus it never runs.
-- kubectl: the launcher runs only `kubectl get` and `patch` as an HTTPS client of
-  the in-cluster API server, without a proxy. The binary does not contain
-  `golang.org/x/text/secure/precis`, the HTTP/2 server of golang.org/x/net or
-  `os.Root.Mkdir`. The other statements name server, proxy, file-server, multipart
-  or TLS-server code that kubectl does not run. For CVE-2026-78669, a malicious
-  HTTP/2 peer is necessary, but the only peer is the API server that kubectl
-  verifies with the service account CA.
+Reviewed OpenVEX statements cover these findings. The document
+`infra/images/application/vex/jre-pebble.openvex.json` contains 10 `not_affected`
+statements for 10 CVE IDs. Each statement names the images and the exact package
+version: the images replace the pebble entrypoint with Java, thus pebble never runs.
 
 `build-application-images.sh` applies only statements with the author
 `ShardShop image review`. A new package version or a new advisory has no statement,
 thus the gate stops again. Review the statements with the JRE base by
-**2026-10-28**, and when a kubectl or base image digest changes. The migration image
+**2026-10-28**, and when the base image digest changes. The migration image
 contains the same pebble binary; its next review must also handle these advisories.
 
 #### OS packages without an advisory check
@@ -429,8 +418,8 @@ platform by **2026-11-04**, and Flyway with its image by **2026-10-30**.
 [Cucumber JVM releases](https://github.com/cucumber/cucumber-jvm/releases),
 [OSV](https://osv.dev/).
 
-The scenarios use one image. The `postgresql_test` pin moves to the 2026-10-07
-build of `postgres:18.6-trixie` (PostgreSQL `18.6-1.pgdg13+2`, gosu 1.19), with
+The scenarios of step 3.10 use one image. The `postgresql_test` pin moves to the
+2026-10-07 build of `postgres:18.6-trixie` (PostgreSQL `18.6-1.pgdg13+2`, gosu 1.19), with
 newer Debian packages than the 2026-09-28 pin. Docker Scout reports 6 critical, 36
 high, 28 medium and 49 low advisories for it: Go stdlib 1.24.6 of gosu (4 critical,
 29 high), gnutls, libxml2, cyrus-sasl2 and zlib; no newer build fixes them. The user
@@ -441,6 +430,46 @@ integration build, with the port bound to `127.0.0.1`. Recheck them by
 its port on all host interfaces, runs privileged with the Docker socket, and
 contains Go stdlib 1.23.12 with 4 critical and 29 high advisories. A JVM shutdown
 hook removes the container instead.
+
+### Step 3.11 generator allocation dependencies
+
+Product and order reserve their generator ID in their own JVM through the Kubernetes
+API. The idgen library declares the platform-managed Apache HttpClient **5.6.4** (the
+client of the reader, [step 3.8](#step-38-reader-http-client)) and
+jackson-databind **2.21.7**. The product and order packages add only httpclient5
+5.6.4, httpcore5 5.4.3 and httpcore5-h2 5.4.3; they already contained jackson-databind
+and slf4j-api 2.0.18. On **2026-10-12**, the cached JARs matched the SHA-256 values
+that the lock records for step 3.8, and OSV listed no advisories for them and for
+jackson-databind 2.21.7. The lock's `step_3_11_generator_allocation` refers to these
+records. The product and order images no longer contain kubectl
+([images](#step-39-application-images)).
+
+The generator scenarios of `shardshop-testing` need a real Kubernetes API. On
+**2026-10-12**, the user selected k3s **v1.36.5+k3s1**
+(`docker.io/rancher/k3s`, index
+`sha256:057cfd5a9d51b89f1f0ee139c28d5d5fdd5aa7ddeac2742a0ba90c6dbc0329bb`, built
+2026-09-30), the newest patch of the lab's Kubernetes 1.36 minor:
+
+- A plain Testcontainers `GenericContainer` runs `server --disable-agent`. Without an
+  agent, k3s runs no kubelet and no containerd, thus the container is not privileged.
+  Its API port is bound to `127.0.0.1`. Each scenario starts its own container, which
+  is ready in about 5 seconds with about 300 MiB of memory.
+- The Testcontainers `K3sContainer` module (2.0.5, managed by the platform) is not
+  used: it always sets privileged mode, the host cgroup namespace and a read-write
+  `/sys/fs/cgroup` bind.
+- Docker Scout 1.24.0 reports 12 critical, 31 high, 23 medium and 8 low advisories
+  for the image. The alternative upstream images kube-apiserver v1.36.5 (3 critical,
+  20 high) and etcd 3.6.15-0 (3 critical, 13 high) need a custom certificate and
+  flag harness. The user accepted the findings for local test containers that run
+  only during an integration build. Recheck them by **2026-10-28**.
+
+The scenarios apply the real RBAC and retention policy of the chart. Thus the
+`integration` profile of `shardshop-testing` runs `helm template` with the pinned
+exec-maven-plugin **3.6.4**, and `helm` comes from the user's `PATH` (tested with
+4.3.0), as for the lab scripts. Helm 4.3.0 does not combine `--show-only` with
+`--output-dir`, thus it writes all infrastructure templates into `target/chart`.
+[Testcontainers releases](https://github.com/testcontainers/testcontainers-java/releases),
+[k3s releases](https://github.com/k3s-io/k3s/releases), [OSV](https://osv.dev/).
 
 ### Explicit Snowflake library selection
 
@@ -508,8 +537,10 @@ Kubernetes **1.36.4** lab. The temporary container drill copies kubectl from the
 locked kind node image into the locked Canonical OpenJDK 25 JRE image; both source
 digests remain unchanged. That image exists only for verification and does not
 replace the final service image qualification in steps 3.9/4.8. The
-[step 3.4 runbook](README.md#generator-allocation-at-jvm-startup-step-34) records
-the scoped Maven and live verification commands.
+[runbook](README.md#generator-allocation-at-jvm-startup-steps-34-and-311) records
+the scoped Maven and live verification commands. Step 3.11 replaced the launcher, the
+kubectl calls and the drill with a reservation in the application JVM
+([dependencies](#step-311-generator-allocation-dependencies)).
 
 The fixed 41/10/12 profile, epoch, process allocation, overflow handling, decimal
 wire/storage types, and tests are defined in [ARCHITECTURE.md](ARCHITECTURE.md).

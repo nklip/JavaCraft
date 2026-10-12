@@ -27,7 +27,8 @@ applications on OpenJDK 25. The Maven toolchain uses the installation selected b
 `JAVA_HOME`, without a vendor or exact-patch restriction; preview features remain
 disabled. Container bases are the verified
 Canonical OpenJDK 25 JDK/JRE images on Ubuntu 26.04 in the version lock. The JRE
-is shell-free, thus the startup allocator launcher is a Java program (step 3.4).
+is shell-free; product and order reserve their generator IDs with Java code in their
+own JVM (step 3.11).
 Configure a non-root container user explicitly. Final application images
 retain the deployment qualification gates in the version policy.
 
@@ -59,8 +60,8 @@ utilities to all applications and `shardshop-sharding`. Only product/order use
 `shardshop-idgen` for bounded ID generation and `shardshop-sharding` for routing.
 Idgen and sharding each own their Quarkus wiring, while their domain classes
 remain free of framework imports. They do not depend on one another. All three
-libraries are ordinary Java JARs with no independent service; idgen also supplies
-the product/order startup launcher. PostgreSQL and RabbitMQ
+libraries are ordinary Java JARs with no independent service; idgen also reserves
+the generator ID of each product/order JVM at startup. PostgreSQL and RabbitMQ
 are supporting infrastructure.
 
 No module owns a database schema or ships migrations: schemas, roles and
@@ -80,7 +81,7 @@ they never generate, derive, or allocate them locally.
 | 3 | `shardshop-order` | Accept buyer and order HTTP requests, coordinate the saga including stock reservation, and relay captured order-outbox inserts to RabbitMQ | One stateless order service pod initially | Buyers, orders, items, saga state, inbox, outbox, and CDC offsets in schema `ordering`; reads sellers and products and writes stock reservations and product stock in `catalog` |
 | 4 | `shardshop-ledger` | Consume ledger commands and persist order ledger records | One ledger consumer pod plus a separate PostgreSQL pod initially | Schema `ledger` in a dedicated ledger database: entries, decisions, permanent result bindings, inbox, outbox, and command quarantine |
 | 5 | `shardshop-core` | Aggregate `common` (canonical-ID parsing, UTF-8 SHA-256 and the bounded JSON HTTP client), `idgen` (bounded Snowflake generation) and `sharding` (seller/buyer routing); idgen and sharding own their SmallRye/CDI wiring (section 3) | No aggregator pod; common is inside all six applications, idgen and sharding are inside product/order | None |
-| 6 | `shardshop-testing` | Cucumber integration scenarios that start the packaged applications against a PostgreSQL test container | Not deployed; runs only in Maven builds with `-Pintegration` | Its own test databases, migrated by Flyway with the lab's roles |
+| 6 | `shardshop-testing` | Cucumber integration scenarios that start the packaged applications against a PostgreSQL test container and a k3s Kubernetes API server | Not deployed; runs only in Maven builds with `-Pintegration` | Its own test databases, migrated by Flyway with the lab's roles |
 
 Module 1 contains exactly three independently runnable submodules:
 
@@ -92,7 +93,7 @@ Module 1 contains exactly three independently runnable submodules:
 
 Each workload app uses local ID-free dataset definitions, IDs returned by
 product/order APIs, and bounded in-memory business state. Workloads have no ID generator, Snowflake
-dependency, generator-allocation launcher or allocator permissions. They have no
+dependency, generator allocation or allocator permissions. They have no
 direct SQL connections or persistent tables, including inbox/outbox tables. Each
 has its own request rate, concurrency limit, and resource budget. The pure `shardshop-datasets` library under `shardshop-workload` contains all
 dataset definitions. It fixes payloads and creation retry keys, never entity IDs.
@@ -470,22 +471,32 @@ Generator **0** remains reserved for historical illustrative fixtures and is
 never used by live processes or workloads. Workload datasets contain no IDs;
 all newly created entities use service live generators. For this finite local
 lab, a named `shardshop-snowflake-generators` ConfigMap keeps a monotonically
-increasing allocation counter for live IDs **1-1023**. A startup launcher reserves
-one fresh ID with a Kubernetes resource-version compare-and-set before **every
-product or order JVM start**, including a container restart in the same pod. This
-must not run only in an init container. Take kubectl from a digest-pinned image.
-The step 3.4 drill copies it from the kind node image, and the application images
-of step 3.9 copy it from the official `registry.k8s.io/kubectl` image. Give narrow
+increasing allocation counter for live IDs **1-1023**. Each product or order JVM
+reserves one fresh ID with a Kubernetes resource-version compare-and-set at **every
+start**, also after a container restart in the same pod. Java code in that JVM does
+this before the generator exists. No kubectl binary, launcher process, init
+container, sidecar, separate pod or service takes part. Give narrow
 RBAC for this one precreated ConfigMap only to product and order.
 Workload and ledger pods have no allocator access. Concurrent starts retry CAS
 conflicts with a bounded deadline.
 An uncertain reservation burns that slot and obtains another; it never guesses
 or reuses one. The live generator receives its allocation only after success.
 
-Step 3.4 implements this in the JDK-only `idgen.allocation` package. Its launcher
-starts and supervises one application JVM after reservation, without a shell.
+The `idgen.allocation` package implements this (step 3.4; step 3.11 moved it into
+the application JVM). At startup, the eager CDI producer of the generator reads the
+registry and sends a JSON patch through the Kubernetes API with Apache HttpClient 5.
+The request uses the projected service account token. The client trusts only the
+service account CA, and the server certificate must name the host of the URL. The
+patch tests the UID, the resource version and the counter, and it replaces the
+counter in the same request. The producer starts after the other startup beans, thus
+an invalid routing snapshot or catalog configuration stops the start before a
+reservation and uses no slot.
 Each request is bounded by five seconds within a 30-second allocation deadline;
-CAS retries back off from 25 to 500 milliseconds. The ConfigMap stores
+CAS retries back off from 25 to 500 milliseconds. A refused PATCH (401, 403 or 404)
+stops the start at once. A conflict, a policy denial, a server error or a lost
+response burns the candidate. A fixed `shardshop.id.generator-id` is only for
+disposable tests outside Kubernetes: a JVM in a pod refuses it, and a fixed ID
+together with a registry UID stops the start. The ConfigMap stores
 `data.highWaterMark`; a separate immutable `shardshop-generator-identity`
 ConfigMap pins its original UID. Among ShardShop application ServiceAccounts,
 only product/order receive `get`/`patch` on the registry. Cluster infrastructure
@@ -496,8 +507,8 @@ name and rejects individual or collection deletion, non-increasing counters and
 identity changes. Namespace deletion consequently leaves the namespace terminating
 with the two allocator objects retained. Registry creation
 is an explicit one-time operation outside Helm; normal startup only checks it.
-The [startup runbook](README.md#generator-allocation-at-jvm-startup-step-34)
-defines launch commands, initialization and verification. Step 3.9 wires the
+The [startup runbook](README.md#generator-allocation-at-jvm-startup-steps-34-and-311)
+defines the configuration, initialization and verification. Step 3.9 wires the
 product image and Deployment; step 4.8 wires order.
 
 Never reuse a slot while any data from that lab can be restored/replayed. This

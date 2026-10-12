@@ -49,7 +49,7 @@ public final class GeneratorAllocator {
                 return next;
             }
             // Even when the server did not commit, skip this slot in the next CAS. If this
-            // launcher dies, no ID from that unacknowledged attempt was given to a JVM.
+            // JVM stops now, its generator never uses an ID from that unacknowledged attempt.
             burned = next;
             delay.pause(remaining(started, Duration.ofMillis(backoffMillis)));
             backoffMillis = Math.min(backoffMillis * 2, 500);

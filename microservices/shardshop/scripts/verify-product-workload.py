@@ -6,7 +6,7 @@ build-application-images.sh. The check calls deploy.sh for two new runs:
 
 1. A complete run: the seeder Job completes, the reader resolves the IDs that the seeder
    verified, and it reads through both ready product pods within 120 s, also after one pod
-   replacement.
+   replacement. The replacement pod must reserve a new generator ID in its own JVM (step 3.11).
 2. A repeated run with the same checks must recover the same IDs.
 
 The reader waits in Java until product serves the complete dataset. On this lab the dataset
@@ -26,6 +26,7 @@ READS = 'uri="/api/v1/sellers/{sellerId}/products/{productId}"'
 READER = "app.kubernetes.io/name=shardshop-product-reader"
 REPORT = re.compile(r"Product reads, interval [0-9.]+ s: ([0-9]+) requests, ([0-9.]+)/s, outcomes \{([^}]*)\}.*"
                     r"pool \{([^}]*)\}")
+RESERVED = re.compile(r"Reserved generator ID ([1-9][0-9]{0,3}) for this JVM start\.")
 
 
 def fail(message):
@@ -89,6 +90,21 @@ def product_reads(pod):
     metrics = kubectl("get", "--raw", f"/api/v1/namespaces/shardshop/pods/{pod}:8080/proxy/q/metrics")
     return sum(float(line.rsplit(" ", 1)[1]) for line in metrics.splitlines()
                if line.startswith("http_server_requests_seconds_count{") and 'method="GET"' in line and READS in line)
+
+
+def high_water():
+    return int(kubectl("get", "configmap", "shardshop-snowflake-generators", "-o", "jsonpath={.data.highWaterMark}"))
+
+
+def generator_ids(pods):
+    """The generator ID that the current JVM of each product pod reserved, from its log."""
+    ids = {}
+    for pod in pods:
+        reserved = RESERVED.findall(kubectl("logs", pod))
+        require(len(reserved) == 1, f"{pod} logged {len(reserved)} generator reservations")
+        ids[pod] = int(reserved[0])
+    require(len(set(ids.values())) == len(ids), f"product pods share a generator ID: {ids}")
+    return ids
 
 
 def reader_log():
@@ -171,11 +187,20 @@ def complete_run(run, shards, expected_digest):
             f"run {run} did not keep exactly 150 sellers and 300 products")
     check_traffic(f"run {run}")
     check_clean_interval(f"run {run}", 0)
-    replaced = ready_product_pods()[0]
+    before = generator_ids(ready_product_pods())
+    replaced = min(before)
     kubectl("delete", "pod", replaced, "--wait=false")
     wait_for(f"run {run}: no replacement product pod became ready", 120,
              lambda: len(ready_product_pods()) == 2 and replaced not in ready_product_pods())
-    print(f"run {run}: replaced {replaced} with {sorted(set(ready_product_pods()) - {replaced})}", flush=True)
+    after = generator_ids(ready_product_pods())
+    replacement = {pod: generator for pod, generator in after.items() if pod not in before}
+    reserved = high_water()
+    require(len(replacement) == 1 and max(before.values()) < min(replacement.values()) <= reserved,
+            f"run {run}: the replacement pod did not reserve a new generator ID: before {before}, after {after}, "
+            f"high-water {reserved}")
+    [(new_pod, new_id)] = replacement.items()
+    print(f"run {run}: replaced {replaced} (generator ID {before[replaced]}) with {new_pod} (generator ID {new_id}); "
+          f"high-water {reserved}", flush=True)
     seen = len(reports())
     check_traffic(f"run {run} after the replacement")
     check_clean_interval(f"run {run} after the replacement", seen + 1)
@@ -189,15 +214,14 @@ def main():
                            "jsonpath={.data.application\\.properties}").splitlines())
     shards = routing["shardshop.routing.shards"].split(",")
     prefix = f"check-{time.strftime('%Y%m%d%H%M%S', time.gmtime())}"
-    before = kubectl("get", "configmap", "shardshop-snowflake-generators", "-o", "jsonpath={.data.highWaterMark}")
+    before = high_water()
 
     digest = complete_run(f"{prefix}-first", shards, None)
     complete_run(f"{prefix}-repeat", shards, digest)
     kubectl("scale", "deployment/shardshop-product-reader", "--replicas=0")
-    high_water = kubectl("get", "configmap", "shardshop-snowflake-generators", "-o", "jsonpath={.data.highWaterMark}")
     print(f"Passed: two runs recovered key-to-ID SHA-256 {digest}, and the reader read through both product pods "
-          f"before and after a pod replacement. Generator high-water {before} -> {high_water}. The reader is "
-          f"scaled to zero.")
+          f"before and after a pod replacement, which reserved a new generator ID. Generator high-water {before} -> "
+          f"{high_water()}. The reader is scaled to zero.")
 
 
 if __name__ == "__main__":

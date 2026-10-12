@@ -31,6 +31,12 @@ public final class PackagedApplication {
      * The module path is relative to the ShardShop directory.
      */
     public static PackagedApplication start(String module, Path directory, List<String> options) throws IOException {
+        return start(module, directory, options, List.of());
+    }
+
+    /** As {@link #start(String, Path, List)}, with program arguments after the JAR, for example --check-startup. */
+    public static PackagedApplication start(String module, Path directory, List<String> options, List<String> arguments)
+            throws IOException {
         Path jar = ShardShopFiles.resolve(module).resolve("target/quarkus-app/quarkus-run.jar");
         if (!Files.isRegularFile(jar)) {
             throw new IllegalStateException("Package " + module + " first; build shardshop-testing with -am");
@@ -43,6 +49,7 @@ public final class PackagedApplication {
         command.add("-Dquarkus.profile=prod");
         command.add("-jar");
         command.add(jar.toString());
+        command.addAll(arguments);
         ProcessBuilder builder = new ProcessBuilder(command)
                 .directory(directory.toFile())
                 .redirectErrorStream(true)

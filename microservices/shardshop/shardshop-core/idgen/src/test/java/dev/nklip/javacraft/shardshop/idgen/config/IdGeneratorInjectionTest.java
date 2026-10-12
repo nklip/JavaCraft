@@ -5,6 +5,8 @@ import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
+import java.util.OptionalLong;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -23,7 +25,7 @@ class IdGeneratorInjectionTest {
 
     @Test
     void injectsOneLiveGeneratorForTheProcess() {
-        assertEquals(1L, configuration.generatorId());
+        assertEquals(OptionalLong.of(1), configuration.generatorId());
         assertSame(generator, anotherInjection);
         long first = generator.nextId();
         long second = anotherInjection.nextId();

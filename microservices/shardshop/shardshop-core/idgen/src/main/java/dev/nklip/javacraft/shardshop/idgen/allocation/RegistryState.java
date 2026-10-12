@@ -11,9 +11,11 @@ public record RegistryState(String uid, String resourceVersion, int highWaterMar
         }
     }
 
-    static void requireUid(String uid) {
+    /** The pinned UID must be the canonical lowercase UID of the registry ConfigMap. */
+    public static void requireUid(String uid) {
         if (uid == null || !uid.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
-            throw new IllegalArgumentException("A pinned generator registry UID is required");
+            throw new IllegalArgumentException("A pinned generator registry UID is required; set"
+                    + " shardshop.id.registry.uid (SHARDSHOP_ID_REGISTRY_UID) from the identity ConfigMap.");
         }
     }
 }

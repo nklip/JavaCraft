@@ -53,6 +53,8 @@
         <sisu.version>1.1.0</sisu.version>
         <tc.image.postgresql>docker.io/library/postgres@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336</tc.image.postgresql>
         <tc.image.rabbitmq>docker.io/library/rabbitmq@sha256:cdf40d8cb363d145e377ed88d59696a42386ffe54b30125f10eb128b862eea95</tc.image.rabbitmq>
+        <!-- rancher/k3s:v1.36.5-k3s1: the Kubernetes API server of the generator scenarios in shardshop-testing. -->
+        <tc.image.k3s>docker.io/rancher/k3s@sha256:057cfd5a9d51b89f1f0ee139c28d5d5fdd5aa7ddeac2742a0ba90c6dbc0329bb</tc.image.k3s>
     </properties>
 
     <modules>
@@ -173,6 +175,7 @@
                             <quarkus.devservices.enabled>false</quarkus.devservices.enabled>
                             <tc.image.postgresql>${tc.image.postgresql}</tc.image.postgresql>
                             <tc.image.rabbitmq>${tc.image.rabbitmq}</tc.image.rabbitmq>
+                            <tc.image.k3s>${tc.image.k3s}</tc.image.k3s>
                         </systemPropertyVariables>
                         <environmentVariables>
                             <!--
@@ -511,6 +514,7 @@
                         <quarkus.devservices.enabled>false</quarkus.devservices.enabled>
                         <tc.image.postgresql>${tc.image.postgresql}</tc.image.postgresql>
                         <tc.image.rabbitmq>${tc.image.rabbitmq}</tc.image.rabbitmq>
+                        <tc.image.k3s>${tc.image.k3s}</tc.image.k3s>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>

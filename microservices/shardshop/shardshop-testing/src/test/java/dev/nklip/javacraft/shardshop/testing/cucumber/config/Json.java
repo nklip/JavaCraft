@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.MappingIterator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.cfg.JsonNodeFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -12,6 +13,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /** Strict JSON for request bodies and response checks: exact decimals, no duplicate members, no trailing data. */
 public final class Json {
@@ -31,6 +33,15 @@ public final class Json {
         } catch (IOException failure) {
             throw new AssertionError("The body is not one valid JSON document: "
                     + new String(document, StandardCharsets.UTF_8), failure);
+        }
+    }
+
+    /** A sequence of root documents, as kubectl prints one document for each object. */
+    public static List<JsonNode> documents(String text) {
+        try (MappingIterator<JsonNode> documents = MAPPER.readerFor(JsonNode.class).readValues(text)) {
+            return documents.readAll();
+        } catch (IOException failure) {
+            throw new AssertionError("The text is not a sequence of JSON documents: " + text, failure);
         }
     }
 
