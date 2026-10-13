@@ -15,7 +15,7 @@
 
     <properties>
         <shardshop.directory>${project.basedir}/..</shardshop.directory>
-        <!-- The module has only Cucumber scenarios: no JAR, and nothing to install or deploy. -->
+        <!-- The module has only tests: no JAR, and nothing to install or deploy. -->
         <maven.install.skip>true</maven.install.skip>
         <maven.deploy.skip>true</maven.deploy.skip>
         <!-- The audit profile still writes the SBOM of the test classpath. -->
@@ -114,6 +114,11 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>testcontainers-postgresql</artifactId>
             <scope>test</scope>
@@ -181,11 +186,14 @@
                 </configuration>
             </plugin>
             <plugin>
-                <!-- The scenarios need Docker. Like the other integration tests, they run only with -Pintegration. -->
+                <!-- Docker scenarios use -Pintegration; live lab gates use the separate opt-in -Pkind profile. -->
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <configuration>
                     <failIfNoTests>true</failIfNoTests>
+                    <excludes>
+                        <exclude>**/KindIT.java</exclude>
+                    </excludes>
                     <systemPropertyVariables>
                         <!-- The scenarios find the packages, migrations and datasets in this source tree. -->
                         <shardshop.directory>${shardshop.directory}</shardshop.directory>
@@ -201,9 +209,55 @@
 
     <profiles>
         <profile>
+            <id>kind</id>
+            <properties>
+                <shardshop.kind.tags>kind-infrastructure</shardshop.kind.tags>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <configuration>
+                            <includes combine.self="override">
+                                <include>**/KindIT.java</include>
+                            </includes>
+                            <excludes combine.self="override"/>
+                            <!-- JUnit discovery filters reject an empty selection; Cucumber filters merely skip it. -->
+                            <groups>${shardshop.kind.tags}</groups>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>kind-tests</id>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
             <id>integration</id>
             <build>
                 <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>integration-tests</id>
+                                <configuration>
+                                    <excludes combine.self="override">
+                                        <exclude>**/ShardRoutingStartupIT.java</exclude>
+                                        <exclude>**/KindIT.java</exclude>
+                                    </excludes>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
                     <plugin>
                         <!--
                             The generator scenarios apply the real RBAC and retention policy of the chart. helm comes

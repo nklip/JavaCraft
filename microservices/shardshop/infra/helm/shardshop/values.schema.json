@@ -8,7 +8,7 @@
   "properties": {
     "render": {
       "type": "string",
-      "enum": ["infrastructure", "migration", "routing", "inventory", "namespace", "applications", "seeding"]
+      "enum": ["infrastructure", "migration", "routing", "inventory", "namespace", "applications", "seeding", "kind-configuration", "dns-probes", "generator-identity"]
     },
     "migrationShard": {"type": "string"},
     "migrationStream": {"type": "string", "enum": ["catalog", "ordering", "ledger"]},

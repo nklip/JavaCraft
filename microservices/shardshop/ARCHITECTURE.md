@@ -22,6 +22,41 @@ Argo CD GitOps, and may add cloud-only
 durability such as S3 backups with WAL archiving and a three-broker RabbitMQ. No
 local behavior or check may depend on a cloud service.
 
+Cluster creation, reconciliation and shutdown use `scripts/up.sh` and `scripts/down.sh`;
+migration and application deployment remain separate through step 3.14.
+`up.sh` snapshots the inventory, environment values, kind configuration, operator
+chart and operator values once per invocation. It accepts only the fixed kind topology
+of one control plane and three workers and reviewed image/port settings; changes requiring
+cluster recreation, storage or placement changes, bootstrap changes, PostgreSQL major
+version changes, or a different replica shape are rejected. After any node start it
+restarts kindnet. Bash orders the phases and invokes native tools for current
+image builds, Docker Scout qualification, image loading and kind/Docker lifecycle.
+Helm owns declarative resources, including DNS probes and allocator identity;
+Kubernetes and CNPG reconcile them. Opt-in Maven kind Cucumber scenarios verify
+invariants and readiness using that same invocation snapshot: guards run before
+protected mutations, and readiness checks observe DNS from a pod on every node,
+current-generation database resources, actual SQL connectivity and configuration,
+and both streaming quorum standbys of every shard. Native bounded waits are used
+where their status proves the requirement; cross-resource and SQL assertions stay
+in Java tests. These tests do not replace reconciliation with a Java controller.
+Supported resource, PostgreSQL configuration and reviewed operator changes are
+reconciled in place; failures stop with recovery guidance and retained data.
+
+The current step 3.16 foundation moves infrastructure checks into Maven; it does
+not yet replace the workload and disruptive verification scripts. Its `kind`
+profile defaults to `kind-infrastructure` through `shardshop.kind.tags`. The
+initial ShardShop-only Maven `clean install -DinstallAtEnd=true` includes `verify`
+and installs verified reactor artifacts in Maven's local cache after the reactor
+succeeds; subsequent Failsafe gates resolve these packages without another build.
+This is local artifact caching, without tool installation or remote publication. Complete
+step 3.16 before step 3.15 adds Flyway Job migration and application deployment
+orchestration. Flyway owns validation and schema changes; Helm renders deployment
+resources, Kubernetes owns rollout and Job completion, and Java applications own
+seeding, catalog resolution and load. Later deployment acceptance belongs to the
+Maven kind suite, with disruptive drills selected explicitly. Keep exactly the two
+planned lifecycle scripts, with no embedded Python, extra wrappers, downloaded
+tool binaries or local dependency on GitOps or cloud services.
+
 Build and test with JDK 25 or newer (bytecode targets release 25), and run the
 applications on OpenJDK 25. The Maven toolchain uses the installation selected by
 `JAVA_HOME`, without a vendor or exact-patch restriction; preview features remain
@@ -506,7 +541,8 @@ The infrastructure's fail-closed admission policy matches the admitted object's
 name and rejects individual or collection deletion, non-increasing counters and
 identity changes. Namespace deletion consequently leaves the namespace terminating
 with the two allocator objects retained. Registry creation
-is an explicit one-time operation outside Helm; normal startup only checks it.
+is performed by `up.sh` only for a cluster created during that invocation, after the
+guard is effective; normal startup of an existing cluster only checks it.
 The [startup runbook](README.md#generator-allocation-at-jvm-startup-steps-34-and-311)
 defines the configuration, initialization and verification. Step 3.9 wires the
 product image and Deployment; step 4.8 wires order.

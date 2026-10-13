@@ -874,3 +874,229 @@ git diff --check
 The failure checks of the implementation and of the validation used temporary
 harnesses outside the repository, with command stubs and scratch copies. They are not
 kept, because PLAN instruction 9 permits no new scripts.
+
+
+## Step 3.14
+
+**2026-10-13:** `up.sh` owns inventory rendering, cluster reconciliation and
+allocator initialization/checking. Each invocation snapshots the chart, inventory,
+environment values, kind configuration and vendored operator chart/values.
+`generator-registry.sh` is removed; `render.sh` and `shards.sh` remain only for the
+migration, deployment and verification callers that later steps retire.
+
+- A missing kind cluster is created; a retained cluster starts only its stopped
+  nodes. Incompatible node images, roles, counts, networking or port settings fail
+  without recreating the cluster. Published and reserved shard membership, ordering
+  and regions must match. Storage, placement, bootstrap, instance-count and
+  PostgreSQL-major changes are rejected before infrastructure apply.
+- After starting retained nodes, `up.sh` restarts kindnet to refresh its node
+  addresses. Restricted, temporary pods prove DNS from all four nodes, including
+  the control plane. Database checks require the desired PostgreSQL/operator images
+  and resource quantities on every pod, real `-rw` connectivity, applied PostgreSQL
+  parameters without pending restarts, exact streaming quorum standbys, and
+  current-generation DatabaseRole/Database statuses.
+- Only a cluster successfully created by this invocation can initialize allocator
+  state, and only after admission dry-run denials establish protection. Creation
+  uses `create`, then pins the returned registry UID in the immutable identity.
+  Existing missing, partial, malformed or mismatched state fails with independent
+  recovery instructions. Neither a rerun nor a failed initialization resets state.
+- An unchanged full run against the populated `kind-shardshop` lab returned zero.
+  Before/after snapshots matched every Secret UID and payload hash, PVC UID/volume,
+  Cluster/Database UID, PostgreSQL system identifier, catalog row count and ID hash,
+  and both allocator objects. The allocator retained UID
+  `e9c89848-6b3f-43a2-97d0-8543b12b8914` and high-water 61.
+- Fresh setup passed in the isolated `shardshop-314-fresh` cluster with its own
+  kubeconfig. The source copy was in a path containing spaces; only the cluster
+  name differed in `up.sh` and `kind.yaml`. Automatic initialization produced a new
+  immutable identity and high-water 0 before any application deployment or ID
+  allocation. All four node DNS probes, database checks and image loads passed.
+- The next full run on that cluster removed all three helper scripts from the
+  scratch copy, stopped exactly one worker, and changed every database CPU request
+  from 250m to 275m and ledger `max_connections` from 100 to 110. Only that worker's
+  Docker start timestamp changed. All ten pods converged; ledger reported 110 with
+  no pending restart, and all six shard standbys streamed. The primaries finished
+  their normal restart within the readiness deadline without manual recovery.
+  Secret hashes, volume/database identities and allocator state remained identical.
+- All 36 temporary Bash 3.2 command-fixture cases passed, including topology and
+  node mismatches, missing/partial/invalid allocator state, fresh-namespace API
+  failure, removal of an immutable placement key, supported changes, stale or
+  unapplied PostgreSQL parameters, pending restart and pod-list API failure.
+  Ten additional live checks against the disposable cluster rejected changed membership,
+  order and regions in both topology snapshots, a node-image mismatch, and existing
+  missing/partial/mismatched allocator state without repairing it. Admission-cache
+  propagation required a bounded wait in the fault-injection harness. The disposable
+  cluster was then deleted; the populated lab's allocator was never modified by
+  these fault injections.
+
+The first final whole-cluster resume attempt stopped during the product image
+advisory gate: Docker Scout reported an EOF from its GraphQL API after five
+attempts. A credential-free reachability check also timed out. The full retry
+passed Maven again, then Scout requested Docker sign-in during Flyway's advisory
+inventory. Both runs returned nonzero before starting any node or loading an
+image. The normal `up.sh` build and scan gates remain unchanged; a fresh full
+rerun requires working Scout connectivity/authentication.
+
+To complete the infrastructure acceptance and restore the retained lab, a temporary
+copy exercised the unchanged cluster stage against all four stopped original nodes.
+Its build calls checked the exact four Docker image IDs from the earlier successful
+full qualification, rejecting any differing tag, then used those qualified images.
+It did not rebuild or claim a new scan. That focused resume returned zero: kindnet
+restarted, DNS worked from all four nodes, desired database state and all six
+streaming quorum standbys passed, and both existing product pods became Ready.
+Every Secret UID/payload hash, PVC, Cluster/Database UID, PostgreSQL system identifier,
+and all 150 seller/300 product ID hashes matched the original snapshot. Registry
+and identity UIDs stayed unchanged; high-water advanced from 61 to 63 for the two
+restarted product JVMs. No temporary DNS pods remained, and only the retained
+`shardshop` kind cluster remained running.
+
+Each completed full run passed 935 unit/startup tests and 55 packaged routing
+checks through the scoped ShardShop `clean verify`, followed by all four image
+advisory gates. Shell syntax, Helm lint and whitespace checks passed. The temporary
+harnesses and state hashes were kept outside the repository; no new maintained
+script or generated report was added. SQL migrations and application release
+deployment remain step 3.15.
+
+**Commands:**
+
+```bash
+# Normal reconciliation, also valid from any working directory.
+bash microservices/shardshop/scripts/up.sh
+# Retained whole-cluster stop/resume qualification.
+bash microservices/shardshop/scripts/down.sh
+(cd /tmp && bash "$OLDPWD/microservices/shardshop/scripts/up.sh")
+# This Maven command is run by every up.sh invocation, never the root reactor.
+mvn -B -ntp -f microservices/shardshop/pom.xml clean verify
+helm lint microservices/shardshop/infra/helm/shardshop -f microservices/shardshop/infra/helm/shardshop/kind-values.yaml -f microservices/shardshop/infra/shards.yaml
+bash -n microservices/shardshop/scripts/*.sh
+git diff --check
+# Temporary orchestration and live rejection harnesses used for this qualification.
+python3 /private/tmp/shardshop-314-review/verify.py
+python3 /private/tmp/shardshop-3.14-live-guards.py
+# Focused whole-cluster resume after the external Scout failure (qualified IDs checked).
+bash /private/tmp/shardshop-3.14-focused-resume.sh
+```
+
+The isolated configuration run used its own `KUBECONFIG` and
+`SHARDSHOP_ENV_VALUES=/private/tmp/shardshop-3.14-supported-values.yaml` with the
+scratch copy's `scripts/up.sh`; that values file preserved kind storage/placement
+and set `postgresql.resources.requests.cpu: 275m` and
+`ledger.parameters.max_connections: "110"`. The snapshot command was
+`python3 /private/tmp/shardshop-3.14-snapshot.py <output.json> <context>`;
+it stores hashes, never Secret values.
+
+**2026-10-13 review fixes:** Database rollout checks now default each omitted
+resource request to its limit, matching Pod admission while retaining explicit
+requests, including zero. `up.sh` exports the current kind endpoint into the
+caller's persistent kubeconfig using kind's normal `KUBECONFIG` handling, so
+subsequent migration, deployment and kubectl commands retain access after it exits.
+
+A temporary regression harness executes the old and updated source snippets.
+Of 16 resource cases, the old code incorrectly rejects seven valid limits-only
+or partially specified request configurations; the updated code accepts them and
+continues to reject mismatched resources. Four kubeconfig cases use the real kind
+exporter with isolated files: missing context, stale context, a stale context in
+a multi-file configuration, and a missing first file. In each case the old child
+can reach `/readyz` but the caller cannot after it exits; the updated child and
+caller both succeed, with unrelated contexts and clusters preserved.
+
+The scoped Maven build passes 935 unit/startup tests and 55 packaged routing
+checks. All 36 existing infrastructure fixtures, shell syntax, Helm lint and
+whitespace checks pass. Updated read-only checks on the retained lab pass for
+allocator identity/high-water (still 63), every database pod's desired resources
+and parameters, and all six streaming quorum standbys. This verification uses
+isolated kubeconfig files and read-only live checks; it does not repeat the full
+image build/advisory or cluster stop/start qualification above.
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml clean verify
+python3 /private/tmp/shardshop-314-fixes/regressions.py --kind
+python3 /private/tmp/shardshop-314-review/verify.py
+bash /private/tmp/shardshop-314-fixes/live-readiness.sh
+bash -n microservices/shardshop/scripts/*.sh
+helm lint microservices/shardshop/infra/helm/shardshop -f microservices/shardshop/infra/helm/shardshop/kind-values.yaml -f microservices/shardshop/infra/shards.yaml
+git diff --check
+```
+
+## Step 3.16 — infrastructure verification foundation
+
+**2026-10-13 (partial):** Refactored the step 3.14 lifecycle implementation from
+672 to 233 lines of Bash. Helm now renders DNS probes, the fresh registry identity
+and the JSON view of the snapshotted kind configuration. The opt-in Maven `kind`
+suite owns configuration, node, retained-state, admission, DNS and database
+assertions. Kubernetes and CNPG still reconcile resources; Bash sequences native
+tools and retains image build/Scout/load gates. There is no embedded Python in
+`up.sh`; host `jq` only selects inventory fields and CRI digests.
+
+The initial scoped build now uses `clean install -DinstallAtEnd=true`, including
+verification and caching the successful reactor artifacts locally for subsequent
+module-only Failsafe gates. A direct Failsafe reactor invocation after `verify`
+alone failed to resolve the common test JAR and other reactor dependencies;
+installation resolves that boundary without rebuilding at every gate. Native
+JUnit tag expressions select scenarios through `shardshop.kind.tags`. A regression
+showed that Cucumber's execution-time tag filter silently skipped all seven
+scenarios for an unknown tag; JUnit discovery filtering now fails that case.
+
+**Verification:** the scoped clean build and subsequent install both passed 962
+unit/startup tests (including 27 new kind helper tests) and 55 packaged routing
+checks. Six live scenarios passed on the retained lab: configuration, nodes,
+retention, allocator admission, per-node DNS and database readiness. Negative
+Maven runs rejected an unsupported API bind address, an unknown phase and fresh
+bootstrap on a retained lab. A deliberately duplicated DNS probe caused a partial
+create failure; cleanup removed the created Pod, confirmed with a bounded native
+deletion wait. The new CRI digest query returned a consistent digest for all four
+images on all four nodes and retained the reviewed Flyway pin. Shell syntax,
+Helm lint, all new render modes and whitespace checks passed. The effective
+`integration` POM excludes `KindIT`; normal builds ran no live scenarios.
+
+The retained API briefly became unavailable during qualification and recovered
+without intervention. Diagnostics showed API-server restarts, CPU pressure and
+slow etcd reads, without OOM evidence; the precise termination trigger was not
+established. The allocator UID remained
+`e9c89848-6b3f-43a2-97d0-8543b12b8914`. Its high-water mark advanced from 63 to 65:
+product logs confirm reservations 64 and 65 by two restarted JVMs before the live
+suite. The checks used admission dry-runs and did not rewind allocation state.
+No DNS probes remained after verification.
+
+This qualification exercised the infrastructure gates against the retained lab;
+it did not repeat full image build/advisory, fresh-cluster or stop/start acceptance.
+The historical step 3.14 evidence remains above. Workload/deployment scenarios and
+explicit disruptive drills are still required to finish step 3.16, now a
+prerequisite for step 3.15.
+
+**Commands:**
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml clean verify
+mvn -B -ntp -f microservices/shardshop/pom.xml install -DinstallAtEnd=true
+# Prepare the immutable snapshot as documented in README's local-cluster section.
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+    failsafe:integration-test failsafe:verify -Dit.test=KindIT \
+    -Dshardshop.kind.snapshot="$snapshot" \
+    -Dshardshop.kind.tags='kind-config | kind-nodes | kind-retention | kind-allocator | kind-dns | kind-infrastructure'
+# Temporary qualification fixtures, not maintained scripts.
+python3 /private/tmp/shardshop-delegation/check-gates.py
+python3 /private/tmp/shardshop-delegation/partial-dns-check.py
+python3 /private/tmp/shardshop-delegation/check-image-digests.py
+bash /private/tmp/shardshop-delegation/final-gates.sh
+bash -n microservices/shardshop/scripts/up.sh
+helm lint microservices/shardshop/infra/helm/shardshop --values microservices/shardshop/infra/helm/shardshop/kind-values.yaml --values microservices/shardshop/infra/shards.yaml
+git diff --check
+```
+
+**2026-10-13 disposable-lab cleanup follow-up:** The user's 20:49 screenshot
+showed a second four-node cluster, `shardshop-v314`, competing with the retained
+lab. Scratch verification logs identify it as a separate step 3.14 fresh-cluster
+run with failed/retried DNS checks. Docker Desktop's container events confirm
+that its four nodes were deleted at 20:54:59–20:55:18 Europe/Samara, before this
+follow-up inspection; this inspection did not perform those deletions. The
+current Desktop daemon contains only the four original `shardshop` nodes, all
+Ready, and no `kind-shardshop-v314` kubeconfig context. PLAN's verification
+instructions now require owned disposable clusters to be cleaned up on success,
+failure or interruption, with capacity planning before another full lab starts.
+
+```bash
+kind get clusters
+docker ps -a --filter name=shardshop --format '{{.ID}} {{.Names}} {{.Status}}'
+kubectl config get-contexts -o name
+kubectl --context kind-shardshop --request-timeout=10s get nodes -o wide
+```

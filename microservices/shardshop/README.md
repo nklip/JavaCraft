@@ -465,7 +465,8 @@ bash microservices/shardshop/scripts/deploy.sh run-1
 ```
 
 `up.sh` resolves the ShardShop POM from its own location and runs the full
-`mvn -B -ntp -f microservices/shardshop/pom.xml clean verify` build. The commands
+`mvn -B -ntp -f microservices/shardshop/pom.xml clean install -DinstallAtEnd=true` build,
+which includes verification and caches the verified artifacts for later kind checks. The commands
 above use repository-relative paths; invoking `up.sh` by its absolute path works
 from any directory. The Maven build is the source for the four freshly built
 images; no separate Maven or image-build command is required. Audit builds remain
@@ -475,8 +476,11 @@ rebuild keeps its image IDs. Thus `kind load` skips the nodes, and the digests s
 the same.
 
 Migration and application deployment remain separate steps until PLAN step 3.15.
-A fresh lab still needs the explicit [generator initialization](#generator-allocation-at-jvm-startup-steps-34-and-311)
-before `up.sh` can finish; automatic fresh-cluster initialization is step 3.14.
+On a kind cluster created by this invocation, `up.sh` applies and verifies the retention
+admission policy, then creates the generator registry and immutable identity before
+finishing. A resumed cluster is checked only: missing, partial, malformed, or mismatched
+allocator state stops startup and requires independent allocator recovery. `up.sh` never
+resets retained generator state.
 
 ### Application images
 
@@ -683,7 +687,7 @@ objects.
 | Roles and databases | The catalog roles and memberships of the CNPG `DatabaseRole`s, the bootstrap hardening, and the schema `catalog` of `catalog_owner`, as on the lab |
 | Migrations | The Flyway **13.8.1** Java API applies `database/shard/catalog` as `catalog_migrator` with the settings of its `flyway.toml` and the inventory placeholders, as the migration Jobs do |
 | TLS | `openssl` in the container makes a test CA and a server certificate for `localhost` only. Product connects with its `verify-full` default |
-| Kubernetes API | For each generator scenario, one container of the pinned `tc.image.k3s` (k3s v1.36.5) with `server --disable-agent`: no kubelet, no privileges, and the API port bound to `127.0.0.1`. The `pre-integration-test` phase renders the chart with `helm template` and the values of `render.sh`. Each scenario applies the rendered `generator-allocation.yaml` and creates the registry, as `generator-registry.sh initialize` does. For the host name check, product gets an OpenJDK hosts file (`jdk.net.hosts.file`) that points a name in the `.test` domain to `127.0.0.1`. The k3s certificate does not name it |
+| Kubernetes API | For each generator scenario, one container of the pinned `tc.image.k3s` (k3s v1.36.5) with `server --disable-agent`: no kubelet, no privileges, and the API port bound to `127.0.0.1`. The `pre-integration-test` phase renders the chart with `helm template` and the values of `render.sh`. Each scenario applies the rendered `generator-allocation.yaml` and creates the registry with the same fresh-cluster create-then-pin sequence used by `up.sh`. For the host name check, product gets an OpenJDK hosts file (`jdk.net.hosts.file`) that points a name in the `.test` domain to `127.0.0.1`. The k3s certificate does not name it |
 | Applications | The packaged `quarkus-app` folders, started as JVMs with an empty environment. Product gets a new fixed test generator ID at each start, or in the generator scenarios it reserves an ID in the k3s API server with a service account token. It gets four shards (`shard-d` is a second US shard) and at most two connections for each endpoint |
 | Logs | After each scenario, a hook stops product and fails the scenario if a product JVM logged a WARN or ERROR line. This also covers the invalid requests, deadlines and outages that the scenarios cause. The generator scenarios check their expected startup failures separately: the log has only the fixed message, without the token or API response text |
 | Cleanup | Testcontainers runs without its Ryuk reaper, which publishes a port on all host interfaces and runs privileged with the Docker socket. A JVM shutdown hook removes the container; only a killed test JVM leaves it. Testcontainers logs one `Ryuk has been disabled` WARN line for each run |
@@ -936,29 +940,26 @@ individual and collection deletion, and changes to the immutable `shardshop-gene
 ConfigMap. That identity pins the registry's original UID. Neither state object
 is rendered by Helm, so reapplying the chart cannot reset it.
 The guard matches the admitted object's name, including collection deletes with
-an empty request name. `generator-registry.sh check` probes both allocator objects
-through raw collection requests with `dryRun=All`, as well as individual requests
-with `--dry-run=server`. Namespace deletion cannot remove those two objects and
+an empty request name. `up.sh` probes both allocator objects through raw collection
+requests with `dryRun=All`, as well as individual dry-run requests. Namespace deletion
+cannot remove those two objects and
 leaves the namespace terminating while the guard is active; other ConfigMaps
 remain outside the guard.
 The guard uses Kubernetes' [validating admission policy](https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/)
 and the allocator uses [conditional API updates](https://kubernetes.io/docs/reference/using-api/api-concepts/#updates-to-existing-resources).
 
-On first setup, `up.sh` applies infrastructure and then stops if allocator state
-is missing. Initialize it explicitly only for a lab that has never issued retained
-IDs, then rerun the startup check:
+On first setup, `up.sh` initializes the allocator automatically after admission is
+effective. Recovery of missing or partial state is an operator procedure for a lab
+with retained IDs; never create a replacement registry based on absence alone.
 
 ```bash
 bash microservices/shardshop/scripts/up.sh
-# First setup only, after up.sh reports missing allocator state:
-bash microservices/shardshop/scripts/generator-registry.sh initialize
-bash microservices/shardshop/scripts/up.sh
-bash microservices/shardshop/scripts/generator-registry.sh check
 ```
 
-`initialize` preserves an existing valid pair and refuses partial state. A lost
-creation response can leave partial state; neither startup nor initialization
-repairs it by guessing. Establish its history before operator recovery. Normal
+Automatic creation uses `create`, never apply/replace/patch, and refuses to proceed
+unless both state objects are absent. A lost creation response can leave partial
+state; startup does not repair it by guessing. Establish its history before operator
+recovery. Normal
 stop/start, pod replacement and database restore preserve the ConfigMaps. Keep
 the latest allocator identity and high-water backup outside kind, separately
 from database dumps. Never apply an older allocator snapshot over live state.
@@ -1259,10 +1260,9 @@ For a different topology, reset this disposable lab:
    ([generator identity](ARCHITECTURE.md#generator-identity-across-processes-and-restarts)).
 3. Delete the lab with `kind delete cluster --name shardshop`. This destroys the
    lab's data.
-4. Run `up.sh`. It stops because the allocator state is not there.
-5. Run `generator-registry.sh initialize`, then `up.sh` again, as
-   [step 3.4](#generator-allocation-at-jvm-startup-steps-34-and-311) describes.
-6. Run `migrate.sh`. Export the new
+4. Run `up.sh`; because this is a newly created cluster, it initializes the allocator
+   after applying the admission guard.
+5. Run `migrate.sh`. Export the new
    configuration, and reseed before you restart the workloads.
 
 Online data redistribution and rolling topology changes are outside this
@@ -1273,10 +1273,11 @@ without moving any data.
 
 The lab runs on kind, and everything through the final acceptance run works on
 this one machine; the AWS track with Terraform (PLAN milestone 7) is optional and
-comes later. Take `docker`, `kind`, `kubectl`, `helm`, `openssl`, and `python3` from your `PATH`, like
+comes later. Take `docker`, `kind`, `kubectl`, `helm`, `openssl`, and `jq` from your `PATH`, like
 Maven; this project never downloads or pins tool binaries. It was tested with
-Docker Desktop 4.92.0, kind 0.33.0, kubectl 1.36, and Helm 4.3.0 (for example,
-`brew install kind kubectl helm`). The node image's advisories were reviewed on
+Docker Desktop 4.92.0, kind 0.33.0, kubectl 1.36, Helm 4.3.0, and jq 1.7.1
+(for example, `brew install kind kubectl helm jq`). The remaining migration and
+verification scripts still require Python 3 until PLAN steps 3.15–3.20 retire them. The node image's advisories were reviewed on
 2026-09-28 and accepted for this loopback-only, disposable lab. Give Docker
 Desktop's VM at least 12 GB of memory (Settings → Resources); `up.sh` stops early
 if it has less. Migrations also require Docker's Buildx plugin and Docker Scout:
@@ -1287,6 +1288,9 @@ then loads it into every kind node after provisioning.
 one per instance of each three-instance shard, on the digest-pinned Kubernetes
 1.36.4 node image, with the API server on 127.0.0.1. kind cannot add nodes, so a
 cluster created with fewer workers must be deleted and recreated once.
+`up.sh` compares the retained node names, roles, image pins and API port binding
+before starting stopped containers. It rejects other kind creation settings,
+including changed networking, mounts or ports; it never recreates retained nodes.
 Manifests follow the [portability rules](PLAN.md#portability-beyond-kind): a
 shared chart in `infra/helm/shardshop/` with kind settings in `kind-values.yaml`.
 
@@ -1296,25 +1300,88 @@ Create or reuse the cluster from the repository root:
 bash microservices/shardshop/scripts/up.sh
 ```
 
-It creates the `shardshop` cluster if it does not exist and waits for all nodes to
-be Ready. It then installs CloudNativePG 1.30.1 from its vendored chart with
+It snapshots the shared chart, inventory, environment values, kind configuration
+and operator chart/values once. It creates the `shardshop` cluster if absent and
+starts only stopped nodes of an existing cluster. After API readiness, it rejects
+changed published/reserved topology or invalid retained allocator state before
+reconciling infrastructure. It then installs CloudNativePG 1.30.1 from its vendored chart with
 `helm upgrade --install`, waiting up to 3 minutes for the operator, waits up to 180
 seconds for every CRD to be Established, and renders/applies the shared chart. That creates
 the `shardshop` namespace with the `restricted` Pod Security label, three
 three-instance clusters (`shard-a`/US, `shard-b`/EU, `shard-c`/ASIA), and the single-instance
 `ledger-db` cluster. It waits up to 300 seconds for every database cluster to be
-Ready, then until each cluster's `-rw` Service accepts connections. It also
-creates random password Secrets only if absent: `catalog-migrator`,
+Ready and for every database pod to use the requested PostgreSQL image, operator
+image and resource budget, accounting for Kubernetes defaulting an omitted resource
+request to its limit. Explicit requests still take precedence. It verifies every
+`-rw` Service, every configured PostgreSQL setting on every instance (including
+pending restarts), and the exact
+two streaming quorum standbys of each shard. It also creates random password Secrets only if absent: `catalog-migrator`,
 `ordering-migrator`, `product-app`, `order-app`, and `ordering-cdc` are shared by
 the shards; `ledger-migrator` and `ledger-app` belong to the separate ledger.
 It applies CNPG `DatabaseRole`s and `Database` resources for catalog, ordering,
 and ledger, waits for roles at their current generation, then waits up to 180
 seconds each for a Database's current generation and `applied` status. It never
 creates tables or other schema contents; `migrate.sh` does (step 2.3 below).
+Resource budgets, PostgreSQL settings and reviewed operator/same-major PostgreSQL
+updates can converge in place. Changes to storage, placement, bootstrap settings,
+replica count or PostgreSQL major version fail before apply; the local storage
+class does not support expansion. New schemas and roles use current-generation
+operator checks. Migration and application deployment remain separate until step 3.15.
+`up.sh` sequences native tool commands. Helm renders the infrastructure, temporary
+DNS probes and immutable generator identity; Kubernetes and CloudNativePG own
+reconciliation. The opt-in Maven `kind` profile owns the configuration, retained-state,
+admission, DNS and database assertions, including resource quantity comparison.
+There is no quantity parser or embedded Python in `up.sh`. Flyway continues to own
+schema migrations and the Java applications own allocation, seeding and reader gating.
+
+The script runs these scenarios at their safety boundaries, using the same private
+snapshot throughout. Its initial `clean install -DinstallAtEnd=true` includes all verification and installs
+the successful reactor artifacts into the local Maven cache. It then invokes Failsafe
+directly against those current packages without repeating the build. A standalone
+infrastructure check needs a snapshot of the rendered inputs (with the lab running):
+
+```bash
+snapshot=$(mktemp -d)
+cp -R microservices/shardshop/infra/helm/shardshop "$snapshot/chart"
+cp microservices/shardshop/infra/kind.yaml "$snapshot/chart/kind.yaml"
+cp "${SHARDSHOP_ENV_VALUES:-microservices/shardshop/infra/helm/shardshop/kind-values.yaml}" "$snapshot/environment.yaml"
+cp "${SHARDSHOP_INVENTORY:-microservices/shardshop/infra/shards.yaml}" "$snapshot/inventory.yaml"
+probe_nodes=$(kind get nodes --name shardshop)
+for mode in inventory kind-configuration infrastructure dns-probes; do
+    case "$mode" in
+        inventory) output=inventory.json ;;
+        kind-configuration) output=kind.json ;;
+        infrastructure) output=infrastructure.yaml ;;
+        dns-probes) output=dns-probes.yaml ;;
+    esac
+    helm template shardshop "$snapshot/chart" --namespace shardshop \
+        --values "$snapshot/environment.yaml" --values "$snapshot/inventory.yaml" \
+        --set-string "render=$mode" --set-literal "probe.nodes=${probe_nodes//$'\n'/,}" \
+        --set-literal "probe.run=check-$(openssl rand -hex 6)" |
+        if [[ "$output" == *.json ]]; then sed '/^# Source:/d; /^---$/d'; else cat; fi >"$snapshot/$output"
+done
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
+    -Dshardshop.kind.snapshot="$snapshot"
+rm -rf -- "$snapshot"
+```
+
+The property uses JUnit tag expressions (without Gherkin's leading `@`).
+The default tag is currently `kind-infrastructure`; a selection matching no scenarios
+fails. `-Dshardshop.kind.tags='kind-config | kind-nodes | kind-retention | kind-allocator | kind-infrastructure'`
+selects the existing nondisruptive checks together. `kind-dns` additionally creates
+short-lived probe Pods from the snapshot's `dns-probes.yaml`, with cleanup on failure.
+`kind-admission-bootstrap` is for fresh initialization only and requires
+`-Dshardshop.kind.fresh=true`; do not use it on a retained lab. Normal builds and
+`-Pintegration` do not access the kind lab. Cucumber reports are under
+`shardshop-testing/target/kind-reports/`. PLAN step 3.16 still needs the deployed
+workload checks and explicit disruptive drills before those older scripts retire.
+
 Each invocation rebuilds and qualifies the enabled images before cluster mutation.
-kind adds the `kind-shardshop` context to
-`~/.kube/config` and selects it; the script passes that context on every command
-and never deletes a cluster, namespace, or volume. Check the result:
+On each run, kind refreshes and selects the `kind-shardshop` context in the caller's
+`KUBECONFIG` files, or `~/.kube/config` when unset. The recovered endpoint remains
+available to subsequent `migrate.sh`, `deploy.sh` and `kubectl` commands. The script
+passes that context on every command and never deletes a cluster, namespace, or
+volume. Check the result:
 
 ```bash
 kubectl --context kind-shardshop get nodes
@@ -1342,11 +1409,12 @@ With the lab already started, a rerun took approximately four minutes when the
 images did not change, and approximately seven minutes when it loaded new images.
 Only `kind delete cluster --name shardshop` deletes the lab's data.
 
-A node start can give the nodes new IP addresses. Then the kindnet process of a node
-can keep its earlier address and leave out the route to the pod network of another
-node. CoreDNS runs on the control plane. Thus, if the control plane has no route to a
-worker, the pods on that worker cannot resolve Service names. Standbys on that worker
-stop streaming, and `up.sh` can stop with
+A node start can give the nodes new IP addresses. `up.sh` restarts kindnet after
+starting any stopped node, then checks DNS from all four nodes and verifies both streaming
+standbys of every shard. If automatic repair or the database-parameter wait fails,
+`up.sh` stops with recovery guidance; retained data and allocator state remain
+untouched. CoreDNS runs on the control plane, so a missing route prevents Service
+resolution and can stop streaming, with an error such as
 `<cluster>-rw does not accept connections from <pod>`. Each node must have a route to
 the pod network (`CIDR`) of each other node:
 
@@ -1355,13 +1423,16 @@ kubectl --context kind-shardshop get nodes -o 'custom-columns=NAME:.metadata.nam
 docker exec shardshop-control-plane ip route
 ```
 
-If a route is not there, delete the kindnet pod of the node that has no route, for
-example of the control plane. The DaemonSet starts a new pod with the current
-address. Then run `up.sh` again:
+If automatic kindnet repair does not restore the route, inspect the reported node and
+resolve the condition before rerunning `up.sh`. To refresh a stale kindnet process
+on a running node, replace only that node's kindnet pod:
 
 ```bash
 kubectl --context kind-shardshop -n kube-system delete pod -l app=kindnet --field-selector spec.nodeName=shardshop-control-plane
 ```
+
+Do not delete allocator state or
+database volumes as a workaround.
 
 [`infra/helm/cnpg/`](infra/helm/cnpg/) holds the official CloudNativePG chart
 0.29.1, verified against the lock's SHA-256 and its cosign signature, and

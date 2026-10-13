@@ -831,6 +831,11 @@ qualifies the final application images and their advisory inventory
 
 ### Step 1.1 verification record
 
+The 2026-10-13 lifecycle refactor also uses the host's `jq` from `PATH`
+(tested with Apple's `jq-1.7.1-apple`) for selecting rendered inventory fields
+and CRI image digests. No binary is downloaded or pinned by the repository;
+Maven owns the semantic safety and readiness checks.
+
 The host update from Docker Desktop 4.69.0 to selected **4.92.0** completed on
 2026-09-28. The official installer matched its lock checksum, the installed app
 passed signature/notarization checks, and the running engine plus bundled

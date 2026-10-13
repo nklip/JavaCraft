@@ -1,0 +1,4 @@
+{{- if eq .Values.render "kind-configuration" }}
+{{- /* up.sh copies the creation config into its private chart snapshot. */ -}}
+{{- required "The invocation snapshot must contain kind.yaml" (.Files.Get "kind.yaml") | fromYaml | toPrettyJson }}
+{{- end }}

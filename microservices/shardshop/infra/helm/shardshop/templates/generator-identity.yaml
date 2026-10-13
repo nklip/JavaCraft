@@ -1,0 +1,14 @@
+{{- if eq .Values.render "generator-identity" }}
+{{- $uid := required "A freshly created registry UID is required" .Values.generatorRegistryUid -}}
+{{- if not (regexMatch "^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$" $uid) -}}
+{{- fail "Invalid generator registry UID" -}}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shardshop-generator-identity
+  namespace: {{ .Release.Namespace | quote }}
+immutable: true
+data:
+  registryUid: {{ $uid | quote }}
+{{- end }}

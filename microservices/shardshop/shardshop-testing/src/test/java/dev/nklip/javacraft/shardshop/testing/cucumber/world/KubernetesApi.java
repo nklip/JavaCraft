@@ -30,8 +30,9 @@ import java.util.Objects;
 /**
  * The Kubernetes API server of one scenario: an unprivileged k3s server without an agent, with its port bound to
  * 127.0.0.1. It has the namespace shardshop with the generator RBAC and retention policy of the chart, which the
- * integration build renders with helm template. The registry is created as scripts/generator-registry.sh initialize
- * creates it. The container stops at the end of the scenario, thus each scenario starts at an empty API server.
+ * integration build renders with helm template. The registry is created with the same fresh-cluster
+ * create-then-pin sequence used by up.sh. The container stops at the end of the scenario, thus each scenario
+ * starts at an empty API server.
  */
 public final class KubernetesApi implements Disposable {
     public static final String NAMESPACE = "shardshop";
@@ -80,7 +81,7 @@ public final class KubernetesApi implements Disposable {
                 "--dry-run=server")));
     }
 
-    /** Creates the registry at high-water 0, as the initialization script does, then advances it if necessary. */
+    /** Creates the fresh-cluster registry at high-water 0, then advances it if necessary. */
     public void createRegistry(int highWater) throws IOException, InterruptedException {
         registryUid = kubectl("-n", NAMESPACE, "create", "configmap", REGISTRY, "--from-literal=highWaterMark=0",
                 "-o", "jsonpath={.metadata.uid}");

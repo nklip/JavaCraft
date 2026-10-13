@@ -1,0 +1,44 @@
+{{- if eq .Values.render "dns-probes" }}
+{{- $run := required "A DNS probe run is required" .Values.probe.run -}}
+{{- $nodes := splitList "," (required "DNS probe nodes are required" .Values.probe.nodes) -}}
+apiVersion: v1
+kind: List
+items:
+{{- range $index, $node := $nodes }}
+  - apiVersion: v1
+    kind: Pod
+    metadata:
+      name: {{ printf "shardshop-dns-%s-%d" $run $index | quote }}
+      namespace: {{ $.Release.Namespace | quote }}
+      labels:
+        shardshop.javacraft/dns-probe: {{ $run | quote }}
+    spec:
+      nodeName: {{ $node | quote }}
+      restartPolicy: Never
+      activeDeadlineSeconds: 120
+      automountServiceAccountToken: false
+      tolerations:
+        - operator: Exists
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: dns
+          image: {{ $.Values.postgresql.image | quote }}
+          imagePullPolicy: IfNotPresent
+          command: [sh, -ec, "until getent hosts kubernetes.default.svc.cluster.local; do sleep 2; done"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+{{- end }}
+{{- end }}

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shared script functions; the callers set strict mode and own temporary directories.
-# When: sourced at the start of up.sh, migrate.sh, deploy.sh and verify-topology.sh;
-# never run directly.
+# When: sourced at the start of migrate.sh, deploy.sh and verify-topology.sh;
+# it remains a maintained helper until PLAN 3.20; never run directly.
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 render() { bash "$root/scripts/render.sh" "$@"; }
