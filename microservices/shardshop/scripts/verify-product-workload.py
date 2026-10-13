@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Verify scenario 1 for the product reader and scenario 3 for primary reads on kind-shardshop.
 
-Needs the lab after up.sh and migrate.sh, and the product, seeder and reader images from
-build-application-images.sh. The check calls deploy.sh for two new runs:
+Needs the lab and current product, seeder and reader images from up.sh, followed by
+migrate.sh. The check calls deploy.sh for two new runs:
 
 1. A complete run: the seeder Job completes, the reader resolves the IDs that the seeder
    verified, and it reads through both ready product pods within 120 s, also after one pod

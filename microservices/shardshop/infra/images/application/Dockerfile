@@ -1,4 +1,4 @@
-# One recipe for the six application images. scripts/build-application-images.sh uses one
+# One recipe for the six application images. scripts/up.sh uses one
 # application's complete target/quarkus-app directory as the context.
 FROM docker.io/ubuntu/jre:25-26.04_stable@sha256:3e921054481a0208daca2194e7982a14063771be914851eae06754a8e6890bab
 COPY . /app

@@ -135,12 +135,14 @@ Reviewed OpenVEX statements cover these findings. The document
 statements for 10 CVE IDs. Each statement names the images and the exact package
 version: the images replace the pebble entrypoint with Java, thus pebble never runs.
 
-`build-application-images.sh` applies only statements with the author
-`ShardShop image review`. A new package version or a new advisory has no statement,
-thus the gate stops again. Review the statements with the JRE base by
-**2026-10-28**, and when the base image digest changes. Since step 3.12, the script
-also builds and scans the [migration image](#current-migration-runtime), which contains
-the same pebble binary. Version 2 of the document (2026-10-13) names it too.
+`up.sh` applies only statements with the author
+`ShardShop image review`. `--vex-author` is a pattern, and the text alone also
+accepts authors that contain it, for example `Not the ShardShop image review`. Thus
+the gate uses the anchored pattern `^ShardShop image review$`. A new package version
+or a new advisory has no statement, thus the gate stops again. Review the statements
+with the JRE base by **2026-10-28**, and when the base image digest changes. Since
+step 3.12, the same gate also examines the [migration image](#current-migration-runtime),
+which contains the same pebble binary. Version 2 of the document (2026-10-13) names it too.
 
 #### OS packages without an advisory check
 
@@ -150,7 +152,7 @@ The JRE base records 12 Ubuntu packages in `/usr/share/rocks/dpkg.query`.
 not index six of the 12: libc6
 **2.43-2ubuntu2.4** (glibc), libgcc-s1, libstdc++6 and gcc-16-base
 **16-20260322-1ubuntu1**, base-files **14ubuntu6.2** and base-passwd **3.6.8**.
-Thus the inventory of `build-application-images.sh` does not show them, and its gate
+Thus the inventory of `up.sh` does not show them, and its gate
 does not examine them.
 
 On **2026-10-10**, OSV's Ubuntu 26.04 data listed 14 advisories for these images.
@@ -871,13 +873,14 @@ and drivers, Azure AD and Netty libraries, the upstream Temurin JRE and Ubuntu
 24.04 base do not.
 The launcher calls Java directly, and the image declares UID/GID 10001.
 
-`scripts/build-application-images.sh flyway` builds the local ARM64 image with
+`scripts/up.sh` builds the local ARM64 image with
 Docker Buildx and `SOURCE_DATE_EPOCH=0`, scans it with the gate of the application
-images and loads it into kind. Before it registers the digest on a node, it verifies
+images, then loads it into kind. Before it registers the digest on a node, it verifies
 the pinned CRI manifest digest of the chart values. `scripts/migrate.sh` builds no
 image: after its topology guard, it stops if a node does not have the pinned
 reference. Docker, Buildx, Docker Scout and kind are therefore requirements for this
-local migration workflow; Maven and application artifacts are not. Review changed
+local Flyway image workflow; the full `up.sh` workflow also requires Maven to build
+the application images. Review changed
 build inputs and the resulting digest together.
 
 The final ARM64 image reports `java.vendor=Ubuntu` and OpenJDK

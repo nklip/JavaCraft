@@ -3,7 +3,7 @@ render: infrastructure
 migrationShard: ""
 migrationStream: catalog
 # scripts/deploy.sh sets the run name and the image digests that
-# scripts/build-application-images.sh loaded into kind.
+# scripts/up.sh loaded into kind.
 run: ""
 images:
   product: ""

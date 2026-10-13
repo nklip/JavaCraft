@@ -2,7 +2,7 @@
 # Migrate database schemas in the kind-shardshop lab: run each Flyway stream from database/
 # on every shard primary, then ledger once, and stop at the first failure. up.sh
 # declares the clusters, roles, databases and schemas that these streams fill.
-# When: after up.sh and build-application-images.sh flyway, and again after adding or changing a
+# When: after up.sh, and again after adding or changing a
 # migration under database/. Product and order can start only after it has published the routing ConfigMap.
 set -euo pipefail
 
@@ -22,12 +22,12 @@ for stream in "${streams[@]}"; do
 done
 render migration ledger-db ledger >"$work/ledger-db-ledger.yaml"
 assert_published_topology
-# The Jobs use the reviewed digest of the chart values, which build-application-images.sh loads and verifies.
+# The Jobs use the reviewed digest of the chart values, which up.sh builds, scans, loads and verifies.
 nodes=$(kind get nodes --name shardshop)
 [[ -n "$nodes" ]] || { echo 'No shardshop kind nodes found; run scripts/up.sh first' >&2; exit 1; }
 for node in $nodes; do
     docker exec "$node" crictl inspecti "$migration_image" >/dev/null 2>&1 \
-        || { echo "Run scripts/build-application-images.sh flyway first; $node has no $migration_image" >&2; exit 1; }
+        || { echo "Run scripts/up.sh first; $node has no $migration_image" >&2; exit 1; }
 done
 reserve_migration_topology
 

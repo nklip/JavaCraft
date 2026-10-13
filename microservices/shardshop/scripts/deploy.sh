@@ -2,7 +2,7 @@
 # Deploy product and the product reader, and create the seeder Job of a new run. The workloads
 # own their lifecycle (ARCHITECTURE.md workload lifecycle): the reader sends load only after it
 # resolves the complete dataset through product. Thus this script does not wait for the Job.
-# When: after up.sh, migrate.sh and build-application-images.sh. Every call needs a new run
+# When: after up.sh and migrate.sh. Every call needs a new run
 # name, because each run has its own seeder Job.
 # Next: the reader runs until the next deploy.sh call or until you scale it to zero.
 set -euo pipefail
@@ -20,7 +20,7 @@ export SHARDSHOP_INVENTORY="$work/inventory.yaml"
 load_inventory
 assert_published_topology
 
-# Use the digest that build-application-images.sh registered on every kind node.
+# Use the digest that up.sh registered on every kind node.
 images=()
 nodes=$(kind get nodes --name shardshop)
 for application in product product-seeder product-reader; do
@@ -35,7 +35,7 @@ print(references[0] if len(references) == 1 else "missing")
 ' "docker.io/library/shardshop-$application" || echo missing
     done | sort -u)
     [[ "$references" == docker.io/*@sha256:* && "$references" != *$'\n'* ]] \
-        || { echo "Run scripts/build-application-images.sh $application first" >&2; exit 1; }
+        || { echo "Run scripts/up.sh first to build and load $application" >&2; exit 1; }
     images+=("$application=$references")
 done
 render applications "$run" "${images[@]}" >"$work/applications.yaml"

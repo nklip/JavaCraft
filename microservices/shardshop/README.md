@@ -248,7 +248,6 @@ with the normal Flyway Jobs. Flyway validates the applied migrations at each run
 
 ```bash
 bash microservices/shardshop/scripts/up.sh
-bash microservices/shardshop/scripts/build-application-images.sh flyway
 bash microservices/shardshop/scripts/migrate.sh
 bash microservices/shardshop/scripts/migrate.sh # validates history; no pending migrations
 bash microservices/shardshop/scripts/verify-topology.sh --routing-only
@@ -456,18 +455,28 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pinteg
 
 ## Product deployment and seeding gate (step 3.9)
 
-Product, the seeder Job and the reader run on the lab. Build the packages, make the
-images, and deploy a run:
+Product, the seeder Job and the reader run on the lab. Build and qualify the current
+sources with `up.sh`, then migrate and deploy a run:
 
 ```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-workload/shardshop-product-seeder,shardshop-workload/shardshop-product-reader -am -Paudit clean verify
 bash microservices/shardshop/scripts/up.sh
-bash microservices/shardshop/scripts/build-application-images.sh flyway product product-seeder product-reader
+bash microservices/shardshop/scripts/migrate.sh
 bash microservices/shardshop/scripts/deploy.sh run-1
 ```
 
-Run `migrate.sh` before `deploy.sh` if the routing is not published yet; it needs the
-`flyway` image of the same script.
+`up.sh` resolves the ShardShop POM from its own location and runs the full
+`mvn -B -ntp -f microservices/shardshop/pom.xml clean verify` build. The commands
+above use repository-relative paths; invoking `up.sh` by its absolute path works
+from any directory. The Maven build is the source for the four freshly built
+images; no separate Maven or image-build command is required. Audit builds remain
+optional. The POM sets `project.build.outputTimestamp`, thus the same sources give
+the same packages. Docker then uses its cached image layers again, and an unchanged
+rebuild keeps its image IDs. Thus `kind load` skips the nodes, and the digests stay
+the same.
+
+Migration and application deployment remain separate steps until PLAN step 3.15.
+A fresh lab still needs the explicit [generator initialization](#generator-allocation-at-jvm-startup-steps-34-and-311)
+before `up.sh` can finish; automatic fresh-cluster initialization is step 3.14.
 
 ### Application images
 
@@ -478,12 +487,11 @@ directory `/app`, user `10001:10001` and `HOME=/tmp`, and their entrypoint start
 `quarkus-run.jar`. The images contain no kubectl: since step 3.11, product and order
 reserve their generator IDs with Java code in their own JVM.
 
-`build-application-images.sh` accepts `flyway`, `product`, `order`, `ledger`,
-`product-seeder`, `product-reader` and `order-producer`. Step 4.8 uses it again for
-the order, ledger and order producer images. For each image, the script:
+`up.sh` currently builds and qualifies `flyway`, `product`, `product-seeder` and
+`product-reader`. Step 4.8 adds the order, ledger and order producer images. It:
 
 1. Builds the ARM64 image `docker.io/library/shardshop-<application>:local` with
-   Docker Buildx, from the Maven package that exists. For `flyway`, it builds the
+   Docker Buildx, from the fresh successful Maven build. For `flyway`, it builds the
    [migration image](#database-schemas-and-migrations-step-23) from
    `infra/images/flyway`, with the tag of the pinned reference in the chart values.
 2. Prints the OS package inventory (`docker scout sbom`) and the advisories of all
@@ -493,15 +501,23 @@ the order, ledger and order producer images. For each image, the script:
    records this gap.
 3. Stops if Docker Scout finds a critical or high advisory without a reviewed
    statement in `infra/images/application/vex/`. Then the image is not loaded.
-4. Loads the image into the kind nodes, one node at a time, and requires the same
+   All four enabled images are built and scanned before any image is loaded into
+   kind.
+4. After provisioning, loads each qualified image into the kind nodes, one node at a
+   time, and requires the same
    manifest digest on each node. Then it registers that digest under the image name.
    `kind load` skips a node that already has the same image ID. Then the check uses
    the manifest digest of the earlier import on that node.
    For `flyway`, the digest must also be the pinned digest; otherwise the script
    stops before it registers the digest, and the image pin needs a review.
+   It also tags the image `sha256-<digest>` on each node. kind names each import
+   `import-<date>@<digest>`, without a registry. Without the extra tag, the CRI uses
+   that name after `:local` moves to a later build. It cannot find the earlier image,
+   thus new containers of the deployed release fail with `CreateContainerError`.
 
-`deploy.sh` uses the digest that is registered on every node. Thus it deploys the
-images of the last successful script run, not the Maven packages. Docker Scout
+`deploy.sh` uses the digest that `up.sh` registers on every node. A failure while
+loading or registering nodes can leave a partial image load, so deployment still
+requires a consistent digest on every node. Docker Scout
 needs a network connection. [VERSIONS.md](VERSIONS.md#step-39-application-images)
 records the scan results and the reviewed statements.
 
@@ -1246,7 +1262,7 @@ For a different topology, reset this disposable lab:
 4. Run `up.sh`. It stops because the allocator state is not there.
 5. Run `generator-registry.sh initialize`, then `up.sh` again, as
    [step 3.4](#generator-allocation-at-jvm-startup-steps-34-and-311) describes.
-6. Run `build-application-images.sh flyway`, then `migrate.sh`. Export the new
+6. Run `migrate.sh`. Export the new
    configuration, and reseed before you restart the workloads.
 
 Online data redistribution and rolling topology changes are outside this
@@ -1264,8 +1280,8 @@ Docker Desktop 4.92.0, kind 0.33.0, kubectl 1.36, and Helm 4.3.0 (for example,
 2026-09-28 and accepted for this loopback-only, disposable lab. Give Docker
 Desktop's VM at least 12 GB of memory (Settings → Resources); `up.sh` stops early
 if it has less. Migrations also require Docker's Buildx plugin and Docker Scout:
-`build-application-images.sh flyway` builds, scans and loads the OpenJDK Flyway image
-into the kind nodes.
+`up.sh` builds and scans the OpenJDK Flyway image before mutating the cluster,
+then loads it into every kind node after provisioning.
 
 [`infra/kind.yaml`](infra/kind.yaml) defines one control plane and three workers,
 one per instance of each three-instance shard, on the digest-pinned Kubernetes
@@ -1295,8 +1311,8 @@ It applies CNPG `DatabaseRole`s and `Database` resources for catalog, ordering,
 and ledger, waits for roles at their current generation, then waits up to 180
 seconds each for a Database's current generation and `applied` status. It never
 creates tables or other schema contents; `migrate.sh` does (step 2.3 below).
-A fresh run takes about five minutes, mostly image
-pulls; a rerun takes seconds. kind adds the `kind-shardshop` context to
+Each invocation rebuilds and qualifies the enabled images before cluster mutation.
+kind adds the `kind-shardshop` context to
 `~/.kube/config` and selects it; the script passes that context on every command
 and never deletes a cluster, namespace, or volume. Check the result:
 
@@ -1320,8 +1336,32 @@ It stops the four node containers without deleting them; volumes, databases and
 cluster state stay inside. PostgreSQL shuts down cleanly within seconds, and Docker
 stops the rest after its default 10-second timeout. Rerun `up.sh` to start the same
 containers; it waits for the API server and for every `-rw` Service, because the
-stored Ready statuses predate the restart, and takes about a minute. Only
-`kind delete cluster --name shardshop` deletes the lab's data.
+stored Ready statuses predate the restart. Before it starts the nodes, it builds,
+tests and scans the images again, thus it needs network access for Docker Scout.
+With the lab already started, a rerun took approximately four minutes when the
+images did not change, and approximately seven minutes when it loaded new images.
+Only `kind delete cluster --name shardshop` deletes the lab's data.
+
+A node start can give the nodes new IP addresses. Then the kindnet process of a node
+can keep its earlier address and leave out the route to the pod network of another
+node. CoreDNS runs on the control plane. Thus, if the control plane has no route to a
+worker, the pods on that worker cannot resolve Service names. Standbys on that worker
+stop streaming, and `up.sh` can stop with
+`<cluster>-rw does not accept connections from <pod>`. Each node must have a route to
+the pod network (`CIDR`) of each other node:
+
+```bash
+kubectl --context kind-shardshop get nodes -o 'custom-columns=NAME:.metadata.name,IP:.status.addresses[0].address,CIDR:.spec.podCIDR'
+docker exec shardshop-control-plane ip route
+```
+
+If a route is not there, delete the kindnet pod of the node that has no route, for
+example of the control plane. The DaemonSet starts a new pod with the current
+address. Then run `up.sh` again:
+
+```bash
+kubectl --context kind-shardshop -n kube-system delete pod -l app=kindnet --field-selector spec.nodeName=shardshop-control-plane
+```
 
 [`infra/helm/cnpg/`](infra/helm/cnpg/) holds the official CloudNativePG chart
 0.29.1, verified against the lock's SHA-256 and its cosign signature, and
@@ -1471,24 +1511,23 @@ The two scripts split the work:
   declares `ledger-db-ledger`, schema `ledger`, and its four roles.
 - `migrate.sh` fills the schemas by running each Flyway stream in
   [`database/`](database/) on every shard primary and then on ledger once. It uses
-  the migration image that `build-application-images.sh flyway` loaded; no Maven
+  the migration image that `up.sh` loaded; no separate Maven
   build, application JAR, or database superuser session is needed.
 
 After `up.sh`, run:
 
 ```bash
-bash microservices/shardshop/scripts/build-application-images.sh flyway
 bash microservices/shardshop/scripts/migrate.sh
 ```
 
-`build-application-images.sh flyway` builds the migration image with Docker Buildx,
-pinned inputs and `SOURCE_DATE_EPOCH=0`, scans it with the gate of the
+`up.sh` builds the migration image with Docker Buildx, pinned inputs and
+`SOURCE_DATE_EPOCH=0`, scans it with the gate of the
 [application images](#application-images), and loads the ARM64 image into kind. It
 checks the CRI manifest digest on every node against the migration image pin of the
 chart values. A build, scan or digest failure stops it before it registers the
 image. After checking the published topology, `migrate.sh` checks that every node
 has the pinned reference before it creates SQL ConfigMaps or migration Jobs;
-otherwise it stops with `Run scripts/build-application-images.sh flyway first`.
+otherwise it stops because the qualified Flyway image is missing.
 
 [`database/shard/catalog/`](database/shard/catalog/) is the catalog stream.
 `V1__catalog.sql` creates all tables, including seller home regions, named region
@@ -1679,7 +1718,6 @@ Apply all streams and inspect ordering:
 
 ```bash
 bash microservices/shardshop/scripts/up.sh
-bash microservices/shardshop/scripts/build-application-images.sh flyway
 bash microservices/shardshop/scripts/migrate.sh
 bash microservices/shardshop/scripts/migrate.sh # unchanged histories: no pending migrations
 bash microservices/shardshop/scripts/verify-topology.sh --routing-only
@@ -1751,7 +1789,6 @@ Provision, migrate, and inspect the ledger from the repository root:
 ```bash
 bash microservices/shardshop/scripts/render.sh migration ledger-db ledger
 bash microservices/shardshop/scripts/up.sh
-bash microservices/shardshop/scripts/build-application-images.sh flyway
 bash microservices/shardshop/scripts/migrate.sh
 kubectl --context kind-shardshop -n shardshop get database ledger-db-ledger
 kubectl --context kind-shardshop -n shardshop get databaseroles

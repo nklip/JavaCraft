@@ -3,7 +3,7 @@
 ## 1. Implementation milestones
 
 This is the implementation checklist for `microservices/shardshop`, updated on
-2026-10-11. Every step starts as **Planned**; existing design documents and routing
+2026-10-13. Every step starts as **Planned**; existing design documents and routing
 vectors do not mean the corresponding application behavior is implemented.
 
 **Framework:** all six applications use **Quarkus 3.40.1** (3.40 LTS line) in JVM
@@ -46,8 +46,9 @@ Retained baselines are now immutable. Later schema changes use fix-forward migra
    tests in the `integration` profile with Testcontainers and pinned images, for
    example a real PostgreSQL or RabbitMQ. Do not add a bash or Python check for
    Java behavior. Use bounded polling for Kubernetes checks. Infrastructure steps
-   are verified by live runs against `kind-shardshop`, recorded as evidence. Add a
-   script only as instruction 9 permits. Set the `kind-shardshop` context
+   are verified by live runs against `kind-shardshop`, recorded as evidence. Step
+   3.16 moves these checks into a separate opt-in `kind` Maven profile. Keep only
+   the two lifecycle scripts described in instruction 9. Set the `kind-shardshop` context
    explicitly in every command ([§5](#5-local-infrastructure-details)).
 5. Mark the row **Done** only after its acceptance condition and relevant checks
    pass. Then add the date and one result sentence to its acceptance cell. Record
@@ -60,8 +61,9 @@ Retained baselines are now immutable. Later schema changes use fix-forward migra
    no project-local tool folders such as `.local/bin` and no Maven Wrapper. Record
    tested versions in [VERSIONS.md](VERSIONS.md) instead. Third-party charts and
    manifests are artifacts, not tools: vendor them only with a verified checksum
-   in the lock. Write lab start, stop and deploy scripts as short bash. Write lab
-   checks in bash or Python 3 with only the standard library. Record
+   in the lock. Keep `up.sh` and `down.sh` as Bash orchestration around Maven,
+   Helm, Flyway Jobs and Kubernetes. Put reusable lab assertions in Java tests;
+   steps 3.13–3.20 retire the remaining helper and verification scripts. Record
    evidence as short text in [CHANGELOG.md](CHANGELOG.md), and do not commit dated scan or report
    files.
 7. Milestones 0–6 run and are verified entirely on this machine, on the local
@@ -84,11 +86,15 @@ Retained baselines are now immutable. Later schema changes use fix-forward migra
    - Java: application and workload behavior, with platform-managed libraries
      before custom code.
 
-   Write a script only for a lab operation that none of these tools can do, or for
-   a lab check that a named later step runs again. Each milestone gate has one lab
-   check, and later steps extend it instead of adding a script. Workload
-   applications own their lifecycle: their Java code decides when they feed or
-   read data, and deploy scripts only start and stop them. Product and order get
+   The target is exactly two scripts in ShardShop: `scripts/up.sh` builds,
+   reconciles, deploys and verifies the lab; `scripts/down.sh` stops every lab
+   node while retaining its data. Steps 3.13–3.20 replace the existing scripts;
+   do not add a third entry point, sourced shell helper, or replacement Python
+   wrapper. Keep operational functions inside the two scripts and assertions in
+   the Maven test suites. Later milestones extend those workflows and suites.
+   Workload applications own their lifecycle: their Java code decides when they
+   feed or read data. `up.sh` observes their readiness and completion without
+   implementing their seeding or load loops. Product and order get
    their generator IDs from Java code in their own JVM, without an external binary,
    a separate service or a separate pod. Images use the OpenJDK runtime of the
    selected Ubuntu JRE image, never a Temurin runtime.
@@ -130,6 +136,15 @@ Milestone numbers 0-7 remain stable for references from other documents.
 
 ### Milestone 3: Product contracts, IDs, and workloads
 
+Steps 3.13–3.20 establish the two-script workflow. A normal `up.sh` invocation
+builds the current ShardShop sources, creates or resumes the cluster, applies
+supported configuration changes, migrates the databases, deploys the built image
+digests, and returns success only after deployment verification passes. `down.sh`
+stops the whole cluster without deleting storage. Completed rows below retain
+their historical commands; the new steps replace those commands, not their
+acceptance requirements. At this milestone, deploy product, the seeder and the
+reader; step 4.8 adds order, ledger and the order producer when they are functional.
+
 | Step / deliverable | Depends on | Status | Acceptance condition |
 |---|---|---|---|
 | 3.1 HTTP and message contracts | 0.5 | Done | Each owning module holds its self-contained OpenAPI document or message schema, and clients keep their own DTOs. **2026-10-06:** `verify-contracts.py` validates their structure, examples and boundaries. [Evidence](CHANGELOG.md#step-31) |
@@ -144,6 +159,14 @@ Milestone numbers 0-7 remain stable for references from other documents.
 | 3.10 Maven integration tests with Testcontainers | 3.6, 3.7, 3.8, 3.9 | Done | Qualify Testcontainers and its pinned images in VERSIONS.md and the lock. Maven integration tests in the `integration` profile run product, the seeder and the reader against real PostgreSQL containers, and they apply the catalog migrations with the Flyway Java API. They cover the cases of `verify-product-provider.py`, `verify-product-transport.py`, `verify-product-seeder.py`, `verify-product-reader.py` and `verify-catalog-migration.py` that the architecture needs. Then delete these five scripts and `verify-catalog-lab.sh`, because Flyway validates the applied migrations on the lab. Their CHANGELOG evidence stays. **2026-10-12:** the 27 Cucumber scenarios of `shardshop-testing` replace the six scripts and pass in the full `-Pintegration,audit` build. [Evidence](CHANGELOG.md#step-310) |
 | 3.11 Generator IDs in the application JVM | 3.4, 3.9, 3.10 | Done | Product, and order from step 4.1, reserve a fresh generator ID with Java code in their own JVM at every start, also after a container restart. The Kubernetes API calls use Apache HttpClient 5, which the workloads already use. The registry, compare-and-set, retention and RBAC rules of [ARCHITECTURE](ARCHITECTURE.md#generator-identity-across-processes-and-restarts) stay, and that section is updated. No kubectl binary, launcher process, init container, sidecar, separate pod or service takes part. The application images contain no kubectl: remove the kubectl stage, its VEX document, its image pin and its advisory records. Maven integration tests with Testcontainers cover concurrent reservations, restarts and registry failures against a real Kubernetes API, and they replace `verify-generator-allocation.sh`. The step 3.9 lab check shows a new ID after a pod replacement. **2026-10-13:** the 11 k3s scenarios of `GeneratorAllocation.feature` replace `verify-generator-allocation.sh`, and on the lab each replacement product pod reserves a new ID in its own JVM. [Evidence](CHANGELOG.md#step-311) |
 | 3.12 Contract checks in Maven and one image script | 3.10 | Done | Each module that owns an OpenAPI document or a message schema checks it, its examples and its boundaries in a Maven unit test, as `verify-contracts.py` does. Then delete `verify-contracts.py` and `contract-validation-requirements.txt`. `build-application-images.sh` also builds, scans and loads the Flyway migration image on the OpenJDK runtime, and `build-migration-image.sh` is deleted. **2026-10-13:** 51 contract unit tests, `DatasetSourcesTest` and 4 `Contracts.feature` scenarios replace the Python checks, and on the lab `migrate.sh` ran on the reviewed migration image that `build-application-images.sh flyway` scanned and loaded. [Evidence](CHANGELOG.md#step-312) |
+| 3.13 Build current sources and qualify images through up.sh | 3.12 | Done | Add prerequisite checks and a build stage to `up.sh`, with no separate build command required. Run `mvn -B -ntp -f microservices/shardshop/pom.xml clean verify`, resolving the path from the script so invocation works from any directory; never build the repository root. Build only the ShardShop parent reactor, never `microservices/pom.xml` or the repository root, then the Flyway image and the applications enabled for deployment. Absorb `build-application-images.sh` while retaining the pinned runtime, OS inventory, advisory/VEX gate and reviewed Flyway digest. Use only outputs from the successful current build. A build or scan failure returns nonzero before applying a new application release. Prove that a source change reaches the built image and a failed build cannot deploy an old `target` directory or cached local tag. **2026-10-13:** `up.sh` passes the scoped build, scans and loads all four images on the lab; isolated source-change and failed-build checks prove current packages are used, and an unchanged rerun keeps the image IDs. [Evidence](CHANGELOG.md#step-313) |
+| 3.14 Create, resume and reconcile the cluster through up.sh | 3.13 | Planned | Absorb `render.sh`, `shards.sh` and `generator-registry.sh` into cohesive `up.sh` functions using the existing Helm chart and one inventory snapshot per invocation. Create a missing kind cluster, start every stopped node of an existing cluster, and reconcile supported operator, infrastructure, resource and configuration changes. Wait for real database connectivity and current-generation operator statuses. A node start can give the nodes new IP addresses, and then kindnet can keep an earlier address and leave out a route. Thus, after each node start, check cluster DNS from every node and the streaming standbys of every shard. Preserve Secrets, PVCs, databases and allocator state. Initialize the generator registry and immutable identity automatically only for a demonstrably fresh cluster created by this invocation, after admission protection is effective and before any application can issue IDs. Existing clusters require valid retained allocator state; missing, partial or mismatched state fails with recovery instructions. Reject changed published/reserved shard membership, ordering or regions, and node changes that require cluster recreation; never silently reset the lab. Verify fresh setup, stopped-cluster resume, supported changes, unchanged reruns and unsafe-change rejection. |
+| 3.15 Migrate and deploy current image digests through up.sh | 3.14 | Planned | Absorb `migrate.sh` and `deploy.sh`. Load every qualified image into every kind node and verify a consistent manifest digest before deploying it. Preserve topology reservation, Flyway validation and sequential catalog/ordering migrations on all shards, followed by ledger; publish routing only after all migrations and current-generation CNPG publications succeed. Keep schema ownership in `database/`, not application startup. Render application manifests with the digests from this build and configuration changes that trigger the required rollouts. Generate valid seeder Job names internally; no user-supplied run name is needed. Define release identity from desired images, configuration and dataset version so a matching successful rerun reuses completed work and avoids unnecessary pod replacements, Jobs and generator allocations. New releases seed idempotently. Prove changed code/configuration rolls out, unchanged desired state converges, partial failures resume safely, and migration or digest failure prevents the new application release. |
+| 3.16 Replace live verification scripts with Maven scenarios | 3.10, 3.11, 3.15 | Planned | Add Cucumber scenarios in `shardshop-testing` under a new opt-in `kind` profile, separate from default builds and the Testcontainers `integration` profile. Port the meaningful assertions of `verify-product-workload.py` and `verify-topology.sh`: deployed routing, replication/placement/PVC identity, repeated seeding with identical IDs and 150 sellers/300 products, workload credential restrictions, traffic through both product pods, sustained successful reads, fresh generator allocation after pod replacement, and the existing standby/quorum/WAL drills. Reuse existing application tests without treating them as proof of Kubernetes behavior. Tag nondisruptive deployment checks `kind-deployment` and disruptive scenarios `kind-drill`; configure `-Pkind` to select only `kind-deployment` by default and `-Dgroups=kind-drill` to select drills explicitly. Use bounded calls/polling, structured reports and cleanup hooks that run after failures and restore temporary drill changes without rewinding allocator state. Demonstrate equivalent live coverage before retiring either script. |
+| 3.17 Complete up.sh with a deployment success gate | 3.15, 3.16 | Planned | Make one `up.sh` invocation execute the complete build, cluster reconciliation, image delivery, migration, deployment and verification workflow. Wait for the desired Deployment generations and image digests, service readiness, the current seeder Job's successful completion, and the reader's resolution of the seeded catalog. Invoke the step 3.16 deployment suite to verify routing, credential restrictions, traffic on both product pods within 120 seconds and an all-OK reader interval at the existing accepted rate. Do not include pod deletion, standby fencing or repeated-release drills in normal startup. Preserve the Java-owned seeding gate and leave the reader running after success. Every phase has a deadline and propagates failures; print the failing phase and bounded diagnostics without secrets, and never report success for a partially updated release. Record live acceptance for an empty lab, an unchanged rerun, a changed build, a supported configuration change, resume after down.sh, and failed migration, seeding or readiness. |
+| 3.18 Stop the entire cluster through down.sh | 3.14 | Planned | `down.sh` stops every kind node of the ShardShop cluster, including control plane and workers, and verifies all of those containers are stopped with a bounded shutdown timeout. A missing or already stopped cluster succeeds without changes. Preserve volumes, Secrets, databases and generator history; do not delete the cluster or stop Docker Desktop or unrelated containers. Serialize `up.sh` and `down.sh` so concurrent lifecycle calls cannot race, and release the lock on failure or interruption. Verify shutdown while workloads run, repeated shutdown, missing-cluster shutdown and a subsequent `up.sh` that recovers the same data and allocator identity. |
+| 3.19 Replace the offline dataset generator with Java tooling | 3.12 | Planned | Replace `shardshop-workload/shardshop-datasets/scripts/generate-buyers.py` with a development-only Java generator invoked through Maven in `shardshop-datasets`; do not package it into services or add another script. Reproduce the three checked-in `buyers-v1` TSVs byte for byte from the retained source pools, offline and without generating entity IDs. Generate into `target` for verification so ordinary builds and `up.sh` never rewrite source fixtures. Document the explicit dataset regeneration command and update `SOURCES.md`, `source-manifest.json` and provenance tests. Delete the Python generator only after reproducibility and the module's existing dataset checks pass. |
+| 3.20 Retire old scripts and qualify the two-script workflow | 3.17, 3.18, 3.19 | Planned | Delete `deploy.sh`, `generator-registry.sh`, `migrate.sh`, `render.sh`, `shards.sh`, `verify-topology.sh` and `verify-product-workload.py` after their replacements pass. Together with step 3.19, exactly `scripts/up.sh` and `scripts/down.sh` remain as maintained scripts anywhere under ShardShop; do not hide the removed entry points in another directory or a task-runner wrapper. Update README, architecture, chart comments, artifact-lock metadata and active command references; preserve historical CHANGELOG evidence. Document two normal lifecycle commands, separate Maven test/drill commands and explicit data-recovery procedures. Run the relevant module builds, Testcontainers scenarios, default `kind` deployment suite and an explicit `-Pkind -Dgroups=kind-drill` qualification run, then prove clean bootstrap, changed-version deployment, unchanged rerun, full stop and retained-data restart using only the two lifecycle scripts. Record exact commands and results in CHANGELOG. |
 
 ### Milestone 4: Complete order-to-ledger saga
 
@@ -157,7 +180,7 @@ Milestone numbers 0-7 remain stable for references from other documents.
 | 4.5 Ledger result publisher | 4.4 | Planned | The result relay publishes stored outcomes with the reserved IDs and the publication-attempt checks of [ARCHITECTURE §5](ARCHITECTURE.md#reconciliation-and-replayed-outcomes). Result envelopes match the ledger message schema. |
 | 4.6 Order result consumer | 4.3, 4.5 | Planned | Order applies results, releases stock after a cancellation, and quarantines absent or conflicting results, as [ARCHITECTURE §5](ARCHITECTURE.md#5-order-creation-and-ledger-saga) defines. Confirmation credits seller profit exactly once for each item, as the [profit rules](ARCHITECTURE.md#4-product-generation-and-read-load) define. Results with invalid IDs are rejected without requeue. |
 | 4.7 Order producer application | 3.5, 4.1 | Planned | The HTTP-only order producer creates the buyers, then allocates and submits orders, as [ARCHITECTURE](ARCHITECTURE.md#workload-datasets-service-issued-ids-and-routing) sections 1 and 3 define. This includes cross-region, mixed-region and EUR-rejection orders. The producer keeps the returned IDs over retries and restarts, and it polls the order status within bounded deadlines. |
-| 4.8 Saga deployment and first end-to-end run | 3.9, 4.6, 4.7 | Planned | Order, ledger and the order producer run on the lab, with images from the step 3.9 script. Like the reader, the order producer sends load only after it verifies the seeded catalog. A replacement order pod on either worker resumes CDC from the stored offsets. Scenarios 4, 5 and 11 pass end to end, and the step 3.9 lab check covers them. |
+| 4.8 Saga deployment and first end-to-end run | 3.20, 4.6, 4.7 | Planned | Extend `up.sh` to build, deploy and verify order, ledger and the order producer on the lab. Like the reader, the order producer sends load only after it verifies the seeded catalog. A replacement order pod on either worker resumes CDC from the stored offsets. Scenarios 4, 5 and 11 pass end to end in the step 3.16 Maven kind suites; extend the deployment success gate without adding scripts. |
 
 ### Milestone 5: Recovery, retention, and backpressure
 
@@ -437,7 +460,7 @@ microservices/shardshop/
   shardshop-product/              # seller and product API
   shardshop-order/                # buyer and order API, saga, and stock reservation step
   shardshop-ledger/               # ledger consumer and result relay
-  shardshop-testing/              # Cucumber scenarios with Testcontainers; integration profile only
+  shardshop-testing/              # Cucumber: Testcontainers integration profile; live kind profile
   database/                       # Flyway streams: shard/catalog, shard/ordering, ledger/ledger
   infra/kind.yaml                # kind-only cluster configuration
   infra/shards.yaml              # only ordered list of shard names and immutable regions
@@ -448,34 +471,48 @@ microservices/shardshop/
   infra/images/flyway/            # Flyway migration image on the Canonical JRE
   infra/images/application/       # application images on the OpenJDK runtime, without kubectl
   infra/terraform/               # milestone 7: AWS infrastructure (optional)
-  scripts/                       # lab operations (up, down, migrate, images, deploy, backup, restore) and lab checks (instruction 9)
+  scripts/                       # exactly two scripts after step 3.20
+    up.sh                        # build, reconcile cluster, migrate, deploy, verify success
+    down.sh                      # stop every cluster node, retain data
 ```
 
 ShardShop's parent aggregator is registered in `microservices/pom.xml` (step 0.2).
 Tests obey the testing rules in [AGENTS.md](../../AGENTS.md). HTTP client tests use
 in-process loopback servers. Testcontainers tests run in the `integration` Maven
-profile, as the Cucumber scenarios of `shardshop-testing`, and Kubernetes drills are
-the lab checks of instruction 9. Turn every
-architecture acceptance scenario into a reproducible check.
+profile, as the Cucumber scenarios of `shardshop-testing`. Step 3.16 adds the
+separate `kind` profile for deployed-cluster checks and explicitly selected
+disruptive drills. Turn every architecture acceptance scenario into a reproducible
+check, without adding scripts.
 
-The planned commands below run from the repository root after the module,
-profiles, and scripts are implemented. Build only Shardshop or the affected
-submodule; never run the repository's root Maven build for this project.
+The planned commands below run from the repository root after steps 3.13–3.20
+are implemented; the existing scripts do not yet provide this complete workflow.
+Normal operation requires only these two commands:
 
 ```bash
-mvn -f microservices/shardshop/pom.xml clean verify
-mvn -f microservices/shardshop/pom.xml -Pintegration verify
 bash microservices/shardshop/scripts/up.sh
-kubectl --context kind-shardshop -n shardshop get clusters.postgresql.cnpg.io -L shardshop.javacraft/region
-kubectl --context kind-shardshop -n shardshop get pods,pvc,svc
-bash microservices/shardshop/scripts/verify-topology.sh --routing-only
-bash microservices/shardshop/scripts/verify-topology.sh
-python3 -B microservices/shardshop/scripts/verify-product-workload.py
+bash microservices/shardshop/scripts/down.sh
 ```
 
-Step 4.8 extends the workload lab check, and step 6.2 extends the topology lab
-check, instead of adding scripts.
+Build only ShardShop or the affected submodule; never run the repository's root
+Maven build for this project. Developer checks remain available through Maven:
 
-Verification scripts must restrict mutations to this disposable lab and report
-their scenarios. Keep destructive volume/cluster cleanup separate from startup
-and verification. Supply explicit source/target arguments for backup and restore.
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml clean verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify
+# Planned profile; run against the lab after up.sh. Defaults to deployment checks.
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify
+# Optional disruptive drills; never invoked by up.sh.
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind -Dgroups=kind-drill verify
+kubectl --context kind-shardshop -n shardshop get clusters.postgresql.cnpg.io -L shardshop.javacraft/region
+kubectl --context kind-shardshop -n shardshop get pods,pvc,svc
+```
+
+Step 3.16 documents the explicit Maven suite/tag selection for disruptive drills;
+neither default builds nor `up.sh` run them. Step 4.8 extends the workload scenarios
+and deployment gate, and step 6.2 extends the topology scenarios.
+
+Live scenarios must restrict mutations to this disposable lab and report their
+results. Keep destructive volume/cluster cleanup separate from startup, shutdown
+and deployment verification. Future backup and restore procedures use native
+tools or Maven-invoked Java tooling with explicit source/target arguments, without
+introducing another script.

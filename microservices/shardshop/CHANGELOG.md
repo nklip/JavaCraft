@@ -761,3 +761,116 @@ Central's SHA-1 files, and OSV listed no advisories for them on 2026-10-13.
 `bash microservices/shardshop/scripts/build-application-images.sh flyway`;
 `bash microservices/shardshop/scripts/migrate.sh`;
 [contract checks](README.md#contract-checks-step-312).
+
+## Step 3.13
+
+**2026-10-13:** `up.sh` builds the ShardShop reactor from current sources, qualifies
+Flyway/product/seeder/reader images, provisions the lab and loads the images on
+every kind node. The image-build implementation replaces
+`build-application-images.sh`; migration and application deployment remain separate
+until step 3.15.
+
+- Prerequisites include Maven, Buildx and Scout. The script resolves the ShardShop
+  POM from its own path and runs `clean verify`, including when invoked outside
+  the repository. All four image builds and advisory gates finish before the
+  first cluster operation or image load. The reviewed VEX statements and Flyway
+  digest pin remain unchanged.
+- Buildx writes each image's config ID to the invocation's temporary directory.
+  Before loading, the local tag must still identify that build. Loading remains
+  sequential per node; CRI manifest digests must agree across nodes, and Flyway's
+  digest must match the chart pin before registration.
+- The live run from `/private/tmp` passed 935 unit/startup tests and 55 packaged
+  routing checks. Scout indexed 74 Flyway, 187 product, 70 seeder and 89 reader
+  packages. Each image passed the existing critical/high gate with its reviewed
+  pebble statements; the previously documented OS inventory limitation remains.
+- An isolated source copy, with spaces in its path, added a marker field to
+  `ProductApplication.java` and ran the same `up.sh`. The resulting image contained
+  the marker in the compiled class. A test-only kind command stopped that run
+  before cluster changes, and the original local image tags were restored.
+  After inserting invalid Java into that copy, another real build failed at
+  compilation before image or cluster operations despite existing packages and
+  cached tags. The working tree's Java sources were never changed.
+- Nine temporary command-fixture checks passed: missing Buildx, missing Scout,
+  failed Maven, failed image build, failed SBOM, failed advisory inventory,
+  rejected critical/high findings on the final image, scanner errors on that
+  image, and a missing current application package. Every case returned nonzero
+  without a kind/kubectl operation or stale-image load. These checks cover shell
+  orchestration; the Maven and image checks above use the real tools.
+
+The first live run started the stopped nodes, and the nodes received new IP
+addresses. The kindnet process of the control plane kept `HOST_IP=172.25.0.2`, its
+earlier address, but `shardshop-worker` now had this address and the control plane
+had `172.25.0.5`. Thus kindnet handled that worker as its own node and added no route
+to the worker's pod network `10.244.2.0/24`. CoreDNS runs on the control plane, thus
+no pod on `shardshop-worker` could resolve a name. The ledger probe of `up.sh` ran in
+`ledger-db-1` on that worker and failed. A restart of the ledger pod, of the
+kube-proxy of that worker and of the worker itself did not change the control-plane
+routes. The implementation then moved the ledger probe to the first shard primary on
+another worker, and the final live run returned zero. But the standbys `shard-a-2`,
+`shard-b-3` and `shard-c-2` did not stream ("could not translate host name"), and one
+of the two product pods was not ready. CNPG still reported all clusters as healthy.
+
+The validation of the step found these problems, and these fixes close them:
+
+- The ledger probe is the same as before step 3.13: each primary probes its own `-rw`
+  Service by name, thus the probe also needs cluster DNS on that node. A failure now
+  names the pod. The README tells how to find and repair a missing kindnet route, and
+  PLAN step 3.14 now requires a DNS and standby check after each node start.
+- A new kindnet pod on the control plane received `HOST_IP=172.25.0.5` and added the
+  route. `ip route del` removed the route to its own pod network that the earlier
+  process had added. Then DNS worked on `shardshop-worker`, and all six standbys
+  streamed again.
+- Each `up.sh` run moved the `:local` tags to a new build. After that, the CRI used
+  kind's `import-<date>@<digest>` name for the earlier images, did not find them and
+  failed with `CreateContainerError`. Scratch pods of the deployed product image
+  `sha256:94f62614…` and of an earlier reader image failed in this way on
+  `shardshop-worker2` and `shardshop-worker3`. The removal of the import name did not
+  help, because the CRI cache kept the reference. A tag did help. Thus `up.sh` now also
+  tags each loaded image `sha256-<digest>` on each node. A one-time command gave this
+  tag to the 17 earlier ShardShop images on each node. Then the product pod on
+  `shardshop-worker` started and reserved generator ID 61.
+- Two clean builds of the same sources gave different JAR files, thus each `up.sh` run
+  loaded three new images. The ShardShop POM now sets `project.build.outputTimestamp`.
+  Two clean builds in a scratch copy then gave identical `quarkus-app` trees for
+  product, seeder and reader. COPY keeps the file times, but the BuildKit cache ignores
+  them, thus an unchanged rebuild uses the cached image layer again. The exporter
+  option `rewrite-timestamp=true` had no effect with the Docker driver.
+- `--vex-author 'ShardShop image review'` also accepted the document authors
+  `Not the ShardShop image review` and `ShardShop image reviewer`. With
+  `^ShardShop image review$`, Docker Scout accepts only the exact author and stops for
+  the two other authors.
+- The README gives the duration of a rerun, PLAN step 3.20 no longer names the deleted
+  script, and the commands below use repository paths.
+
+After the fixes, `up.sh` ran two times from another working directory, with the lab
+already started. Both runs passed 935 unit/startup tests and 55 packaged routing
+checks without warning lines, and all four images passed the gate with the anchored
+author pattern. The first run loaded the new images on all four nodes with their
+`sha256-<digest>` tags and returned zero in 393 seconds. The second run built the
+same three image IDs, `kind load` skipped all 16 node loads, and the run returned zero
+in 217 seconds. Then DNS worked from a pod on each worker, each shard had two
+streaming standbys, both product pods were ready, and the kindnet `HOST_IP` of each
+node was the address of that node. A scratch pod of the deployed product image
+started on `shardshop-worker2`. The registry kept its UID, with high-water 61/1023.
+The lab remains running. The fixes did not run migrations or deploy a new application
+release.
+
+**Commands:**
+
+```bash
+# From the repository root: run up.sh from another working directory.
+(cd /tmp && bash "$OLDPWD/microservices/shardshop/scripts/up.sh")
+# Each primary probes its own -rw Service; this also needs cluster DNS on its node.
+kubectl --context kind-shardshop --request-timeout=15s -n shardshop exec ledger-db-1 -c postgres -- pg_isready -h ledger-db-rw -t 5
+# Each node needs a route to the pod network of each other node.
+kubectl --context kind-shardshop get nodes -o 'custom-columns=NAME:.metadata.name,IP:.status.addresses[0].address,CIDR:.spec.podCIDR'
+docker exec shardshop-control-plane ip route
+# Repair: a new kindnet pod on the control plane gets the current node address.
+kubectl --context kind-shardshop -n kube-system delete pod -l app=kindnet --field-selector spec.nodeName=shardshop-control-plane
+bash -n microservices/shardshop/scripts/up.sh microservices/shardshop/scripts/deploy.sh microservices/shardshop/scripts/migrate.sh microservices/shardshop/scripts/render.sh microservices/shardshop/scripts/shards.sh
+git diff --check
+```
+
+The failure checks of the implementation and of the validation used temporary
+harnesses outside the repository, with command stubs and scratch copies. They are not
+kept, because PLAN instruction 9 permits no new scripts.

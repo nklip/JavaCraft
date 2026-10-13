@@ -433,7 +433,7 @@ images:
     linux_arm64_digest: sha256:19765ac553684c76f061d5ffb558874a6814951f91e11c6ad8b0d5bef39ce73b
     linux_arm64_config_digest: sha256:f6a88d7ea657f4cb3c995ac11841778e2fdad7500dd7889d42cdc3c6ff0fe80a
     dockerfile: infra/images/flyway/Dockerfile
-    build_script: scripts/build-application-images.sh flyway
+    build_script: scripts/up.sh
     build_inputs:
     - flyway_distribution
     - application_jre
@@ -461,8 +461,8 @@ images:
       cover. On 2026-09-30, Scout reported no findings. The image copies only Flyway
       core, its PostgreSQL plugin, the PostgreSQL JDBC driver and licenses; recheck
       the final image at the next Flyway/base refresh, by 2026-10-28.'
-    note: Locally built and loaded into kind one node at a time. Since step 3.12,
-      build-application-images.sh flyway scans it with the gate of the application
+    note: Locally built and loaded into kind one node at a time. up.sh scans it
+      with the gate of the application
       images, verifies every node's manifest digest against the pin of the chart values
       and registers the digest under the Job's repository name; migrate.sh only checks
       that every node has the pinned reference. Other build/exporter versions must
@@ -514,20 +514,21 @@ images:
   shardshop_applications:
     purpose: Application images of product, order, ledger and the three workloads
     dockerfile: infra/images/application/Dockerfile
-    build_script: scripts/build-application-images.sh
+    build_script: scripts/up.sh
     build_inputs:
     - application_jre
     entrypoint: java -jar /app/quarkus-run.jar for all six applications. Since step 3.11,
       product and order reserve their generator ID in this JVM; the images contain no kubectl
     image_names: docker.io/library/shardshop-<application>:local; deploy.sh uses the
-      manifest digest that the build script registers on every kind node
+      manifest digest that up.sh registers on every kind node
     image_user_observed: '10001:10001'
     source_date_epoch: 0
     checked_on: '2026-10-13'
     review_by: '2026-10-28'
     scan_tool: Docker Scout 1.24.0 from Docker Desktop 4.92.0
     advisory_gate: docker scout cves --exit-code --only-severity critical,high with
-      the reviewed OpenVEX documents in infra/images/application/vex/
+      the reviewed OpenVEX documents in infra/images/application/vex/ and the anchored
+      author pattern ^ShardShop image review$
     observed_digests_2026_10_10:
       shardshop-product: sha256:a7139c72fd034f2a418bf6db7637a1d31435eed04aa7a7578be6c581832ad714
       shardshop-product-seeder: sha256:5f4d16f14a2ffa35ba5cdae86c38269f214eca07dcb46b2795ab40d1586be1e9
@@ -549,10 +550,13 @@ images:
       1.26.7, 2 critical, 8 high) passes only through the reviewed statements. Until
       step 3.11, the product and order images also contained kubectl 1.36.5 from
       registry.k8s.io/kubectl; step 3.11 removed it with its pin and VEX document.
-    note: The digests change with each application build, thus the lock records the
-      recipe and the observed digests, not a deployment pin. Since step 3.12, the same
-      script and gate also build the Flyway migration image (flyway_cli), which keeps
-      its pinned digest.
+    note: Until step 3.13, the digests changed with each application build. Since then,
+      project.build.outputTimestamp gives the same packages from the same sources, and
+      the BuildKit cache gives the same image ID again. COPY keeps the file times, thus
+      a build without that cache can give another digest. The lock records the recipe
+      and the observed digests, not a deployment pin. Since step 3.12, the same build
+      and gate also make the Flyway migration image (flyway_cli), which keeps its pinned
+      digest.
   application_jre:
     quarkus_checked_on: '2026-10-04'
     quarkus_qualification: All six Quarkus JVM fast-jar packages start as UID/GID 584792, network disabled, read-only root and no capabilities.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Render from one ordered inventory. No Kubernetes access or generated files in Git.
-# When: up.sh, migrate.sh, deploy.sh, verify-topology.sh and build-application-images.sh call
+# When: up.sh, migrate.sh, deploy.sh and verify-topology.sh call
 # it through shards.sh; run it by hand to preview manifests without a cluster.
 set -euo pipefail
 
