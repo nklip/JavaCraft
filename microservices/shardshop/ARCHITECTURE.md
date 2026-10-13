@@ -23,7 +23,7 @@ durability such as S3 backups with WAL archiving and a three-broker RabbitMQ. No
 local behavior or check may depend on a cloud service.
 
 Cluster creation, reconciliation and shutdown use `scripts/up.sh` and `scripts/down.sh`;
-migration and application deployment remain separate through step 3.14.
+migration and application deployment remain separate until step 3.16.
 `up.sh` snapshots the inventory, environment values, kind configuration, operator
 chart and operator values once per invocation. It accepts only the fixed kind topology
 of one control plane and three workers and reviewed image/port settings; changes requiring
@@ -42,20 +42,50 @@ in Java tests. These tests do not replace reconciliation with a Java controller.
 Supported resource, PostgreSQL configuration and reviewed operator changes are
 reconciled in place; failures stop with recovery guidance and retained data.
 
-The current step 3.16 foundation moves infrastructure checks into Maven; it does
-not yet replace the workload and disruptive verification scripts. Its `kind`
-profile defaults to `kind-infrastructure` through `shardshop.kind.tags`. The
-initial ShardShop-only Maven `clean install -DinstallAtEnd=true` includes `verify`
-and installs verified reactor artifacts in Maven's local cache after the reactor
-succeeds; subsequent Failsafe gates resolve these packages without another build.
-This is local artifact caching, without tool installation or remote publication. Complete
-step 3.16 before step 3.15 adds Flyway Job migration and application deployment
-orchestration. Flyway owns validation and schema changes; Helm renders deployment
-resources, Kubernetes owns rollout and Job completion, and Java applications own
-seeding, catalog resolution and load. Later deployment acceptance belongs to the
-Maven kind suite, with disruptive drills selected explicitly. Keep exactly the two
-planned lifecycle scripts, with no embedded Python, extra wrappers, downloaded
-tool binaries or local dependency on GitOps or cloud services.
+The step 3.15 `kind` profile defaults to `kind-deployment` through
+`shardshop.kind.tags`. It observes deployed routing, independent replication and
+persistent-volume identity (`kind-topology`) and the existing product workload
+(`kind-workload`): credential restrictions, the saved 150 seller/300 product IDs,
+matching seeder/reader digests, traffic through both Ready product pods within
+120 seconds, and a fresh all-OK reader interval at 180 requests/s or more. These
+checks require an already-migrated, deployed lab with two Ready product pods and
+one running reader; they preserve reader replicas. Reader interval reports repeat
+the resolved catalog digest so bounded recent logs retain verification evidence
+after startup-log rotation. Workload settings are restricted to documented literal
+HTTP configuration; generic JVM and command overrides are rejected.
+
+Explicit `kind-drill` selection runs `kind-database-drill` and
+`kind-workload-drill`. Database drills exercise standby replacement, quorum
+availability/blocking and WAL retention on the first inventory shard, or
+`shardshop.kind.drillShard`. Workload drills run repeated temporary seeder Jobs,
+verify identical saved IDs, and replace one product pod. Its fresh generator ID
+must exceed the pre-replacement registry `highWaterMark`; traffic and an all-OK
+reader interval are checked again after recovery. Both drill families share the
+`shardshop-kind-drill` ConfigMap lock, register recovery before mutation, and
+restore temporary changes in reverse order on completion, failure or ordinary
+JVM termination. Failed recovery retains the lock and reports required operator
+action. Fence mutations atomically test Cluster identity and resource version to
+preserve concurrent operator changes. Allocator state is never rewound.
+
+Every standalone suite consumes an explicit `shardshop.kind.snapshot` containing
+`chart/`, `environment.yaml`, `inventory.yaml`, `inventory.json`, `kind.json` and
+`infrastructure.yaml`; DNS gates additionally use `dns-probes.yaml`. Existing
+infrastructure safety gates remain individually selectable. Tests observe native
+reconciliation or make only the explicitly selected temporary drill changes;
+production migration and deployment continue through `migrate.sh` and `deploy.sh`
+until step 3.16. The initial ShardShop-only Maven
+`clean install -DinstallAtEnd=true` includes `verify` and installs verified reactor
+artifacts in Maven's local cache after the reactor succeeds; subsequent Failsafe
+gates resolve these packages without another build. This is local artifact caching,
+without tool installation or remote publication.
+
+Complete step 3.15 before step 3.16 adds Flyway Job migration and application
+deployment orchestration. Flyway owns validation and schema changes; Helm renders
+deployment resources, Kubernetes owns rollout and Job completion, and Java
+applications own seeding, catalog resolution and load. Later deployment acceptance
+belongs to the Maven kind suite, with disruptive drills selected explicitly. Keep
+exactly the two planned lifecycle scripts, with no embedded Python, extra wrappers,
+downloaded tool binaries or local dependency on GitOps or cloud services.
 
 Build and test with JDK 25 or newer (bytecode targets release 25), and run the
 applications on OpenJDK 25. The Maven toolchain uses the installation selected by
@@ -1090,7 +1120,7 @@ encoding, exact `NUMERIC` conversion, and modulo operator, with the `shardIndex`
 and `shardCount` placeholders. It preserves all 256 digest bits and matches Java's
 unsigned routing calculation. Incorrect seller placement is rejected on insertion.
 Schema migration V1 and the unchanged version-2 ID-routing algorithm are independent
-version numbers. `verify-topology.sh --routing-only` checks PostgreSQL's calculation
+version numbers. The Maven `kind-topology` scenarios check PostgreSQL's calculation
 and the deployed seller and buyer placement constraints on every primary against
 the same golden fixtures used by Java, using read-only queries without a failure drill.
 
@@ -1919,7 +1949,7 @@ Acceptance scenarios for implementation:
    the reservation after publication failure and reuse it on a matching rerun.
    Run the version-2 routing vectors in `shardshop-core/sharding`, including values above
    2^53 and signed-long boundary checks, and verify that both services route through
-   it. Run `verify-topology.sh --routing-only` to compare the same golden fixtures
+   it. Run the Maven `kind-topology` scenarios to compare the same golden fixtures
    with SQL hashing and the deployed seller and buyer placement constraints on
    every primary.
 3. Exercise heavy product reads, primary read-after-write behavior, and explicitly

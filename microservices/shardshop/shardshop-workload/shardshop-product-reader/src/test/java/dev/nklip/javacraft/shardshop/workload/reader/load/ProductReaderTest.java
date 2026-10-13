@@ -2,7 +2,9 @@ package dev.nklip.javacraft.shardshop.workload.reader.load;
 
 import dev.nklip.javacraft.shardshop.workload.dataset.CatalogDataset;
 import dev.nklip.javacraft.shardshop.workload.reader.catalog.ReaderDatasets;
+import dev.nklip.javacraft.shardshop.workload.reader.catalog.ReaderDatasets.ProductDescriptor;
 import dev.nklip.javacraft.shardshop.workload.reader.http.ProductRequests;
+import dev.nklip.javacraft.shardshop.workload.reader.http.ReadResult;
 import dev.nklip.javacraft.shardshop.workload.reader.http.ReadResult.Outcome;
 import dev.nklip.javacraft.shardshop.workload.reader.metrics.ReaderMetrics;
 import org.apache.hc.core5.pool.PoolStats;
@@ -40,6 +42,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.spy;
 
 class ProductReaderTest {
     private static final Pause SLEEP = TimeUnit.NANOSECONDS::sleep;
@@ -108,8 +114,54 @@ class ProductReaderTest {
                         + "ASIA 50 sellers, 100 products], key-to-ID SHA-256 " + expectedDigest(),
                 "INFO Reading at 50 requests/s with 3 workers and 2 connections"), messages().subList(0, 2));
         assertTrue(messages().getLast().startsWith("INFO Product reads, total "), messages().getLast());
-        assertTrue(messages().getLast().endsWith(", max=2}"), messages().getLast());
+        assertTrue(messages().getLast().endsWith(", max=2}, catalog-v1 key-to-ID SHA-256 " + expectedDigest()),
+                messages().getLast());
         assertTrue(messages().stream().anyMatch(message -> message.startsWith("INFO Product reads, interval ")));
+    }
+
+    @Test
+    void recurringReportsRetainCatalogEvidenceAfterStartupLogsAreDiscarded() throws Exception {
+        reader = reader(1, 1, 50, Duration.ofSeconds(30), Duration.ofSeconds(5));
+        reader.start(reader.resolve(), failures::incrementAndGet);
+        logs.clear();
+        awaitUntil(() -> messages().stream().anyMatch(message -> message.startsWith("INFO Product reads, interval ")));
+        reader.stop();
+
+        String evidence = ", catalog-v1 key-to-ID SHA-256 " + expectedDigest();
+        List<String> retained = messages();
+        assertFalse(retained.stream().anyMatch(message -> message.contains("Resolved catalog-v1")), retained.toString());
+        assertTrue(retained.getLast().startsWith("INFO Product reads, total "), retained.toString());
+        assertTrue(retained.stream().allMatch(message -> message.endsWith(evidence)), retained.toString());
+    }
+
+    @Test
+    void reportsTheCatalogPassedToStartEvenAfterAnotherResolution() throws Exception {
+        requests = spy(new ProductRequests(new ProductRequests.Settings(product.url(), 1,
+                Duration.ofMillis(200), Duration.ofSeconds(5), Duration.ofSeconds(30), Duration.ofSeconds(10), 3,
+                Duration.ofMillis(10))));
+        metrics = new ReaderMetrics(System::nanoTime);
+        reader = new ProductReader(new ReaderDatasets(CatalogDataset.VERSION), requests,
+                new RatePacer(50, System::nanoTime, SLEEP), metrics, 1, Duration.ofSeconds(1), System::nanoTime, random);
+        ProductReader.Catalog first = reader.resolve();
+        String firstResolution = messages().getFirst();
+        doAnswer(invocation -> {
+            ReadResult<?> result = (ReadResult<?>) invocation.callRealMethod();
+            if (result.value() instanceof ProductDescriptor item) {
+                return ReadResult.ok(new ProductDescriptor(item.definition(), item.sellerId(),
+                        Long.toString(Long.parseLong(item.productId()) + 1_000), item.stock()));
+            }
+            return result;
+        }).when(requests).get(any());
+        reader.resolve();
+        assertFalse(firstResolution.equals(messages().getLast()), messages().toString());
+        doCallRealMethod().when(requests).get(any());
+        reader.start(first, failures::incrementAndGet);
+        logs.clear();
+        awaitUntil(() -> messages().stream().anyMatch(message -> message.startsWith("INFO Product reads, interval ")));
+        reader.stop();
+
+        String evidence = ", catalog-v1 key-to-ID SHA-256 " + expectedDigest();
+        assertTrue(messages().stream().allMatch(message -> message.endsWith(evidence)), messages().toString());
     }
 
     @Test
@@ -127,6 +179,8 @@ class ProductReaderTest {
         // Each read that ends at its deadline closes its connection.
         assertTrue(product.connections.size() >= 3, product.connections.size() + " connections");
         assertTrue(messages().getLast().startsWith("WARN Product reads, total "), messages().getLast());
+        assertTrue(messages().getLast().endsWith(", catalog-v1 key-to-ID SHA-256 " + expectedDigest()),
+                messages().getLast());
         assertEquals(0, failures.get());
     }
 

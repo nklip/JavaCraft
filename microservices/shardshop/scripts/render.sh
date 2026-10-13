@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Render from one ordered inventory. No Kubernetes access or generated files in Git.
-# When: migrate.sh, deploy.sh and verify-topology.sh call it through
+# When: migrate.sh and deploy.sh call it through
 # shards.sh; it remains a maintained rendering helper until PLAN 3.20.
 # Run it by hand to preview manifests without a cluster.
 set -euo pipefail

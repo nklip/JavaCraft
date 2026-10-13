@@ -768,7 +768,7 @@ Central's SHA-1 files, and OSV listed no advisories for them on 2026-10-13.
 Flyway/product/seeder/reader images, provisions the lab and loads the images on
 every kind node. The image-build implementation replaces
 `build-application-images.sh`; migration and application deployment remain separate
-until step 3.15.
+until step 3.16.
 
 - Prerequisites include Maven, Buildx and Scout. The script resolves the ShardShop
   POM from its own path and runs `clean verify`, including when invoked outside
@@ -954,7 +954,7 @@ checks through the scoped ShardShop `clean verify`, followed by all four image
 advisory gates. Shell syntax, Helm lint and whitespace checks passed. The temporary
 harnesses and state hashes were kept outside the repository; no new maintained
 script or generated report was added. SQL migrations and application release
-deployment remain step 3.15.
+deployment remain step 3.16.
 
 **Commands:**
 
@@ -1017,7 +1017,7 @@ helm lint microservices/shardshop/infra/helm/shardshop -f microservices/shardsho
 git diff --check
 ```
 
-## Step 3.16 — infrastructure verification foundation
+## Step 3.15 — infrastructure verification foundation
 
 **2026-10-13 (partial):** Refactored the step 3.14 lifecycle implementation from
 672 to 233 lines of Bash. Helm now renders DNS probes, the fresh registry identity
@@ -1060,8 +1060,8 @@ No DNS probes remained after verification.
 This qualification exercised the infrastructure gates against the retained lab;
 it did not repeat full image build/advisory, fresh-cluster or stop/start acceptance.
 The historical step 3.14 evidence remains above. Workload/deployment scenarios and
-explicit disruptive drills are still required to finish step 3.16, now a
-prerequisite for step 3.15.
+explicit disruptive drills are still required to finish step 3.15, now a
+prerequisite for step 3.16.
 
 **Commands:**
 
@@ -1100,3 +1100,125 @@ docker ps -a --filter name=shardshop --format '{{.ID}} {{.Names}} {{.Status}}'
 kubectl config get-contexts -o name
 kubectl --context kind-shardshop --request-timeout=10s get nodes -o wide
 ```
+
+## Step 3.16 — prerequisite audit
+
+**2026-10-13 (blocked):** The requested implementation depends on step 3.15.
+Inspection confirmed that the opt-in kind suite has seven infrastructure scenarios;
+workload/deployment checks and explicit recovery drills still reside in
+`verify-product-workload.py` and `verify-topology.sh`. PLAN instruction 2 requires
+recording missing prerequisites instead of silently expanding the selected step.
+Step 3.16 therefore remains unimplemented pending completion of step 3.15 or an
+explicit change to that dependency. No cluster resources were changed by this audit.
+
+Verified by reading the kind profile and `kind-features/Lifecycle.feature`, comparing
+the two verification scripts, and running `git diff --check`.
+
+**2026-10-13 numbering correction:** Swapped the two steps so the table follows
+dependency order: step 3.15 now covers Maven live verification (formerly 3.16),
+and step 3.16 covers migration and deployment through `up.sh` (formerly 3.15).
+References in the plan, architecture, README and this changelog use the new
+numbers. The prerequisite, implementation scope and completion statuses are unchanged.
+
+## Step 3.15 — live verification completion
+
+**2026-10-13:** Completed the Maven replacement of `verify-topology.sh` and
+`verify-product-workload.py`, then removed both scripts. The `kind` profile now
+defaults to three `kind-deployment` scenarios: deployed catalog and credential
+checks, traffic through both product replicas with a fresh all-OK reader interval,
+and routing/replication/worker/PVC checks across every inventory shard.
+`kind-workload` and `kind-topology` select the respective subsets. Existing
+infrastructure gate tags remain available to `up.sh`.
+
+Explicit `kind-drill` selection runs two scenarios. The database drill verifies
+standby read-only behavior, cross-shard isolation, persistent synchronized failover
+slots, standby replacement with the same PVC, commits with one standby, and blocked
+commits with both standbys fenced followed by recovery. The workload drill compares
+saved seller/product IDs across two temporary HTTP seeder Jobs, replaces one product
+pod, requires a generator ID above the pre-replacement high-water mark, then checks
+traffic and a fresh clean reader interval again. `kind-database-drill` and
+`kind-workload-drill` select these independently.
+
+Both drills share an owner-scoped ConfigMap lock and register recovery before
+mutation. Cleanup restores fencing, joins or terminates the drill writer, removes
+owned SQL objects/slots and temporary Jobs, and waits for recovery. Ordinary JVM
+shutdown interrupts and joins the guarded drill before cleanup can run; failed
+recovery retains the lock. Cleanup never rewinds generator allocation. Forced
+termination still requires the documented manual recovery procedure.
+
+**Verification:** the affected-module build passes 877 unit/startup tests, including
+64 kind helper tests, plus 28 packaged product routing checks. Regression tests
+failed before fixes for cleanup overtaking an in-flight mutation and for rejecting
+the valid zero-read baseline of a fresh product pod, then passed afterward. The
+default live suite passed all three scenarios, both explicit drills passed, and
+the default suite passed again after recovery. The default selection exercised no
+disruptive scenario. An unknown tag fails discovery, and the effective Testcontainers
+`integration` profile still excludes `KindIT`; normal builds ran no live scenarios.
+
+Qualification used the existing `shardshop` cluster and already-qualified deployed
+images. All ten PVC UID/PV bindings and both allocator ConfigMap identities were
+preserved. The workload replacement consumed one generator ID, advancing
+`highWaterMark` from 65 to 66. All database clusters recovered healthy, no fence,
+probe schema/publication/slot/writer, temporary drill Job or drill lock remained,
+and the reader was restored from the qualification replica to its original zero
+replicas. Only the original four-node cluster remains. This run did not repeat
+image qualification, fresh bootstrap, full stop/resume or the Testcontainers suite.
+Step 3.15 is Done; its prerequisite blocker on step 3.16 is resolved, and 3.16 is
+Planned.
+
+**Commands:**
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am install -DinstallAtEnd=true
+# Prepare $snapshot from this lab's inputs using README's kind snapshot instructions.
+# Both suites require an already-deployed reader; qualification restored its original replicas afterward.
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+    failsafe:integration-test failsafe:verify -Dit.test=KindIT \
+    -Dshardshop.kind.snapshot="$snapshot"
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+    failsafe:integration-test failsafe:verify -Dit.test=KindIT \
+    -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-drill
+# Repeat the default command above after the drills.
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration \
+    help:effective-pom -Doutput=/private/tmp/shardshop-315.jgDezv/integration-effective-pom.xml
+# Expected failure: no scenario matches this tag.
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+    failsafe:integration-test failsafe:verify -Dit.test=KindIT \
+    -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-missing-test-tag
+bash -n microservices/shardshop/scripts/*.sh
+git diff --check
+```
+
+### Step 3.15 correctness review fixes
+
+**2026-10-13:** Fixed the three review findings. Database fencing and recovery now
+use atomic JSON Patch tests of the Cluster UID and resource version, preserving
+an operator fence changed between observation and mutation. A conflict stops the
+mutation; failed recovery keeps the shared drill lock. Reader interval and total
+reports now include the digest of the exact resolved catalog passed to `start()`.
+The live verifier reads a bounded recent log window, so accumulating logs and
+rotation of the startup summary do not remove its catalog evidence. Workload
+credential checks now accept only documented literal HTTP settings and reject
+generic configuration, JVM options, command overrides and executable hooks/probes.
+
+Regression tests failed before the fixes for initial/restoration fence races,
+oversized and rotated reader logs, missing periodic catalog evidence, and
+credential injection. The affected-module build then passed **892 unit/startup
+tests**, including **77 kind helper tests**, and **28 packaged routing checks**.
+Both selected packaged-reader Testcontainers scenarios passed, including catalog
+resolution, matching report digests, load, product restart recovery, shutdown and
+the startup-failure deadline; the other 40 Cucumber scenarios were not selected.
+A Kubernetes server dry-run accepted the conditional fence patch and rejected a
+stale version without changing the live fence. `git diff --check` passed.
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration \
+    failsafe:integration-test failsafe:verify -Dit.test=CucumberIT \
+    '-Dcucumber.filter.name=^The reader (waits|stops).*'
+git diff --check
+```
+
+These fixes did not rebuild or deploy lab images or rerun the disruptive live
+drills. Rebuild and deploy the reader image to provide periodic digest evidence
+on kind; the existing reader remains scaled to zero.

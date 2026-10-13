@@ -57,6 +57,7 @@ public final class ProductReader {
     private final AtomicBoolean failed = new AtomicBoolean();
     private ExecutorService executor;
     private ScheduledExecutorService scheduler;
+    private Catalog startedCatalog;
     private boolean started;
     private boolean stopped;
 
@@ -95,7 +96,7 @@ public final class ProductReader {
             }
             lookups = executor;
         }
-        return new Catalog(this, resolveTargets(lookups));
+        return resolveCatalog(lookups);
     }
 
     /**
@@ -116,11 +117,12 @@ public final class ProductReader {
             if (stopped) {
                 return;
             }
+            startedCatalog = catalog;
             metrics.begin();
             scheduler = Executors.newSingleThreadScheduledExecutor(
                     Thread.ofPlatform().name("product-reader-report").daemon().factory());
             long interval = reportInterval.toMillis();
-            scheduler.scheduleAtFixedRate(this::report, interval, interval, TimeUnit.MILLISECONDS);
+            scheduler.scheduleAtFixedRate(() -> report(catalog), interval, interval, TimeUnit.MILLISECONDS);
             for (int worker = 0; worker < workers; worker++) {
                 executor.submit(() -> read(catalog.targets, onFailure));
             }
@@ -135,13 +137,13 @@ public final class ProductReader {
      */
     public void stop() {
         List<ExecutorService> services = new ArrayList<>(2);
-        boolean loadStarted;
+        Catalog catalog;
         synchronized (this) {
             if (stopped) {
                 return;
             }
             stopped = true;
-            loadStarted = scheduler != null;
+            catalog = startedCatalog;
             if (scheduler != null) {
                 services.add(scheduler);
             }
@@ -165,8 +167,8 @@ public final class ProductReader {
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
         }
-        if (loadStarted) {
-            log(metrics.total(requests.poolStats()));
+        if (catalog != null) {
+            log(metrics.total(requests.poolStats()), catalog);
         }
         requests.close();
     }
@@ -175,7 +177,7 @@ public final class ProductReader {
         return failed.get();
     }
 
-    private List<Target> resolveTargets(ExecutorService lookups) throws ReaderException, InterruptedException {
+    private Catalog resolveCatalog(ExecutorService lookups) throws ReaderException, InterruptedException {
         List<SellerDescriptor> sellers = lookUpAll(lookups, datasets.sellers(),
                 seller -> lookUp("Look up seller " + seller.key(), datasets.lookupSeller(seller)));
         Map<String, SellerDescriptor> sellersByKey = new HashMap<>();
@@ -183,14 +185,15 @@ public final class ProductReader {
         List<ProductDescriptor> products = lookUpAll(lookups, datasets.products(), product -> lookUp(
                 "Look up product " + product.key(),
                 datasets.lookupProduct(product, sellersByKey.get(product.sellerKey()))));
+        String digest = mappingDigest(sellers, products);
         LOG.info("Resolved " + datasets.catalogVersion() + " " + regions(sellers, products)
-                + ", key-to-ID SHA-256 " + mappingDigest(sellers, products));
+                + ", key-to-ID SHA-256 " + digest);
         List<Target> targets = new ArrayList<>(products.size());
         for (ProductDescriptor product : products) {
             targets.add(new Target(sellersByKey.get(product.definition().sellerKey()).definition().region(),
                     datasets.readProduct(product)));
         }
-        return List.copyOf(targets);
+        return new Catalog(this, List.copyOf(targets), datasets.catalogVersion(), digest);
     }
 
     /** Runs the lookups concurrently in dataset order. After the first failure, the remaining lookups do nothing. */
@@ -261,15 +264,16 @@ public final class ProductReader {
         }
     }
 
-    private void report() {
-        log(metrics.nextInterval(requests.poolStats()));
+    private void report(Catalog catalog) {
+        log(metrics.nextInterval(requests.poolStats()), catalog);
     }
 
-    private static void log(ReaderMetrics.Report report) {
+    private static void log(ReaderMetrics.Report report, Catalog catalog) {
+        String summary = report.summary() + ", " + catalog.catalogVersion + " key-to-ID SHA-256 " + catalog.digest;
         if (report.failed()) {
-            LOG.warn(report.summary());
+            LOG.warn(summary);
         } else {
-            LOG.info(report.summary());
+            LOG.info(summary);
         }
     }
 
@@ -308,10 +312,14 @@ public final class ProductReader {
     public static final class Catalog {
         private final ProductReader owner;
         private final List<Target> targets;
+        private final String catalogVersion;
+        private final String digest;
 
-        private Catalog(ProductReader owner, List<Target> targets) {
+        private Catalog(ProductReader owner, List<Target> targets, String catalogVersion, String digest) {
             this.owner = owner;
             this.targets = targets;
+            this.catalogVersion = catalogVersion;
+            this.digest = digest;
         }
     }
 

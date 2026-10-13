@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared script functions; the callers set strict mode and own temporary directories.
-# When: sourced at the start of migrate.sh, deploy.sh and verify-topology.sh;
+# When: sourced at the start of migrate.sh and deploy.sh;
 # it remains a maintained helper until PLAN 3.20; never run directly.
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 

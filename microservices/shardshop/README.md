@@ -244,13 +244,16 @@ databases (two US) over `verify-full` TLS, and check the stored rows. The
 their cases. HTTPS and CNPG primary promotion remain deployment/recovery milestones.
 
 The scenarios do not apply migrations to the retained kind lab. Apply them there
-with the normal Flyway Jobs. Flyway validates the applied migrations at each run:
+with the normal Flyway Jobs. Flyway validates the applied migrations at each run.
+For the Maven command, prepare `$snapshot` with the
+[kind snapshot runbook](#kind-verification-snapshot-step-315) after migration:
 
 ```bash
 bash microservices/shardshop/scripts/up.sh
 bash microservices/shardshop/scripts/migrate.sh
 bash microservices/shardshop/scripts/migrate.sh # validates history; no pending migrations
-bash microservices/shardshop/scripts/verify-topology.sh --routing-only
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
+    -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-topology
 ```
 
 The [changelog](CHANGELOG.md#step-36) records whether the lab qualification has
@@ -384,8 +387,12 @@ these outcomes:
 The reader logs one metric line for each report interval:
 
 ```text
-Product reads, interval 30.0 s: 6000 requests, 200.0/s, outcomes {OK=6000}, latency ms {p50=2, p95=4, p99=7, max=15}, regions {ASIA=1996, EU=2009, US=1995}, pool {leased=3, pending=0, available=13, max=16}
+Product reads, interval 30.0 s: 6000 requests, 200.0/s, outcomes {OK=6000}, latency ms {p50=2, p95=4, p99=7, max=15}, regions {ASIA=1996, EU=2009, US=1995}, pool {leased=3, pending=0, available=13, max=16}, catalog-v1 key-to-ID SHA-256 <hex>
 ```
+
+Each interval and total report repeats the digest of the resolved catalog being
+read. Live verification reads at most 100 recent lines and 64 KiB, so it can compare
+the reader and seeder digests after the startup summary has rotated away.
 
 The latency percentiles are in whole milliseconds, rounded up. They include the
 wait for a connection and all attempts. `regions` counts reads by seller home
@@ -475,7 +482,7 @@ the same packages. Docker then uses its cached image layers again, and an unchan
 rebuild keeps its image IDs. Thus `kind load` skips the nodes, and the digests stay
 the same.
 
-Migration and application deployment remain separate steps until PLAN step 3.15.
+Migration and application deployment remain separate steps until PLAN step 3.16.
 On a kind cluster created by this invocation, `up.sh` applies and verifies the retention
 admission policy, then creates the generator registry and immutable identity before
 finishing. A resumed cluster is checked only: missing, partial, malformed, or mismatched
@@ -626,35 +633,43 @@ take less than one second.
 
 ### Live check
 
+Prepare the [kind verification snapshot](#kind-verification-snapshot-step-315) from
+this lab's inputs, then run the default deployment suite:
+
 ```bash
-python3 -B microservices/shardshop/scripts/verify-product-workload.py
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
+    -Dshardshop.kind.snapshot="$snapshot"
 ```
 
-The check needs the lab after `up.sh` and `migrate.sh`, and the three images. It
-calls `deploy.sh` for two new runs:
+The lab must already be running, migrated and deployed through `up.sh`, `migrate.sh`
+and `deploy.sh`, with two Ready product pods and one running reader. The scenarios
+observe this deployment and preserve reader replicas. They check the deployed
+routing and database topology, workload credential restrictions, the saved IDs and
+rows for all 150 sellers and 300 products, and the reader's resolution digest.
+Within 120 seconds, the read counters of both Ready product pods must increase;
+a fresh reader report interval must contain only `OK` reads at 180/s or more.
+Use `-Dshardshop.kind.tags=kind-workload` for the workload checks alone.
 
-1. In a complete run, the seeder Job must complete and log a seeder digest. The
-   seeder and reader pods must have no API token and no Secret. The reader of this
-   run must resolve the same digest, and the catalog must keep 150 sellers and 300
-   products.
-2. Scenario 1: within 120 seconds, the read counters of both ready product pods
-   must increase. Scenario 3 for primary reads: a report interval must have only
-   `OK` reads at 180/s or more.
-3. The check deletes one product pod. When the replacement is ready, it repeats
-   step 2 with a report interval that starts after the replacement. The JVM of the
-   replacement pod must log a new generator ID: higher than the IDs of the earlier
-   pods, and not higher than the registry high-water (step 3.11). The two product
-   pods must always have different IDs.
-4. A second complete run must recover the same digest and pass steps 2 and 3 again.
+Repeated seeding and product pod replacement are explicit disruptive drills:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
+    -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-workload-drill
+```
+
+The drill runs repeated temporary seeder Jobs and compares their digests and the
+saved seller/product IDs with the existing catalog. It replaces one product pod
+and requires a distinct generator ID greater than the registry `highWaterMark`
+saved before replacement, and no greater than the current high-water mark. After
+replacement it repeats the two-pod traffic check and requires an all-OK interval
+that starts after recovery. Temporary Jobs are removed and the already-running
+reader keeps its replicas. The pod replacement consumes generator allocations;
+cleanup never rewinds allocator state.
 
 On the lab, the catalog is already complete, thus the reader does not wait there.
 `CatalogWaitTest` of the reader module shows the wait: the reader sends no load
 while an entity is missing, starts after the entity appears, and stops after the
 maximum wait.
-
-At the end, the check scales the reader to zero. Product keeps running. Each check
-uses approximately two generator slots for the pod replacements, and more if the
-product image or manifest changed.
 
 ## Integration tests with Testcontainers (step 3.10)
 
@@ -1326,7 +1341,7 @@ Resource budgets, PostgreSQL settings and reviewed operator/same-major PostgreSQ
 updates can converge in place. Changes to storage, placement, bootstrap settings,
 replica count or PostgreSQL major version fail before apply; the local storage
 class does not support expansion. New schemas and roles use current-generation
-operator checks. Migration and application deployment remain separate until step 3.15.
+operator checks. Migration and application deployment remain separate until step 3.16.
 `up.sh` sequences native tool commands. Helm renders the infrastructure, temporary
 DNS probes and immutable generator identity; Kubernetes and CloudNativePG own
 reconciliation. The opt-in Maven `kind` profile owns the configuration, retained-state,
@@ -1337,8 +1352,12 @@ schema migrations and the Java applications own allocation, seeding and reader g
 The script runs these scenarios at their safety boundaries, using the same private
 snapshot throughout. Its initial `clean install -DinstallAtEnd=true` includes all verification and installs
 the successful reactor artifacts into the local Maven cache. It then invokes Failsafe
-directly against those current packages without repeating the build. A standalone
-infrastructure check needs a snapshot of the rendered inputs (with the lab running):
+directly against those current packages without repeating the build.
+
+### Kind verification snapshot (step 3.15)
+
+Standalone kind checks require a snapshot of the rendered inputs from the running
+lab. Prepare it once and retain it until all selected checks finish:
 
 ```bash
 snapshot=$(mktemp -d)
@@ -1361,22 +1380,59 @@ for mode in inventory kind-configuration infrastructure dns-probes; do
         if [[ "$output" == *.json ]]; then sed '/^# Source:/d; /^---$/d'; else cat; fi >"$snapshot/$output"
 done
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
-    -Dshardshop.kind.snapshot="$snapshot"
-rm -rf -- "$snapshot"
+    -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-infrastructure
 ```
 
-The property uses JUnit tag expressions (without Gherkin's leading `@`).
-The default tag is currently `kind-infrastructure`; a selection matching no scenarios
-fails. `-Dshardshop.kind.tags='kind-config | kind-nodes | kind-retention | kind-allocator | kind-infrastructure'`
-selects the existing nondisruptive checks together. `kind-dns` additionally creates
-short-lived probe Pods from the snapshot's `dns-probes.yaml`, with cleanup on failure.
+The required snapshot files are `chart/`, `environment.yaml`, `inventory.yaml`,
+`inventory.json`, `kind.json` and `infrastructure.yaml`; `dns-probes.yaml` is also
+needed for `kind-dns`. The inventory is read from the snapshot. Keep `-Dshardshop.kind.snapshot="$snapshot"` on every standalone
+invocation; the suite does not create or reconcile the lab.
+
+The `kind` profile defaults to `kind-deployment`, which combines `kind-topology`
+and `kind-workload`. It observes an already-migrated and deployed lab with two
+Ready product pods and one running reader. Disruptive scenarios require explicit
+selection; `kind-drill` combines `kind-database-drill` and `kind-workload-drill`:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
+    -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-drill
+```
+
+The property uses JUnit tag expressions (without Gherkin's leading `@`); a
+selection matching no scenarios fails. Existing lifecycle gates remain selectable:
+`-Dshardshop.kind.tags='kind-config | kind-nodes | kind-retention | kind-allocator | kind-infrastructure'`
+selects those checks together. `kind-dns` creates short-lived probe Pods from the
+snapshot's `dns-probes.yaml`, with cleanup on failure.
 `kind-admission-bootstrap` is for fresh initialization only and requires
 `-Dshardshop.kind.fresh=true`; do not use it on a retained lab. Normal builds and
 `-Pintegration` do not access the kind lab. Cucumber reports are under
-`shardshop-testing/target/kind-reports/`. PLAN step 3.16 still needs the deployed
-workload checks and explicit disruptive drills before those older scripts retire.
+`shardshop-testing/target/kind-reports/`.
 
-Each invocation rebuilds and qualifies the enabled images before cluster mutation.
+The workload credential gate accepts only the documented reader/seeder HTTP
+settings with literal typed values. It rejects unknown environment variables,
+JVM configuration overrides, command/argument overrides and executable hooks or
+probes. Product URLs must contain no user information, query or fragment.
+Reader images built before periodic digest reporting need a rebuild and deployment
+for verification to survive startup-log rotation.
+
+Both drill families share the `shardshop-kind-drill` ConfigMap lock. Recovery
+registers before each temporary mutation and runs in reverse order on failure or
+normal completion, with a JVM termination hook for ordinary shutdown. Fence updates
+atomically test the observed Cluster UID and resource version; concurrent changes
+stop the mutation rather than overwrite another actor's fence. If recovery
+fails, the lock stays and the report identifies the remaining temporary changes.
+After an unclean process termination, ensure no drill is running, inspect the
+report and lock, restore fenced instances and wait for database/product readiness,
+then remove only the drill's temporary Jobs, SQL objects and slots before releasing
+the lock. Never restore an older generator registry or lower `highWaterMark`.
+
+After the last check, remove the local snapshot:
+
+```bash
+rm -rf -- "$snapshot"
+```
+
+Each `up.sh` invocation rebuilds and qualifies the enabled images before cluster mutation.
 On each run, kind refreshes and selects the `kind-shardshop` context in the caller's
 `KUBECONFIG` files, or `~/.kube/config` when unset. The recovered endpoint remains
 available to subsequent `migrate.sh`, `deploy.sh` and `kubectl` commands. The script
@@ -1481,41 +1537,38 @@ retain the WAL each standby needs, so a large extra floor only fills the 2 GiB v
 These are not hard disk-usage caps: monitor free space and lag, and recover an
 invalidated slot explicitly after an outage that exceeds the retained WAL budget.
 
-After catalog and ordering migrations, run the read-only routing check on every inventory
-primary:
+After catalog and ordering migrations, prepare the
+[kind verification snapshot](#kind-verification-snapshot-step-315) and run the
+nondisruptive topology/routing check on every inventory primary:
 
 ```bash
-bash microservices/shardshop/scripts/verify-topology.sh --routing-only
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
+    -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-topology
 ```
 
-It compares PostgreSQL SHA-256 arithmetic and the deployed seller and buyer
-placement constraints against the shared golden fixtures used by Java. It creates
-no SQL objects and does not run a failure drill.
+It verifies every shard's writable primary, streaming quorum standbys, independent
+database lineage, `-rw`/`-ro` Service endpoints and distinct Bound PVCs/backing
+volumes. It compares PostgreSQL SHA-256 arithmetic and the deployed seller and
+buyer placement constraints against the shared golden fixtures used by Java.
+Counts come from the snapshot inventory; this check creates no SQL objects.
 
-Run the reversible topology drill in this disposable lab (defaults to the first
-inventory entry; pass another inventory name to drill that shard):
+Run the reversible database drill explicitly in this disposable lab. It defaults
+to the first inventory shard; select another shard by inventory name:
 
 ```bash
-bash microservices/shardshop/scripts/verify-topology.sh
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
+    -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-database-drill \
+    -Dshardshop.kind.drillShard=shard-b
 ```
 
-Each invocation checks every inventory shard's writable primary, quorum standbys,
-independent database lineage, `-rw`/`-ro` Service endpoints and distinct Bound
-PVCs/backing volumes, and runs the same read-only routing checks. Counts come from
-the inventory. It then drills the selected shard (the first entry by default): a
-probe row must reach both standbys, writes on standbys must fail, and the probe
-schema must remain absent from peer shards. This failure drill requires the lab's
-three instances per shard; changing the number of shards needs no script edit.
-It checks failover-slot synchronization and PVC persistence, replaces one standby
-pod, and temporarily fences one then both standbys to observe quorum commits.
-Reads and writes are disrupted during the
-drill. It restores the standbys and removes its own SQL objects on exit; it never
-deletes a PVC. A global `shardshop-topology-drill` ConfigMap prevents concurrent
-runs across shards, because every run checks the whole topology. If the process
-is killed without a chance to clean up, first ensure no drill is running, remove the
-`cnpg.io/fencedInstances` annotation from the drilled shard, wait for the cluster to
-be Ready, and inspect the `cluster` and `probe` entries in that ConfigMap before
-removing its SQL schema/slot and the ConfigMap.
+A probe row must reach both standbys, writes on standbys must fail, and the probe
+schema must remain absent from peer shards. The drill requires the lab's three
+instances per shard. It checks failover-slot synchronization and WAL retention,
+replaces one standby pod while preserving its PVC, and temporarily fences one then
+both standbys to observe available and blocked quorum commits. Reads and writes
+are disrupted during the drill. It restores standbys and removes its temporary
+SQL objects and slots without deleting a PVC. The shared lock and failure recovery
+rules in the [snapshot runbook](#kind-verification-snapshot-step-315) apply.
 
 ## Separate ledger database (step 2.2)
 
@@ -1785,13 +1838,16 @@ The future connector must set `offset.storage.jdbc.table.name` to that qualified
 name and disable publication auto-creation; connector/library qualification is
 still part of the CDC milestone.
 
-Apply all streams and inspect ordering:
+Apply all streams and inspect ordering. Prepare `$snapshot` with the
+[kind snapshot runbook](#kind-verification-snapshot-step-315) after migration
+before invoking the topology suite:
 
 ```bash
 bash microservices/shardshop/scripts/up.sh
 bash microservices/shardshop/scripts/migrate.sh
 bash microservices/shardshop/scripts/migrate.sh # unchanged histories: no pending migrations
-bash microservices/shardshop/scripts/verify-topology.sh --routing-only
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
+    -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-topology
 kubectl --context kind-shardshop -n shardshop get publications
 kubectl --context kind-shardshop -n shardshop logs job/shard-a-ordering-migration
 ```

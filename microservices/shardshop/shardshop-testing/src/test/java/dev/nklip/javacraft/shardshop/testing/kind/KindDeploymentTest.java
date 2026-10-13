@@ -1,0 +1,206 @@
+package dev.nklip.javacraft.shardshop.testing.kind;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+final class KindDeploymentTest {
+    private static final String DIGEST = "a".repeat(64);
+
+    private static JsonNode json(String text) { return KindLab.parse(text); }
+    private static ObjectNode spec() {
+        return (ObjectNode) json("""
+                {"automountServiceAccountToken":false,"containers":[{"name":"reader","env":[
+                {"name":"SHARDSHOP_READER_PRODUCT_URL","value":"http://shardshop-product.shardshop.svc:8080"}]}],
+                "volumes":[{"name":"tmp","emptyDir":{"sizeLimit":"64Mi"}}]}
+                """);
+    }
+    private static String reserved(int id) { return "Reserved generator ID " + id + " for this JVM start."; }
+    private static String report(String time, String seconds, long count, String rate, String outcomes) {
+        return time + " INFO Product reads, interval " + seconds + " s: " + count + " requests, " + rate
+                + "/s, outcomes {" + outcomes + "}, latency ms {p50=2}, regions {US=6000}, pool {leased=3, pending=0, available=13, max=16}";
+    }
+
+    @Test
+    void workloadAllowsOnlyLiteralHttpSettingsAndScratchStorage() throws IOException {
+        KindDeployment.httpOnly(spec());
+        for (String volume : new String[]{"secret", "projected", "hostPath", "persistentVolumeClaim", "configMap", "csi"}) {
+            ObjectNode invalid = spec();
+            ((ArrayNode) invalid.path("volumes")).removeAll().addObject().put("name", "credentials").putObject(volume);
+            assertThrows(IOException.class, () -> KindDeployment.httpOnly(invalid), volume);
+        }
+        ObjectNode absent = spec();
+        absent.remove("automountServiceAccountToken");
+        assertThrows(IOException.class, () -> KindDeployment.httpOnly(absent));
+        absent.put("automountServiceAccountToken", true);
+        assertThrows(IOException.class, () -> KindDeployment.httpOnly(absent));
+        absent.put("automountServiceAccountToken", "false");
+        assertThrows(IOException.class, () -> KindDeployment.httpOnly(absent));
+    }
+
+    @Test
+    void workloadRejectsCredentialsInEveryContainerGroup() {
+        for (String group : new String[]{"containers", "initContainers", "ephemeralContainers"}) {
+            for (String source : new String[]{"envFrom", "valueFrom", "credentialName", "privileged", "volumeDevices"}) {
+                ObjectNode invalid = spec();
+                ObjectNode container = group.equals("containers") ? (ObjectNode) invalid.path(group).get(0)
+                        : invalid.putArray(group).addObject().put("name", "helper");
+                switch (source) {
+                    case "envFrom" -> container.putArray("envFrom").addObject().putObject("secretRef").put("name", "db");
+                    case "valueFrom" -> container.putArray("env").addObject().put("name", "SETTING").putObject("valueFrom")
+                            .putObject("configMapKeyRef").put("name", "db");
+                    case "credentialName" -> container.putArray("env").addObject().put("name", "PRODUCT_APP_PASSWORD").put("value", "hidden");
+                    case "privileged" -> container.putObject("securityContext").put("privileged", true);
+                    case "volumeDevices" -> container.putArray("volumeDevices").addObject().put("name", "db");
+                }
+                assertThrows(IOException.class, () -> KindDeployment.httpOnly(invalid), group + "/" + source);
+            }
+        }
+        ObjectNode pullSecret = spec();
+        pullSecret.putArray("imagePullSecrets").addObject().put("name", "credential");
+        assertThrows(IOException.class, () -> KindDeployment.httpOnly(pullSecret));
+    }
+
+    @Test
+    void digestMustBeTheSingleRequestedSuccessfulSummary() throws IOException {
+        assertEquals(DIGEST, KindDeployment.digest("Resolved catalog-v1 key-to-ID SHA-256 " + DIGEST
+                + "\nSeeded and verified catalog-v1 key-to-ID SHA-256 " + DIGEST, "Seeded and verified catalog-v1"));
+        assertThrows(IOException.class, () -> KindDeployment.digest("Resolved catalog-v1 key-to-ID SHA-256 " + DIGEST,
+                "Seeded and verified catalog-v1"));
+        assertThrows(IOException.class, () -> KindDeployment.digest("Seeded and verified catalog-v1 key-to-ID SHA-256 " + DIGEST + "b",
+                "Seeded and verified catalog-v1"));
+        String summary = "Seeded and verified catalog-v1 key-to-ID SHA-256 " + DIGEST;
+        assertThrows(IOException.class, () -> KindDeployment.digest(summary + "\n" + summary, "Seeded and verified catalog-v1"));
+    }
+
+    @Test
+    void runningReaderDigestSurvivesLargeLogsAndRotationOfItsStartupSummary() throws Exception {
+        KindLab lab = mock(KindLab.class);
+        String recurring = report("2026-10-13T12:00:31Z", "30.0", 6000, "200.0", "OK=6000")
+                + ", catalog-v1 key-to-ID SHA-256 " + DIGEST + "\n";
+        // The startup line has rotated away; the current log alone is over the command-output limit.
+        String history = recurring.repeat(22_000);
+        when(lab.kubectl(any(String[].class))).thenAnswer(invocation -> {
+            List<String> arguments = List.of((String[]) invocation.getRawArguments()[0]);
+            assertEquals(List.of("logs", "reader-1"), arguments.subList(0, 2));
+            boolean bounded = arguments.contains("--tail=100") && arguments.contains("--limit-bytes=65536");
+            if (!bounded) throw new IOException("Kind command output exceeded 4194304 bytes");
+            return history.substring(history.length() - recurring.length() * 100);
+        });
+
+        assertEquals(DIGEST, new KindDeployment(lab).readerDigest(json("{\"metadata\":{\"name\":\"reader-1\"}}")));
+    }
+
+    @Test
+    void readerDigestAcceptsStartupOrConsistentReportsAndRejectsMissingOrConflictingEvidence() throws IOException {
+        String startup = "Resolved catalog-v1 [US 50 sellers, 100 products], key-to-ID SHA-256 " + DIGEST;
+        String interval = report("2026-10-13T12:00:31Z", "30.0", 6000, "200.0", "OK=6000")
+                + ", catalog-v1 key-to-ID SHA-256 " + DIGEST;
+        assertEquals(DIGEST, KindDeployment.readerDigest(startup));
+        assertEquals(DIGEST, KindDeployment.readerDigest(startup + "\n" + interval + "\n" + interval));
+        assertThrows(IOException.class, () -> KindDeployment.readerDigest(interval + "\n" + interval.replace(DIGEST, "b".repeat(64))));
+        assertThrows(IOException.class, () -> KindDeployment.readerDigest(interval.replace(DIGEST, "invalid")));
+        assertThrows(IOException.class, () -> KindDeployment.readerDigest(interval.replace("catalog-v1", "catalog-v2")));
+        assertThrows(IOException.class, () -> KindDeployment.readerDigest("unrelated key-to-ID SHA-256 " + DIGEST));
+        assertThrows(IOException.class, () -> KindDeployment.readerDigest(""));
+    }
+
+    @Test
+    void onlySuccessfulJobsSatisfyTheSeedingGate() throws IOException {
+        assertTrue(KindDeployment.completed(json("{\"status\":{\"conditions\":[{\"type\":\"Complete\",\"status\":\"True\"}]}}")));
+        assertFalse(KindDeployment.completed(json("{\"status\":{\"conditions\":[{\"type\":\"Complete\",\"status\":\"False\"}]}}")));
+        assertFalse(KindDeployment.completed(json("{}")));
+        assertThrows(IOException.class, () -> KindDeployment.completed(json("""
+                {"status":{"conditions":[{"type":"Complete","status":"True"},{"type":"Failed","status":"True"}]}}
+                """)));
+    }
+
+    @Test
+    void productGeneratorsAreUniqueSingleReservationsBoundedByTheRegistry() throws IOException {
+        assertEquals(Map.of("p1", 1, "p2", 1023), KindDeployment.generatorIds(Map.of("p1", reserved(1), "p2", reserved(1023)), 1023));
+        for (Map<String, String> invalid : java.util.List.of(Map.of("p1", "no reservation"), Map.of("p1", reserved(0)),
+                Map.of("p1", reserved(1024)), Map.of("p1", reserved(3)), Map.of("p1", reserved(1) + "\n" + reserved(2)),
+                Map.of("p1", reserved(1), "p2", reserved(1)), Map.of("p1", "Reserved generator ID 01 for this JVM start."))) {
+            assertThrows(IOException.class, () -> KindDeployment.generatorIds(invalid, 2));
+        }
+        for (String value : new String[]{"", "-1", "01", "1024", "999999", "1.0", " 1"})
+            assertThrows(IOException.class, () -> KindDeployment.highWater(value), value);
+        assertEquals(0, KindDeployment.highWater("0"));
+    }
+
+    @Test
+    void countersSumOnlyGetProductReadsAndRejectMissingOrInvalidSamples() throws IOException {
+        String labels = "method=\"GET\",uri=\"/api/v1/sellers/{sellerId}/products/{productId}\"";
+        assertEquals(7, KindDeployment.readCounter("""
+                http_server_requests_seconds_count{method="POST",uri="/api/v1/sellers"} 100
+                http_server_requests_seconds_count{method="GET",uri="/api/v1/sellers/{sellerId}/products/{productId}",status="200"} 4
+                http_server_requests_seconds_count{status="503",uri="/api/v1/sellers/{sellerId}/products/{productId}",method="GET"} 3.0
+                http_server_requests_seconds_count{method="GET",uri="/api/v1/sellers/by-key/{key}"} 100
+                """));
+        for (String value : new String[]{"NaN", "Infinity", "-1", "oops"})
+            assertThrows(IOException.class, () -> KindDeployment.readCounter("http_server_requests_seconds_count{" + labels + "} " + value));
+        assertEquals(0, KindDeployment.readCounter("# no product metric"));
+    }
+
+    @Test
+    void freshProductPodWithoutReadSamplesStartsWithAZeroTrafficBaseline() throws IOException {
+        assertEquals(0, KindDeployment.readCounter("""
+                # HELP http_server_requests_seconds_count HTTP server requests
+                # TYPE http_server_requests_seconds_count counter
+                http_server_requests_seconds_count{method="GET",uri="/q/health",status="200"} 1
+                http_server_requests_seconds_count{method="POST",uri="/api/v1/sellers",status="201"} 2
+                """));
+    }
+
+    @Test
+    void cleanIntervalMustStartAfterTheObservationRatherThanMerelyEndAfterIt() throws IOException {
+        Instant boundary = Instant.parse("2026-10-13T12:00:00Z");
+        assertFalse(KindDeployment.freshCleanInterval(report("2026-10-13T11:59:59Z", "30.0", 6000, "200.0", "OK=6000"), boundary, 180));
+        assertFalse(KindDeployment.freshCleanInterval(report("2026-10-13T12:00:20Z", "30.0", 6000, "200.0", "OK=6000"), boundary, 180));
+        assertFalse(KindDeployment.freshCleanInterval(report("2026-10-13T12:00:30Z", "30.0", 6000, "200.0", "OK=6000"), boundary, 180));
+        assertTrue(KindDeployment.freshCleanInterval(report("2026-10-13T12:00:31Z", "30.0", 5400, "180.0", "OK=5400"), boundary, 180));
+    }
+
+    @Test
+    void freshIntervalRequiresOnlyOkOutcomesAndTheConfiguredRate() throws IOException {
+        Instant boundary = Instant.parse("2026-10-13T12:00:00Z");
+        for (String outcomes : new String[]{"OK=5999, TRANSPORT=1", "OK=5999", "OK=6000, HTTP_ERROR=1", "", "OK=6000, OK=6000"})
+            assertFalse(KindDeployment.freshCleanInterval(report("2026-10-13T12:00:31Z", "30.0", 6000, "200.0", outcomes), boundary, 180));
+        assertFalse(KindDeployment.freshCleanInterval(report("2026-10-13T12:00:31Z", "30.0", 5397, "179.9", "OK=5397"), boundary, 180));
+        assertFalse(KindDeployment.freshCleanInterval("2026-10-13T12:00:31Z Product reads, total 30.0 s: 6000 requests, 200.0/s, outcomes {OK=6000}, pool {}", boundary, 180));
+        assertThrows(IOException.class, () -> KindDeployment.intervals(report("missing-timestamp", "30.0", 6000, "200.0", "OK=6000")));
+        assertThrows(IOException.class, () -> KindDeployment.intervals(report("2026-10-13T12:00:31Z", "0.0", 6000, "200.0", "OK=6000")));
+    }
+
+    @Test
+    void configuredReaderRateAndReportIntervalControlTheObservation() throws IOException {
+        ObjectNode pod = (ObjectNode) json("{}");
+        pod.set("spec", spec());
+        assertEquals(200, KindDeployment.readerRate(pod));
+        assertEquals(180, KindDeployment.minimumRate(pod));
+        assertEquals(Duration.ofSeconds(30), KindDeployment.readerInterval(pod));
+        ArrayNode env = (ArrayNode) pod.path("spec").path("containers").get(0).path("env");
+        ObjectNode rate = env.addObject().put("name", "SHARDSHOP_READER_REQUEST_RATE").put("value", "400");
+        ObjectNode interval = env.addObject().put("name", "SHARDSHOP_READER_REPORT_INTERVAL").put("value", "5s");
+        assertEquals(400, KindDeployment.readerRate(pod));
+        assertEquals(360, KindDeployment.minimumRate(pod));
+        assertEquals(Duration.ofSeconds(5), KindDeployment.readerInterval(pod));
+        rate.put("value", "100");
+        assertEquals(180, KindDeployment.minimumRate(pod), "A reduced configured rate cannot relax the baseline acceptance floor");
+        rate.put("value", "0");
+        interval.put("value", "0s");
+        assertThrows(IOException.class, () -> KindDeployment.readerRate(pod));
+        assertThrows(IOException.class, () -> KindDeployment.readerInterval(pod));
+    }
+}

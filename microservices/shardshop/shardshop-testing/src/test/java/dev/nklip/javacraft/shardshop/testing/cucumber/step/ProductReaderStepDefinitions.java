@@ -31,7 +31,8 @@ public class ProductReaderStepDefinitions {
     private static final String WAIT = "dev.nklip.javacraft.shardshop.workload.reader.config.CatalogWait/resolve/";
     private static final Pattern RESOLVED = Pattern.compile("Resolved catalog-v1 \\[(.*)], key-to-ID SHA-256 ([0-9a-f]{64})$");
     private static final Pattern REPORT = Pattern.compile("\\b(INFO|WARN) .*Product reads, (interval|total) ([0-9.]+) s: "
-            + "(\\d+) requests, ([0-9.]+)/s, outcomes \\{(.*?)}, latency ms \\{(.*?)}, regions \\{(.*?)}, pool \\{(.*?)}$");
+            + "(\\d+) requests, ([0-9.]+)/s, outcomes \\{(.*?)}, latency ms \\{(.*?)}, regions \\{(.*?)}, pool \\{(.*?)}, "
+            + "catalog-v1 key-to-ID SHA-256 ([0-9a-f]{64})$");
     private static final Pattern COUNT = Pattern.compile("(\\w+)=(\\d+)");
     private static final Pattern STARTUP_FAILURE = Pattern.compile("ERROR .*Product reader startup failed: the catalog "
             + "was not complete within the wait\\. Last failure: Look up seller catalog-v1\\.(US|EU|ASIA)\\.seller\\.\\d+ "
@@ -185,11 +186,12 @@ public class ProductReaderStepDefinitions {
         return reports(lines.subList(restartMark, lines.size()));
     }
 
-    private static List<Report> reports(List<String> lines) {
+    private List<Report> reports(List<String> lines) {
         List<Report> reports = new ArrayList<>();
         for (String line : lines) {
             Matcher matcher = REPORT.matcher(line);
             if (matcher.find()) {
+                assertEquals(workloads.seededDigest(), matcher.group(10), "Reader report catalog ID digest");
                 reports.add(new Report(matcher.group(1), matcher.group(2), Double.parseDouble(matcher.group(5)),
                         Long.parseLong(matcher.group(4)), counts(matcher.group(6)), counts(matcher.group(7)),
                         counts(matcher.group(8)), counts(matcher.group(9))));
