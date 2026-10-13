@@ -513,8 +513,7 @@ public class ProductApiStepDefinitions {
                 }
                 default -> headers.add(new Header("Idempotency-Key", Placeholders.repeat(key)));
             }
-            assertError(RawHttp.exchange(product.port(), "POST", SELLERS, headers, body, Framing.CONTENT_LENGTH), 400,
-                    "INVALID_REQUEST");
+            assertError(api.exchange("POST", SELLERS, headers, body, Framing.CONTENT_LENGTH), 400, "INVALID_REQUEST");
         }
     }
 
@@ -526,8 +525,7 @@ public class ProductApiStepDefinitions {
             if (!"<none>".equals(contentType)) {
                 headers.add(new Header("Content-Type", contentType));
             }
-            assertError(RawHttp.exchange(product.port(), "POST", SELLERS, headers, body, Framing.CONTENT_LENGTH), 400,
-                    "INVALID_REQUEST");
+            assertError(api.exchange("POST", SELLERS, headers, body, Framing.CONTENT_LENGTH), 400, "INVALID_REQUEST");
         }
     }
 
@@ -539,11 +537,10 @@ public class ProductApiStepDefinitions {
             Response response = switch (body) {
                 case "" -> api.get(path);
                 case "seller" -> api.post(path, "invalid", Json.bytes(sellerRequest("Valid company", "US")));
-                case "<none>" -> RawHttp.exchange(product.port(), "POST", path, creationHeaders("empty-body"),
-                        new byte[0], Framing.NONE);
-                case "<empty>" -> RawHttp.exchange(product.port(), "POST", path, creationHeaders("empty-body"),
+                case "<none>" -> api.exchange("POST", path, creationHeaders("empty-body"), new byte[0], Framing.NONE);
+                case "<empty>" -> api.exchange("POST", path, creationHeaders("empty-body"),
                         new byte[0], Framing.CONTENT_LENGTH);
-                case "<empty chunked>" -> RawHttp.exchange(product.port(), "POST", path, creationHeaders("empty-body"),
+                case "<empty chunked>" -> api.exchange("POST", path, creationHeaders("empty-body"),
                         new byte[0], Framing.CHUNKED);
                 default -> throw new IllegalArgumentException("Unknown body " + body);
             };
@@ -582,12 +579,11 @@ public class ProductApiStepDefinitions {
             byte[] body = padded(sellerRequest("Body boundary company", "US"), MAX_BODY_BYTES + 1);
             List<Header> headers = creationHeaders(key);
             Response response = switch (row.get("framing")) {
-                case "Content-Length" -> RawHttp.exchange(product.port(), "POST", SELLERS, headers, body,
-                        Framing.CONTENT_LENGTH);
-                case "chunked" -> RawHttp.exchange(product.port(), "POST", SELLERS, headers, body, Framing.CHUNKED);
+                case "Content-Length" -> api.exchange("POST", SELLERS, headers, body, Framing.CONTENT_LENGTH);
+                case "chunked" -> api.exchange("POST", SELLERS, headers, body, Framing.CHUNKED);
                 case "Content-Length header only" -> {
                     headers.add(new Header("Content-Length", Integer.toString(MAX_BODY_BYTES + 1)));
-                    yield RawHttp.exchange(product.port(), "POST", SELLERS, headers, new byte[0], Framing.NONE);
+                    yield api.exchange("POST", SELLERS, headers, new byte[0], Framing.NONE);
                 }
                 default -> throw new IllegalArgumentException("Unknown framing " + row.get("framing"));
             };
@@ -602,7 +598,7 @@ public class ProductApiStepDefinitions {
         long started = System.nanoTime();
         slowConnection = RawHttp.send(product.port(), "POST", SELLERS, creationHeaders(key), slowBody, 1);
         openConnections.add(slowConnection);
-        slowResponse = RawHttp.read(slowConnection, started);
+        slowResponse = CatalogApi.documented("POST", SELLERS, RawHttp.read(slowConnection, started));
     }
 
     @Then("product returns 503 CATALOG_UNAVAILABLE in less than {double} seconds")

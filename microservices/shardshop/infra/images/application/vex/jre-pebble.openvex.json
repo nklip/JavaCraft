@@ -2,8 +2,8 @@
   "@context": "https://openvex.dev/ns/v0.2.0",
   "@id": "https://github.com/nklip/JavaCraft/blob/main/microservices/shardshop/infra/images/application/vex/jre-pebble.openvex.json",
   "author": "ShardShop image review",
-  "timestamp": "2026-10-10T00:00:00Z",
-  "version": 1,
+  "timestamp": "2026-10-13T00:00:00Z",
+  "version": 2,
   "statements": [
     {
       "vulnerability": {
@@ -57,11 +57,19 @@
               "@id": "pkg:golang/stdlib@1.26.7"
             }
           ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-flyway@13.8.1-openjdk25",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
         }
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images and the Flyway migration image replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
     },
     {
       "vulnerability": {
@@ -115,11 +123,19 @@
               "@id": "pkg:golang/stdlib@1.26.7"
             }
           ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-flyway@13.8.1-openjdk25",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
         }
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images and the Flyway migration image replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
     },
     {
       "vulnerability": {
@@ -173,11 +189,19 @@
               "@id": "pkg:golang/stdlib@1.26.7"
             }
           ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-flyway@13.8.1-openjdk25",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
         }
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images and the Flyway migration image replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
     },
     {
       "vulnerability": {
@@ -231,11 +255,19 @@
               "@id": "pkg:golang/stdlib@1.26.7"
             }
           ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-flyway@13.8.1-openjdk25",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
         }
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images and the Flyway migration image replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
     },
     {
       "vulnerability": {
@@ -289,11 +321,19 @@
               "@id": "pkg:golang/stdlib@1.26.7"
             }
           ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-flyway@13.8.1-openjdk25",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
         }
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images and the Flyway migration image replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
     },
     {
       "vulnerability": {
@@ -347,11 +387,19 @@
               "@id": "pkg:golang/stdlib@1.26.7"
             }
           ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-flyway@13.8.1-openjdk25",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
         }
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images and the Flyway migration image replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
     },
     {
       "vulnerability": {
@@ -405,11 +453,19 @@
               "@id": "pkg:golang/stdlib@1.26.7"
             }
           ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-flyway@13.8.1-openjdk25",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
         }
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images and the Flyway migration image replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
     },
     {
       "vulnerability": {
@@ -463,11 +519,19 @@
               "@id": "pkg:golang/stdlib@1.26.7"
             }
           ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-flyway@13.8.1-openjdk25",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
         }
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images and the Flyway migration image replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
     },
     {
       "vulnerability": {
@@ -521,11 +585,19 @@
               "@id": "pkg:golang/stdlib@1.26.7"
             }
           ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-flyway@13.8.1-openjdk25",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
         }
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images and the Flyway migration image replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
     },
     {
       "vulnerability": {
@@ -579,11 +651,19 @@
               "@id": "pkg:golang/stdlib@1.26.7"
             }
           ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-flyway@13.8.1-openjdk25",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
         }
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images and the Flyway migration image replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
     }
   ]
 }

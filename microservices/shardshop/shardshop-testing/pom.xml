@@ -140,6 +140,18 @@
             <artifactId>jackson-databind</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Contracts.feature and the product response checks use the contract test helper of common. -->
+        <dependency>
+            <groupId>dev.nklip.javacraft</groupId>
+            <artifactId>shardshop-common</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-openapi</artifactId>
+            <scope>test</scope>
+        </dependency>
         <!-- Cucumber 8 writes its HTML and JSON reports with Jackson 2 only when this module is present. -->
         <dependency>
             <groupId>com.fasterxml.jackson.datatype</groupId>

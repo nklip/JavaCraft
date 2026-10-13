@@ -32,6 +32,18 @@
             <artifactId>quarkus-junit</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- The contract test checks the ledger result schema with ContractDocument and Vert.x JSON Schema. -->
+        <dependency>
+            <groupId>dev.nklip.javacraft</groupId>
+            <artifactId>shardshop-common</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-openapi</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

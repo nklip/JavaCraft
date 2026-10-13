@@ -138,8 +138,9 @@ version: the images replace the pebble entrypoint with Java, thus pebble never r
 `build-application-images.sh` applies only statements with the author
 `ShardShop image review`. A new package version or a new advisory has no statement,
 thus the gate stops again. Review the statements with the JRE base by
-**2026-10-28**, and when the base image digest changes. The migration image
-contains the same pebble binary; its next review must also handle these advisories.
+**2026-10-28**, and when the base image digest changes. Since step 3.12, the script
+also builds and scans the [migration image](#current-migration-runtime), which contains
+the same pebble binary. Version 2 of the document (2026-10-13) names it too.
 
 #### OS packages without an advisory check
 
@@ -594,25 +595,53 @@ Terraform, its AWS provider, and the EKS Kubernetes version are not selected yet
 PLAN milestone 7 qualifies them under this policy, and the local lab never depends
 on them.
 
-### Contract validation tools
+### Step 3.12 contract test dependencies
 
-Step 3.1 review checks on **2026-10-06** used Python **3.14.7** from the user's
-`PATH`, with **OpenAPI Spec Validator 0.9.0**, **JSON Schema 4.26.0** and
-**PyYAML 6.0.3** in a disposable virtual environment outside the repository.
-The [requirements file](scripts/contract-validation-requirements.txt) pins all
-20 direct/transitive packages used by that environment. It vendors no tools and
-adds no application dependency. The verifier needs Python 3.11 or newer; only
-3.14.7 was qualified here. [Commands](README.md#http-and-message-contracts-step-31).
-Package origins: [OpenAPI Spec Validator](https://pypi.org/project/openapi-spec-validator/0.9.0/),
-[JSON Schema](https://pypi.org/project/jsonschema/4.26.0/),
-[PyYAML](https://pypi.org/project/PyYAML/6.0.3/).
-These tools have no claimed fixed LTS/EOL in this qualification; review the pinned
-environment on the next contract/tool change, no later than **2026-11-06**.
+Step 3.12 replaced the Python contract tools (OpenAPI Spec Validator 0.9.0, JSON
+Schema 4.26.0 and PyYAML 6.0.3 of step 3.1) with Maven tests. On **2026-10-13**, the
+user selected the platform-managed Vert.x validator. These test-scope dependencies
+enter no application package:
 
-The committed verifier checks schemas, all HTTP/message examples, response example
-presence, ID/status-URL bounds, precision and Unicode boundaries, exact integer
-normalization, example Snowflake profiles, fingerprint/total equality and message
-correlation. It is not evidence that the future providers enforce those rules.
+| Family | Selection and qualification |
+|---|---|
+| Vert.x JSON Schema and OpenAPI | **4.5.34**, the Vert.x release of the [step 3.6 runtime](#step-36-provider-dependencies): `vertx-json-schema` validates JSON Schema 2020-12, and `vertx-openapi` contributes the bundled OpenAPI 3.1 schema. 4.5.35 is the newest 4.5 patch; the platform selects 4.5.34 |
+| SnakeYAML | **2.6** (2026-02-26), which the platform selects and `vertx-openapi` declares. 2.7 (2026-08-30) is the newest release. It stays without an override until a Quarkus patch moves it |
+| Vert.x core and Netty | 4.5.34 and 4.1.139.Final, already in the product runtime. They enter the test classpath of common, order, ledger and `shardshop-testing` |
+| Jackson | 2.21.7, the platform version, in the test scope of `shardshop-datasets` |
+
+The test JAR of `shardshop-common` holds `ContractDocument` and `ExampleIds`. Product,
+order, ledger and the scenarios of `shardshop-testing` use them. `ContractDocument`
+loads the bundled meta-schemas through the class loader. Thus no Vert.x event loop
+starts, and Netty logs no warning. It corrects four gaps of Vert.x 4.5.34, which a
+scratch harness showed against the cases of the deleted `verify-contracts.py`:
+
+- The `date-time` format check is a loose pattern that accepts 2026-02-30 and hour
+  25. A strict ISO-8601 calendar parse, through the `JsonFormatValidator` hook of the
+  repository, rejects them.
+- The integer check compares the remainder of a `BigDecimal` with its scale. Thus
+  `1E+3` and a normalized `2147483640.0` are not integers. Integral numbers are given
+  to Vert.x as `BigInteger`.
+- The `email` format check reads the first character, thus an empty string throws.
+  The helper reports that value as invalid.
+- `OpenAPIContract.from` rejects the relative server URL `/` of the product contract,
+  and the OpenAPI 3.1 schema accepts any schema object. The helper validates each
+  document against the bundled OpenAPI 3.1 schema, and each schema object against the
+  bundled JSON Schema 2020-12 meta-schema. It also checks path parameters, repeated
+  operation IDs and references outside the document.
+
+Vert.x evaluates `pattern` with JDK regular expressions, in which `\s` matches only
+ASCII whitespace. Thus a name of only U+00A0 matches the schema, although the
+product provider rejects it, as Python did. No contract test uses such a value. The
+networknt validator 2.0.8 was the alternative: it is outside the platform, needs a
+vendored OpenAPI 3.1 schema and also uses JDK regular expressions.
+
+The three artifacts that no other ShardShop module resolves (`vertx-json-schema`,
+`vertx-openapi` and `snakeyaml`) matched Maven Central's SHA-1 checksums on
+**2026-10-13**, and OSV listed no advisories for them and for `vertx-core` 4.5.34.
+The lock's `step_3_12_contract_test_dependencies` records them with independent
+SHA-256 values. Review them with the platform by **2026-11-04**.
+[Vert.x support policy](https://github.com/eclipse-vertx/vert.x/security),
+[SnakeYAML](https://bitbucket.org/snakeyaml/snakeyaml), [OSV](https://osv.dev/).
 
 ### Quarkus plugin XML libraries
 
@@ -842,21 +871,25 @@ and drivers, Azure AD and Netty libraries, the upstream Temurin JRE and Ubuntu
 24.04 base do not.
 The launcher calls Java directly, and the image declares UID/GID 10001.
 
-`scripts/migrate.sh` automatically calls `scripts/build-migration-image.sh` after
-its topology guard. The helper builds the local ARM64 image using Docker Buildx
-with `SOURCE_DATE_EPOCH=0`, loads it into kind, and verifies the pinned CRI manifest
-digest on every node before migration resources can be applied. It can also be
-run separately after cluster provisioning. Docker, Buildx and kind are therefore
-requirements for this local migration workflow; Maven and application artifacts
-are not. Review changed build inputs and the resulting digest together.
+`scripts/build-application-images.sh flyway` builds the local ARM64 image with
+Docker Buildx and `SOURCE_DATE_EPOCH=0`, scans it with the gate of the application
+images and loads it into kind. Before it registers the digest on a node, it verifies
+the pinned CRI manifest digest of the chart values. `scripts/migrate.sh` builds no
+image: after its topology guard, it stops if a node does not have the pinned
+reference. Docker, Buildx, Docker Scout and kind are therefore requirements for this
+local migration workflow; Maven and application artifacts are not. Review changed
+build inputs and the resulting digest together.
 
 The final ARM64 image reports `java.vendor=Ubuntu` and OpenJDK
 `25.0.4.1+1-1-26.04.4-Ubuntu`. A Docker Scout scan of the trimmed image on
 2026-09-30 indexed 74 packages and reported no findings; the earlier untrimmed
 image had 417 packages and 12 findings (4 high, 8 medium), all in copied libraries
-the migrations never used. Recheck the final image on the next Flyway/base
-refresh, by 2026-10-28. The lock records the actual CRI and config digests. The
-historical upstream-image scan below is separate evidence for the superseded image.
+the migrations never used. On **2026-10-13**, the gate of step 3.12 scanned the same
+image again: 74 packages, and only the Go stdlib 1.26.7 of `/usr/bin/pebble` (2
+critical, 8 high, 3 unrated), which the reviewed [pebble statements](#step-39-application-images)
+cover. Recheck the final image on the next Flyway/base refresh, by 2026-10-28. The
+lock records the actual CRI and config digests. The historical upstream-image scan
+below is separate evidence for the superseded image.
 
 ### Historical step 2.3 upstream-image verification (superseded)
 

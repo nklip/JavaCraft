@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Build application images, print their OS package inventory and advisories, and load them
-# into every kind node. A critical or high advisory stops the script before the load,
-# unless a reviewed statement in infra/images/application/vex/ marks it not_affected.
-# When: after the Maven build of the named applications and before scripts/deploy.sh.
-# Step 4.8 builds the order, ledger and order producer images with this script.
+# Build the application images and the Flyway migration image, print their OS package inventory and advisories,
+# and load them into every kind node. A critical or high advisory stops the script before the load, unless a
+# reviewed statement in infra/images/application/vex/ marks it not_affected.
+# When: flyway after up.sh and before migrate.sh; an application after its Maven build and before
+# scripts/deploy.sh. Step 4.8 builds the order, ledger and order producer images with this script.
 set -euo pipefail
 
-usage='Usage: build-application-images.sh product|order|ledger|product-seeder|product-reader|order-producer ...'
+usage='Usage: build-application-images.sh flyway|product|order|ledger|product-seeder|product-reader|order-producer ...'
 (( $# >= 1 )) || { echo "$usage" >&2; exit 1; }
 source "$(dirname -- "${BASH_SOURCE[0]}")/shards.sh"
 for tool in docker kind python3; do
@@ -16,18 +16,30 @@ docker scout version >/dev/null 2>&1 || { echo 'Docker Scout is not available in
 nodes=$(kind get nodes --name shardshop)
 [[ -n "$nodes" ]] || { echo 'No shardshop kind nodes found; run scripts/up.sh first' >&2; exit 1; }
 
-for application in "$@"; do
-    case "$application" in
-        product|order|ledger) module="shardshop-$application" ;;
-        product-seeder|product-reader|order-producer) module="shardshop-workload/shardshop-$application" ;;
+for image in "$@"; do
+    case "$image" in
+        flyway) ;;
+        product|order|ledger) module="shardshop-$image" ;;
+        product-seeder|product-reader|order-producer) module="shardshop-workload/shardshop-$image" ;;
         *) echo "$usage" >&2; exit 1 ;;
     esac
-    package="$root/$module/target/quarkus-app"
-    [[ -f "$package/quarkus-run.jar" ]] || { echo "Build $module with Maven first" >&2; exit 1; }
-    tag="docker.io/library/shardshop-$application:local"
+    reviewed=''
+    if [[ "$image" == flyway ]]; then
+        # The migration Jobs use the digest that the chart values pin, thus the build must reproduce it.
+        command -v helm >/dev/null || { echo 'helm is not on PATH' >&2; exit 1; }
+        load_inventory
+        tag=${migration_image%@*}
+        reviewed=${migration_image#*@}
+        context="$root/infra/images/flyway"
+        dockerfile="$context/Dockerfile"
+    else
+        context="$root/$module/target/quarkus-app"
+        [[ -f "$context/quarkus-run.jar" ]] || { echo "Build $module with Maven first" >&2; exit 1; }
+        tag="docker.io/library/shardshop-$image:local"
+        dockerfile="$root/infra/images/application/Dockerfile"
+    fi
     docker buildx build --platform linux/arm64 --build-arg SOURCE_DATE_EPOCH=0 \
-        --provenance=false --sbom=false --load \
-        --file "$root/infra/images/application/Dockerfile" --tag "$tag" "$package"
+        --provenance=false --sbom=false --load --file "$dockerfile" --tag "$tag" "$context"
 
     echo "OS package inventory of $tag:"
     docker scout sbom --format list --only-package-type deb "local://$tag"
@@ -57,6 +69,10 @@ if len(digests) != 1:
     sys.exit(f"Expected one manifest digest, found {sorted(digests)}")
 print(digests.pop())
 ')
+        if [[ -n "$reviewed" && "$digest" != "$reviewed" ]]; then
+            echo "$tag on $node has $digest, not the reviewed $reviewed; review the build and update the image pin" >&2
+            exit 1
+        fi
         # Docker archives first receive an import-date repository name in containerd.
         # Register the digest under the repository name that the manifests use.
         docker exec "$node" ctr --namespace=k8s.io images tag --force \

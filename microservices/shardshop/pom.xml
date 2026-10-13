@@ -95,6 +95,14 @@
                 <artifactId>shardshop-common</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <!-- The contract test helper of the modules that own an OpenAPI document or a message schema. -->
+            <dependency>
+                <groupId>dev.nklip.javacraft</groupId>
+                <artifactId>shardshop-common</artifactId>
+                <version>${project.version}</version>
+                <type>test-jar</type>
+                <scope>test</scope>
+            </dependency>
             <!-- Dataset definitions are packaged only by workload applications. -->
             <dependency>
                 <groupId>dev.nklip.javacraft</groupId>

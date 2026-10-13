@@ -148,13 +148,14 @@ After a change to common, run the
 [six-application audit](#dependency-and-test-validation).
 
 Maven Enforcer rejects direct, optional and transitive dataset dependencies
-outside workloads. The fixture check validates all 150 seller, 300 product and 3000
-buyer creation payloads,
-regional coverage, name/email correspondence and retained source hashes. After
-setting up the [contract-validation environment](#http-and-message-contracts-step-31), run:
+outside workloads. `DatasetSourcesTest` checks the retained name pools, the
+name/email correspondence of the buyers, the regional coverage and the retained
+source hashes. `Contracts.feature` of `shardshop-testing` checks that all 150 seller,
+300 product and 3000 buyer creation payloads match the product and order contracts
+([contract checks](#http-and-message-contracts-step-31)):
 
 ```bash
-/tmp/shardshop-contract-validation/bin/python -B microservices/shardshop/shardshop-workload/shardshop-datasets/scripts/verify-datasets.py
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-workload/shardshop-datasets -am clean verify
 ```
 
 Source notices and licenses ship in the dataset JAR under
@@ -247,6 +248,7 @@ with the normal Flyway Jobs. Flyway validates the applied migrations at each run
 
 ```bash
 bash microservices/shardshop/scripts/up.sh
+bash microservices/shardshop/scripts/build-application-images.sh flyway
 bash microservices/shardshop/scripts/migrate.sh
 bash microservices/shardshop/scripts/migrate.sh # validates history; no pending migrations
 bash microservices/shardshop/scripts/verify-topology.sh --routing-only
@@ -460,11 +462,12 @@ images, and deploy a run:
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-workload/shardshop-product-seeder,shardshop-workload/shardshop-product-reader -am -Paudit clean verify
 bash microservices/shardshop/scripts/up.sh
-bash microservices/shardshop/scripts/build-application-images.sh product product-seeder product-reader
+bash microservices/shardshop/scripts/build-application-images.sh flyway product product-seeder product-reader
 bash microservices/shardshop/scripts/deploy.sh run-1
 ```
 
-Run `migrate.sh` before `deploy.sh` if the routing is not published yet.
+Run `migrate.sh` before `deploy.sh` if the routing is not published yet; it needs the
+`flyway` image of the same script.
 
 ### Application images
 
@@ -475,12 +478,14 @@ directory `/app`, user `10001:10001` and `HOME=/tmp`, and their entrypoint start
 `quarkus-run.jar`. The images contain no kubectl: since step 3.11, product and order
 reserve their generator IDs with Java code in their own JVM.
 
-`build-application-images.sh` accepts `product`, `order`, `ledger`,
+`build-application-images.sh` accepts `flyway`, `product`, `order`, `ledger`,
 `product-seeder`, `product-reader` and `order-producer`. Step 4.8 uses it again for
 the order, ledger and order producer images. For each image, the script:
 
 1. Builds the ARM64 image `docker.io/library/shardshop-<application>:local` with
-   Docker Buildx, from the Maven package that exists.
+   Docker Buildx, from the Maven package that exists. For `flyway`, it builds the
+   [migration image](#database-schemas-and-migrations-step-23) from
+   `infra/images/flyway`, with the tag of the pinned reference in the chart values.
 2. Prints the OS package inventory (`docker scout sbom`) and the advisories of all
    package types and severities (`docker scout cves`). Docker Scout does not index
    six Ubuntu packages of the JRE base, glibc among them. Thus the inventory and the
@@ -490,6 +495,10 @@ the order, ledger and order producer images. For each image, the script:
    statement in `infra/images/application/vex/`. Then the image is not loaded.
 4. Loads the image into the kind nodes, one node at a time, and requires the same
    manifest digest on each node. Then it registers that digest under the image name.
+   `kind load` skips a node that already has the same image ID. Then the check uses
+   the manifest digest of the earlier import on that node.
+   For `flyway`, the digest must also be the pinned digest; otherwise the script
+   stops before it registers the digest, and the image pin needs a review.
 
 `deploy.sh` uses the digest that is registered on every node. Thus it deploys the
 images of the last successful script run, not the Maven packages. Docker Scout
@@ -631,10 +640,12 @@ product image or manifest changed.
 
 The test-only module `shardshop-testing` holds Cucumber scenarios that run the
 packaged product, seeder and reader against a real PostgreSQL and a real Kubernetes
-API server. Failsafe runs them with `-Pintegration`, as the `*-testing` modules of
-the other projects in this repository do. The module has no main classes and
-installs nothing. Its POM dependencies on the three applications have no transitive
-dependencies; they only make `-am` package the applications first. Docker must run,
+API server, and that check the contracts across modules. Failsafe runs them with
+`-Pintegration`, as the `*-testing` modules of the other projects in this repository
+do. The module has no main classes and installs nothing. Its POM dependencies on the
+three applications have no transitive dependencies; they only make `-am` package the
+applications first. The contract checks use `ContractDocument` from the test JAR of
+`shardshop-common`, not application classes. Docker must run,
 and `helm` must be on the `PATH` (tested with 4.3.0), because the integration
 profile renders the generator objects of the chart:
 
@@ -642,7 +653,7 @@ profile renders the generator objects of the chart:
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
 ```
 
-On 2026-10-13, the 38 scenarios took approximately three and a half minutes with the
+On 2026-10-13, the 42 scenarios took approximately four minutes with the
 kind lab stopped. While the lab runs, they take approximately six minutes. Cucumber
 writes its
 reports to `shardshop-testing/target/cucumber-reports`, and the application logs
@@ -668,11 +679,14 @@ objects.
 | `ProductTransport.feature` | `verify-product-transport.py` | TLS sessions, an untrusted CA, a host name that the certificate does not name, and pool recovery after a PostgreSQL restart without a product restart |
 | `ProductSeeder.feature` | `verify-product-seeder.py` | The [seeder runbook](#product-seeder-step-37) cases |
 | `ProductReader.feature` | `verify-product-reader.py` | The [reader runbook](#product-reader-step-38) cases |
+| `Contracts.feature` | `verify-contracts.py` and `verify-datasets.py` (step 3.12), for what connects the contracts of different modules | The RecordOrder example buys the product of the product creation example; both ledger result examples answer the RecordOrder example with its reserved result message ID, amount and currency, after its time; the illustrative IDs of all examples follow the service-issued ID rules; each row of catalog-v1 and buyers-v1 is a valid creation request of product or order |
 | `GeneratorAllocation.feature` | `verify-generator-allocation.sh` (step 3.11) | A reservation at each start and restart, the generator ID of new sellers, six concurrent starts, the permissions of the product, order, ledger, workload and default service accounts, the retention policy, and the failures: another registry UID, an exhausted, missing or unreadable registry, a refused PATCH, an untrusted CA, a host name that the server certificate does not name and an API server that does not answer |
 
 The expected bodies come from the product OpenAPI document; an error body has only
-a code and a nonempty message. Step 3.12 adds the schema validation of the OpenAPI
-documents. The scenarios calculate routes, key homes and advisory locks again with
+a code and a nonempty message. Since step 3.12, `CatalogApi` also checks each product
+response against that document: the document must define its status for the
+operation, and the body must match the schema of that status. The full run checks 189
+responses. The scenarios calculate routes, key homes and advisory locks again with
 the JDK, and they read the dataset TSV files, not the Java definitions. On the lab,
 each `migrate.sh` run validates the applied migrations with Flyway.
 
@@ -732,25 +746,38 @@ numeric values exactly before conversion. Do not rely on Jackson's default strin
 coercion or float-to-int truncation. Contract/provider tests must include raw JSON
 with duplicate keys, numeric IDs, `2.0`, `2e0`, `2.5`, NUL and unpaired surrogates.
 
-To validate contracts without starting infrastructure, use a temporary Python 3.11+
-environment outside the repository. The requirements file pins validation tools
-and their transitive dependencies; [VERSIONS.md](VERSIONS.md#contract-validation-tools)
-records the qualification. No Maven/runtime dependency is added.
+### Contract checks (step 3.12)
+
+Each module that owns a contract checks it in a Maven unit test, without
+infrastructure: `ProductApiContractTest`, `OrderApiContractTest`,
+`RecordOrderContractTest` and `LedgerResultContractTest`. They check:
+
+- the document: the bundled OpenAPI 3.1 schema or the JSON Schema 2020-12
+  meta-schema, each schema object against the meta-schema, in-document references,
+  path parameters and unique operation IDs;
+- every inline example, also in referenced responses, the message examples, and an
+  example for each response body;
+- the boundaries of IDs, status URLs, money, text, timestamps, integers and the
+  creation and response objects;
+- the rules inside the module: the order fingerprint, the snapshot total, the
+  reserved IDs and their times, the ledger decision fields, and the illustrative
+  service-issued ID and home-region rules.
+
+`Contracts.feature` of `shardshop-testing` checks what connects the contracts of
+different modules, and the creation payloads of the workload datasets
+([integration tests](#integration-tests-with-testcontainers-step-310)). The tests and
+the scenarios use `ContractDocument` and `ExampleIds` from the test JAR of
+`shardshop-common`. They validate with the platform-managed Vert.x JSON Schema
+library; [VERSIONS.md](VERSIONS.md#step-312-contract-test-dependencies) records its
+qualification and the gaps that the helper corrects.
 
 ```bash
-python3 -m venv /tmp/shardshop-contract-validation
-/tmp/shardshop-contract-validation/bin/python -m pip install \
-  -r microservices/shardshop/scripts/contract-validation-requirements.txt
-/tmp/shardshop-contract-validation/bin/python -B microservices/shardshop/scripts/verify-contracts.py
 mvn -B -ntp -f microservices/shardshop/pom.xml \
   -pl shardshop-product,shardshop-order,shardshop-ledger -am clean verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
 ```
 
-The verifier checks every inline HTTP request/response example (including referenced
-responses), message examples, ID and status-URL limits, money, text and timestamp
-boundaries, integer normalization, fingerprints, totals, correlation and illustrative
-service-issued ID and home-region rules. It also rejects missing response examples. Packaged routing
-startup checks run in the default Maven `verify` lifecycle.
+Packaged routing startup checks run in the default Maven `verify` lifecycle.
 
 ## ID validation and currency selection (step 3.2)
 
@@ -1219,8 +1246,8 @@ For a different topology, reset this disposable lab:
 4. Run `up.sh`. It stops because the allocator state is not there.
 5. Run `generator-registry.sh initialize`, then `up.sh` again, as
    [step 3.4](#generator-allocation-at-jvm-startup-steps-34-and-311) describes.
-6. Run `migrate.sh`, export the new configuration, and reseed before you restart
-   the workloads.
+6. Run `build-application-images.sh flyway`, then `migrate.sh`. Export the new
+   configuration, and reseed before you restart the workloads.
 
 Online data redistribution and rolling topology changes are outside this
 implementation; deleting the routing ConfigMap alone would bypass the guard
@@ -1236,8 +1263,9 @@ Docker Desktop 4.92.0, kind 0.33.0, kubectl 1.36, and Helm 4.3.0 (for example,
 `brew install kind kubectl helm`). The node image's advisories were reviewed on
 2026-09-28 and accepted for this loopback-only, disposable lab. Give Docker
 Desktop's VM at least 12 GB of memory (Settings → Resources); `up.sh` stops early
-if it has less. Migrations also require Docker's Buildx plugin: the migration
-script builds the OpenJDK Flyway image and loads it into the kind nodes.
+if it has less. Migrations also require Docker's Buildx plugin and Docker Scout:
+`build-application-images.sh flyway` builds, scans and loads the OpenJDK Flyway image
+into the kind nodes.
 
 [`infra/kind.yaml`](infra/kind.yaml) defines one control plane and three workers,
 one per instance of each three-instance shard, on the digest-pinned Kubernetes
@@ -1442,26 +1470,25 @@ The two scripts split the work:
   [`ledger-database.yaml`](infra/helm/shardshop/templates/ledger-database.yaml)
   declares `ledger-db-ledger`, schema `ledger`, and its four roles.
 - `migrate.sh` fills the schemas by running each Flyway stream in
-  [`database/`](database/) on every shard primary and then on ledger once. It builds
-  and loads the migration image automatically; no Maven build, application JAR, or database
-  superuser session is needed.
+  [`database/`](database/) on every shard primary and then on ledger once. It uses
+  the migration image that `build-application-images.sh flyway` loaded; no Maven
+  build, application JAR, or database superuser session is needed.
 
 After `up.sh`, run:
 
 ```bash
+bash microservices/shardshop/scripts/build-application-images.sh flyway
 bash microservices/shardshop/scripts/migrate.sh
 ```
 
-After checking the published topology, `migrate.sh` invokes
-[`build-migration-image.sh`](scripts/build-migration-image.sh) before creating SQL
-ConfigMaps or migration Jobs. The helper uses Docker Buildx with pinned inputs and
-`SOURCE_DATE_EPOCH=0`, loads the ARM64 image into kind, and checks its CRI manifest
-digest on every node against the selected migration image pin. A build or digest
-failure stops the migration. To prepare that image separately after `up.sh`, run:
-
-```bash
-bash microservices/shardshop/scripts/build-migration-image.sh
-```
+`build-application-images.sh flyway` builds the migration image with Docker Buildx,
+pinned inputs and `SOURCE_DATE_EPOCH=0`, scans it with the gate of the
+[application images](#application-images), and loads the ARM64 image into kind. It
+checks the CRI manifest digest on every node against the migration image pin of the
+chart values. A build, scan or digest failure stops it before it registers the
+image. After checking the published topology, `migrate.sh` checks that every node
+has the pinned reference before it creates SQL ConfigMaps or migration Jobs;
+otherwise it stops with `Run scripts/build-application-images.sh flyway first`.
 
 [`database/shard/catalog/`](database/shard/catalog/) is the catalog stream.
 `V1__catalog.sql` creates all tables, including seller home regions, named region
@@ -1652,6 +1679,7 @@ Apply all streams and inspect ordering:
 
 ```bash
 bash microservices/shardshop/scripts/up.sh
+bash microservices/shardshop/scripts/build-application-images.sh flyway
 bash microservices/shardshop/scripts/migrate.sh
 bash microservices/shardshop/scripts/migrate.sh # unchanged histories: no pending migrations
 bash microservices/shardshop/scripts/verify-topology.sh --routing-only
@@ -1723,6 +1751,7 @@ Provision, migrate, and inspect the ledger from the repository root:
 ```bash
 bash microservices/shardshop/scripts/render.sh migration ledger-db ledger
 bash microservices/shardshop/scripts/up.sh
+bash microservices/shardshop/scripts/build-application-images.sh flyway
 bash microservices/shardshop/scripts/migrate.sh
 kubectl --context kind-shardshop -n shardshop get database ledger-db-ledger
 kubectl --context kind-shardshop -n shardshop get databaseroles

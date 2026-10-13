@@ -19,6 +19,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -30,7 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The product API as a client of one scenario sees it: the sellers and products that it created, by alias, and the
- * checks of the response bodies that the product OpenAPI document defines.
+ * checks of the response bodies that the product OpenAPI document defines. Each response must have a status that the
+ * document defines for its operation and a body that matches the schema of that status.
  */
 public final class CatalogApi {
     public static final String SELLERS = "/api/v1/sellers";
@@ -99,11 +101,26 @@ public final class CatalogApi {
         if (key != null) {
             headers.add(new Header("Idempotency-Key", key));
         }
-        return RawHttp.exchange(product.port(), "POST", path, headers, body, Framing.CONTENT_LENGTH);
+        return exchange("POST", path, headers, body, Framing.CONTENT_LENGTH);
     }
 
     public Response get(String path) throws IOException {
-        return RawHttp.exchange(product.port(), "GET", path, List.of(), new byte[0], Framing.NONE);
+        return exchange("GET", path, List.of(), new byte[0], Framing.NONE);
+    }
+
+    /** A request with exactly these headers and this framing; the response must match the product contract. */
+    public Response exchange(String method, String path, List<Header> headers, byte[] body, Framing framing)
+            throws IOException {
+        return documented(method, path, RawHttp.exchange(product.port(), method, path, headers, body, framing));
+    }
+
+    /** Checks that the product OpenAPI document defines the status and the body of the response to a request. */
+    public static Response documented(String method, String path, Response response) {
+        Optional<String> schema = Contracts.PRODUCT_API.responseSchema(method, path, response.status());
+        schema.ifPresent(pointer -> assertEquals(List.of(), Contracts.PRODUCT_API.errors(pointer,
+                Json.parse(response.body())), () -> method + " " + path + " returned " + response.status() + " "
+                + response.text() + ", which the product OpenAPI document does not define"));
+        return response;
     }
 
     /** Repeats a creation after 503, as the workload clients do, and returns the first other response. */

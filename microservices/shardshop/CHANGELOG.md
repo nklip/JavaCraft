@@ -636,3 +636,128 @@ Lab run after the fixes:
 `bash microservices/shardshop/scripts/deploy.sh step311-deploy` (`step311-fix` after the fixes);
 `python3 -B microservices/shardshop/scripts/verify-product-workload.py`;
 [generator runbook](README.md#generator-allocation-at-jvm-startup-steps-34-and-311).
+
+## Step 3.12
+
+**2026-10-13:** each module that owns a contract checks it in a Maven unit test, and
+one script builds all images. These files are deleted: `scripts/verify-contracts.py`,
+`scripts/contract-validation-requirements.txt`, `scripts/build-migration-image.sh`
+and `shardshop-workload/shardshop-datasets/scripts/verify-datasets.py`, which
+imported the contract script. Their evidence in the entries of steps 3.1 and 3.5
+stays.
+
+| Test | Count | Checks |
+|---|---|---|
+| `ProductApiContractTest` | 15 | The product OpenAPI document |
+| `OrderApiContractTest` | 16 | The order OpenAPI document |
+| `RecordOrderContractTest` | 11 | The RecordOrder schema and example, with the rules that connect it to the order OpenAPI examples |
+| `LedgerResultContractTest` | 9 | The ledger result schema and its two examples |
+| `DatasetSourcesTest` | 5 | The name pools, the name/email pairing, the buyer countries of each region with 250 buyers for each Asian country, the seller countries and the retained source hashes |
+| `Contracts.feature` | 4 scenarios | The examples across modules and the 3,450 creation payloads of catalog-v1 and buyers-v1 |
+
+On 2026-10-13, the user selected the platform-managed Vert.x 4.5.34 validator, cross-module
+checks in `shardshop-testing`, and a `migrate.sh` that only requires a loaded image.
+
+- `ContractDocument` and `ExampleIds` in the test JAR of `shardshop-common` load each
+  document once and validate with Vert.x JSON Schema. A scratch harness ran the cases of
+  `verify-contracts.py` against Vert.x and networknt 2.0.8. The helper corrects the
+  four gaps of Vert.x that it found ([details](VERSIONS.md#step-312-contract-test-dependencies)):
+  impossible `date-time` values, integral decimals with a negative scale, an
+  exception for an empty email, and the relative server URL of the product contract.
+- The tests keep all boundary values of the two scripts. On the current documents,
+  they find the same 63 inline examples and 51 response bodies as the walk of the
+  deleted script. The 64 examples of step 3.5 belong to an earlier version of the
+  documents.
+- New checks: each schema object against the JSON Schema 2020-12 meta-schema, path
+  parameters, repeated operation IDs, duplicate YAML keys, and the agreement of type,
+  outcome and `rejectionReason` of a ledger result.
+- `CatalogApi` checks each product response of the scenarios against the product
+  OpenAPI document: the document must define the status for the operation, and the
+  body must match the schema of that status. The full run checks 189 responses (79 ×
+  400, 40 × 200, 37 × 201, 15 × 503, 10 × 404, 7 × 409, 1 × 422). This closes the gap
+  that the entry of step 3.10 records.
+
+Temporary mutations in a copy of the tree showed that the checks detect regressions:
+
+- 12 mutations of the contracts, the examples and a name pool failed 13 unit tests,
+  each in the expected test: a wider price pattern, a stock maximum of 2147483648, a
+  parameter example with a space, a 16-digit phone, a 101-character city, a status
+  URL without its end assertion, a changed fingerprint, a changed amount, a timestamp
+  without `format` (2026-02-30 and hour 25 were accepted), a decision after the
+  result time, a recorded result with `rejectionReason`, and a changed email part.
+- A changed product example price, a buyer email with two dots and a seller creation
+  without status 409 failed three scenarios. The last one failed with "The contract
+  has no status 409 for POST /api/v1/sellers".
+- An error message of at most 10 characters failed 7 of the 15 product API
+  scenarios, also for the raw HTTP requests and the incomplete body.
+
+The copy was then deleted.
+
+Image script:
+
+- `build-application-images.sh flyway` builds `infra/images/flyway` with the tag of
+  the pinned reference of the chart values, prints the inventory and the advisories,
+  applies the gate of the application images, and loads the image into kind. It
+  registers the digest on a node only if it is the pinned digest.
+- Version 2 of `vex/jre-pebble.openvex.json` also names
+  `pkg:docker/shardshop-flyway@13.8.1-openjdk25`. The migration image contains the
+  same pebble binary, and its entrypoint is Java too.
+- `migrate.sh` builds no image. After its topology guard, it checks that every node
+  has the pinned migration reference.
+
+Lab run:
+
+- `docker start` started the stopped nodes. The two product pods restarted and
+  reserved new IDs: the high-water moved from 55 to 57, with the same registry UID.
+- `build-application-images.sh flyway`: Docker Scout indexed 74 packages and found
+  only the Go stdlib 1.26.7 of `/usr/bin/pebble` (2 critical, 8 high, 3 unrated). The
+  gate loaded the VEX document and passed. The build gave the reviewed config ID
+  `sha256:f6a88d7ea657…`. `kind load` skipped all four nodes, because they already had
+  this image ID from the import of 2026-09-30. Thus the digest check compared that
+  import: manifest digest
+  `sha256:19765ac553684c76f061d5ffb558874a6814951f91e11c6ad8b0d5bef39ce73b` on all four
+  nodes.
+- With a scratch values file that pins a digest that no node has, `migrate.sh`
+  stopped at once with `Run scripts/build-application-images.sh flyway first`, and no
+  migration Job changed. With the same file, the image script stopped before it
+  registered the digest.
+- `migrate.sh` ran the seven Jobs on the reviewed digest in 68 seconds. Each stream
+  validated its migrations, all schemas were up to date, and the routing version
+  `e1b347bc…` was published again.
+- `down.sh` stopped the lab again.
+
+The validation of the step found three gaps, and these fixes close them:
+
+- No test checked that the buyers of EU live in all 27 countries. With all MT buyers
+  moved to CY and a new manifest hash, all 26 dataset tests passed.
+  `DatasetSourcesTest` now checks the buyer countries of each region, and the same
+  mutation fails it with `EU buyers live in each country of the region`.
+- The lab run above did not show a new import of the migration image. A second lab
+  run did:
+  - `docker start` moved the high-water from 57 to 59, with the same registry UID.
+  - `crictl rmi` removed all names of the migration image on `shardshop-worker2`.
+    Then `migrate.sh` stopped with `Run scripts/build-application-images.sh flyway
+    first; shardshop-worker2 has no …`, and no Job or ConfigMap changed.
+  - `build-application-images.sh flyway` imported the build only on that node. The
+    node received `import-2026-10-13@sha256:19765ac5…`, the pinned manifest digest.
+  - `migrate.sh` validated all seven streams on that digest in 53 seconds, and the
+    routing did not change. `down.sh` stopped the lab again.
+- `up.sh` and step 6 of the lab reset named only `migrate.sh` as the next step. They
+  now name `build-application-images.sh flyway` first.
+
+The full ShardShop build with `-Pintegration,audit clean verify` passed in 5 minutes
+42 seconds, with the kind lab stopped: 935 unit/startup tests (879 before), 55
+packaged routing checks and 42 scenarios (3 minutes 51 seconds). The only warning line
+is the `Ryuk has been disabled` WARN line of Testcontainers. Compared with a build of
+HEAD, only test-scope components were added, and none was removed: product 254 to 257
+(`vertx-json-schema`, `vertx-openapi`, `snakeyaml`), order 149 to 167, ledger 143 to
+161 and common 16 to 34 (also `vertx-core` and its Netty family of step 3.6),
+datasets 13 to 16 (Jackson) and `shardshop-testing` 71 to 90. The idgen, sharding,
+seeder, reader and producer SBOMs did not change, and the packages of product, order
+and ledger contain none of the new libraries. The three new artifacts matched Maven
+Central's SHA-1 files, and OSV listed no advisories for them on 2026-10-13.
+
+**Commands:** `mvn -B -ntp -f microservices/shardshop/pom.xml -Pintegration,audit clean verify`;
+`bash microservices/shardshop/scripts/build-application-images.sh flyway`;
+`bash microservices/shardshop/scripts/migrate.sh`;
+[contract checks](README.md#contract-checks-step-312).

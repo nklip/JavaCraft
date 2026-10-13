@@ -433,12 +433,12 @@ images:
     linux_arm64_digest: sha256:19765ac553684c76f061d5ffb558874a6814951f91e11c6ad8b0d5bef39ce73b
     linux_arm64_config_digest: sha256:f6a88d7ea657f4cb3c995ac11841778e2fdad7500dd7889d42cdc3c6ff0fe80a
     dockerfile: infra/images/flyway/Dockerfile
-    build_script: scripts/build-migration-image.sh
+    build_script: scripts/build-application-images.sh flyway
     build_inputs:
     - flyway_distribution
     - application_jre
     source_date_epoch: 0
-    checked_on: '2026-09-30'
+    checked_on: '2026-10-13'
     review_by: '2026-10-28'
     java_runtime_version: 25.0.4.1+1-1-26.04.4-Ubuntu
     java_vendor: Ubuntu
@@ -451,13 +451,23 @@ images:
       All three restricted migration Jobs passed on this manifest digest, validating
       both existing catalog migrations without changes; Cluster/PVC identities stayed
       unchanged. A repeated cached build produced the same config and manifest digest.
-    advisories: 'Docker Scout on 2026-09-30: 74 packages, no findings. The image
-      copies only Flyway core, its PostgreSQL plugin, the PostgreSQL JDBC driver and
-      licenses; recheck the final image at the next Flyway/base refresh, by 2026-10-28.'
-    note: Locally built and loaded into kind one node at a time. The build helper
-      verifies every node's manifest digest and registers the digest under the Job's
-      repository name. Other build/exporter versions must reproduce that digest or
-      require review and updated pins; cloud deployment needs a registry publication.
+      On 2026-10-13, build-application-images.sh flyway built the same config ID.
+      kind skips a node that already has that image ID; a new import on one node
+      gave the same manifest digest. migrate.sh validated all seven streams on this
+      digest.
+    advisories: 'Docker Scout 1.24.0 on 2026-10-13: 74 packages; only the Go stdlib
+      1.26.7 of /usr/bin/pebble (2 critical, 8 high, 3 unrated), which the reviewed
+      statements of infra/images/application/vex/jre-pebble.openvex.json (version 2)
+      cover. On 2026-09-30, Scout reported no findings. The image copies only Flyway
+      core, its PostgreSQL plugin, the PostgreSQL JDBC driver and licenses; recheck
+      the final image at the next Flyway/base refresh, by 2026-10-28.'
+    note: Locally built and loaded into kind one node at a time. Since step 3.12,
+      build-application-images.sh flyway scans it with the gate of the application
+      images, verifies every node's manifest digest against the pin of the chart values
+      and registers the digest under the Job's repository name; migrate.sh only checks
+      that every node has the pinned reference. Other build/exporter versions must
+      reproduce that digest or require review and updated pins; cloud deployment needs
+      a registry publication.
   flyway_distribution:
     version: 13.8.1
     purpose: build-only source of Flyway libraries, drivers, configuration and licenses
@@ -540,7 +550,9 @@ images:
       step 3.11, the product and order images also contained kubectl 1.36.5 from
       registry.k8s.io/kubectl; step 3.11 removed it with its pin and VEX document.
     note: The digests change with each application build, thus the lock records the
-      recipe and the observed digests, not a deployment pin.
+      recipe and the observed digests, not a deployment pin. Since step 3.12, the same
+      script and gate also build the Flyway migration image (flyway_cli), which keeps
+      its pinned digest.
   application_jre:
     quarkus_checked_on: '2026-10-04'
     quarkus_qualification: All six Quarkus JVM fast-jar packages start as UID/GID 584792, network disabled, read-only root and no capabilities.
@@ -1442,6 +1454,8 @@ maven:
     testcontainers_testing: 2.0.5
     flyway_testing: 13.8.1
     cucumber_testing: 8.0.4
+    vertx_json_schema_contract_testing: 4.5.34
+    snakeyaml_contract_testing: '2.6'
   step_3_11_generator_allocation:
     checked_on: '2026-10-12'
     review_by: '2026-11-05'
@@ -1457,6 +1471,36 @@ maven:
       for the three JARs and jackson-databind 2.21.7 on 2026-10-12
     test_tools: The integration profile of shardshop-testing runs helm template (helm from the user's PATH, tested
       4.3.0) through the pinned exec-maven-plugin 3.6.4, and the k3s_test image serves the Kubernetes API
+  step_3_12_contract_test_dependencies:
+    checked_on: '2026-10-13'
+    review_by: '2026-11-04'
+    platform: io.quarkus.platform:quarkus-bom:3.40.1
+    scope: Test scope of shardshop-common, product, order, ledger and shardshop-testing. ContractDocument in
+      the test JAR of shardshop-common validates the contracts; no application package contains these artifacts
+    reason: PLAN step 3.12 moves the checks of verify-contracts.py and verify-datasets.py into Maven tests; the
+      user selected the platform-managed Vert.x validator on 2026-10-13
+    verification: The three artifacts that no other ShardShop module resolves match Maven Central SHA-1 files;
+      SHA-256 independently calculated. vertx-core 4.5.34 and Netty 4.1.139.Final are the records of
+      step_3_6_provider_dependencies; jackson-databind 2.21.7 in the test scope of shardshop-datasets is the
+      platform version
+    support_and_advisories:
+      vertx: vertx-json-schema and vertx-openapi 4.5.34 belong to the Vert.x 4.5.34 release that
+        step_3_6_provider_dependencies qualifies, thus that support policy applies; 4.5.35 is the newest 4.5
+        patch. OSV lists no advisory for them or for vertx-core 4.5.34 on 2026-10-13
+      snakeyaml: 2.6 (2026-02-26) is the platform version; 2.7 (2026-08-30) is the newest release. No override
+        until a Quarkus patch moves it. OSV lists no advisory on 2026-10-13
+    known_gaps: Vert.x 4.5.34 accepts impossible date-time values, compares BigDecimal remainders with their
+      scale, throws for an empty email and rejects the relative server URL of the product contract in
+      OpenAPIContract; ContractDocument corrects these four. pattern uses JDK regular expressions, in which \s
+      matches only ASCII whitespace
+    sources:
+    - https://github.com/eclipse-vertx/vert.x/security
+    - https://bitbucket.org/snakeyaml/snakeyaml
+    - https://osv.dev/
+    artifacts:
+      io.vertx:vertx-json-schema: {"version":"4.5.34","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/vertx/vertx-json-schema/4.5.34/vertx-json-schema-4.5.34.jar","sha256":"48b9aadb780328f2546679de4eb07bf146eb18c08928abf15af933532fc8519b","published_checksum":{"algorithm":"sha1","value":"d8e756c87cfe3c37fce9ab225c504f4def03088d","url":"https://repo.maven.apache.org/maven2/io/vertx/vertx-json-schema/4.5.34/vertx-json-schema-4.5.34.jar.sha1"}}
+      io.vertx:vertx-openapi: {"version":"4.5.34","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/vertx/vertx-openapi/4.5.34/vertx-openapi-4.5.34.jar","sha256":"c986e026b75bf7427be705a6af24cda1cf351892000db43dcfdec0ff351fb885","published_checksum":{"algorithm":"sha1","value":"03a90a6f49d70ffc89ef34a31f76499665220740","url":"https://repo.maven.apache.org/maven2/io/vertx/vertx-openapi/4.5.34/vertx-openapi-4.5.34.jar.sha1"}}
+      org.yaml:snakeyaml: {"version":"2.6","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/yaml/snakeyaml/2.6/snakeyaml-2.6.jar","sha256":"c8f7a98e7394adda02f6317249710e4d1b4c7a25aa8c7eace0c2eea52eb8bf85","published_checksum":{"algorithm":"sha1","value":"2bc14918a2f8d5414749ab12d0c590cd3198b8c1","url":"https://repo.maven.apache.org/maven2/org/yaml/snakeyaml/2.6/snakeyaml-2.6.jar.sha1"}}
   plugin_prerelease_exception:
     owner: io.quarkus.platform:quarkus-maven-plugin:3.40.1
     checked_on: '2026-10-04'

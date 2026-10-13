@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shared script functions; the callers set strict mode and own temporary directories.
-# When: sourced at the start of up.sh, migrate.sh, deploy.sh, verify-topology.sh,
-# build-migration-image.sh and build-application-images.sh; never run directly.
+# When: sourced at the start of up.sh, migrate.sh, deploy.sh, verify-topology.sh and
+# build-application-images.sh; never run directly.
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 render() { bash "$root/scripts/render.sh" "$@"; }

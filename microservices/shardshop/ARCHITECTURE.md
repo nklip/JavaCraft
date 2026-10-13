@@ -869,7 +869,8 @@ as the stream's migrator. The applications use the same runtime.
 or Maven build and invokes Flyway's main class directly because the JRE image has
 no shell. It copies only the libraries, drivers, configuration and licenses of the
 pinned upstream Flyway image, not its Temurin runtime. The image and Jobs select
-UID/GID 10001. `migrate.sh` builds the image and loads it into kind, as the
+UID/GID 10001. `build-application-images.sh flyway` builds, scans and loads the
+image into kind, and `migrate.sh` requires it on every node, as the
 [migration runbook](README.md#database-schemas-and-migrations-step-23) describes.
 This is the local ARM64 delivery path; a future cloud deployment must publish and
 qualify the same final image for its target architecture.

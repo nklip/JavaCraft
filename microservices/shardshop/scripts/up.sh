@@ -3,7 +3,8 @@
 # Tools come from PATH. Safe to rerun: it never deletes a cluster, namespace or volume.
 # When: run first to create the lab, after down.sh to start it again, and after changing
 # the shared chart or its values. Changing infra/shards.yaml later needs the README's
-# lab reset first. Next: scripts/migrate.sh.
+# lab reset first. Next: scripts/build-application-images.sh flyway, then
+# scripts/migrate.sh.
 set -euo pipefail
 
 [[ $# == 0 ]] || { echo 'Usage: up.sh' >&2; exit 1; }
@@ -102,4 +103,4 @@ done
 # Publications remain pending until ordering migrations create their outbox tables.
 # CNPG retries reconciliation; migrate.sh waits for them before activating routing.
 bash "$root/scripts/generator-registry.sh" check
-echo "Provisioned ${#shards[@]} shards and the ledger database. Run scripts/migrate.sh to publish routing configuration."
+echo "Provisioned ${#shards[@]} shards and the ledger database. Run scripts/build-application-images.sh flyway, then scripts/migrate.sh to publish routing configuration."

@@ -119,11 +119,13 @@ The script uses only the Python standard library and checked-in pools. It makes
 no network calls and produces exactly 1,000 profiles in each of
 `src/main/resources/datasets/buyers-v1/US.tsv`, `EU.tsv` and `ASIA.tsv`.
 
-Using the repository's contract-validation virtual environment, verify every
-creation payload, name/email pairing, country set and retained file hash with:
+`DatasetSourcesTest` verifies the name pools, the name/email pairing, the country
+sets and every retained file hash. `Contracts.feature` of `shardshop-testing`
+verifies every creation payload against the product and order contracts:
 
 ```bash
-/tmp/shardshop-contract-validation/bin/python -B microservices/shardshop/shardshop-workload/shardshop-datasets/scripts/verify-datasets.py
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-workload/shardshop-datasets -am clean verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
 ```
 
 The dataset JAR carries this document, both provenance manifests and source
