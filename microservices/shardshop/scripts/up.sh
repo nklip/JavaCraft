@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Build and qualify the current ShardShop images, provision the lab, and load every node.
+# Bootstrap the local lab; Skaffold builds images and Helmfile deploys releases.
 # Tools come from PATH. Safe to rerun: it never deletes a cluster, namespace or volume.
 # When: run first to create the lab, after down.sh to start it again, and after changing
 # the shared chart or its values. Changing infra/shards.yaml later needs the README's
-# explicit reset/reseed first; incompatible node changes are rejected. Migrations and application deployment still use migrate.sh and deploy.sh.
+# explicit reset/reseed first; incompatible node changes are rejected.
 set -euo pipefail
 
 [[ $# == 0 ]] || { echo 'Usage: up.sh' >&2; exit 1; }
@@ -24,35 +24,48 @@ render() {
 }
 
 verify_kind() {
-    echo "Verifying kind phase: $1"
+    local phase=$1
+    shift
+    echo "Verifying kind phase: $phase"
     # The initial clean install verified and installed these artifacts. Direct Failsafe goals
     # reuse them without rebuilding images or running unrelated suites at every gate.
     mvn -B -ntp -f "$root/pom.xml" -pl shardshop-testing -Pkind \
         failsafe:integration-test failsafe:verify \
         -Dit.test=KindIT \
-        -Dshardshop.kind.tags="$1" -Dshardshop.kind.snapshot="$work" \
-        -Dshardshop.kind.cluster="$cluster_name" -Dshardshop.kind.fresh="$created_cluster"
+        -Dshardshop.kind.tags="$phase" -Dshardshop.kind.snapshot="$work" \
+        -Dshardshop.kind.cluster="$cluster_name" -Dshardshop.kind.fresh="$created_cluster" "$@"
 }
 
-for tool in mvn docker kind kubectl helm openssl jq; do
+for tool in mvn docker kind kubectl helm helmfile skaffold openssl jq; do
     command -v "$tool" >/dev/null || { echo "$tool is not on PATH" >&2; exit 1; }
 done
 docker buildx version >/dev/null 2>&1 || { echo 'Docker Buildx is not available in Docker' >&2; exit 1; }
 docker scout version >/dev/null 2>&1 || { echo 'Docker Scout is not available in Docker' >&2; exit 1; }
 
 # Snapshot the inventory so one run cannot deploy two different versions.
-work=$(mktemp -d)
+lock="${TMPDIR:-/tmp}/shardshop-up.lock"
+mkdir "$lock" 2>/dev/null || {
+    echo "Another up.sh invocation owns $lock. If its process has ended, inspect the retained Jobs before removing that lock." >&2
+    exit 1
+}
+work=$(mktemp -d) || { rmdir "$lock"; exit 1; }
 cleanup() {
     if [[ -f "$work/dns-probes.yaml" ]]; then
         k delete -f "$work/dns-probes.yaml" --ignore-not-found --wait=false >/dev/null 2>&1 || true
     fi
     rm -rf -- "$work"
+    rmdir "$lock"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 probe_run="up-$(openssl rand -hex 6)"
 cp -R "$root/infra/helm/shardshop" "$work/chart"
+cp "$root/infra/helmfile.yaml.gotmpl" "$work/helmfile.yaml.gotmpl"
+cp "$root/skaffold.yaml" "$work/skaffold.yaml"
+printf '{}\n' >"$work/skaffold-global.yaml"
+export SHARDSHOP_ROOT="$root" SHARDSHOP_SNAPSHOT="$work"
+cp -R "$root/database" "$work/chart/migrations"
 cp "$root/infra/kind.yaml" "$work/chart/kind.yaml"
 cp "${SHARDSHOP_ENV_VALUES:-$root/infra/helm/shardshop/kind-values.yaml}" "$work/environment.yaml"
 cp "$root/infra/helm/cnpg/values.yaml" "$work/operator-values.yaml"
@@ -71,42 +84,6 @@ mem=$(docker info --format '{{.MemTotal}}')
 (( mem >= 11 * 1024**3 + 512 * 1024**2 )) \
     || { echo "Docker VM has $(( mem / 1024**2 )) MiB; set Docker Desktop to 12 GB" >&2; exit 1; }
 
-build_image() {
-    local image=$1 tag=$2 module build_context dockerfile status=0
-    if [[ "$image" == flyway ]]; then
-        build_context="$root/infra/images/flyway"
-        dockerfile="$build_context/Dockerfile"
-    else
-        case "$image" in
-            product|order|ledger) module="shardshop-$image" ;;
-            product-seeder|product-reader|order-producer) module="shardshop-workload/shardshop-$image" ;;
-            *) echo "Unknown application: $image" >&2; exit 1 ;;
-        esac
-        build_context="$root/$module/target/quarkus-app"
-        [[ -f "$build_context/quarkus-run.jar" ]] \
-            || { echo "The current Maven build did not package $module" >&2; exit 1; }
-        dockerfile="$root/infra/images/application/Dockerfile"
-    fi
-    docker buildx build --platform linux/arm64 --build-arg SOURCE_DATE_EPOCH=0 \
-        --provenance=false --sbom=false --load --file "$dockerfile" --tag "$tag" \
-        --iidfile "$work/$image.id" "$build_context"
-
-    echo "OS package inventory of $tag:"
-    docker scout sbom --format list --only-package-type deb "local://$tag"
-    echo "Advisories of $tag, all package types and severities:"
-    docker scout cves --format only-packages --only-vuln-packages "local://$tag"
-    echo "Critical and high advisories of $tag without a reviewed not_affected statement:"
-    # --vex-author is a pattern. Anchor it, because it also accepts authors that contain the text.
-    docker scout cves --exit-code --only-severity critical,high --format only-packages \
-        --only-vuln-packages --vex-location "$root/infra/images/application/vex" \
-        --vex-author '^ShardShop image review$' --ignore-suppressed "local://$tag" || status=$?
-    case "$status" in
-        0) ;;
-        2) echo "$tag has critical or high advisories; no images were loaded into kind" >&2; exit 1 ;;
-        *) echo "Docker Scout could not check $tag; no images were loaded into kind" >&2; exit 1 ;;
-    esac
-}
-
 load_image() {
     local image=$1 tag=$2 node digest expected actual
     local digests=()
@@ -118,7 +95,8 @@ load_image() {
     # Import one node at a time to bound memory use, and require the same digest on each.
     for node in $nodes; do
         kind load docker-image "$tag" --name "$cluster_name" --nodes "$node"
-        digest=$(docker exec "$node" crictl inspecti "$tag" | jq -er '
+        digest=$(docker exec "$node" crictl inspecti "$tag" | jq -er --arg expected "$expected" '
+            if .status.id != $expected then error("Loaded image differs from the qualified build") else . end |
             [.status.repoDigests[] | split("@")[1]] | unique |
             if length == 1 and (.[0] | test("^sha256:[0-9a-f]{64}$")) then .[0]
             else error("Expected one CRI manifest digest") end')
@@ -138,6 +116,11 @@ load_image() {
     [[ $(printf '%s\n' "${digests[@]}" | sort -u | wc -l) -eq 1 ]] \
         || { echo "kind nodes report different digests for $tag" >&2; exit 1; }
     echo "Loaded ${tag%:*}@${digests[0]} on every kind node."
+    if [[ "$image" != flyway ]]; then
+        jq --arg name "$image" --arg image "${tag%:*}@${digests[0]}" \
+            '.images[$name] = $image' "$work/images.json" >"$work/images-next.json"
+        mv "$work/images-next.json" "$work/images.json"
+    fi
 }
 
 # Fail before touching the cluster if any module, image build or advisory gate fails.
@@ -146,12 +129,20 @@ echo 'Building ShardShop from current sources.'
 mvn -B -ntp -f "$root/pom.xml" clean install -DinstallAtEnd=true
 created_cluster=false
 verify_kind kind-config
-# Step 4.8 adds order, ledger and order-producer when their deployments are implemented.
-applications=(product product-seeder product-reader)
-build_image flyway "${migration_image%@*}"
-for application in "${applications[@]}"; do
-    build_image "$application" "docker.io/library/shardshop-$application:local"
-done
+# Skaffold owns Docker recipes, artifact names and content tags. Scan every result,
+# including cache hits, before any cluster mutation or image delivery.
+(cd "$root" && skaffold build -f "$work/skaffold.yaml" --config "$work/skaffold-global.yaml" \
+    --kube-context="$context" --cache-artifacts=false --file-output="$work/builds.json")
+jq -r '.builds[] | [(.imageName | split("/")[-1] | sub("^shardshop-"; "")), .tag] | @tsv' \
+    "$work/builds.json" >"$work/builds.tsv"
+while IFS=$'\t' read -r image tag; do
+    docker image inspect --format '{{.Id}}' "$tag" >"$work/$image.id"
+    docker scout sbom --format list --only-package-type deb "local://$tag"
+    docker scout cves --format only-packages --only-vuln-packages "local://$tag"
+    docker scout cves --exit-code --only-severity critical,high --format only-packages \
+        --only-vuln-packages --vex-location "$root/infra/images/application/vex" \
+        --vex-author '^ShardShop image review$' --ignore-suppressed "local://$tag"
+done <"$work/builds.tsv"
 
 started_nodes=false
 nodes=$(kind get nodes --name "$cluster_name")
@@ -192,14 +183,6 @@ k -n kube-system rollout status deployment/coredns --timeout=180s
 render dns-probes --set-literal "probe.nodes=${nodes//$'\n'/,}" \
     --set-literal "probe.run=$probe_run" >"$work/dns-probes.yaml"
 verify_kind kind-dns
-# The operator comes from its verified, vendored chart; --wait covers its rollout.
-helm --kube-context "$context" upgrade --install cnpg \
-    "$work/operator.tgz" \
-    --namespace cnpg-system --create-namespace \
-    --values "$work/operator-values.yaml" --server-side=true --wait --timeout 3m \
-    --hide-notes
-# CNPG's CRDs carry no common label; waiting for all CRDs survives operator upgrades.
-kubectl --context "$context" wait --for=condition=Established crd --all --timeout=180s
 # Generate each login role's password once, before the DatabaseRoles that use it.
 # Shard logins share credentials; existing Secrets are never overwritten on a rerun.
 credentials="$work"
@@ -213,7 +196,10 @@ for role in catalog_migrator ordering_migrator product_app order_app ordering_cd
             --from-file="password=$credentials/password"
     fi
 done
-kubectl --context "$context" --request-timeout=30s apply -f "$work/infrastructure.yaml"
+# Bootstrap has its own Helmfile selection because fresh allocator identity must be
+# initialized after admission protection, before any application can issue IDs.
+export SHARDSHOP_FRESH="$created_cluster"
+helmfile -f "$work/helmfile.yaml.gotmpl" -l stage=infrastructure sync --skip-deps --skip-needs
 if [[ "$created_cluster" == true ]]; then
     verify_kind kind-admission-bootstrap
     registry_uid=$(k create configmap shardshop-snowflake-generators --from-literal=highWaterMark=0 \
@@ -222,12 +208,11 @@ if [[ "$created_cluster" == true ]]; then
     k create -f "$work/generator-identity.yaml"
 fi
 verify_kind kind-allocator
-verify_kind kind-infrastructure
-load_image flyway "${migration_image%@*}"
-for application in "${applications[@]}"; do
-    load_image "$application" "docker.io/library/shardshop-$application:local"
-done
-# Publications remain pending until ordering migrations create their outbox tables.
-# CNPG retries reconciliation; migrate.sh waits for them before activating routing.
-verify_kind kind-allocator
-echo "Provisioned ${#shards[@]} shards and the ledger database; built, qualified and loaded the current images. Run scripts/migrate.sh, then scripts/deploy.sh <run-name>."
+# Skaffold's standalone build does not load kind images. This adapter keeps the
+# existing qualification-to-manifest check; Helmfile is the only deployment owner.
+printf '{"images":{}}\n' >"$work/images.json"
+while IFS=$'\t' read -r image tag; do
+    load_image "$image" "$tag"
+done <"$work/builds.tsv"
+helmfile -f "$work/helmfile.yaml.gotmpl" -l stage=application sync --skip-deps --skip-needs
+echo 'Helm releases migrated and deployed the current build; catalog seeding completed.'

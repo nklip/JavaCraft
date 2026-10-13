@@ -5,7 +5,11 @@
 {{- dict "apiVersion" "v1" "kind" "ConfigMap"
       "metadata" (dict "name" "shardshop-inventory" "namespace" .Release.Namespace)
       "data" (dict "shards" (replace "," "\n" $names) "instances" (toString .Values.shard.instances) "version" $version "regionVersion" $regionVersion "migrationImage" .Values.migration.image "postgresqlImage" .Values.postgresql.image) | toPrettyJson }}
-{{- else if eq .Values.render "routing" }}
+{{- else if or (eq .Values.render "migration-topology") (eq .Values.render "infrastructure") }}
+{{- dict "apiVersion" "v1" "kind" "ConfigMap" "immutable" true
+      "metadata" (dict "name" "shardshop-migration-topology" "namespace" .Release.Namespace "annotations" (dict "helm.sh/resource-policy" "keep"))
+      "data" (dict "version" $version "regionVersion" $regionVersion) | toPrettyJson }}
+{{- else if or (eq .Values.render "routing") (eq .Values.render "application-release") }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

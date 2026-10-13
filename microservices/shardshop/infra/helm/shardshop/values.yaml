@@ -1,10 +1,10 @@
-# Render with infra/shards.yaml. This chart only renders manifests; scripts apply them.
+# Deploy with Helmfile using the environment values and ordered shard inventory.
 render: infrastructure
 migrationShard: ""
 migrationStream: catalog
-# scripts/deploy.sh sets the run name and the image digests that
-# scripts/up.sh loaded into kind.
+# Explicit run for legacy render=seeding and workload drills; Helm hooks use the release revision.
 run: ""
+datasetVersion: catalog-v1
 images:
   product: ""
   product-seeder: ""
@@ -52,6 +52,7 @@ ledger:
 migration:
   image: docker.io/library/shardshop-flyway:13.8.1-openjdk25@sha256:19765ac553684c76f061d5ffb558874a6814951f91e11c6ad8b0d5bef39ce73b
   activeDeadlineSeconds: 180
+  ttlSecondsAfterFinished: 86400
   resources:
     requests:
       cpu: 100m
@@ -64,6 +65,8 @@ migration:
 # CPU throttling while the JVMs start. Each product pod runs one JVM, which reserves its
 # generator ID at startup.
 product:
+  # Additional literal application.properties settings; passwords remain Secret references.
+  configuration: {}
   resources:
     requests:
       cpu: 250m
@@ -73,6 +76,9 @@ product:
       memory: 512Mi
 
 productSeeder:
+  ttlSecondsAfterFinished: 86400
+  # Literal HTTP client environment settings from the schema allowlist.
+  configuration: {}
   resources:
     requests:
       cpu: 100m
@@ -82,6 +88,7 @@ productSeeder:
       memory: 256Mi
 
 productReader:
+  configuration: {}
   resources:
     requests:
       cpu: 100m

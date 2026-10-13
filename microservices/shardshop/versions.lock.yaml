@@ -57,6 +57,10 @@ sources:
   cnpg_chart_index: https://cloudnative-pg.io/charts/index.yaml
   helm: https://helm.sh/docs/topics/version_skew/
   helm_release: https://github.com/helm/helm/releases/tag/v4.3.0
+  helmfile_release: https://github.com/helmfile/helmfile/releases/tag/v1.8.0
+  helmfile_configuration: https://helmfile.readthedocs.io/en/stable/configuration/
+  skaffold_release: https://github.com/GoogleContainerTools/skaffold/releases/tag/v2.25.0
+  skaffold_docker_builder: https://skaffold.dev/docs/builders/builder-types/docker/
   rabbitmq: https://www.rabbitmq.com/release-information
   erlang: https://www.rabbitmq.com/docs/which-erlang
   otp_policy: https://github.com/erlang/otp/security
@@ -92,7 +96,7 @@ support_policies:
     eol: null
     note: Flyway OSS Edition CLI with frequent releases and no published fixed EOL;
       13.8.1 was the newest image on 2026-09-30. It replaces the earlier 12.4.0
-      library for migrations; qualify updates by rerunning scripts/migrate.sh on the lab.
+      library for migrations; qualify updates by running migration Jobs through scripts/up.sh on the lab.
   openjdk_25:
     model: user_selected_local_baseline
     checked_on: '2026-09-28'
@@ -219,6 +223,22 @@ support_policies:
     eol: null
     note: No fixed LTS; 4.3.x supports Kubernetes 1.34-1.37. Installs only vendored,
       verified third-party charts; a later cloud target reuses the same charts.
+  helmfile:
+    model: maintained_stable
+    checked_on: '2026-10-13'
+    review_by: '2026-11-13'
+    source_refs: [helmfile_release, helmfile_configuration]
+    eol: null
+    note: Maintained stable 1.8 series; 1.8.0 is installed from Homebrew, with 1.8.1
+      available upstream. No fixed LTS term. Owns ordered Helm releases.
+  skaffold:
+    model: maintained_stable
+    checked_on: '2026-10-13'
+    review_by: '2026-11-13'
+    source_refs: [skaffold_release, skaffold_docker_builder]
+    eol: null
+    note: Current stable release, no fixed LTS term. Owns image builds and tags;
+      native kind loading and Helmfile deployment remain separate operations.
   build_plugins:
     model: maintained_stable
     checked_on: '2026-09-28'
@@ -464,8 +484,8 @@ images:
     note: Locally built and loaded into kind one node at a time. up.sh scans it
       with the gate of the application
       images, verifies every node's manifest digest against the pin of the chart values
-      and registers the digest under the Job's repository name; migrate.sh only checks
-      that every node has the pinned reference. Other build/exporter versions must
+      and registers the digest under the Job's repository name before running Flyway
+      Jobs from immutable migration snapshots. Other build/exporter versions must
       reproduce that digest or require review and updated pins; cloud deployment needs
       a registry publication.
   flyway_distribution:
@@ -519,8 +539,8 @@ images:
     - application_jre
     entrypoint: java -jar /app/quarkus-run.jar for all six applications. Since step 3.11,
       product and order reserve their generator ID in this JVM; the images contain no kubectl
-    image_names: docker.io/library/shardshop-<application>:local; deploy.sh uses the
-      manifest digest that up.sh registers on every kind node
+    image_names: docker.io/library/shardshop-<application>:local; up.sh deploys the
+      current build's manifest digest after verifying its image ID on every kind node
     image_user_observed: '10001:10001'
     source_date_epoch: 0
     checked_on: '2026-10-13'
@@ -706,6 +726,42 @@ tools:
       client 1.37). Tested version; helm comes from the user's PATH.
     support_refs:
     - helm
+  helmfile:
+    version: 1.8.0
+    platform: darwin/arm64
+    checked_on: '2026-10-13'
+    review_by: '2026-11-13'
+    url: https://github.com/helmfile/helmfile/releases/download/v1.8.0/helmfile_1.8.0_darwin_arm64.tar.gz
+    sha256: b377e295940018fb0e49ca9e0aabdabb00fc612af3d9e12003f01635dc87e1ef
+    checksum_url: https://github.com/helmfile/helmfile/releases/download/v1.8.0/helmfile_1.8.0_checksums.txt
+    installed_executable_sha256: 89c2817df64e48ae86cf7c4a9e99550de5b3d7c223fcb0f4608c8bb5828cab2e
+    verification: Official archive checksum read; archive not downloaded. Homebrew
+      executable reports v1.8.0, commit brew, Go 1.27.1, darwin/arm64. Installed
+      executable hash is separate from the official archive identity.
+    qualified_on: '2026-10-14'
+    qualification: Two complete native up.sh invocations deployed all Helmfile
+      releases. The unchanged rerun from /private/tmp preserved both Deployment
+      specs and UIDs, all 13 application/database pod UIDs, four Cluster UIDs,
+      four Database UIDs and ten PVC bindings; allocator highWaterMark stayed 74.
+    support_refs: [helmfile]
+  skaffold:
+    version: 2.25.0
+    platform: darwin/arm64
+    checked_on: '2026-10-13'
+    review_by: '2026-11-13'
+    url: https://storage.googleapis.com/skaffold/releases/v2.25.0/skaffold-darwin-arm64
+    sha256: 9adda767c94806827bcb22f2f7a9077bbde6b481331e891f9a7191e2f225dd27
+    checksum_url: https://storage.googleapis.com/skaffold/releases/v2.25.0/skaffold-darwin-arm64.sha256
+    installed_executable_sha256: 516cf7af579b93d45f035a5458679f75c019c2c6e3472f47f97929a27e719f20
+    verification: Official binary checksum read; binary not downloaded. Homebrew
+      executable reports v2.25.0. Config diagnosis and build artifact-output dry
+      run pass. Installed executable hash is separate from the official binary identity.
+    qualified_on: '2026-10-14'
+    qualification: Two complete native up.sh invocations built all four Skaffold
+      artifacts, scanned them with Docker Scout and verified qualified images and
+      consistent manifest digests on every kind node before Helmfile deployment.
+      Each invocation passed 1034 unit/startup tests and 55 packaged routing checks.
+    support_refs: [skaffold]
   host_jdk:
     release_name: jdk-25+36
     archive: openjdk-25_macos-aarch64_bin.tar.gz

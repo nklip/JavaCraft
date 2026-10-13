@@ -1222,3 +1222,191 @@ git diff --check
 These fixes did not rebuild or deploy lab images or rerun the disruptive live
 drills. Rebuild and deploy the reader image to provide periodic digest evidence
 on kind; the existing reader remains scaled to zero.
+
+## Step 3.16
+
+**2026-10-13:** `up.sh` now migrates and deploys the images from its current
+qualified build. It verifies each node's CRI image ID against the build ID as well
+as requiring a consistent manifest digest; all images load before migration Jobs
+or the new application release. Helm snapshots SQL/TOML into immutable ConfigMaps
+and defines ordered, content-addressed Jobs: catalog on every shard, ordering on
+every shard, then ledger. The retained topology reservation is checked before SQL,
+and current-generation CNPG publications must pass before routing is published.
+
+Helm derives application release and rollout identities from the desired images,
+effective configuration, topology, dataset and owned chart versions. Normal startup
+needs no run argument. The owned chart is now version 0.2.0; static application or
+migration Pod/Job template changes must increment it. Identical releases reuse
+completed seeding and leave unchanged pod templates in place. Migration execution
+identity also includes Cluster and Database UIDs. Before a different migration
+revision can run, its older owned terminal Jobs are removed, preventing A → B → A
+inputs from reusing stale success evidence. Matching active Jobs are retained;
+only terminal failed Jobs with verified ownership and desired templates are
+deleted for retry. A local directory lock serializes `up.sh` invocations.
+
+Six opt-in Java gates observe reservation, Job ownership/attempts, terminal
+migration and seeder results, and publication generations. Native Kubernetes waits
+own rollout/Job status, Flyway owns validation/schema changes, and the applications
+still own catalog seeding and reader gating. The compatibility helpers remain until
+step 3.20. Step 3.17's final startup deployment acceptance remains separate;
+`up.sh` currently waits for successful seeding without claiming the full reader
+traffic acceptance. Reused migration Jobs trust retained database state; README
+documents forcing fresh Flyway execution after manual database changes/restores.
+
+**Verification:** two complete `up.sh` runs passed image qualification and 1,035
+unit/startup tests plus 55 packaged product/order routing checks each. The second
+run started from `/private/tmp` and preserved all 60 Pods, 36 Jobs, both Deployment
+identities/templates/generations, ten PVC bindings, four Clusters, four Databases,
+and allocator high-water 68. The first run advanced the previously deployed
+product/reader digests to the current source builds; the new reader's recurring
+catalog digest and clean 200 requests/s intervals were observed. A simultaneous
+startup was rejected by the lock.
+
+Focused qualification of the new phases reused those already-qualified image
+digests. Copied catalog repeatable migrations first changed successfully, then a
+copied retained ordering V1 checksum failed Flyway validation on shard-a. Both
+application deployments/pods, the later migration Jobs and allocator remained
+unchanged. Restoring the original SQL resumed safely: each catalog's repeatable
+history advanced from rank 4 to rank 6 with its original checksum 1634557694,
+proving A → B → A executed again. The pending supported pool-size configuration
+then rolled product and reader on the same images and seeded the same catalog IDs.
+The checked-in configuration was restored afterward.
+
+The final default kind suite passed all three deployment scenarios. All 21 new
+focused tests passed again after declaring the already-qualified, platform-managed
+SnakeYAML dependency directly. A controlled loader regression accepted a wrong
+CRI image ID before the fix and rejected it afterward; four command fixtures
+covered completed reuse, retaining an active timed-out Job, terminal failure retry,
+and rejection before mutation. Helm lint, shell syntax and whitespace checks pass.
+
+The qualification-only seeder Job, failed/superseded migration Jobs and two copied
+SQL ConfigMaps were removed. All databases are healthy, all ten PVC UID/PV bindings
+and routing/reservation/allocator identities are preserved, and catalog IDs retain
+digest `97af5c774026fb993e04a7b80e3c74bc2ad6c8c6ff7ccc6b27ffe56a7f57ca88`.
+The allocator advanced from 66 to 72 for the initial, configuration-change and
+restoration product rollouts; unchanged startup consumed no IDs. The reader was
+restored to its original zero replicas after verification. Only the original
+`shardshop` cluster remains. This step did not repeat fresh bootstrap, full
+stop/resume, the disruptive database drills or the Testcontainers suite.
+
+**Commands:**
+
+```bash
+# Each startup runs the scoped clean install, qualification and all phase gates.
+bash microservices/shardshop/scripts/up.sh
+(cd /private/tmp && bash /Users/nikita.lipatov/projects/GitHub/JavaCraft/microservices/shardshop/scripts/up.sh)
+# Temporary qualification snapshots/harnesses, not maintained entry points.
+q=/private/tmp/shardshop-316.Gp7Exf
+bash "$q/release-phases.sh" "$q/bad-migration" # expected Flyway checksum failure
+bash "$q/release-phases.sh" "$q/configuration"
+bash "$q/release-phases.sh" "$q/base"
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+    -Dtest=HelmReleaseTest,KindMigrationTest test
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+    failsafe:integration-test failsafe:verify -Dit.test=KindIT \
+    -Dshardshop.kind.snapshot="$q/base"
+bash "$q/capture-state.sh" "$q/final"
+python3 "$q/check-state.py" "$q/first.resources.json" "$q/unchanged.resources.json" \
+    --mode unchanged --allocator-before "$q/first.allocator.json" --allocator-after "$q/unchanged.allocator.json"
+helm lint microservices/shardshop/infra/helm/shardshop \
+    -f microservices/shardshop/infra/helm/shardshop/kind-values.yaml -f microservices/shardshop/infra/shards.yaml
+bash -n microservices/shardshop/scripts/*.sh
+git diff --check
+```
+
+## Step 3.16 native tool ownership
+
+**2026-10-14:** replaced the earlier step 3.16 orchestration with Skaffold
+2.25.0 builds and Helmfile 1.8.0 releases. `skaffold.yaml` owns the four Docker
+artifacts and their content tags. `helmfile.yaml.gotmpl` orders the existing CNPG
+release and the new infrastructure, migrations and application releases. The
+owned chart is version 0.3.0. `up.sh` shrank from 311 to 218 lines; it retains
+local bootstrap, snapshots/locking, Maven/Scout, credential/allocator bootstrap
+and verified native kind image delivery. No replacement shell wrapper or Java
+Job controller was added.
+
+Helm runs weighted migration hooks in catalog/shard, ordering/shard, ledger
+order, then waits for the application rollout and the current revision's seeder
+hook. Flyway validates actual database history every time; the custom completed
+Job cache, execution identities, desired/live Job comparison and retry cleanup
+are removed. Immutable SQL ConfigMaps remain content-addressed. Successful
+migration Jobs are deleted by Helm; failed migrations and completed seeders have
+a 24-hour diagnostic TTL. Application pod templates exclude release revisions.
+The product configuration checksum uses the complete rendered properties file,
+including static defaults; the reader Deployment metadata identifies the current
+seeder without forcing a reader restart.
+
+The retained lab passed topology, allocator, infrastructure and migration-idle
+preflight. Sixty-six matching resources transferred to the appropriate releases
+using metadata-only patches guarded by observed UID and resourceVersion.
+Namespace, Secrets, allocator state, PVCs, operator-created resources and legacy
+Jobs stayed outside that transfer. Initial server-side infrastructure adoption
+encountered an existing admission-policy field owner; ShardShop releases now use
+Helm's three-way merge, while CNPG retains its existing server-side mode. No
+forced field takeover was used.
+
+**Verification:** two complete revised `up.sh` invocations passed **1,034
+unit/startup tests and 55 packaged routing checks each**, built/scanned all four
+Skaffold artifacts and verified their config IDs and consistent manifest digests
+on every kind node. The unchanged run from `/private/tmp` preserved both
+Deployment specs/UIDs, all 13 application/database pod UIDs, four Cluster UIDs,
+four Database UIDs, ten PVC UID/PV bindings and allocator high-water 74. Both
+seeder attempts reported the retained catalog ID digest
+`97af5c774026fb993e04a7b80e3c74bc2ad6c8c6ff7ccc6b27ffe56a7f57ca88`.
+
+Focused Helmfile syncs reused those qualified images. A copied catalog repeatable
+changed successfully on all three shards, followed by a deliberate copied
+ordering V1 checksum mismatch. Helm stopped at the first ordering hook; the
+application release, both Deployment specs, application/database pod identities
+and allocator state remained unchanged. Restoring the original SQL succeeded
+without deleting the failed attempt or repairing history. Each catalog history
+advanced from rank 6/checksum 1634557694 through rank 7/checksum 1181151422 to
+rank 8/checksum 1634557694, proving A → B → A executes again. A supported
+pool-size change then rolled only product on the same image digests; the reader
+pod and catalog ID digest stayed unchanged.
+
+The checked-in configuration was restored through Helmfile. The final default
+kind suite passed all **three deployment scenarios**, including fresh clean
+reader traffic through both product replicas. All four database clusters are
+healthy; retained Cluster/Database UIDs, all ten PVC UID/PV bindings and allocator
+identity are unchanged. Allocator high-water advanced 72 → 78 across the initial,
+configuration-change and restoration product rollouts; the unchanged run consumed
+no IDs. The reader returned to its original zero replicas after verification.
+The deliberate failed qualification Job was removed after its logs were captured;
+Helm history and already committed SQL remain intact. Only the original
+`shardshop` kind cluster exists.
+
+The full build includes the new Helm rendering and Java gate regressions. The
+current-seeder lookup and complete-configuration checksum regressions failed
+before their fixes and pass afterward. Helm lint, shell syntax, YAML validation
+and whitespace checks pass. README, ARCHITECTURE, VERSIONS and PLAN now describe
+native tool ownership, one-time adoption, fresh Flyway validation, hook retention
+and interrupted Helm recovery. Step 3.16 is Done; step 3.17's automatic final
+acceptance gate remains Planned. This refactor did not repeat fresh bootstrap,
+full stop/resume, disruptive database drills or the Testcontainers suite; those
+remain part of the subsequent workflow qualification.
+
+**Commands:**
+
+```bash
+# Each startup includes the scoped Maven clean install, image qualification and phase gates.
+bash microservices/shardshop/scripts/up.sh
+(cd /private/tmp && bash /Users/nikita.lipatov/projects/GitHub/JavaCraft/microservices/shardshop/scripts/up.sh)
+# Prepared temporary snapshots use already-qualified images; they are not entry points.
+q=/private/tmp/shardshop-native.I1uViO
+export SHARDSHOP_ROOT="$PWD/microservices/shardshop"
+SHARDSHOP_SNAPSHOT="$q/bad" helmfile -f "$q/bad/helmfile.yaml.gotmpl" \
+    -l stage=application sync --skip-deps --skip-needs # expected Flyway checksum failure
+SHARDSHOP_SNAPSHOT="$q/configuration" helmfile -f "$q/configuration/helmfile.yaml.gotmpl" \
+    -l stage=application sync --skip-deps --skip-needs
+SHARDSHOP_SNAPSHOT="$q/snapshot" helmfile -f "$q/snapshot/helmfile.yaml.gotmpl" \
+    -l stage=application sync --skip-deps --skip-needs
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+    failsafe:integration-test failsafe:verify -Dit.test=KindIT \
+    -Dshardshop.kind.snapshot="$q/snapshot"
+python3 "$q/check-unchanged.py" "$q/first.resources.json" "$q/unchanged.resources.json"
+helm lint microservices/shardshop/infra/helm/shardshop \
+    -f microservices/shardshop/infra/helm/shardshop/kind-values.yaml -f microservices/shardshop/infra/shards.yaml
+bash -n microservices/shardshop/scripts/up.sh
+git diff --check
+```

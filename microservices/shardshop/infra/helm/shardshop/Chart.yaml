@@ -2,4 +2,4 @@ apiVersion: v2
 name: shardshop
 description: Shared database and routing templates driven by the shard inventory
 type: application
-version: 0.1.0
+version: 0.3.0

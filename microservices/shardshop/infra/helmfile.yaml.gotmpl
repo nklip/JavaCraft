@@ -1,0 +1,80 @@
+{{- $snapshot := requiredEnv "SHARDSHOP_SNAPSHOT" -}}
+{{- define "verify" }}
+- events: [presync]
+  showlogs: true
+  command: mvn
+  args:
+    - -B
+    - -ntp
+    - -f
+    - {{ printf "%s/pom.xml" (requiredEnv "SHARDSHOP_ROOT") | quote }}
+    - -pl
+    - shardshop-testing
+    - -Pkind
+    - failsafe:integration-test
+    - failsafe:verify
+    - -Dit.test=KindIT
+    - {{ printf "-Dshardshop.kind.tags=%s" . | quote }}
+    - {{ printf "-Dshardshop.kind.snapshot=%s" (requiredEnv "SHARDSHOP_SNAPSHOT") | quote }}
+    - -Dshardshop.kind.cluster=shardshop
+    - {{ printf "-Dshardshop.kind.fresh=%s" (env "SHARDSHOP_FRESH" | default "false") | quote }}
+{{- end }}
+
+# Use sync: Flyway validates actual database history and idempotent seeding reruns.
+# No automatic rollback/uninstall: a failed application release cannot undo SQL.
+helmDefaults:
+  kubeContext: kind-shardshop
+  wait: true
+  timeout: 600
+  historyMax: 10
+  skipDeps: true
+  # Existing ShardShop resources were client-side applied. Helm's three-way merge
+  # preserves API defaults without forcing ownership away from their controllers.
+  serverSide: "false"
+
+releases:
+  - name: cnpg
+    namespace: cnpg-system
+    serverSide: "true"
+    labels: {stage: infrastructure}
+    chart: {{ printf "%s/operator.tgz" $snapshot | quote }}
+    values: [{{ printf "%s/operator-values.yaml" $snapshot | quote }}]
+
+  - name: shardshop-infrastructure
+    namespace: shardshop
+    labels: {stage: infrastructure}
+    needs: [cnpg-system/cnpg]
+    chart: {{ printf "%s/chart" $snapshot | quote }}
+    values:
+      - {{ printf "%s/environment.yaml" $snapshot | quote }}
+      - {{ printf "%s/inventory.yaml" $snapshot | quote }}
+      - render: infrastructure
+    hooks:
+      - events: [presync]
+        command: kubectl
+        args: [--context, kind-shardshop, wait, --for=condition=Established, crd, --all, --timeout=180s]
+
+  - name: shardshop-migrations
+    namespace: shardshop
+    labels: {stage: application}
+    needs: [shardshop/shardshop-infrastructure]
+    chart: {{ printf "%s/chart" $snapshot | quote }}
+    values:
+      - {{ printf "%s/environment.yaml" $snapshot | quote }}
+      - {{ printf "%s/inventory.yaml" $snapshot | quote }}
+      - render: migrations
+    hooks:
+      {{- include "verify" "kind-allocator | kind-infrastructure | kind-migration-reservation | kind-migrations-idle" | nindent 6 }}
+
+  - name: shardshop-application
+    namespace: shardshop
+    labels: {stage: application}
+    needs: [shardshop/shardshop-migrations]
+    chart: {{ printf "%s/chart" $snapshot | quote }}
+    values:
+      - {{ printf "%s/environment.yaml" $snapshot | quote }}
+      - {{ printf "%s/inventory.yaml" $snapshot | quote }}
+      - {{ printf "%s/images.json" $snapshot | quote }}
+      - render: application-release
+    hooks:
+      {{- include "verify" "kind-publications | kind-migration-reservation" | nindent 6 }}

@@ -1,0 +1,18 @@
+{{- if eq .Values.render "migrations" -}}
+{{- if not (.Files.Glob "migrations/**") -}}
+{{- fail "render=migrations requires the database snapshot under chart/migrations" -}}
+{{- end -}}
+{{- range $stream := list "catalog" "ordering" "ledger" }}
+---
+{{ include "shardshop.migrationConfigMap" (dict "root" $ "stream" $stream) }}
+{{- end -}}
+{{- $count := len .Values.shards -}}
+{{- range $streamIndex, $stream := list "catalog" "ordering" -}}
+{{- range $index, $shard := $.Values.shards }}
+---
+{{ include "shardshop.migrationJob" (dict "root" $ "shard" $shard.name "stream" $stream "index" $index "weight" (add (mul $streamIndex $count) $index) "hook" true) }}
+{{- end -}}
+{{- end }}
+---
+{{ include "shardshop.migrationJob" (dict "root" . "shard" "ledger-db" "stream" "ledger" "index" 0 "weight" (mul 2 $count) "hook" true) }}
+{{- end -}}

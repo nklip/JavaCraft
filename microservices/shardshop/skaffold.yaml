@@ -1,0 +1,43 @@
+# Build packaged Maven outputs only. Helmfile owns releases; kind owns image delivery.
+apiVersion: skaffold/v4beta14
+kind: Config
+metadata:
+  name: shardshop-images
+build:
+  platforms: [linux/arm64]
+  tagPolicy:
+    sha256: {}
+  local:
+    push: false
+    concurrency: 1
+    useDockerCLI: true
+    useBuildkit: true
+  artifacts:
+    - image: docker.io/library/shardshop-flyway
+      context: infra/images/flyway
+      docker:
+        dockerfile: Dockerfile
+        buildArgs:
+          SOURCE_DATE_EPOCH: "0"
+        cliFlags: [--provenance=false, --sbom=false]
+    - image: docker.io/library/shardshop-product
+      context: shardshop-product/target/quarkus-app
+      docker:
+        dockerfile: ../../../infra/images/application/Dockerfile
+        buildArgs:
+          SOURCE_DATE_EPOCH: "0"
+        cliFlags: [--provenance=false, --sbom=false]
+    - image: docker.io/library/shardshop-product-seeder
+      context: shardshop-workload/shardshop-product-seeder/target/quarkus-app
+      docker:
+        dockerfile: ../../../../infra/images/application/Dockerfile
+        buildArgs:
+          SOURCE_DATE_EPOCH: "0"
+        cliFlags: [--provenance=false, --sbom=false]
+    - image: docker.io/library/shardshop-product-reader
+      context: shardshop-workload/shardshop-product-reader/target/quarkus-app
+      docker:
+        dockerfile: ../../../../infra/images/application/Dockerfile
+        buildArgs:
+          SOURCE_DATE_EPOCH: "0"
+        cliFlags: [--provenance=false, --sbom=false]

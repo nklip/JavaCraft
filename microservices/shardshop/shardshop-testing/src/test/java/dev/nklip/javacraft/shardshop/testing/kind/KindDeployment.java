@@ -15,6 +15,7 @@ import java.util.regex.Pattern;
 
 /** Read-only checks of the deployed product workload; deployment remains a production responsibility. */
 public final class KindDeployment {
+    private static final Pattern JOB_NAME = Pattern.compile("[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?");
     private static final Pattern RESERVED = Pattern.compile("Reserved generator ID ([0-9]+) for this JVM start\\.");
     private static final Pattern DIGEST = Pattern.compile("key-to-ID SHA-256 ([0-9a-f]{64})(?![0-9a-f])");
     private static final Pattern REPORT = Pattern.compile("Product reads, interval ([0-9.]+) s: ([0-9]+) requests, ([0-9.]+)/s, outcomes \\{([^}]*)}.*pool \\{([^}]*)}");
@@ -28,10 +29,12 @@ public final class KindDeployment {
     record Interval(Instant ended, double seconds, long requests, double rate, String outcomes, String pool) { }
 
     public Workload deployed() throws IOException, InterruptedException {
+        JsonNode readerDeployment = null;
         for (String name : List.of("shardshop-product", "shardshop-product-reader")) {
             var result = lab.kubectlAttempt("get", "deployment", name, "-o", "json");
             require(result.exitCode() == 0, "Deploy and migrate the lab before workload checks: missing " + name);
             JsonNode deployment = KindLab.parse(result.stdout());
+            if (name.equals("shardshop-product-reader")) readerDeployment = deployment;
             int expected = name.endsWith("reader") ? 1 : 2;
             require(deployment.path("spec").path("replicas").asInt() == expected
                     && deployment.path("status").path("readyReplicas").asInt() == expected
@@ -48,11 +51,9 @@ public final class KindDeployment {
                 "The product reader must already have one running ready pod; deploy the workload first");
         JsonNode reader = readers.getFirst();
         httpOnly(reader.path("spec"));
-        String run = reader.path("metadata").path("labels").path("shardshop.javacraft/run").asText();
-        require(run.matches("[a-z0-9][a-z0-9-]*"), "The deployed reader has no valid run label");
-        String jobName = "shardshop-product-seeder-" + run;
+        String jobName = seederJobName(readerDeployment, reader);
         JsonNode job = resource("job", jobName);
-        require(completed(job), "The deployed run needs a successful seeder Job before workload checks");
+        require(completed(job), "The deployed release needs a successful seeder Job before workload checks");
         httpOnly(job.path("spec").path("template").path("spec"));
         JsonNode seeder = successfulSeeder(jobName);
         String digest = digest(logs(name(seeder)), "Seeded and verified catalog-v1");
@@ -64,6 +65,21 @@ public final class KindDeployment {
         catalogCounts();
         generators(products, highWater());
         return new Workload(products, reader, seeder, digest);
+    }
+
+    static String seederJobName(JsonNode readerDeployment, JsonNode reader) throws IOException {
+        require(readerDeployment != null, "The deployed reader Deployment is missing");
+        JsonNode annotation = readerDeployment.path("metadata").path("annotations").path("shardshop.javacraft/seeder-job");
+        if (!annotation.isMissingNode()) {
+            require(annotation.isTextual() && JOB_NAME.matcher(annotation.textValue()).matches(),
+                    "The deployed reader has an invalid current seeder Job annotation");
+            return annotation.textValue();
+        }
+        String run = reader.path("metadata").path("labels").path("shardshop.javacraft/run").asText();
+        require(run.matches("[a-z0-9][a-z0-9-]*"), "The deployed reader has no current seeder Job annotation or valid legacy run label");
+        String name = "shardshop-product-seeder-" + run;
+        require(JOB_NAME.matcher(name).matches(), "The deployed reader's legacy seeder Job name is invalid");
+        return name;
     }
 
     public void workload() throws IOException, InterruptedException {

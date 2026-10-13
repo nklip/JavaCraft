@@ -18,6 +18,8 @@
 apiVersion: postgresql.cnpg.io/v1
 kind: Database
 metadata:
+  annotations:
+    helm.sh/resource-policy: keep
   name: {{ $shard }}-shardshop
   namespace: {{ $.Release.Namespace | quote }}
 spec:
@@ -38,6 +40,8 @@ spec:
 apiVersion: postgresql.cnpg.io/v1
 kind: DatabaseRole
 metadata:
+  annotations:
+    helm.sh/resource-policy: keep
   {{- /* Preserve the deployed CDC reader resource name; DatabaseRoles do not have the Job name limit. */}}
   name: {{ $shard }}-{{ .resourceName | default (.name | replace "_" "-") }}
   namespace: {{ $.Release.Namespace | quote }}
@@ -67,6 +71,8 @@ spec:
 apiVersion: postgresql.cnpg.io/v1
 kind: Publication
 metadata:
+  annotations:
+    helm.sh/resource-policy: keep
   name: {{ $shard }}-order-outbox
   namespace: {{ $.Release.Namespace | quote }}
 spec:

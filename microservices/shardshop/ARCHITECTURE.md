@@ -22,17 +22,20 @@ Argo CD GitOps, and may add cloud-only
 durability such as S3 backups with WAL archiving and a three-broker RabbitMQ. No
 local behavior or check may depend on a cloud service.
 
-Cluster creation, reconciliation and shutdown use `scripts/up.sh` and `scripts/down.sh`;
-migration and application deployment remain separate until step 3.16.
-`up.sh` snapshots the inventory, environment values, kind configuration, operator
-chart and operator values once per invocation. It accepts only the fixed kind topology
+Cluster creation, reconciliation, migration and application deployment use
+`scripts/up.sh`; shutdown uses `scripts/down.sh`. `up.sh` snapshots the inventory,
+environment values, database migration files, kind configuration, operator chart
+and operator values once per invocation. It accepts only the fixed kind topology
 of one control plane and three workers and reviewed image/port settings; changes requiring
 cluster recreation, storage or placement changes, bootstrap changes, PostgreSQL major
 version changes, or a different replica shape are rejected. After any node start it
-restarts kindnet. Bash orders the phases and invokes native tools for current
-image builds, Docker Scout qualification, image loading and kind/Docker lifecycle.
-Helm owns declarative resources, including DNS probes and allocator identity;
-Kubernetes and CNPG reconcile them. Opt-in Maven kind Cucumber scenarios verify
+restarts kindnet. Bash handles local bootstrap, snapshots/locks, Maven/Scout and
+native kind/Docker lifecycle and image delivery. Skaffold owns image build recipes
+and artifact tags. Helmfile orders real Helm releases and their Maven phase hooks;
+Helm owns infrastructure, routing and application resources and Flyway/seeder hook
+Jobs. Namespace, credential Secrets and allocator registry/identity remain outside
+release ownership; Helm also renders DNS probes and bootstrap identity manifests.
+Kubernetes and CNPG reconcile the resources. Opt-in Maven kind Cucumber scenarios verify
 invariants and readiness using that same invocation snapshot: guards run before
 protected mutations, and readiness checks observe DNS from a pod on every node,
 current-generation database resources, actual SQL connectivity and configuration,
@@ -72,20 +75,47 @@ Every standalone suite consumes an explicit `shardshop.kind.snapshot` containing
 `infrastructure.yaml`; DNS gates additionally use `dns-probes.yaml`. Existing
 infrastructure safety gates remain individually selectable. Tests observe native
 reconciliation or make only the explicitly selected temporary drill changes;
-production migration and deployment continue through `migrate.sh` and `deploy.sh`
-until step 3.16. The initial ShardShop-only Maven
+production migration and deployment run through `up.sh`. Compatibility
+`migrate.sh`, `deploy.sh`, `render.sh` and `shards.sh` remain until step 3.20.
+The initial ShardShop-only Maven
 `clean install -DinstallAtEnd=true` includes `verify` and installs verified reactor
 artifacts in Maven's local cache after the reactor succeeds; subsequent Failsafe
 gates resolve these packages without another build. This is local artifact caching,
 without tool installation or remote publication.
 
-Complete step 3.15 before step 3.16 adds Flyway Job migration and application
-deployment orchestration. Flyway owns validation and schema changes; Helm renders
-deployment resources, Kubernetes owns rollout and Job completion, and Java
-applications own seeding, catalog resolution and load. Later deployment acceptance
-belongs to the Maven kind suite, with disruptive drills selected explicitly. Keep
-exactly the two planned lifecycle scripts, with no embedded Python, extra wrappers,
-downloaded tool binaries or local dependency on GitOps or cloud services.
+Step 3.16 uses Helmfile 1.8.0 and Skaffold 2.25.0 from `PATH`, with their shared
+configuration retained in the repository. Skaffold builds current Maven outputs;
+its standalone build has no deployer and does not load kind images. Native image
+delivery verifies the qualified build's config ID and a consistent manifest digest
+on every node before migrations or a new application release.
+
+Helmfile syncs `cnpg` and `shardshop-infrastructure` first, then Bash initializes
+allocator identity only for a cluster demonstrably created by this invocation.
+After readiness/image delivery, Helmfile syncs `shardshop-migrations` and
+`shardshop-application` in dependency order. Each revision runs ordered Flyway
+hooks and idempotent seeding. Flyway's actual history is authoritative; no completed
+Job cache suppresses validation. Unchanged application pod templates remain in
+place, preserving generator allocations. Product's pod checksum is SHA-256 of
+the full rendered `application.properties`, sharing the mounted file's named
+template and static defaults. Image/resource/workload settings are direct template
+inputs. Seeder revision identity is recorded on reader Deployment metadata,
+outside its pod template. Successful seeder Jobs retain 24-hour verification
+logs; after TTL cleanup, standalone workload checks require a fresh `up.sh` run.
+
+Retained resources created by the earlier apply workflow require an explicit
+one-time ownership transfer after safety checks and resource/UID inspection,
+including existing immutable SQL ConfigMaps matching the current snapshot.
+Metadata-only patches test UID/resourceVersion and preserve specifications/data. Normal
+startup never adopts another Helm release. Namespace, credentials and allocator
+state are excluded from transfer. ShardShop releases use Helm's three-way merge
+for previously apply-managed resources; `cnpg` retains server-side updates.
+Helm owns hook completion and bounded rollout
+waits; Maven retains topology/allocator/readiness and current-generation Publication
+checks. Helmfile does not roll back committed SQL or automatically uninstall after
+a failed release. Final traffic/load acceptance remains PLAN step 3.17, with
+disruptive drills explicitly selected. The final two-script workflow remains
+planned for step 3.20, without extra wrappers, embedded Python, downloaded tool
+binaries or a Java lifecycle controller.
 
 Build and test with JDK 25 or newer (bytecode targets release 25), and run the
 applications on OpenJDK 25. The Maven toolchain uses the installation selected by
@@ -200,8 +230,10 @@ Dataset definitions and service-side creation follow section 3.
    seeding**; orders change only stock, through reservations. The Job
    stays completed rather than being restarted as a Deployment. Reader and order
    producer run until the scenario controller scales them to zero. Each new run
-   receives a distinct run name in its deployment configuration and its own seeder
-   Job. If the dataset is already complete, a workload can start its load before
+   gets a new Helm-revision seeder Job on each deployment invocation while
+   unchanged workload pods remain in place. Legacy explicit runs remain available
+   for compatibility and drills. If the dataset is already complete, a workload can
+   continue its load before
    the Job of its run completes, because the seeder sends the same keys and
    payloads again. Workloads do not generate run IDs.
 
@@ -736,7 +768,8 @@ exact shard through the unchanged hash rule. Shared Helm templates generate all
 resources and a routing snapshot. Its `version` remains SHA-256 of the comma-joined
 UTF-8 names; `regionVersion` is SHA-256 of the comma-joined UTF-8 `name=REGION` pairs
 in the same order. Only after every deployed shard and the separate ledger pass
-their migrations does `migrate.sh` publish that snapshot as the `shardshop-routing` ConfigMap. The chart
+their migrations and current-generation outbox publications does `up.sh` publish
+that snapshot as the `shardshop-routing` ConfigMap. The chart
 schema validates names and the `US`/`EU`/`ASIA` enum. Product/order import aligned
 `shardshop.routing.shards` and `shardshop.routing.regions` lists at startup and
 construct an immutable `ShardTopology` with `fromNamesAndRegions`. Missing, empty
@@ -748,7 +781,7 @@ remove shards from the list. Processes do not refresh topology live. Changing
 membership or order reassigns existing IDs; deployment/migration refuse changes
 to a published list until the lab is explicitly reset and reseeded. Changing an
 existing shard's region also fails the published `regionVersion` guard. Before
-starting migrations, `migrate.sh` reserves both version hashes in the
+starting migrations, `up.sh` reserves both version hashes in the immutable
 `shardshop-migration-topology` ConfigMap. `up.sh` and `migrate.sh` compare the
 inventory with this saved topology as well as the published routing snapshot,
 including when no versioned migration is pending. Both existing ConfigMaps must
@@ -924,7 +957,7 @@ run on the kind lab and on EKS (PLAN milestone 7), where Argo CD applies them.
 | Instances | CNPG `Cluster`s, parameters, storage, database-wide hardening | `infra/helm/shardshop/templates/clusters.yaml` | `up.sh` / Argo CD |
 | Identities | Group roles, login roles, memberships | CNPG `DatabaseRole`s in `infra/helm/shardshop/templates/databases.yaml` for each inventory entry and `ledger-database.yaml` for ledger; one password Secret per login role, with shard credentials shared across shards and ledger credentials separate | `up.sh`, which generates the Secrets / Argo CD, with Secrets synced from AWS Secrets Manager |
 | Containers | Databases, schemas and their owners, CDC publications | CNPG `Database` and `Publication` resources in the per-shard template; `ledger-db-ledger` Database and schema in `ledger-database.yaml` | `up.sh` / Argo CD |
-| Contents | Tables, constraints, indexes, grants, data | Flyway streams under `database/`, run by Jobs rendered from `infra/helm/shardshop/templates/migration.yaml` | `migrate.sh` / Argo CD `PreSync` hook Jobs |
+| Contents | Tables, constraints, indexes, grants, data | Flyway streams under `database/`, run by Helm hooks from `infra/helm/shardshop/templates/migrations.yaml` and `_migrations.tpl` | `up.sh` / Argo CD `PreSync` hook Jobs |
 
 `database/` holds one Flyway stream per schema. Each stream is a folder with its
 SQL files and a `flyway.toml` that fixes the schema, the history table
@@ -936,7 +969,8 @@ or Maven build and invokes Flyway's main class directly because the JRE image ha
 no shell. It copies only the libraries, drivers, configuration and licenses of the
 pinned upstream Flyway image, not its Temurin runtime. The image and Jobs select
 UID/GID 10001. `up.sh` builds and scans the image before cluster mutation, then
-loads it into kind after provisioning; `migrate.sh` requires it on every node, as the
+loads it into kind after provisioning and verifies its manifest digest on every
+node before SQL or a new application release, as the
 [migration runbook](README.md#database-schemas-and-migrations-step-23) describes.
 This is the local ARM64 delivery path; a future cloud deployment must publish and
 qualify the same final image for its target architecture.
@@ -951,17 +985,40 @@ SQL ConfigMap and migrator Secret names; both streams receive the same
 `shardRegion`, `shardIndex`, and `shardCount` placeholders.
 `render.sh migration ledger-db ledger` selects the ledger stream, without shard
 placeholders or region labels. The chart rejects mismatched ledger/shard targets.
-Shard names are limited
-to 44 characters so the longer `-ordering-migration` suffix stays within the
-63-character Job-name limit. The template names the cluster endpoint and CA Secret
+Shard names are limited to 44 characters. Helm migration hook names use a bounded
+release prefix plus stream, inventory index and revision. The legacy migration
+render retains its shard/stream names. The template names the endpoint and CA Secret
 directly; no prefix replacement transformers are needed. Infrastructure rendering
-excludes Jobs and routing publication. `migrate.sh` runs catalog on every shard,
+excludes Jobs and routing publication. `up.sh` runs catalog on every shard,
 then ordering on every shard, then `database/ledger/ledger` once, and stops on the
-first failure. Each Job waits for its cluster and Database's current-generation
-`applied` status; only complete success activates the routing ConfigMap. Run one
-`migrate.sh` at a time. Existing resource names and storage identities are retained.
-Catalog, ordering, and ledger streams are implemented. Routing publication also waits
-for each current-generation CNPG outbox Publication to be applied.
+first failure. The readiness gates require the clusters and Databases' current
+applied generations before SQL. Routing publication also waits for each
+current-generation CNPG outbox Publication to be applied. Existing database
+resource names, storage identities and allocator state are retained.
+
+Helm renders immutable content-addressed SQL ConfigMaps from the invocation's
+`database/` snapshot. Migration hook names include the release revision, stream and
+inventory index; hook weights run all catalog shards, all ordering shards and then
+ledger. Each `helmfile sync` executes Flyway again, validating actual history and
+performing a no-op when no work is pending. Repeatable changes, including an
+A-to-B-to-A change, are reconciled through Flyway's recorded checksum.
+
+Before new migration work, the Java idle guard rejects every nonterminal or
+terminating `schema-migration` Job, including legacy Jobs and pending Jobs whose
+active count is zero. After interruption, wait for hook Jobs to become terminal
+and inspect Helm status/history. A killed Helm client may leave a pending release
+operation; explicit release-bookkeeping recovery can be necessary before a new
+sync. The idle guard alone does not clear that condition. Preserve deployed
+resources and database/allocator state during recovery. Helm observes hook
+completion and removes successful migration Jobs; failed hook Jobs retain diagnostics until their default 24-hour TTL. Maven waits
+up to 180 seconds for exact current-generation applied outbox Publications before
+the application release can publish routing. Failed releases retain already
+committed SQL; there is no automatic SQL rollback, history repair or database reset.
+
+`up.sh` serializes local invocations with `${TMPDIR:-/tmp}/shardshop-up.lock`.
+Inspect retained Jobs and confirm no invocation remains active before removing a
+stale lock after unclean termination. `down.sh` joins this lock in PLAN step 3.18;
+until then, stop and startup operations must run sequentially.
 
 ```text
 database/

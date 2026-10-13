@@ -2,24 +2,64 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "definitions": {
-    "image": {"type": "string", "pattern": "^$|^docker\\.io/library/shardshop-[a-z-]+@sha256:[0-9a-f]{64}$"}
+    "image": {
+      "type": "string",
+      "pattern": "^$|^docker\\.io/library/shardshop-[a-z-]+@sha256:[0-9a-f]{64}$"
+    }
   },
-  "required": ["render", "migrationShard", "migrationStream", "shards"],
+  "required": [
+    "render",
+    "migrationShard",
+    "migrationStream",
+    "shards"
+  ],
   "properties": {
     "render": {
       "type": "string",
-      "enum": ["infrastructure", "migration", "routing", "inventory", "namespace", "applications", "seeding", "kind-configuration", "dns-probes", "generator-identity"]
+      "enum": [
+        "infrastructure",
+        "migration",
+        "routing",
+        "inventory",
+        "namespace",
+        "applications",
+        "seeding",
+        "kind-configuration",
+        "dns-probes",
+        "generator-identity",
+        "migration-topology",
+        "migrations",
+        "application-release"
+      ]
     },
-    "migrationShard": {"type": "string"},
-    "migrationStream": {"type": "string", "enum": ["catalog", "ordering", "ledger"]},
-    "run": {"type": "string", "pattern": "^$|^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$"},
+    "migrationShard": {
+      "type": "string"
+    },
+    "migrationStream": {
+      "type": "string",
+      "enum": [
+        "catalog",
+        "ordering",
+        "ledger"
+      ]
+    },
+    "run": {
+      "type": "string",
+      "pattern": "^$|^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$"
+    },
     "images": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "product": {"$ref": "#/definitions/image"},
-        "product-seeder": {"$ref": "#/definitions/image"},
-        "product-reader": {"$ref": "#/definitions/image"}
+        "product": {
+          "$ref": "#/definitions/image"
+        },
+        "product-seeder": {
+          "$ref": "#/definitions/image"
+        },
+        "product-reader": {
+          "$ref": "#/definitions/image"
+        }
       }
     },
     "shards": {
@@ -28,15 +68,160 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "region"],
+        "required": [
+          "name",
+          "region"
+        ],
         "properties": {
-          "region": {"type": "string", "enum": ["US", "EU", "ASIA"]},
+          "region": {
+            "type": "string",
+            "enum": [
+              "US",
+              "EU",
+              "ASIA"
+            ]
+          },
           "name": {
             "type": "string",
             "maxLength": 44,
             "pattern": "^[a-z]([a-z0-9-]*[a-z0-9])?$",
-            "not": {"enum": ["ledger-db"]}
+            "not": {
+              "enum": [
+                "ledger-db"
+              ]
+            }
           }
+        }
+      }
+    },
+    "datasetVersion": {
+      "type": "string",
+      "enum": [
+        "catalog-v1"
+      ]
+    },
+    "productSeeder": {
+      "type": "object",
+      "properties": {
+        "configuration": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "SHARDSHOP_SEEDER_MAX_ATTEMPTS": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+$"
+            },
+            "SHARDSHOP_SEEDER_CONNECT_TIMEOUT": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            },
+            "SHARDSHOP_SEEDER_REQUEST_TIMEOUT": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            },
+            "SHARDSHOP_SEEDER_RETRY_BACKOFF": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            },
+            "SHARDSHOP_SEEDER_MAX_RETRY_BACKOFF": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            }
+          }
+        },
+        "ttlSecondsAfterFinished": {
+          "type": "integer",
+          "minimum": 86400
+        }
+      }
+    },
+    "productReader": {
+      "type": "object",
+      "properties": {
+        "configuration": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "SHARDSHOP_READER_REQUEST_RATE": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+$"
+            },
+            "SHARDSHOP_READER_WORKERS": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+$"
+            },
+            "SHARDSHOP_READER_CONNECTIONS": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+$"
+            },
+            "SHARDSHOP_READER_MAX_ATTEMPTS": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+$"
+            },
+            "SHARDSHOP_READER_CONNECT_TIMEOUT": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            },
+            "SHARDSHOP_READER_REQUEST_DEADLINE": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            },
+            "SHARDSHOP_READER_RETRY_INTERVAL": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            },
+            "SHARDSHOP_READER_MAX_CONNECTION_LIFETIME": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            },
+            "SHARDSHOP_READER_IDLE_TIMEOUT": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            },
+            "SHARDSHOP_READER_REPORT_INTERVAL": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            }
+          }
+        }
+      }
+    },
+    "product": {
+      "type": "object",
+      "properties": {
+        "configuration": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "shardshop.catalog.read-profile": {
+              "type": "string",
+              "enum": [
+                "primary",
+                "replica"
+              ]
+            },
+            "shardshop.catalog.max-pool-size": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "shardshop.catalog.max-id-candidates": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
+          }
+        }
+      }
+    },
+    "migration": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "string",
+          "pattern": "^docker\\.io/library/shardshop-flyway(:[a-zA-Z0-9_.-]+)?@sha256:[0-9a-f]{64}$"
+        },
+        "ttlSecondsAfterFinished": {
+          "type": "integer",
+          "minimum": 86400
         }
       }
     }

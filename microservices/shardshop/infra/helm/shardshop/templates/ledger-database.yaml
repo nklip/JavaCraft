@@ -2,6 +2,8 @@
 apiVersion: postgresql.cnpg.io/v1
 kind: Database
 metadata:
+  annotations:
+    helm.sh/resource-policy: keep
   name: ledger-db-ledger
   namespace: {{ .Release.Namespace | quote }}
 spec:
@@ -24,6 +26,8 @@ spec:
 apiVersion: postgresql.cnpg.io/v1
 kind: DatabaseRole
 metadata:
+  annotations:
+    helm.sh/resource-policy: keep
   name: ledger-db-{{ .name | replace "_" "-" }}
   namespace: {{ $.Release.Namespace | quote }}
 spec:

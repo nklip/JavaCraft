@@ -117,6 +117,44 @@ final class KindDeploymentTest {
     }
 
     @Test
+    void currentDeploymentSeederAnnotationOverridesTheUnchangedPodsOlderRun() throws IOException {
+        JsonNode deployment = json("""
+                {"metadata":{"annotations":{"shardshop.javacraft/seeder-job":"shardshop-application-seeder-2"}}}
+                """);
+        JsonNode olderPod = json("{\"metadata\":{\"labels\":{\"shardshop.javacraft/run\":\"old-release\"}}}");
+        assertEquals("shardshop-application-seeder-2", KindDeployment.seederJobName(deployment, olderPod));
+        assertEquals("shardshop-application-seeder-2", KindDeployment.seederJobName(deployment, json("{}")));
+    }
+
+    @Test
+    void absentCurrentAnnotationRetainsLegacyRunLookupButMissingEvidenceFails() throws IOException {
+        JsonNode legacyPod = json("{\"metadata\":{\"labels\":{\"shardshop.javacraft/run\":\"manual-1\"}}}");
+        assertEquals("shardshop-product-seeder-manual-1", KindDeployment.seederJobName(json("{}"), legacyPod));
+        assertThrows(IOException.class, () -> KindDeployment.seederJobName(json("{}"), json("{}")));
+        assertThrows(IOException.class, () -> KindDeployment.seederJobName(null, legacyPod));
+        for (String run : List.of("INVALID", "run/foreign", "trailing-", "a".repeat(64))) {
+            ObjectNode invalid = (ObjectNode) json("{}");
+            invalid.putObject("metadata").putObject("labels").put("shardshop.javacraft/run", run);
+            assertThrows(IOException.class, () -> KindDeployment.seederJobName(json("{}"), invalid), run);
+        }
+    }
+
+    @Test
+    void invalidCurrentAnnotationCannotSilentlyFallBackToAnEarlierSuccessfulJob() {
+        JsonNode olderPod = json("{\"metadata\":{\"labels\":{\"shardshop.javacraft/run\":\"old-release\"}}}");
+        for (String name : List.of("", "INVALID", "job/foreign", "job-", "a".repeat(64), "job\nforeign")) {
+            ObjectNode deployment = (ObjectNode) json("{}");
+            deployment.putObject("metadata").putObject("annotations").put("shardshop.javacraft/seeder-job", name);
+            assertThrows(IOException.class, () -> KindDeployment.seederJobName(deployment, olderPod), name);
+        }
+        for (JsonNode value : List.of(json("{\"value\":null}").path("value"), json("{\"value\":1}").path("value"))) {
+            ObjectNode deployment = (ObjectNode) json("{}");
+            deployment.putObject("metadata").putObject("annotations").set("shardshop.javacraft/seeder-job", value);
+            assertThrows(IOException.class, () -> KindDeployment.seederJobName(deployment, olderPod));
+        }
+    }
+
+    @Test
     void onlySuccessfulJobsSatisfyTheSeedingGate() throws IOException {
         assertTrue(KindDeployment.completed(json("{\"status\":{\"conditions\":[{\"type\":\"Complete\",\"status\":\"True\"}]}}")));
         assertFalse(KindDeployment.completed(json("{\"status\":{\"conditions\":[{\"type\":\"Complete\",\"status\":\"False\"}]}}")));

@@ -1,7 +1,8 @@
-{{- if or (eq .Values.render "applications") (eq .Values.render "seeding") }}
-{{- $run := required "render=applications|seeding requires a run name" .Values.run -}}
+{{- if has .Values.render (list "applications" "seeding" "application-release") }}
+{{- $run := .Values.run -}}
+{{- $hook := eq .Values.render "application-release" -}}
 {{- $productUrl := printf "http://shardshop-product.%s.svc:8080" .Release.Namespace -}}
-{{- if eq .Values.render "applications" }}
+{{- if or (eq .Values.render "applications") $hook }}
 {{- $product := required "render=applications requires images.product" .Values.images.product }}
 {{- $reader := required "render=applications requires images.product-reader" (index .Values.images "product-reader") }}
 # Quarkus reads config/application.properties in the working directory of the product JVM.
@@ -13,9 +14,7 @@ metadata:
   namespace: {{ .Release.Namespace | quote }}
 data:
   application.properties: |
-    {{- range .Values.shards }}
-    shardshop.catalog.connections.{{ .name }}.password=${PRODUCT_APP_PASSWORD}
-    {{- end }}
+    {{- include "shardshop.productConfiguration" . | nindent 4 }}
 ---
 # Kubernetes selects a product pod for each TCP connection, without affinity.
 apiVersion: v1
@@ -50,6 +49,8 @@ spec:
       app.kubernetes.io/name: shardshop-product
   template:
     metadata:
+      annotations:
+        shardshop.javacraft/configuration: {{ include "shardshop.productRevision" . | quote }}
       labels:
         app.kubernetes.io/name: shardshop-product
         app.kubernetes.io/part-of: shardshop
@@ -125,6 +126,10 @@ kind: Deployment
 metadata:
   name: shardshop-product-reader
   namespace: {{ .Release.Namespace | quote }}
+  {{- if $hook }}
+  annotations:
+    shardshop.javacraft/seeder-job: {{ include "shardshop.seederJobName" . | quote }}
+  {{- end }}
   labels:
     app.kubernetes.io/name: shardshop-product-reader
     app.kubernetes.io/part-of: shardshop
@@ -141,7 +146,9 @@ spec:
       labels:
         app.kubernetes.io/name: shardshop-product-reader
         app.kubernetes.io/part-of: shardshop
+        {{- if $run }}
         shardshop.javacraft/run: {{ $run | quote }}
+        {{- end }}
     spec:
       {{- include "shardshop.workloadPod" . | nindent 6 }}
       containers:
@@ -150,6 +157,12 @@ spec:
           env:
             - name: SHARDSHOP_READER_PRODUCT_URL
               value: {{ $productUrl | quote }}
+            - name: SHARDSHOP_READER_CATALOG_VERSION
+              value: {{ .Values.datasetVersion | quote }}
+            {{- range $name, $value := .Values.productReader.configuration }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
           resources:
             {{- toYaml .Values.productReader.resources | nindent 12 }}
           {{- include "shardshop.containerSecurity" . | nindent 10 }}
@@ -160,27 +173,44 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
-{{- else }}
+{{- end }}
+{{- if or (eq .Values.render "seeding") $hook }}
+{{- if $hook }}
+---
+{{- end }}
 {{- $seeder := required "render=seeding requires images.product-seeder" (index .Values.images "product-seeder") }}
-# Each run has its own Job, thus a new run needs a new run name.
+# Helm runs idempotent seeding after product is Ready; each revision has its own attempt.
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: shardshop-product-seeder-{{ $run }}
+  name: {{ include "shardshop.seederJobName" . }}
   namespace: {{ .Release.Namespace | quote }}
+  {{- if $hook }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation
+  {{- end }}
   labels:
     app.kubernetes.io/name: shardshop-product-seeder
     app.kubernetes.io/part-of: shardshop
+    {{- if $run }}
     shardshop.javacraft/run: {{ $run | quote }}
+    {{- end }}
 spec:
   backoffLimit: 3
   activeDeadlineSeconds: 300
+  {{- if $hook }}
+  ttlSecondsAfterFinished: {{ .Values.productSeeder.ttlSecondsAfterFinished }}
+  {{- end }}
   template:
     metadata:
       labels:
         app.kubernetes.io/name: shardshop-product-seeder
         app.kubernetes.io/part-of: shardshop
+        {{- if $run }}
         shardshop.javacraft/run: {{ $run | quote }}
+        {{- end }}
     spec:
       restartPolicy: Never
       {{- include "shardshop.workloadPod" . | nindent 6 }}
@@ -190,6 +220,12 @@ spec:
           env:
             - name: SHARDSHOP_SEEDER_PRODUCT_URL
               value: {{ $productUrl | quote }}
+            - name: SHARDSHOP_SEEDER_CATALOG_VERSION
+              value: {{ .Values.datasetVersion | quote }}
+            {{- range $name, $value := .Values.productSeeder.configuration }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
           resources:
             {{- toYaml .Values.productSeeder.resources | nindent 12 }}
           {{- include "shardshop.containerSecurity" . | nindent 10 }}

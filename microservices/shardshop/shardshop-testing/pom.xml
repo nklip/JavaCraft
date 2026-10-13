@@ -150,6 +150,12 @@
             <artifactId>jackson-databind</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <!-- Parse rendered chart documents with the already-qualified platform version. -->
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+            <scope>test</scope>
+        </dependency>
         <!-- Contracts.feature and the product response checks use the contract test helper of common. -->
         <dependency>
             <groupId>dev.nklip.javacraft</groupId>

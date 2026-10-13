@@ -86,3 +86,57 @@ automountServiceAccountToken: false
 enableServiceLinks: false
 {{ include "shardshop.podSecurity" . }}
 {{- end -}}
+
+{{/* One source for the mounted file and its pod checksum, including static defaults. */}}
+{{- define "shardshop.productConfiguration" -}}
+{{ range .Values.shards -}}
+shardshop.catalog.connections.{{ .name }}.password=${PRODUCT_APP_PASSWORD}
+{{ end -}}
+{{ range $key, $value := .Values.product.configuration -}}
+{{ $key }}={{ $value }}
+{{ end -}}
+{{- end -}}
+
+{{- define "shardshop.productRevision" -}}
+{{- include "shardshop.productConfiguration" . | sha256sum -}}
+{{- end -}}
+
+{{- define "shardshop.seederJobName" -}}
+{{- if eq .Values.render "application-release" -}}
+{{- printf "%s-seeder-%d" (.Release.Name | trunc 40 | trimSuffix "-") .Release.Revision -}}
+{{- else -}}
+{{- printf "shardshop-product-seeder-%s" (required "legacy seeding requires an explicit run" .Values.run) -}}
+{{- end -}}
+
+{{- end -}}
+
+{{- define "shardshop.migrationFiles" -}}
+{{- $directory := printf "migrations/shard/%s/*" .stream -}}
+{{- if eq .stream "ledger" -}}{{- $directory = "migrations/ledger/ledger/*" -}}{{- end -}}
+{{- $files := dict -}}
+{{- range $path, $_ := .root.Files.Glob $directory -}}
+{{- $_ := set $files (base $path) ($.root.Files.Get $path) -}}
+{{- end -}}
+{{- if and (.root.Files.Glob "migrations/**") (not (hasKey $files "flyway.toml")) -}}
+{{- fail (printf "migration snapshot is missing %s/flyway.toml" .stream) -}}
+{{- end -}}
+{{- $files | toJson -}}
+{{- end -}}
+
+{{- define "shardshop.migrationConfigMapName" -}}
+{{- $files := include "shardshop.migrationFiles" . | fromJson -}}
+{{- if $files -}}
+{{- printf "%s-migrations-%s" .stream (toJson $files | sha256sum | trunc 24) -}}
+{{- else -}}
+{{- printf "%s-migrations" .stream -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "shardshop.migrationJobName" -}}
+{{- $prefix := printf "%s-%s-migration" .shard .stream -}}
+{{- if .hook -}}
+{{- printf "%s-%s-%d-r%d" (.root.Release.Name | trunc 32 | trimSuffix "-") .stream .index .root.Release.Revision -}}
+{{- else -}}
+{{- $prefix -}}
+{{- end -}}
+{{- end -}}
