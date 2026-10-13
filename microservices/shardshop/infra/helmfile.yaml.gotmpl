@@ -1,8 +1,14 @@
 {{- $snapshot := requiredEnv "SHARDSHOP_SNAPSHOT" -}}
 {{- define "verify" }}
-- events: [presync]
+- events: [{{ .event }}]
   showlogs: true
+  {{- if eq .event "postsync" }}
+  # Helmfile also fires postsync after a failed Helm operation. Preserve that
+  # failure without accepting an older release or printing the underlying error.
+  command: '{{`{{ if .Event.Error }}false{{ else }}mvn{{ end }}`}}'
+  {{- else }}
   command: mvn
+  {{- end }}
   args:
     - -B
     - -ntp
@@ -14,7 +20,7 @@
     - failsafe:integration-test
     - failsafe:verify
     - -Dit.test=KindIT
-    - {{ printf "-Dshardshop.kind.tags=%s" . | quote }}
+    - {{ printf "-Dshardshop.kind.tags=%s" .tags | quote }}
     - {{ printf "-Dshardshop.kind.snapshot=%s" (requiredEnv "SHARDSHOP_SNAPSHOT") | quote }}
     - -Dshardshop.kind.cluster=shardshop
     - {{ printf "-Dshardshop.kind.fresh=%s" (env "SHARDSHOP_FRESH" | default "false") | quote }}
@@ -64,7 +70,7 @@ releases:
       - {{ printf "%s/inventory.yaml" $snapshot | quote }}
       - render: migrations
     hooks:
-      {{- include "verify" "kind-allocator | kind-infrastructure | kind-migration-reservation | kind-migrations-idle" | nindent 6 }}
+      {{- include "verify" (dict "event" "presync" "tags" "kind-allocator | kind-infrastructure | kind-migration-reservation | kind-migrations-idle") | nindent 6 }}
 
   - name: shardshop-application
     namespace: shardshop
@@ -77,4 +83,5 @@ releases:
       - {{ printf "%s/images.json" $snapshot | quote }}
       - render: application-release
     hooks:
-      {{- include "verify" "kind-publications | kind-migration-reservation" | nindent 6 }}
+      {{- include "verify" (dict "event" "presync" "tags" "kind-publications | kind-migration-reservation") | nindent 6 }}
+      {{- include "verify" (dict "event" "postsync" "tags" "kind-release | kind-deployment") | nindent 6 }}

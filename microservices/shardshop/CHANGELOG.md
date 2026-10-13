@@ -1410,3 +1410,183 @@ helm lint microservices/shardshop/infra/helm/shardshop \
 bash -n microservices/shardshop/scripts/up.sh
 git diff --check
 ```
+
+## Step 3.17
+
+**2026-10-14:** the application release now invokes `kind-release | kind-deployment`
+through a native Helmfile `postsync` hook. Startup reports success only after the
+qualified image/configuration, current Deployment generation and pod ownership,
+runtime image digests, current successful seeder and ready product Service
+endpoints pass, together with the existing routing, replication, credential,
+catalog and fresh reader-traffic assertions. The reader stays running. `up.sh`
+still has 218 lines; the gate is declared in Helmfile, and the native image-delivery
+check now selects the platform manifest described below.
+
+`kind-release` is a read-only observer requiring the invocation's `images.json`;
+legacy standalone `kind-deployment` remains unchanged. Native Helm rendering
+provides the intended configuration, and existing Kubernetes quantity handling is
+reused. All observations have bounded waits and errors identify resource/status
+mismatches without printing configuration or credentials. The Helmfile hook skips
+acceptance after a failed Helm operation and propagates acceptance failures;
+Helm itself can still report `deployed` when its later Helmfile gate fails.
+Neither the observer nor startup rolls back committed SQL or repairs resources.
+Explicit disruptive drills remain separate from normal startup.
+
+Fresh-node qualification exposed two delivery prerequisites left by the Skaffold
+migration:
+
+- The old Flyway pin identified Docker's archive index, whose annotations include
+  the tag. The retained `13.8.1-openjdk25` archive was `19765ac…`, whereas the same
+  build exported with Skaffold's content tag was `19db99e…`. Both reference the
+  identical platform manifest `96efa775…` and config `f6a88d7e…`. The native adapter
+  now reads the exact tag's containerd target and verifies its manifest config
+  against the scanned Docker build ID. The Flyway pin records that platform
+  manifest; no executable image content changed. The original empty-lab attempt
+  reproduced the rejection before SQL/application deployment.
+- OpenVEX version 2 matched the earlier fixed image tags. A new metadata-only
+  reader build was correctly blocked because its content tag had no matching
+  product statement. Version 3 uses named Docker product PURLs without a tag;
+  the ten CVEs, exact Go `1.26.7` subcomponent and Java-entrypoint justification
+  are unchanged. The changed image passes the strict Scout gate. Controls with
+  an unrelated product name or Go `1.26.6` still exit 2; updating a local alias
+  alone failed against Scout's cached SBOM and was restored. No advisory gate
+  was disabled or bypassed.
+
+The fresh application also demonstrated that CRI `imageID` can identify the import
+archive index while the pod requests its platform manifest. The first gate
+rejected this valid runtime identity; the other three deployment scenarios passed.
+The corrected observer reads that index from the selected kind node with a bounded
+containerd command and accepts only a single manifest descriptor matching the
+qualified digest. Foreign, multiple, nested or malformed descriptors fail closed;
+direct manifest identities require no node inspection. Regression tests cover
+both Deployments and the current successful seeder.
+
+The compatibility `deploy.sh` reads the deployed Helm revision's qualified image
+references and checks those exact registrations on every node. It no longer
+requires the obsolete `:local` tags or a single CRI repository digest. Its removal
+remains step 3.20; normal startup still uses Helmfile through `up.sh`.
+
+Qualification used `/private/tmp/shardshop-317.oUnxgq` for temporary snapshots,
+fixtures and logs; these are not maintained entry points. The original lab was
+stopped while the owned `shardshop-verify-317-ounxgq` lab used a private kubeconfig.
+The empty lab passed provisioning, migrations, seeding and all three existing
+live deployment scenarios. After fixing the runtime-index observer, a native
+Helmfile retry passed all four final scenarios. The retry preserved both
+Deployment specifications, all 13 application/database pod UIDs, all four
+Cluster/Database identities, ten PVC/PV bindings and allocator high-water mark
+`2 → 2`, while running fresh no-op Flyway and idempotent seeder attempts. The
+temporary cluster and its kubeconfig context were removed; retained nodes were
+restored.
+
+The production `down.sh` followed by `up.sh`, invoked from `/private/tmp`, then
+passed **1,055 unit/startup tests**, **55 packaged routing checks**, all four Scout
+gates, every lifecycle/release prerequisite and **all four final live scenarios**.
+It printed the new success message and left one reader and two product replicas
+running. All four original Cluster and Database UIDs, ten PVC/PV bindings and
+allocator identity survived; its high-water mark advanced `81 → 85` across process
+restarts. The legacy deployment script's extracted read-only lookup also verified
+all three current Helm image references on all four nodes.
+
+A temporary Skaffold build from the same reader recipe added only a qualification
+label (`config 97a7627f…`, manifest `e6cd387d…`); all three Scout commands passed
+with the reviewed VEX. The native image adapter delivered it to every node.
+Helmfile deployed it together with product `shardshop.catalog.max-pool-size=9`;
+the live ConfigMap showed `9` and all four acceptance scenarios passed. Restoring
+the original image and configuration through Helmfile passed again.
+
+A temporary ordering V1 checksum change then failed Flyway validation (database
+`381577366`, fixture `1555494565`). Helmfile returned nonzero without syncing the
+application or invoking final acceptance. The application revision, both
+Deployment specifications, all 13 application/database pod UIDs and allocator
+state were unchanged. Retrying the unmodified snapshot succeeded, without SQL
+repair or rollback. A temporary seeder URL of `127.0.0.1:1` with a short Job
+deadline failed its current revision's hook; final Maven acceptance was skipped.
+
+A product readiness probe pointed at port `81` failed Helm's bounded rollout
+wait (`Updated: 1/2`); final Maven acceptance was skipped. A separate reader
+fixture requested `100/s` with five-second reports. Helm completed the release
+and seeder, and the qualified-release, credentials/catalog and topology scenarios
+passed, but the workload scenario timed out after 25 seconds waiting for a fresh
+all-OK interval at the existing `180/s` floor. Helmfile returned nonzero despite
+Helm status `deployed`, proving that the final gate controls startup success.
+
+Focused verification passed **46 tests**: 16 release-observer regressions,
+11 Helm rendering tests, four real-Helmfile orchestration tests with controlled
+commands, and 15 existing deployment tests. The orchestration tests cover ordering,
+final acceptance failure, failed application/seeder and failed migration. The live
+failure fixtures above separately verified each cause against the retained lab.
+
+Final restoration passed all four acceptance scenarios at application revision
+`11`; migrations revision `9` and infrastructure revision `4` remained deployed.
+Two product replicas and one reader are Ready. A fresh 30-second reader report
+recorded **6,000 requests at 200.0/s, all OK**. Its catalog key-to-ID digest
+`97af5c774026fb993e04a7b80e3c74bc2ad6c8c6ff7ccc6b27ffe56a7f57ca88`
+matches the original pre-step seeder. All four Cluster/Database identities and ten
+PVC/PV bindings match the pre-step snapshot; allocator identity is unchanged and
+its high-water mark advanced `78 → 90` across qualification restarts. Only the
+four retained `shardshop` kind nodes remain. The two deliberately failed Jobs were
+removed with UID/resourceVersion preconditions after recording their diagnostics;
+unrelated Jobs and Helm history were preserved. Shell syntax and `git diff --check`
+passed. Step 3.17 is Done.
+
+**Correctness follow-up, 2026-10-14:** release acceptance now compares the complete
+pod specification after normalizing known Kubernetes defaults, resource quantities
+and the standard service-account projection and tolerations admitted to Pods.
+It checks configuration volume bindings and mount paths as well as probes,
+security settings, service accounts and command/environment overrides. An old
+ConfigMap mounted by a current, Ready pod can no longer pass using the desired
+checksum annotation and a separately correct ConfigMap. Unknown additions fail
+the comparison; the service-account exception requires the exact standard volume
+and mount and does not apply to the HTTP-only workloads.
+Four chart-based regressions failed against the previous comparison and pass
+after the fix. A further regression checks stale configuration at each of the
+Deployment, ReplicaSet and Pod boundaries. All **123 shardshop-testing unit tests**
+pass with `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing test`.
+All four live `kind-release | kind-deployment` scenarios also pass against the
+retained lab, using its deployed image references and the current chart snapshot;
+the verification changed no cluster resources. To repeat that read-only check,
+prepare `$snapshot` with the README snapshot runbook, then run:
+
+```bash
+helm get values shardshop-application --kube-context kind-shardshop --namespace shardshop \
+  --output json | jq -e '{images: .images}' > "$snapshot/images.json"
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  failsafe:integration-test failsafe:verify -Dit.test=KindIT \
+  '-Dshardshop.kind.tags=kind-release | kind-deployment' \
+  -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.cluster=shardshop
+```
+
+Commands used from the repository root unless stated otherwise:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dtest=KindReleaseTest,HelmReleaseTest,HelmfileGateTest,KindDeploymentTest test
+# Normal startup runs the full ShardShop clean install, scans and live gates.
+bash microservices/shardshop/scripts/up.sh
+```
+
+The retained stop/start used these absolute paths from `/private/tmp`:
+
+```bash
+bash /Users/nikita.lipatov/projects/GitHub/JavaCraft/microservices/shardshop/scripts/down.sh
+bash /Users/nikita.lipatov/projects/GitHub/JavaCraft/microservices/shardshop/scripts/up.sh
+```
+
+Temporary qualification commands (fixture files are outside the repository):
+
+```bash
+q=/private/tmp/shardshop-317.oUnxgq
+bash "$q/fresh-lab.sh"
+KUBECONFIG="$q/fresh.kubeconfig" \
+  SHARDSHOP_ROOT="$PWD/microservices/shardshop" \
+  SHARDSHOP_SNAPSHOT="$q/fresh-retry-snapshot" SHARDSHOP_FRESH=false \
+  helmfile -f "$q/fresh-retry-snapshot/helmfile.yaml.gotmpl" \
+  -l stage=application sync --skip-deps --skip-needs
+bash "$q/run-fixture.sh" changed-build name=shardshop-application pass
+bash "$q/run-fixture.sh" bad-migration stage=application fail
+bash "$q/run-fixture.sh" snapshot stage=application pass
+bash "$q/run-fixture.sh" bad-seeder name=shardshop-application fail
+bash "$q/run-fixture.sh" bad-readiness name=shardshop-application fail
+bash "$q/run-fixture.sh" bad-acceptance name=shardshop-application fail
+bash "$q/run-fixture.sh" snapshot name=shardshop-application pass
+```

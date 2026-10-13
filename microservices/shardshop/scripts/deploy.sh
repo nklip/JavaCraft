@@ -10,7 +10,7 @@ set -euo pipefail
 [[ $# == 1 ]] || { echo 'Usage: deploy.sh <run-name>' >&2; exit 1; }
 run=$1
 source "$(dirname -- "${BASH_SOURCE[0]}")/shards.sh"
-for tool in docker kind kubectl helm python3; do
+for tool in docker kind kubectl helm jq python3; do
     command -v "$tool" >/dev/null || { echo "$tool is not on PATH" >&2; exit 1; }
 done
 work=$(mktemp -d)
@@ -20,23 +20,32 @@ export SHARDSHOP_INVENTORY="$work/inventory.yaml"
 load_inventory
 assert_published_topology
 
-# Use the digest that up.sh registered on every kind node.
+# Use the deployed release's qualified images, without relying on mutable local
+# tags or choosing among unrelated repository digests retained by containerd.
+helm status shardshop-application --kube-context kind-shardshop --namespace shardshop --output json \
+    >"$work/release.json" 2>/dev/null \
+    || { echo 'Run scripts/up.sh first to deploy the application release' >&2; exit 1; }
+jq -e '.name == "shardshop-application" and .namespace == "shardshop" and .info.status == "deployed"' \
+    "$work/release.json" >/dev/null \
+    || { echo 'The application Helm release must be deployed before starting a legacy run' >&2; exit 1; }
+revision=$(jq -er '.version | select(type == "number" and . > 0 and . == floor)' "$work/release.json")
+helm get values shardshop-application --kube-context kind-shardshop --namespace shardshop \
+    --revision "$revision" --output json >"$work/release-values.json" 2>/dev/null \
+    || { echo 'Cannot read the deployed application release images' >&2; exit 1; }
 images=()
 nodes=$(kind get nodes --name shardshop)
+[[ -n "$nodes" ]] || { echo 'Run scripts/up.sh first to create the kind nodes' >&2; exit 1; }
 for application in product product-seeder product-reader; do
-    references=$(for node in $nodes; do
-        docker exec "$node" crictl inspecti "docker.io/library/shardshop-$application:local" 2>/dev/null |
-            python3 -c '
-import json, sys
-name = sys.argv[1]
-references = [reference for reference in json.load(sys.stdin)["status"]["repoDigests"]
-              if reference.startswith(name + "@sha256:")]
-print(references[0] if len(references) == 1 else "missing")
-' "docker.io/library/shardshop-$application" || echo missing
-    done | sort -u)
-    [[ "$references" == docker.io/*@sha256:* && "$references" != *$'\n'* ]] \
-        || { echo "Run scripts/up.sh first to build and load $application" >&2; exit 1; }
-    images+=("$application=$references")
+    reference=$(jq -er --arg application "$application" '.images[$application] | select(type == "string")' \
+        "$work/release-values.json")
+    [[ "$reference" =~ ^docker\.io/library/shardshop-$application@sha256:[0-9a-f]{64}$ ]] \
+        || { echo "The deployed release lacks a qualified $application image" >&2; exit 1; }
+    for node in $nodes; do
+        docker exec "$node" crictl inspecti "$reference" 2>/dev/null |
+            jq -e --arg reference "$reference" '.status.repoDigests | index($reference) != null' >/dev/null \
+            || { echo "Run scripts/up.sh first to load the deployed $application image on every node" >&2; exit 1; }
+    done
+    images+=("$application=$reference")
 done
 render applications "$run" "${images[@]}" >"$work/applications.yaml"
 render seeding "$run" "${images[@]}" >"$work/seeding.yaml"

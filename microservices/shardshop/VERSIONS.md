@@ -144,7 +144,11 @@ the gate uses the anchored pattern `^ShardShop image review$`. A new package ver
 or a new advisory has no statement, thus the gate stops again. Review the statements
 with the JRE base by **2026-10-28**, and when the base image digest changes. Since
 step 3.12, the same gate also examines the [migration image](#current-migration-runtime),
-which contains the same pebble binary. Version 2 of the document (2026-10-13) names it too.
+which contains the same pebble binary. Version 3 (2026-10-14) uses named Docker
+product PURLs without a tag, so Scout matches Skaffold content tags as well as the
+older fixed tags. The exact Go package version and ten CVEs stay unchanged.
+A newly built image passed; wrong product-name and package-version controls failed.
+Review these recipe-specific statements whenever the Java entrypoint changes too.
 
 #### OS packages without an advisory check
 
@@ -883,7 +887,9 @@ The launcher calls Java directly, and the image declares UID/GID 10001.
 `scripts/up.sh` builds the local ARM64 image with
 Docker Buildx and `SOURCE_DATE_EPOCH=0`, scans it with the gate of the application
 images, then loads it into kind. Before it registers the digest on a node, it verifies
-the pinned CRI manifest digest of the chart values. `scripts/migrate.sh` builds no
+the pinned loaded platform manifest digest of the chart values. Pin review compares
+the same artifact's platform manifest and config digests, so an archive index change
+does not by itself change the reviewed image. `scripts/migrate.sh` builds no
 image: after its topology guard, it stops if a node does not have the pinned
 reference. Docker, Buildx, Docker Scout and kind are therefore requirements for this
 local Flyway image workflow; the full `up.sh` workflow also requires Maven to build

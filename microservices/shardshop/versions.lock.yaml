@@ -449,8 +449,8 @@ images:
     - canonical_openjdk_25_26_04
     - ubuntu_26_04
     tag_observed: docker.io/library/shardshop-flyway:13.8.1-openjdk25
-    reference: docker.io/library/shardshop-flyway:13.8.1-openjdk25@sha256:19765ac553684c76f061d5ffb558874a6814951f91e11c6ad8b0d5bef39ce73b
-    linux_arm64_digest: sha256:19765ac553684c76f061d5ffb558874a6814951f91e11c6ad8b0d5bef39ce73b
+    reference: docker.io/library/shardshop-flyway:13.8.1-openjdk25@sha256:96efa77525170d9eac45d4baa7027920da788a92b46bbbdc3f6a9b0443b32665
+    linux_arm64_digest: sha256:96efa77525170d9eac45d4baa7027920da788a92b46bbbdc3f6a9b0443b32665
     linux_arm64_config_digest: sha256:f6a88d7ea657f4cb3c995ac11841778e2fdad7500dd7889d42cdc3c6ff0fe80a
     dockerfile: infra/images/flyway/Dockerfile
     build_script: scripts/up.sh
@@ -458,7 +458,7 @@ images:
     - flyway_distribution
     - application_jre
     source_date_epoch: 0
-    checked_on: '2026-10-13'
+    checked_on: '2026-10-14'
     review_by: '2026-10-28'
     java_runtime_version: 25.0.4.1+1-1-26.04.4-Ubuntu
     java_vendor: Ubuntu
@@ -466,24 +466,22 @@ images:
     image_user_observed: '10001:10001'
     verification: Native ARM64 CLI and Java runtime checks pass with network disabled,
       read-only root, no capabilities, no privilege escalation and writable /tmp.
-      The final image copies no upstream JRE. The manifest digest is the CRI digest
-      observed after importing the Docker archive into kind, not Docker's config ID.
-      All three restricted migration Jobs passed on this manifest digest, validating
-      both existing catalog migrations without changes; Cluster/PVC identities stayed
-      unchanged. A repeated cached build produced the same config and manifest digest.
-      On 2026-10-13, build-application-images.sh flyway built the same config ID.
-      kind skips a node that already has that image ID; a new import on one node
-      gave the same manifest digest. migrate.sh validated all seven streams on this
-      digest.
+      The final image copies no upstream JRE. On 2026-10-14, empty-lab qualification
+      exposed a tag-dependent archive index in CRI repoDigests. The old index and
+      the Skaffold-tagged archive reference this identical platform manifest and
+      config digest; the pin now records that platform manifest. up.sh reads the
+      exact tag's containerd target and verifies its config against the scanned build.
+      Earlier migration qualifications used an alias named after the archive index;
+      the underlying executable artifact is unchanged.
     advisories: 'Docker Scout 1.24.0 on 2026-10-13: 74 packages; only the Go stdlib
       1.26.7 of /usr/bin/pebble (2 critical, 8 high, 3 unrated), which the reviewed
-      statements of infra/images/application/vex/jre-pebble.openvex.json (version 2)
+      statements of infra/images/application/vex/jre-pebble.openvex.json (version 3)
       cover. On 2026-09-30, Scout reported no findings. The image copies only Flyway
       core, its PostgreSQL plugin, the PostgreSQL JDBC driver and licenses; recheck
       the final image at the next Flyway/base refresh, by 2026-10-28.'
     note: Locally built and loaded into kind one node at a time. up.sh scans it
       with the gate of the application
-      images, verifies every node's manifest digest against the pin of the chart values
+      images, verifies every node's loaded platform manifest digest against the pin of the chart values
       and registers the digest under the Job's repository name before running Flyway
       Jobs from immutable migration snapshots. Other build/exporter versions must
       reproduce that digest or require review and updated pins; cloud deployment needs

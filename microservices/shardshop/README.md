@@ -11,7 +11,8 @@ product reader from step 3.8 reads the seeded products at a bounded rate until i
 stops. The other entry points start CDI and exit. Step 3.5 provides workload-owned
 dataset definitions and HTTP clients; the buyer provider remains step 4.1, and the
 order workload loop remains step 4.7. Maven module tests need no Docker or
-Kubernetes; the chart rendering tests require `helm` on `PATH`. The Cucumber scenarios of `shardshop-testing` run product, the seeder
+Kubernetes; chart rendering and release orchestration tests require `helm` and
+`helmfile` on `PATH`. The Cucumber scenarios of `shardshop-testing` run product, the seeder
 and the reader against a PostgreSQL container in the `integration` profile
 ([step 3.10](#integration-tests-with-testcontainers-step-310)). Step 3.9 deploys product, the seeder Job and
 the reader on the kind lab. The reader starts its load only after product serves
@@ -484,10 +485,21 @@ the same.
 `up.sh` uses Skaffold for image builds and Helmfile for real Helm releases.
 Helmfile first syncs `cnpg` and `shardshop-infrastructure`; after allocator bootstrap
 and image delivery, it syncs `shardshop-migrations` and `shardshop-application`.
-Helm waits for the application resources and its seeder hook. The final deployment
-acceptance gate remains PLAN step 3.17: rollout and seeding completion do not prove
-the required traffic through both product pods or the accepted reader load. Run the separate [kind deployment checks](#kind-verification-snapshot-step-315)
-for those assertions. `migrate.sh`, `deploy.sh`, `render.sh` and `shards.sh` remain
+Helm waits for the application resources and its seeder hook. The application
+release then runs the native Helmfile `postsync` acceptance hook with
+`kind-release | kind-deployment`. `kind-release` checks the snapshot images,
+rendered desired configuration, current deployed Helm revision and Deployment
+generations, pod ownership and runtime digests, the current successful seeder, and
+ready product EndpointSlices. When kind reports an archive-index runtime digest,
+the observer reads its single platform descriptor through containerd and requires
+the qualified manifest; `kind-deployment` retains the traffic through both
+product pods and the accepted reader load. A failed acceptance hook fails Helmfile
+and `up.sh`; Helm may still show the release as deployed. Acceptance failure does
+not roll back the release: correct the cause and rerun startup. The observer never
+repairs resources. Diagnostics are bounded and contain no secrets.
+The reader remains running and disruptive drills remain opt-in. A new
+`kind-release` run requires `images.json` in the snapshot; standalone legacy
+`kind-deployment` runs do not. `migrate.sh`, `deploy.sh`, `render.sh` and `shards.sh` remain
 compatibility entry points until step 3.20; the normal startup command is `up.sh`.
 On a kind cluster created by this invocation, `up.sh` applies and verifies the retention
 admission policy, then creates the generator registry and immutable identity before
@@ -520,15 +532,17 @@ reserve their generator IDs with Java code in their own JVM.
    gate do not include them. [VERSIONS.md](VERSIONS.md#os-packages-without-an-advisory-check)
    records this gap.
 3. Stops if Docker Scout finds a critical or high advisory without a reviewed
-   statement in `infra/images/application/vex/`. Then the image is not loaded.
+   statement in `infra/images/application/vex/`. Statements identify the named
+   image recipes and exact package versions independently of Skaffold's content tags.
+   A failed gate prevents loading the image.
    All four enabled images are built and scanned before any image is loaded into
    kind.
 4. After provisioning, loads each qualified image into the kind nodes, one node at a
    time, and requires the same
-   manifest digest on each node. Then it registers that digest under the image name.
+   loaded platform manifest on each node. Then it registers that digest under the image name.
    `kind load` skips a node that already has the same image ID. Then the check uses
-   the manifest digest of the earlier import on that node.
-   For `flyway`, the digest must also be the pinned digest; otherwise the script
+   the loaded platform manifest digest of the earlier import on that node.
+   For `flyway`, the loaded platform manifest must also be the pinned digest; otherwise the script
    stops before it registers the digest, and the image pin needs a review.
    It also tags the image `sha256-<digest>` on each node. kind names each import
    `import-<date>@<digest>`, without a registry. Without the extra tag, the CRI uses
@@ -540,11 +554,11 @@ not load images into kind itself. The small native `kind load` adapter in `up.sh
 performs delivery and checks each loaded config ID against the qualified build;
 Helmfile owns deployment.
 
-`up.sh` captures the manifest digests of this invocation's qualified builds on
+`up.sh` captures the loaded platform manifest digests of this invocation's qualified builds on
 every node before running migrations or applying a new application release. A
 failure while loading or registering nodes can leave a partial image load, but
-prevents the new release. The compatibility `deploy.sh` also requires a consistent
-registered digest on every node. Docker Scout
+prevents the new release. The compatibility `deploy.sh` reads image references from
+the deployed Helm revision and requires those exact digests on every node. Docker Scout
 needs a network connection. [VERSIONS.md](VERSIONS.md#step-39-application-images)
 records the scan results and the reviewed statements.
 
@@ -1381,8 +1395,10 @@ Resource budgets, PostgreSQL settings and reviewed operator/same-major PostgreSQ
 updates can converge in place. Changes to storage, placement, bootstrap settings,
 replica count or PostgreSQL major version fail before apply; the local storage
 class does not support expansion. New schemas and roles use current-generation
-operator checks. Migration and application deployment follow those checks in the
-same invocation; final deployment acceptance remains a separate suite until step 3.17.
+operator checks. Migration, application deployment and the final
+`kind-release | kind-deployment` acceptance follow those checks in the same
+invocation; standalone `kind-deployment` remains available for compatibility and
+focused reruns.
 `up.sh` handles snapshots, local locks, Maven/Scout, native kind/Docker lifecycle,
 missing credentials, allocator bootstrap and image delivery. Skaffold owns image
 build configuration. Helmfile owns release dependencies and phase hooks; Helm
@@ -1729,8 +1745,8 @@ bash microservices/shardshop/scripts/up.sh
 Skaffold builds the migration image from its reviewed Dockerfile, pinned inputs
 and `SOURCE_DATE_EPOCH=0`. `up.sh` scans it with the gate of the
 [application images](#application-images), then its native kind adapter loads the
-ARM64 image and checks each node's CRI manifest digest against the chart image pin. A build, scan or digest failure stops it before it registers the
-image. Every enabled image must have the verified manifest digest on every node
+ARM64 image and checks each node's loaded platform manifest digest against the chart image pin. A build, scan or digest failure stops it before it registers the
+image. Every enabled image must have the verified loaded platform manifest digest on every node
 before `up.sh` creates SQL ConfigMaps or migration Jobs or applies a new release.
 
 [`database/shard/catalog/`](database/shard/catalog/) is the catalog stream.

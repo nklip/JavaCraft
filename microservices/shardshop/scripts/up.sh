@@ -91,15 +91,15 @@ load_image() {
     actual=$(docker image inspect --format '{{.Id}}' "$tag")
     [[ "$actual" == "$expected" ]] \
         || { echo "$tag changed after this build; refusing to load it" >&2; exit 1; }
-    # Docker config IDs identify our builds; Kubernetes requires the CRI manifest digest.
+    # Use the loaded platform manifest, not a CRI archive-index digest containing tag annotations.
     # Import one node at a time to bound memory use, and require the same digest on each.
     for node in $nodes; do
         kind load docker-image "$tag" --name "$cluster_name" --nodes "$node"
-        digest=$(docker exec "$node" crictl inspecti "$tag" | jq -er --arg expected "$expected" '
-            if .status.id != $expected then error("Loaded image differs from the qualified build") else . end |
-            [.status.repoDigests[] | split("@")[1]] | unique |
-            if length == 1 and (.[0] | test("^sha256:[0-9a-f]{64}$")) then .[0]
-            else error("Expected one CRI manifest digest") end')
+        digest=$(docker exec "$node" ctr --namespace=k8s.io images ls "name==$tag" | awk 'NR == 2 {print $3}')
+        docker exec "$node" ctr --namespace=k8s.io content get "$digest" |
+            jq -e --arg expected "$expected" '
+                if .config.digest == $expected then true
+                else error("Loaded manifest differs from the qualified build") end' >/dev/null
         if [[ "$image" == flyway && "$digest" != "${migration_image#*@}" ]]; then
             echo "$tag on $node has $digest, not the reviewed ${migration_image#*@}; review the build and update the image pin" >&2
             exit 1
@@ -215,4 +215,4 @@ while IFS=$'\t' read -r image tag; do
     load_image "$image" "$tag"
 done <"$work/builds.tsv"
 helmfile -f "$work/helmfile.yaml.gotmpl" -l stage=application sync --skip-deps --skip-needs
-echo 'Helm releases migrated and deployed the current build; catalog seeding completed.'
+echo 'ShardShop deployment verified: current images, seeded catalog, routing and reader traffic; reader remains running.'

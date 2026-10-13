@@ -2,6 +2,7 @@ package dev.nklip.javacraft.shardshop.testing.kind;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -60,6 +62,118 @@ class HelmReleaseTest {
         assertTrue(resources.stream().anyMatch(resource -> resource.path("metadata").path("name").asText().equals("shardshop-routing")));
         KindWorkloadPolicy.httpOnly(reader.path("spec").path("template").path("spec"));
         KindWorkloadPolicy.httpOnly(job.path("spec").path("template").path("spec"));
+    }
+
+    @Test
+    void releaseAcceptanceUsesTheNativeDesiredTemplatesAndIgnoresUnrelatedApiDefaults() throws Exception {
+        List<JsonNode> resources = render("application-release");
+        for (String name : List.of("shardshop-product", "shardshop-product-reader", "shardshop-application-seeder-1")) {
+            JsonNode desired = named(resources, name).path("spec").path("template");
+            ObjectNode live = desired.deepCopy();
+            ((ObjectNode) live.path("spec")).put("dnsPolicy", "ClusterFirst").put("schedulerName", "default-scheduler");
+            ((ObjectNode) live.path("metadata").path("labels")).put("pod-template-hash", "api-generated");
+            assertTrue(KindRelease.templateMatches(desired, live), name);
+            ((ObjectNode) live.path("spec").path("containers").get(0)).put("image", image("product", 'b'));
+            assertFalse(KindRelease.templateMatches(desired, live), name + " must use the qualified invocation image");
+        }
+    }
+
+    @Test
+    void releaseAcceptanceRejectsStaleConfigurationBindingsAndMounts() throws Exception {
+        JsonNode desired = named(render("application-release"), "shardshop-product").path("spec").path("template");
+        List<Consumer<ObjectNode>> changes = List.of(
+                live -> object(namedField(live.path("spec").path("volumes"), "config").path("configMap"))
+                        .put("name", "old-product-config"),
+                live -> object(namedField(container(live).path("volumeMounts"), "config")).put("mountPath", "/old/config"),
+                live -> object(namedField(container(live).path("volumeMounts"), "config")).put("readOnly", false),
+                live -> object(namedField(live.path("spec").path("volumes"), "catalog-ca").path("projected")
+                        .path("sources").get(0).path("secret")).put("name", "old-catalog-ca"));
+        assertRejectedChanges(desired, changes);
+    }
+
+    @Test
+    void releaseAcceptanceRejectsChangedReadinessAndSecurity() throws Exception {
+        JsonNode desired = named(render("application-release"), "shardshop-product").path("spec").path("template");
+        List<Consumer<ObjectNode>> changes = List.of(
+                live -> object(container(live).path("readinessProbe").path("tcpSocket")).put("port", 9090),
+                live -> container(live).remove("readinessProbe"),
+                live -> object(container(live).path("securityContext")).put("allowPrivilegeEscalation", true),
+                live -> object(container(live).path("securityContext")).put("readOnlyRootFilesystem", false),
+                live -> object(live.path("spec").path("securityContext")).put("runAsNonRoot", false),
+                live -> object(live.path("spec")).put("serviceAccountName", "foreign-account"));
+        assertRejectedChanges(desired, changes);
+    }
+
+    @Test
+    void releaseAcceptanceRejectsInjectedRuntimeOverridesAndExtraConfiguration() throws Exception {
+        List<JsonNode> resources = render("application-release");
+        for (String name : List.of("shardshop-product", "shardshop-product-reader", "shardshop-application-seeder-1")) {
+            JsonNode desired = named(resources, name).path("spec").path("template");
+            List<Consumer<ObjectNode>> changes = List.of(
+                    live -> container(live).putArray("command").add("/bin/sh"),
+                    live -> container(live).putArray("args").add("-Dquarkus.http.port=9090"),
+                    live -> container(live).putArray("envFrom").addObject().putObject("configMapRef").put("name", "old-settings"),
+                    live -> ((ArrayNode) live.path("spec").path("volumes")).addObject().put("name", "extra-config")
+                            .putObject("configMap").put("name", "old-settings"),
+                    live -> object(live.path("spec")).putArray("initContainers").addObject().put("name", "rewrite-config")
+                            .put("image", image("product", 'b')));
+            assertRejectedChanges(desired, changes);
+        }
+    }
+
+    @Test
+    void releaseAcceptanceAllowsDefaultedProductPodAndItsAdmittedServiceAccountToken() throws Exception {
+        JsonNode desired = named(render("application-release"), "shardshop-product").path("spec").path("template");
+        ObjectNode live = desired.deepCopy();
+        live.putObject("status");
+        ObjectNode spec = object(live.path("spec"));
+        spec.put("dnsPolicy", "ClusterFirst").put("schedulerName", "default-scheduler").put("restartPolicy", "Always")
+                .put("terminationGracePeriodSeconds", 30).put("serviceAccount", "shardshop-product").put("nodeName", "unit-lab-worker");
+        spec.putArray("tolerations").addObject().put("key", "node.kubernetes.io/not-ready").put("operator", "Exists")
+                .put("effect", "NoExecute").put("tolerationSeconds", 300);
+        ((ArrayNode) spec.path("tolerations")).addObject().put("key", "node.kubernetes.io/unreachable").put("operator", "Exists")
+                .put("effect", "NoExecute").put("tolerationSeconds", 300);
+        ObjectNode container = container(live);
+        container.put("imagePullPolicy", "IfNotPresent").put("terminationMessagePath", "/dev/termination-log")
+                .put("terminationMessagePolicy", "File");
+        object(container.path("ports").get(0)).put("protocol", "TCP");
+        object(container.path("readinessProbe")).put("timeoutSeconds", 1).put("successThreshold", 1).put("failureThreshold", 3);
+        for (JsonNode volume : spec.path("volumes")) {
+            for (String type : List.of("configMap", "projected"))
+                if (volume.has(type)) object(volume.path(type)).put("defaultMode", 420);
+        }
+        ((ArrayNode) spec.path("volumes")).add(JSON.readTree("""
+                {"name":"kube-api-access-abc12","projected":{"defaultMode":420,"sources":[
+                {"serviceAccountToken":{"expirationSeconds":3607,"path":"token"}},
+                {"configMap":{"name":"kube-root-ca.crt","items":[{"key":"ca.crt","path":"ca.crt"}]}},
+                {"downwardAPI":{"items":[{"path":"namespace","fieldRef":{"apiVersion":"v1","fieldPath":"metadata.namespace"}}]}}]}}
+                """));
+        ((ArrayNode) container.path("volumeMounts")).addObject().put("name", "kube-api-access-abc12")
+                .put("mountPath", "/var/run/secrets/kubernetes.io/serviceaccount").put("readOnly", true);
+        object(live.path("metadata").path("labels")).put("pod-template-hash", "api-generated");
+        assertTrue(KindRelease.templateMatches(desired, live));
+        object(spec.path("volumes").get(spec.path("volumes").size() - 1).path("projected").path("sources").get(1)
+                .path("configMap")).put("name", "old-settings");
+        assertFalse(KindRelease.templateMatches(desired, live), "A token-like volume must not hide arbitrary configuration");
+    }
+
+    private static void assertRejectedChanges(JsonNode desired, List<Consumer<ObjectNode>> changes) {
+        assertAll(changes.stream().<org.junit.jupiter.api.function.Executable>map(change -> () -> {
+            ObjectNode live = desired.deepCopy();
+            change.accept(live);
+            assertFalse(KindRelease.templateMatches(desired, live), "Changed chart pod specification must be rejected");
+        }));
+    }
+
+    private static ObjectNode object(JsonNode node) { return (ObjectNode) node; }
+
+    private static ObjectNode container(JsonNode template) {
+        return object(template.path("spec").path("containers").get(0));
+    }
+
+    private static JsonNode namedField(JsonNode fields, String name) {
+        for (JsonNode field : fields) if (field.path("name").asText().equals(name)) return field;
+        throw new AssertionError("Missing field " + name);
     }
 
     @Test

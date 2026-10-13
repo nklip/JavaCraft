@@ -111,9 +111,18 @@ state are excluded from transfer. ShardShop releases use Helm's three-way merge
 for previously apply-managed resources; `cnpg` retains server-side updates.
 Helm owns hook completion and bounded rollout
 waits; Maven retains topology/allocator/readiness and current-generation Publication
-checks. Helmfile does not roll back committed SQL or automatically uninstall after
-a failed release. Final traffic/load acceptance remains PLAN step 3.17, with
-disruptive drills explicitly selected. The final two-script workflow remains
+checks. The application release's native Helmfile `postsync` hook invokes the final
+Maven acceptance with `kind-release | kind-deployment` after the application resources
+and seeder hook Job succeed. `kind-release` checks the snapshot images, rendered desired
+configuration, current deployed Helm revision and Deployment generations, pod ownership
+and runtime digests, the current successful seeder, and ready product EndpointSlices;
+`kind-deployment` retains the traffic and reader-load assertions. The release hook
+failure is fatal to Helmfile and `up.sh`, although Helm may still report the release as
+deployed. The observer does not repair resources, retry the release or roll it back;
+Kubernetes continues its normal reconciliation. Diagnostics remain bounded and
+contain no secrets. The reader remains running and disruptive drills are still
+explicitly selected. A new `kind-release` run requires `images.json` in the
+snapshot; standalone legacy `kind-deployment` runs do not. The final two-script workflow remains
 planned for step 3.20, without extra wrappers, embedded Python, downloaded tool
 binaries or a Java lifecycle controller.
 
