@@ -44,6 +44,27 @@ class HelmReleaseTest {
     }
 
     @Test
+    void dnsProbesGiveColdStartupItsOwnBudgetAndBoundDnsExecution() throws Exception {
+        values.putObject("probe").put("run", "cold-start").put("nodes", "control-plane,worker,worker2,worker3");
+        List<JsonNode> probes = KindLab.items(render("dns-probes").getFirst());
+        JsonNode postgresqlImage = render("inventory").getFirst().path("data").path("postgresqlImage");
+        assertEquals(List.of("control-plane", "worker", "worker2", "worker3"), probes.stream()
+                .map(pod -> pod.path("spec").path("nodeName").asText()).toList());
+        for (JsonNode pod : probes) {
+            JsonNode spec = pod.path("spec");
+            assertEquals(15 * 60 + 120, spec.path("activeDeadlineSeconds").asInt(),
+                    "A cold image pull must not consume the DNS execution budget");
+            assertEquals("Never", spec.path("restartPolicy").asText());
+            JsonNode container = spec.path("containers").get(0);
+            assertEquals("IfNotPresent", container.path("imagePullPolicy").asText());
+            assertEquals(postgresqlImage, container.path("image"));
+            assertEquals(JSON.valueToTree(List.of("timeout", "--kill-after=5s", "120s", "sh", "-ec",
+                    "until getent hosts kubernetes.default.svc.cluster.local; do sleep 2; done")), container.path("command"),
+                    "DNS must still resolve successfully within 120 seconds after the container starts");
+        }
+    }
+
+    @Test
     void seedingRunsAfterApplicationReadinessAndRetainsVerificationEvidence() throws Exception {
         List<JsonNode> resources = render("application-release");
         assertEquals(resources, render("application-release"));

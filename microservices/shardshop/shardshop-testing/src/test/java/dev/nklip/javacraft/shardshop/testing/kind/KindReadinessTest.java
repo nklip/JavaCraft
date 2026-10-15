@@ -2,11 +2,63 @@ package dev.nklip.javacraft.shardshop.testing.kind;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 final class KindReadinessTest {
     private static JsonNode json(String value) { return KindLab.parse(value); }
+
+    @Test
+    void dnsWaitAllowsColdStartupAndStillRequiresEveryProbeToSucceed() throws Exception {
+        KindLab lab = mock(KindLab.class);
+        Path snapshot = Path.of("dns-snapshot").toAbsolutePath();
+        when(lab.snapshot()).thenReturn(snapshot);
+        when(lab.kubectl(any(Duration.class), any(String[].class))).thenAnswer(invocation -> {
+            Duration processTimeout = invocation.getArgument(0);
+            List<String> arguments = List.of((String[]) invocation.getRawArguments()[1]);
+            long waitSeconds = Long.parseLong(arguments.stream().filter(arg -> arg.startsWith("--timeout="))
+                    .findFirst().orElseThrow().replace("--timeout=", "").replace("s", ""));
+            long requestSeconds = Long.parseLong(arguments.getFirst().replace("--request-timeout=", "").replace("s", ""));
+            assertTrue(waitSeconds >= 15 * 60 + 120 + 30,
+                    "The wait must cover cold startup, DNS execution and pod termination grace");
+            assertTrue(requestSeconds > waitSeconds);
+            assertTrue(processTimeout.toSeconds() > requestSeconds);
+            assertTrue(arguments.contains("--for=jsonpath={.status.phase}=Succeeded"));
+            assertEquals(List.of("-f", snapshot.resolve("dns-probes.yaml").toString()), arguments.subList(arguments.size() - 2, arguments.size()),
+                    "The gate must wait on the complete per-node probe manifest");
+            return "";
+        });
+
+        assertDoesNotThrow(() -> new KindReadiness(lab).dns());
+        verify(lab).kubectl(any(Duration.class), any(String[].class));
+    }
+
+    @Test
+    void dnsFailureReportsImageDeliveryAndRuntimeFailureDetails() throws Exception {
+        KindLab lab = mock(KindLab.class);
+        when(lab.snapshot()).thenReturn(Path.of("dns-snapshot"));
+        IOException timeout = new IOException("Probe wait timed out");
+        when(lab.kubectl(any(Duration.class), any(String[].class))).thenThrow(timeout);
+        when(lab.kubectlAttempt(any(String[].class))).thenAnswer(invocation -> {
+            List<String> arguments = List.of((String[]) invocation.getRawArguments()[0]);
+            String columns = arguments.getLast();
+            assertTrue(columns.contains(".state.waiting.reason"));
+            assertTrue(columns.contains(".state.waiting.message"));
+            assertTrue(columns.contains(".state.terminated.reason"));
+            assertTrue(columns.contains(".state.terminated.exitCode"));
+            return new KindLab.CommandResult(0, "worker Pending ImagePullBackOff registry unavailable\nworker2 Failed Error 124", "");
+        });
+
+        IOException failure = assertThrows(IOException.class, () -> new KindReadiness(lab).dns());
+        assertSame(timeout, failure.getCause());
+        assertTrue(failure.getMessage().contains("ImagePullBackOff registry unavailable"));
+        assertTrue(failure.getMessage().contains("Failed Error 124"));
+    }
 
     @Test
     void quantitiesCompareEquivalentKubernetesUnits() {

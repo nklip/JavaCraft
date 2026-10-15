@@ -44,7 +44,9 @@ Kubernetes and CNPG reconcile the resources. Opt-in Maven kind Cucumber scenario
 invariants and readiness using that same invocation snapshot: guards run before
 protected mutations, and readiness checks observe DNS from a pod on every node,
 current-generation database resources, actual SQL connectivity and configuration,
-and both streaming quorum standbys of every shard. Native bounded waits are used
+and both streaming quorum standbys of every shard. DNS probes allow 15 minutes for
+cold image startup in addition to their 120-second execution limit; every probe
+must succeed. Native bounded waits are used
 where their status proves the requirement; cross-resource and SQL assertions stay
 in Java tests. These tests do not replace reconciliation with a Java controller.
 Supported resource, PostgreSQL configuration and reviewed operator changes are
@@ -80,8 +82,9 @@ Every standalone suite consumes an explicit `shardshop.kind.snapshot` containing
 `infrastructure.yaml`; DNS gates additionally use `dns-probes.yaml`. Existing
 infrastructure safety gates remain individually selectable. Tests observe native
 reconciliation or make only the explicitly selected temporary drill changes;
-production migration and deployment run through `up.sh`. Compatibility
-`migrate.sh`, `deploy.sh`, `render.sh` and `shards.sh` remain until step 3.20.
+production migration and deployment run through `up.sh`. The four maintained
+entry points are `cluster-create.sh`, `up.sh`, `down.sh` and `cluster-destroy.sh`;
+manifest previews use native `helm template` with the shared chart and values.
 `cluster-create.sh` first caches repository and microservices parent POM metadata
 using non-recursive `install:install-file` calls, without building their reactors.
 It builds, verifies and installs only `shardshop-testing` and
@@ -272,8 +275,8 @@ Dataset definitions and service-side creation follow section 3.
    stays completed rather than being restarted as a Deployment. Reader and order
    producer run until the scenario controller scales them to zero. Each new run
    gets a new Helm-revision seeder Job on each deployment invocation while
-   startup replaces workload pods even when their build is unchanged. Legacy explicit runs remain available
-   for compatibility and drills. If the dataset is already complete, a workload can
+   startup replaces workload pods even when their build is unchanged. Explicit temporary seeder
+   runs remain available through Maven workload drills. If the dataset is already complete, a workload can
    continue its load before
    the Job of its run completes, because the seeder sends the same keys and
    payloads again. Workloads do not generate run IDs.
@@ -823,7 +826,7 @@ membership or order reassigns existing IDs; deployment/migration refuse changes
 to a published list until the lab is explicitly reset and reseeded. Changing an
 existing shard's region also fails the published `regionVersion` guard. Before
 starting migrations, `up.sh` reserves both version hashes in the immutable
-`shardshop-migration-topology` ConfigMap. `up.sh` and `migrate.sh` compare the
+`shardshop-migration-topology` ConfigMap. `up.sh` compares the
 inventory with this saved topology as well as the published routing snapshot,
 including when no versioned migration is pending. Both existing ConfigMaps must
 contain matching `version` and `regionVersion` values; absent snapshots are allowed
@@ -1020,15 +1023,17 @@ The single ordered inventory `infra/shards.yaml` drives the shared chart's
 infrastructure, migration, and routing renders. Shared values carry image pins,
 resource budgets and database defaults; environment values carry storage and
 placement. Scripts snapshot the inventory, enumerate its entries, and never keep
-another shard list. `render.sh migration SHARD [catalog|ordering]` selects the
-stream, defaulting to `catalog`. The shared template uses stream-specific Job,
+another shard list. Native `helm template` previews select `render=migration`,
+`migrationShard=SHARD` and `migrationStream=catalog` or `ordering`. The shared
+template uses stream-specific Job,
 SQL ConfigMap and migrator Secret names; both streams receive the same
 `shardRegion`, `shardIndex`, and `shardCount` placeholders.
-`render.sh migration ledger-db ledger` selects the ledger stream, without shard
-placeholders or region labels. The chart rejects mismatched ledger/shard targets.
+`migrationShard=ledger-db` with `migrationStream=ledger` selects the ledger stream,
+without shard placeholders or region labels. The chart rejects mismatched
+ledger/shard targets.
 Shard names are limited to 44 characters. Helm migration hook names use a bounded
-release prefix plus stream, inventory index and revision. The legacy migration
-render retains its shard/stream names. The template names the endpoint and CA Secret
+release prefix plus stream, inventory index and revision. The non-hook migration
+preview retains its shard/stream names. The template names the endpoint and CA Secret
 directly; no prefix replacement transformers are needed. Infrastructure rendering
 excludes Jobs and routing publication. `up.sh` runs catalog on every shard,
 then ordering on every shard, then `database/ledger/ledger` once, and stops on the

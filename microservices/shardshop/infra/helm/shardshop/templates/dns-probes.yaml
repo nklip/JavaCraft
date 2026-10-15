@@ -15,7 +15,8 @@ items:
     spec:
       nodeName: {{ $node | quote }}
       restartPolicy: Never
-      activeDeadlineSeconds: 120
+      # Allow 15 minutes for a cold image pull, then 120 seconds for DNS execution.
+      activeDeadlineSeconds: 1020
       automountServiceAccountToken: false
       tolerations:
         - operator: Exists
@@ -27,7 +28,7 @@ items:
         - name: dns
           image: {{ $.Values.postgresql.image | quote }}
           imagePullPolicy: IfNotPresent
-          command: [sh, -ec, "until getent hosts kubernetes.default.svc.cluster.local; do sleep 2; done"]
+          command: [timeout, --kill-after=5s, 120s, sh, -ec, "until getent hosts kubernetes.default.svc.cluster.local; do sleep 2; done"]
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

@@ -884,17 +884,17 @@ and drivers, Azure AD and Netty libraries, the upstream Temurin JRE and Ubuntu
 24.04 base do not.
 The launcher calls Java directly, and the image declares UID/GID 10001.
 
-`scripts/up.sh` builds the local ARM64 image with
-Docker Buildx and `SOURCE_DATE_EPOCH=0`, scans it with the gate of the application
+`scripts/up.sh` invokes Skaffold to build the local ARM64 image with
+Docker BuildKit and `SOURCE_DATE_EPOCH=0`, scans it with the gate of the application
 images, then loads it into kind. Before it registers the digest on a node, it verifies
 the pinned loaded platform manifest digest of the chart values. Pin review compares
 the same artifact's platform manifest and config digests, so an archive index change
-does not by itself change the reviewed image. `scripts/migrate.sh` builds no
-image: after its topology guard, it stops if a node does not have the pinned
-reference. Docker, Buildx, Docker Scout and kind are therefore requirements for this
-local Flyway image workflow; the full `up.sh` workflow also requires Maven to build
-the application images. Review changed
-build inputs and the resulting digest together.
+does not by itself change the reviewed image. Helmfile then runs the migration
+release only after the retained topology, allocator and infrastructure gates pass.
+`scripts/cluster-create.sh` provisions that foundation before the first `up.sh`.
+Docker, Buildx, Docker Scout, kind, Skaffold, Helm, Helmfile and Maven are requirements
+for the local build and migration workflow. Review changed build inputs and the
+resulting digest together.
 
 The final ARM64 image reports `java.vendor=Ubuntu` and OpenJDK
 `25.0.4.1+1-1-26.04.4-Ubuntu`. A Docker Scout scan of the trimmed image on

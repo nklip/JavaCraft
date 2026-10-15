@@ -282,7 +282,7 @@
                     <plugin>
                         <!--
                             The generator scenarios apply the real RBAC and retention policy of the chart. helm comes
-                            from the PATH, as for the lab scripts, and render.sh uses the same values. Helm 4.3 ignores
+                            from PATH, using the same environment values and inventory as cluster-create.sh. Helm 4.3 ignores
                             show-only with output-dir, thus it writes all infrastructure templates; the scenarios read
                             only generator-allocation.yaml. Its "wrote" lines go to the debug log, and errors stay visible.
                         -->

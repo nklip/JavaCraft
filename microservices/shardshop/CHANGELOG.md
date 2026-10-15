@@ -1874,3 +1874,131 @@ input paths. It runs the real creation/startup workflows and restores the retain
 lab, comparing protected identities, credential hashes, application pod identities
 and infrastructure Helm revisions. The wrapper and its logs are local evidence,
 not maintained project entry points.
+
+## Step 3.20
+
+**2026-10-15:** Removed `deploy.sh`, `migrate.sh`, `render.sh` and `shards.sh`.
+The only maintained executable entry points under ShardShop are
+`scripts/cluster-create.sh`, `scripts/cluster-destroy.sh`, `scripts/up.sh` and
+`scripts/down.sh`. Creation and startup retain their non-executable sourced
+implementation helper, `scripts/lib/lifecycle.sh`, as requested in the preceding
+lifecycle refactor. No replacement wrapper or task runner was introduced.
+
+README and architecture now describe native Helm previews, creation followed by
+application startup, every-run application restarts, retained shutdown/resumption
+and explicit destruction. Active compatibility-helper and Python prerequisites
+were removed. The recovery runbook distinguishes retryable startup failures from
+lost storage or allocator history; coordinated backup/restore remains steps
+6.3–6.4. Chart comments, the Testcontainers rendering comment, version policy and
+artifact-lock ownership/tag metadata follow the supported workflow. Historical
+completed milestones and earlier CHANGELOG evidence remain unchanged.
+
+The scoped Testcontainers build passed **998 unit/startup tests and 42 Cucumber
+scenarios**, including allocator admission/TLS failures, HTTP contracts, persistent
+idempotency, seeding/reader behavior and PostgreSQL interruption/recovery:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
+```
+
+Lifecycle inventory inspection confirms four executable scripts and the one
+non-executable shared helper, with no other shell files under ShardShop outside
+generated targets. No active references to retired script names remain outside
+historical plan/changelog entries. Shell syntax checks and `git diff --check` pass.
+
+The standalone default kind suite passed **three scenarios**, and explicit
+`kind-drill` passed **both database and workload drills** on the retained lab.
+Before/after comparisons preserved node and volume identities, database/PVC and
+allocator identities, credentials and the catalog key-to-ID digest; the drill
+lock was removed after recovery. These runs reused the current compiled observer
+classes and installed dependencies from startup, without repeating a Maven build:
+
+```bash
+# $snapshot is prepared with the README's native Helm snapshot commands.
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+  -Dit.test=KindIT -Dshardshop.kind.snapshot="$snapshot"
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+  -Dit.test=KindIT -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-drill
+```
+
+Two clean-bootstrap attempts exposed a cold-start deadline defect: all four DNS
+probe Pods remained `Pending / ContainerCreating` during image pulls when the
+150-second observer wait expired. The Pod's 120-second deadline included image
+startup. A direct pull of the exact pinned PostgreSQL image also took several
+minutes before completing. Both owned disposable labs were removed through
+`cluster-destroy.sh`, and full `up.sh` runs restored the retained lab successfully.
+
+The probe now bounds DNS execution itself to 120 seconds with the pinned image's
+GNU `timeout`, and its overall Pod deadline allows 15 additional minutes for
+cold startup. Native wait/request/process deadlines are 1050/1060/1070 seconds,
+covering Pod termination grace. Every node must still reach `Succeeded` with the
+same pinned image. Failure diagnostics include image waiting messages and process
+termination details. The cached pinned image passed network-free success and
+timeout smoke checks (exit codes 0 and 124).
+The corrected fresh-cluster DNS gate passed on all four nodes in **431.3 seconds**,
+including cold pulls; the previous 150-second wait could not cover this startup.
+
+All **27 focused Helm/readiness tests** pass. The three new regressions first
+failed against the previous implementation for the shared startup deadline,
+insufficient observer wait and missing failure details, then passed after the fix:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/shardshop-testing/pom.xml \
+  -Dshardshop.infrastructureOnly=true -Dtest=HelmReleaseTest,KindReadinessTest test
+```
+
+The corrected explicit lifecycle passed on the disposable `shardshop-step320`
+lab. Each full `up.sh` build passed **1,123 unit tests and 55 routing startup
+tests**, image advisory gates, and all **four final acceptance scenarios**:
+
+- Creation produced the database foundation and allocator high-water zero, with
+  no application Deployments or Jobs. First `up.sh` migrated, seeded and started
+  the applications without changing either infrastructure Helm revision.
+- A harmless product resource added only to the temporary source copy changed the
+  deployed product digest from `20b663099303b1aac7d77226f7740f76ef0bc4bb04fbfcf19b39213b78fda1f6`
+  to `1c1562438bce8808a1f2a4d8998744b9e8824b91c5d613776dd5f0b5bea73cee`.
+  The next unchanged build retained every image digest and replaced all three
+  application pod identities. Both runs preserved the seeded catalog.
+- `down.sh` stopped all four node containers; repeated shutdown succeeded.
+  Subsequent `up.sh` preserved node/volume identities, all ten PVC bindings,
+  database and allocator identities, credential hashes, catalog key-to-ID digest
+  and both infrastructure Helm revisions. Allocator history advanced normally.
+- Destruction removed the owned nodes, their attached volumes and kubeconfig
+  context. Repeated destruction and shutdown of the missing cluster succeeded;
+  temporary lifecycle locks and destruction records were removed.
+
+The qualification ran the maintained workflows in this order:
+
+```bash
+bash microservices/shardshop/scripts/cluster-create.sh
+bash microservices/shardshop/scripts/up.sh
+# Add the harmless resource in the disposable source copy, then qualify both cases:
+bash microservices/shardshop/scripts/up.sh
+bash microservices/shardshop/scripts/up.sh
+bash microservices/shardshop/scripts/down.sh
+bash microservices/shardshop/scripts/down.sh
+bash microservices/shardshop/scripts/up.sh
+bash microservices/shardshop/scripts/cluster-destroy.sh
+bash microservices/shardshop/scripts/cluster-destroy.sh
+bash microservices/shardshop/scripts/down.sh
+```
+
+The local evidence driver was invoked as
+`bash /private/tmp/shardshop-320/qualify-final.sh`. It uses a temporary source
+copy plus entry-point copies whose only adaptations are cluster identity/context
+and input paths, with a private kubeconfig and temporary directory. It stops the
+original lab for Docker VM capacity, captures protected identities before and
+after each case, and registers cleanup/restoration before creating the owned lab.
+The temporary driver and logs are local evidence, not maintained project scripts.
+
+The final full `up.sh` restored the original `shardshop` lab and passed all build,
+advisory and acceptance gates. Before/after comparisons preserved its original
+four nodes and volume attachments, all ten PVC identities/bindings, database and
+allocator identities, credential hashes and infrastructure Helm revisions. Its
+catalog key-to-ID digest remains
+`97af5c774026fb993e04a7b80e3c74bc2ad6c8c6ff7ccc6b27ffe56a7f57ca88`.
+Two product replicas and one reader are Ready, all ten PVCs are Bound, and both
+qualification and restoration completed successfully with lifecycle locks released.
+Step 3.20 is complete.

@@ -234,7 +234,7 @@ reader; step 4.8 adds order, ledger and the order producer when they are functio
 | 3.17 Complete up.sh with a deployment success gate | 3.15, 3.16 | Done | Add final deployment acceptance to the existing Skaffold build and Helmfile release workflow. Helm already waits for release resources and the current revision's seeder hook; use a declarative Helmfile phase hook to invoke Maven checks of desired generations/images, service readiness and reader catalog resolution. Invoke the step 3.15 deployment suite to verify routing, credential restrictions, traffic on both product pods within 120 seconds and a fresh all-OK reader interval at the existing accepted rate. Do not include pod deletion, standby fencing or repeated-release drills in normal startup. Preserve Java-owned catalog/load gating and leave the reader running. Keep every phase bounded, propagate failures and report bounded diagnostics without secrets; never report complete acceptance for a partially updated release. Record empty-lab startup, unchanged pod convergence with fresh no-op migration/idempotent seeder attempts, changed build/configuration, retained-data resume and failed migration/seeding/readiness. **2026-10-14:** native Helmfile acceptance passed fresh/repeated, changed-build/configuration and retained-data qualifications; migration, seeder, readiness and insufficient-traffic failures propagated, with two product replicas and one reader restored ([evidence](CHANGELOG.md#step-317)). |
 | 3.18 Stop the entire cluster through down.sh | 3.14 | Done | `down.sh` stops every kind node of the ShardShop cluster, including control plane and workers, and verifies all of those containers are stopped with a bounded shutdown timeout. A missing or already stopped cluster succeeds without changes. Preserve volumes, Secrets, databases and generator history; do not delete the cluster or stop Docker Desktop or unrelated containers. Serialize `up.sh` and `down.sh` so concurrent lifecycle calls cannot race, and release the lock on failure or interruption. Verify shutdown while workloads run, repeated shutdown, missing-cluster shutdown and a subsequent `up.sh` that recovers the same data and allocator identity. **2026-10-15:** 30 lifecycle tests and live stop/restart pass; all ten PVC bindings, catalog IDs and allocator identity are retained. The requested `cluster-destroy.sh` also passes disposable-cluster deletion and repeat checks. [Evidence](CHANGELOG.md#step-318) |
 | 3.19 Replace the offline dataset generator with Java tooling | 3.12 | Done | Replace `shardshop-workload/shardshop-datasets/scripts/generate-buyers.py` with a development-only Java generator invoked through Maven in `shardshop-datasets`; do not package it into services or add another script. Reproduce the three checked-in `buyers-v1` TSVs byte for byte from the retained source pools, offline and without generating entity IDs. Generate into `target` for verification so ordinary builds and `up.sh` never rewrite source fixtures. Document the explicit dataset regeneration command and update `SOURCES.md`, `source-manifest.json` and provenance tests. Delete the Python generator only after reproducibility and the module's existing dataset checks pass. **2026-10-15:** all 38 dataset tests and explicit offline Java generation pass; all three buyer TSVs reproduce byte for byte, source fixtures remain unchanged, and the generator is excluded from production JARs. [Evidence](CHANGELOG.md#step-319) |
-| 3.20 Retire old scripts and qualify the explicit lifecycle workflow | 3.17, 3.18, 3.19 | Planned | Delete the remaining `deploy.sh`, `migrate.sh`, `render.sh` and `shards.sh` after their replacements pass; step 3.15 already retired the two live verification scripts. Together with step 3.19, only `scripts/cluster-create.sh`, `scripts/up.sh`, `scripts/down.sh` and `scripts/cluster-destroy.sh` remain as maintained entry points anywhere under ShardShop, with `scripts/lib/lifecycle.sh` as their creation/startup implementation helper; do not hide the removed entry points in another directory or a task-runner wrapper. Update README, architecture, chart comments, artifact-lock metadata and active command references; preserve historical CHANGELOG evidence. Document creation, application deployment/restart, retained shutdown and destruction, separate Maven test/drill commands and explicit data-recovery procedures. Run the relevant module builds, Testcontainers scenarios, default `kind` deployment suite and an explicit `-Pkind -Dshardshop.kind.tags=kind-drill` qualification run, then prove clean bootstrap, changed-version deployment, unchanged-build application restart, full stop and retained-data restart using only the explicit lifecycle commands. Record exact commands and results in CHANGELOG. |
+| 3.20 Retire old scripts and qualify the explicit lifecycle workflow | 3.17, 3.18, 3.19 | Done | Delete the remaining `deploy.sh`, `migrate.sh`, `render.sh` and `shards.sh` after their replacements pass; step 3.15 already retired the two live verification scripts. Together with step 3.19, only `scripts/cluster-create.sh`, `scripts/up.sh`, `scripts/down.sh` and `scripts/cluster-destroy.sh` remain as maintained entry points anywhere under ShardShop, with `scripts/lib/lifecycle.sh` as their creation/startup implementation helper; do not hide the removed entry points in another directory or a task-runner wrapper. Update README, architecture, chart comments, artifact-lock metadata and active command references; preserve historical CHANGELOG evidence. Document creation, application deployment/restart, retained shutdown and destruction, separate Maven test/drill commands and explicit data-recovery procedures. Run the relevant module builds, Testcontainers scenarios, default `kind` deployment suite and an explicit `-Pkind -Dshardshop.kind.tags=kind-drill` qualification run, then prove clean bootstrap, changed-version deployment, unchanged-build application restart, full stop and retained-data restart using only the explicit lifecycle commands. Record exact commands and results in CHANGELOG. **2026-10-15:** Four entry points remain; full builds, 42 Testcontainers scenarios, default kind and both explicit drills pass. Clean creation, changed/unchanged deployment, stop/resume and teardown pass; cold-image DNS startup has a separate bounded allowance. The original lab is restored with its data and identities preserved. [Evidence](CHANGELOG.md#step-320) |
 
 ### Milestone 4: Complete order-to-ledger saga
 
@@ -558,14 +558,35 @@ using an explicit invocation snapshot. Its default tag is `kind-deployment`;
 `kind-drill` explicitly selects temporary disruption and recovery scenarios. Turn
 every architecture acceptance scenario into a reproducible check, without adding scripts.
 
-The planned commands below run from the repository root after steps 3.13–3.20
-are implemented; the existing scripts do not yet provide this complete workflow.
-Normal operation requires only these two commands:
+The lifecycle commands below run from the repository root. Create the foundation
+once before application deployment; each later `up.sh` resumes retained nodes and
+restarts applications even for an unchanged build.
 
 ```bash
+bash microservices/shardshop/scripts/cluster-create.sh
 bash microservices/shardshop/scripts/up.sh
-bash microservices/shardshop/scripts/down.sh
 ```
+
+Retain the lab between runs:
+
+```bash
+bash microservices/shardshop/scripts/down.sh
+bash microservices/shardshop/scripts/up.sh
+```
+
+For an intentional destructive reset, retire prior data/replay inputs and run:
+
+```bash
+bash microservices/shardshop/scripts/cluster-destroy.sh
+bash microservices/shardshop/scripts/cluster-create.sh
+bash microservices/shardshop/scripts/up.sh
+```
+
+Use native `helm template` for previews, as shown in the
+[README inventory runbook](README.md#shard-inventory-and-routing).
+The [recovery runbook](README.md#recover-retained-data-or-failed-startup) distinguishes
+safe startup retries from lost-storage/allocator recovery; lifecycle commands
+provide no backup or restore automation.
 
 Build only ShardShop or the affected submodule; never run the repository's root
 Maven build for this project. Developer checks remain available through Maven:
@@ -573,7 +594,8 @@ Maven build for this project. Developer checks remain available through Maven:
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml clean verify
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify
-# Prepare the snapshot as documented in README; the lab must be migrated and deployed.
+# Prepare $snapshot using README "Kind verification snapshot (step 3.15)" first.
+# Keep the same snapshot for both kind commands; the lab must be migrated and deployed.
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
     -Dshardshop.kind.snapshot="$snapshot"
 # Optional disruptive drills; never invoked by up.sh.

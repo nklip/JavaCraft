@@ -15,10 +15,11 @@ public final class KindReadiness {
     private static final Duration DATABASE_TIMEOUT = Duration.ofSeconds(300);
     private static final Duration SQL_TIMEOUT = Duration.ofSeconds(180);
     private static final Pattern QUANTITY = Pattern.compile("([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))(.*)");
-    private static final String DNS_RECOVERY = "Inspect node addresses/pod CIDRs with kubectl --context kind-shardshop get nodes -o wide "
+    private static final String DNS_RECOVERY = "For waiting containers, inspect pod events and pinned-image availability. "
+            + "For running probes that cannot resolve DNS, inspect node addresses/pod CIDRs with kubectl --context kind-shardshop get nodes -o wide "
             + "and docker exec <node> ip route. If kindnet has a stale address or missing peer route, replace only its pod "
             + "on the affected node using kubectl --context kind-shardshop -n kube-system delete pod -l app=kindnet "
-            + "--field-selector spec.nodeName=<node>, then rerun up.sh.";
+            + "--field-selector spec.nodeName=<node>, then rerun the failed lifecycle command.";
     private static final String PARAMETERS_SQL = "SELECT coalesce(json_object_agg(f.name, json_build_object('setting', f.setting, 'applied', f.applied, 'pending', s.pending_restart)), '{}'::json) FROM (SELECT DISTINCT ON (name) name, setting, applied FROM pg_file_settings ORDER BY name, seqno DESC) f JOIN pg_settings s USING (name)";
     private final KindLab lab;
 
@@ -30,8 +31,9 @@ public final class KindReadiness {
         Throwable primaryFailure = null;
         try {
             lab.kubectl("create", "-f", manifest);
-            lab.kubectl(Duration.ofSeconds(170), "--request-timeout=160s", "wait", "--for=jsonpath={.status.phase}=Succeeded",
-                    "--timeout=150s", "-f", manifest);
+            // Cover the pod's cold-start and execution deadline, plus termination grace.
+            lab.kubectl(Duration.ofSeconds(1070), "--request-timeout=1060s", "wait", "--for=jsonpath={.status.phase}=Succeeded",
+                    "--timeout=1050s", "-f", manifest);
         } catch (IOException failure) {
             IOException diagnostic = new IOException("Cluster DNS probes did not succeed.\n" + dnsStatus(manifest)
                     + "\n" + DNS_RECOVERY, failure);
@@ -45,7 +47,7 @@ public final class KindReadiness {
                 lab.kubectl("delete", "-f", manifest, "--ignore-not-found", "--wait=false");
             } catch (IOException cleanupFailure) {
                 if (primaryFailure != null) primaryFailure.addSuppressed(cleanupFailure);
-                else System.err.println("DNS probe cleanup failed; up.sh will retry cleanup when it exits.");
+                else System.err.println("DNS probe cleanup failed; the lifecycle command will retry cleanup when it exits.");
             } catch (InterruptedException cleanupFailure) {
                 if (primaryFailure == null) throw cleanupFailure;
                 primaryFailure.addSuppressed(cleanupFailure);
@@ -57,7 +59,9 @@ public final class KindReadiness {
     private String dnsStatus(String manifest) {
         try {
             var status = lab.kubectlAttempt("get", "-f", manifest,
-                    "-o", "custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,PHASE:.status.phase,REASON:.status.containerStatuses[0].state.waiting.reason");
+                    "-o", "custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,PHASE:.status.phase,"
+                            + "WAITING:.status.containerStatuses[0].state.waiting.reason,MESSAGE:.status.containerStatuses[0].state.waiting.message,"
+                            + "TERMINATED:.status.containerStatuses[0].state.terminated.reason,EXIT:.status.containerStatuses[0].state.terminated.exitCode");
             return status.exitCode() == 0 ? status.stdout().strip() : "DNS probe status unavailable.";
         } catch (IOException failure) {
             return "DNS probe status unavailable.";

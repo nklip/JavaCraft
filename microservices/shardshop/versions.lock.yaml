@@ -230,7 +230,8 @@ support_policies:
     source_refs: [helmfile_release, helmfile_configuration]
     eol: null
     note: Maintained stable 1.8 series; 1.8.0 is installed from Homebrew, with 1.8.1
-      available upstream. No fixed LTS term. Owns ordered Helm releases.
+      available upstream. No fixed LTS term. Owns ordered Helm releases;
+      cluster-create.sh selects infrastructure, and up.sh selects migrations/applications.
   skaffold:
     model: maintained_stable
     checked_on: '2026-10-13'
@@ -537,7 +538,7 @@ images:
     - application_jre
     entrypoint: java -jar /app/quarkus-run.jar for all six applications. Since step 3.11,
       product and order reserve their generator ID in this JVM; the images contain no kubectl
-    image_names: docker.io/library/shardshop-<application>:local; up.sh deploys the
+    image_names: docker.io/library/shardshop-<application>:<sha256-config-id>; up.sh deploys the
       current build's manifest digest after verifying its image ID on every kind node
     image_user_observed: '10001:10001'
     source_date_epoch: 0

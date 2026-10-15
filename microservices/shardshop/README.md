@@ -520,9 +520,11 @@ repairs resources. Diagnostics are bounded and contain no secrets.
 The reader remains running and disruptive drills remain opt-in. A new
 `kind-release` run requires `images.json` in the snapshot, including the deployed
 `restartToken` alongside `images`; standalone legacy
-`kind-deployment` runs do not. `migrate.sh`, `deploy.sh`, `render.sh` and `shards.sh` remain
-compatibility entry points until step 3.20; create the foundation once with
-`cluster-create.sh`, then use `up.sh` for application startup/deployment.
+`kind-deployment` runs do not. The four maintained lifecycle entry points are
+`cluster-create.sh`, `up.sh`, `down.sh` and `cluster-destroy.sh`. Create the foundation
+with `cluster-create.sh`, then use `up.sh` for application startup and deployment.
+Every `up.sh` restarts application pods, including unchanged builds; `--restart`
+is an optional compatibility spelling for the same behavior.
 `cluster-create.sh` applies and verifies the retention admission policy, then creates
 the generator registry and immutable identity on its new cluster. `up.sh` only checks
 existing allocator state: missing, partial, malformed, or mismatched
@@ -581,8 +583,7 @@ Helmfile owns deployment.
 `up.sh` captures the loaded platform manifest digests of this invocation's qualified builds on
 every node before running migrations or applying a new application release. A
 failure while loading or registering nodes can leave a partial image load, but
-prevents the new release. The compatibility `deploy.sh` reads image references from
-the deployed Helm revision and requires those exact digests on every node. Docker Scout
+prevents the new release. Docker Scout
 needs a network connection. [VERSIONS.md](VERSIONS.md#step-39-application-images)
 records the scan results and the reviewed statements.
 
@@ -631,9 +632,7 @@ TTL cleanup. After that evidence expires, run `up.sh` again before standalone
 workload verification. Each seeding attempt recovers the same catalog IDs. If the
 catalog is already complete, the reader can continue load while seeding repeats.
 
-The compatibility `deploy.sh <run-name>` retains explicit 1–32 character run names
-and its apply-only behavior; use a new name for each such invocation. Inspect the
-automatic release:
+Inspect the automatic release:
 
 ```bash
 kubectl --context kind-shardshop -n shardshop get jobs -l app.kubernetes.io/name=shardshop-product-seeder
@@ -769,7 +768,7 @@ objects.
 | Roles and databases | The catalog roles and memberships of the CNPG `DatabaseRole`s, the bootstrap hardening, and the schema `catalog` of `catalog_owner`, as on the lab |
 | Migrations | The Flyway **13.8.1** Java API applies `database/shard/catalog` as `catalog_migrator` with the settings of its `flyway.toml` and the inventory placeholders, as the migration Jobs do |
 | TLS | `openssl` in the container makes a test CA and a server certificate for `localhost` only. Product connects with its `verify-full` default |
-| Kubernetes API | For each generator scenario, one container of the pinned `tc.image.k3s` (k3s v1.36.5) with `server --disable-agent`: no kubelet, no privileges, and the API port bound to `127.0.0.1`. The `pre-integration-test` phase renders the chart with `helm template` and the values of `render.sh`. Each scenario applies the rendered `generator-allocation.yaml` and creates the registry with the same fresh-cluster create-then-pin sequence used by `up.sh`. For the host name check, product gets an OpenJDK hosts file (`jdk.net.hosts.file`) that points a name in the `.test` domain to `127.0.0.1`. The k3s certificate does not name it |
+| Kubernetes API | For each generator scenario, one container of the pinned `tc.image.k3s` (k3s v1.36.5) with `server --disable-agent`: no kubelet, no privileges, and the API port bound to `127.0.0.1`. The `pre-integration-test` phase renders the chart with `helm template` and the shared chart, kind environment values and ordered inventory. Each scenario applies the rendered `generator-allocation.yaml` and creates the registry with the same fresh-cluster create-then-pin sequence used by `cluster-create.sh`. For the host name check, product gets an OpenJDK hosts file (`jdk.net.hosts.file`) that points a name in the `.test` domain to `127.0.0.1`. The k3s certificate does not name it |
 | Applications | The packaged `quarkus-app` folders, started as JVMs with an empty environment. Product gets a new fixed test generator ID at each start, or in the generator scenarios it reserves an ID in the k3s API server with a service account token. It gets four shards (`shard-d` is a second US shard) and at most two connections for each endpoint |
 | Logs | After each scenario, a hook stops product and fails the scenario if a product JVM logged a WARN or ERROR line. This also covers the invalid requests, deadlines and outages that the scenarios cause. The generator scenarios check their expected startup failures separately: the log has only the fixed message, without the token or API response text |
 | Cleanup | Testcontainers runs without its Ryuk reaper, which publishes a port on all host interfaces and runs privileged with the Docker socket. A JVM shutdown hook removes the container; only a killed test JVM leaves it. Testcontainers logs one `Ryuk has been disabled` WARN line for each run |
@@ -1276,34 +1275,34 @@ inventory may assign multiple shards to one region. The chart adds the
 `shardshop.javacraft/region` label to each shard Cluster and its inherited metadata.
 These are business regions in the local lab, not separate geographic locations.
 
-Preview without Kubernetes access:
+Preview without Kubernetes access using native Helm. These repository-root commands
+use the same shared chart, environment values and ordered inventory as the lifecycle:
 
 ```bash
-bash microservices/shardshop/scripts/render.sh infrastructure
-bash microservices/shardshop/scripts/render.sh migration shard-a
-bash microservices/shardshop/scripts/render.sh migration shard-a ordering
-bash microservices/shardshop/scripts/render.sh migration ledger-db ledger
-bash microservices/shardshop/scripts/render.sh routing
+chart=microservices/shardshop/infra/helm/shardshop
+environment=${SHARDSHOP_ENV_VALUES:-$chart/kind-values.yaml}
+inventory=${SHARDSHOP_INVENTORY:-microservices/shardshop/infra/shards.yaml}
+helm template shardshop "$chart" --namespace shardshop -f "$environment" -f "$inventory" --set-string render=infrastructure
+helm template shardshop "$chart" --namespace shardshop -f "$environment" -f "$inventory" --set-string render=migration --set-literal migrationShard=shard-a --set-literal migrationStream=catalog
+helm template shardshop "$chart" --namespace shardshop -f "$environment" -f "$inventory" --set-string render=migration --set-literal migrationShard=shard-a --set-literal migrationStream=ordering
+helm template shardshop "$chart" --namespace shardshop -f "$environment" -f "$inventory" --set-string render=migration --set-literal migrationShard=ledger-db --set-literal migrationStream=ledger
+helm template shardshop "$chart" --namespace shardshop -f "$environment" -f "$inventory" --set-string render=routing
 ```
 
-The migration render takes `SHARD [catalog|ordering]` and defaults to `catalog`.
-Its Job, SQL ConfigMap, migrator Secret, and component names follow the selected
-stream; both shard streams receive `shardRegion`, `shardIndex`, and `shardCount`.
-`migration ledger-db ledger` selects the separate ledger stream without shard
-placeholders or region labels. The chart rejects ledger streams on shards and
-shard streams on `ledger-db`. `cluster-create.sh` provisions all three schemas and their roles;
+The migration preview selects `migrationShard` and `migrationStream` explicitly.
+Its Job, SQL ConfigMap, migrator Secret and component names follow the stream;
+both shard streams receive `shardRegion`, `shardIndex` and `shardCount`. The ledger
+stream has no shard placeholders or region labels. The chart rejects ledger
+streams on shards and shard streams on `ledger-db`. Previews do not apply resources
+or run migrations. `cluster-create.sh` provisions all three schemas and their roles;
 `up.sh` runs catalog on every shard, then ordering on every shard, then ledger
-once. It waits for current-generation ordering outbox publications before
-activating routing. The compatibility `migrate.sh` retains the same stream order.
-`applications RUN [APPLICATION=IMAGE ...]` and `seeding RUN [APPLICATION=IMAGE ...]`
-render the [step 3.9 manifests](#seeding-gate) for `deploy.sh`. The chart requires a
-valid run name and a digest reference for each image that the mode uses. The script
-gives these values to Helm with `--set-literal`. Thus Helm does not divide a value at
-a comma or remove a backslash, and the chart checks the value that you typed.
+once, and waits for current-generation ordering outbox publications before
+activating routing.
 
-The compatibility rendering/migration/deployment scripts use Python 3's standard
-JSON library and Helm, with no YAML package to install. `up.sh` uses Helm and jq. The [changelog](CHANGELOG.md#step-24) records the live inventory and
-script checks.
+For application or seeder previews, select `render=applications` or `render=seeding`
+with the same Helm arguments, provide a valid 1–32 character `run` and each required
+`images.<application>` digest reference using `--set-literal`. Normal deployments
+use Helmfile's releases and revision-owned migration/seeder hooks through `up.sh`.
 `SHARDSHOP_INVENTORY=/path/inventory.yaml` selects another inventory;
 `SHARDSHOP_ENV_VALUES=/path/values.yaml` replaces the kind overrides.
 
@@ -1336,7 +1335,7 @@ primary remains on the same shard, behind the same `-rw` Service.
 
 Adding a shard means adding one inventory entry; all corresponding resources and
 routing settings are generated. Changing membership **or order** changes ownership
-of existing IDs. `up.sh` and `migrate.sh` refuse a list that differs from an already
+of existing IDs. `up.sh` refuses a list that differs from an already
 published version; a changed published region assignment is also refused.
 Schema V1 is independent of the unchanged version-2 ID-routing algorithm.
 
@@ -1366,8 +1365,8 @@ comes later. Take `docker`, `kind`, `kubectl`, `helm`, `helmfile`, `skaffold`,
 Docker Desktop 4.92.0, kind 0.33.0, kubectl 1.36, Helm 4.3.0, and jq 1.7.1.
 The revised workflow additionally requires Helmfile 1.8.0 and Skaffold 2.25.0;
 install tools on `PATH` and follow [VERSIONS.md](VERSIONS.md) for qualification.
-The repository contains their declarative configuration, not downloaded binaries. The compatibility migration, deployment and rendering
-helpers still require Python 3 until PLAN step 3.20 retires them. The node image's advisories were reviewed on
+The repository contains their declarative configuration, not downloaded binaries.
+The four lifecycle commands require no Python runtime. The node image's advisories were reviewed on
 2026-09-28 and accepted for this loopback-only, disposable lab. Give Docker
 Desktop's VM at least 12 GB of memory (Settings → Resources); both startup scripts stop early
 if it has less. Migrations also require Docker's Buildx plugin and Docker Scout:
@@ -1531,6 +1530,43 @@ source/configuration, Docker Desktop, unrelated containers, shared images/build
 caches and the shared kind network. Run `cluster-create.sh` and then `up.sh` to create a fresh lab;
 previous entity IDs and allocator history cannot be recovered by restarting it.
 
+### Recover retained data or failed startup
+
+A failed `up.sh` can leave completed migrations and a partially updated release.
+Inspect its bounded diagnostics and the retained migration/seeder Job logs before
+retrying. Correct the source configuration or forward migration that caused the
+failure, then run `bash microservices/shardshop/scripts/up.sh` again. Flyway validates
+actual schema history on every run; the seeder retries the same durable keys and
+payloads, preserving existing entity IDs. Do not edit an applied versioned migration,
+clear Flyway history, or delete topology guards to force a retry.
+
+For a stopped lab, run `up.sh` to resume the retained nodes. If prepared
+infrastructure needs reconciliation, run `cluster-create.sh` first; it validates
+retained topology and allocator state and never resets their history. Neither
+command reconstructs deleted rows or lost storage. Do not destroy the cluster as a
+recovery step when those data must survive.
+
+Missing, partial or mismatched allocator state requires an independent record of
+the original registry identity and latest high-water mark. Keep ID-producing
+services stopped until those facts are established. An older database dump is not
+allocator recovery evidence. The admission guard pins the original registry UID,
+so creating a replacement ConfigMap or applying an old snapshot cannot safely
+repair it. There is no automated allocator reconstruction or supported generic
+restore command; follow the [allocator recovery constraints](#generator-allocation-at-jvm-startup-steps-34-and-311)
+and preserve the latest mark without rollback.
+
+Coordinated database backups, isolated restores and restore audits remain PLAN
+steps 6.3–6.4; these lifecycle commands create no backups. If storage is lost,
+retain any surviving volumes and independent recovery artifacts before attempting
+restoration. The [backup policy](PLAN.md#7-replication-and-backup-policy) requires
+external dumps with routing/schema identities and separate latest allocator
+history, and the [restore audit](ARCHITECTURE.md#orders-lost-by-asynchronous-failover-or-restore)
+defines reconciliation for future order/ledger state. Without usable recovery
+artifacts, recovery of deleted history is unavailable. A deliberate fresh lab
+requires retiring all prior emitters, data and replay inputs, then running
+`cluster-destroy.sh`, `cluster-create.sh` and `up.sh` in that order; it starts a new
+identity history rather than recovering the old one.
+
 ### One-time adoption of an existing apply-managed lab
 
 Fresh labs need no adoption. A retained lab created by the earlier `kubectl apply`
@@ -1598,8 +1634,16 @@ invocation; the suite does not create or reconcile the lab.
 
 The `kind` profile defaults to `kind-deployment`, which combines `kind-topology`
 and `kind-workload`. It observes an already-migrated and deployed lab with two
-Ready product pods and one running reader. Disruptive scenarios require explicit
-selection; `kind-drill` combines `kind-database-drill` and `kind-workload-drill`:
+Ready product pods and one running reader. With the snapshot above, run the default
+suite separately from the Testcontainers `integration` profile:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
+    -Dshardshop.kind.snapshot="$snapshot"
+```
+
+Disruptive scenarios require explicit selection; `kind-drill` combines
+`kind-database-drill` and `kind-workload-drill`:
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
@@ -1610,7 +1654,9 @@ The property uses JUnit tag expressions (without Gherkin's leading `@`); a
 selection matching no scenarios fails. Existing lifecycle gates remain selectable:
 `-Dshardshop.kind.tags='kind-config | kind-nodes | kind-retention | kind-allocator | kind-infrastructure'`
 selects those checks together. `kind-dns` creates short-lived probe Pods from the
-snapshot's `dns-probes.yaml`, with cleanup on failure.
+snapshot's `dns-probes.yaml`, with cleanup on failure. Each probe has a 120-second
+DNS execution limit and a 17-minute overall Pod deadline to accommodate cold image startup.
+Every node must resolve cluster DNS successfully before provisioning continues.
 `kind-admission-bootstrap` is for fresh initialization only and requires
 `-Dshardshop.kind.fresh=true`; do not use it on a retained lab. Migration safety
 checks are also selectable: `kind-migration-reservation`, `kind-migrations-idle`
@@ -1648,7 +1694,7 @@ rm -rf -- "$snapshot"
 Each `up.sh` invocation rebuilds and qualifies the enabled images before cluster mutation.
 On each run, kind refreshes and selects the `kind-shardshop` context in the caller's
 `KUBECONFIG` files, or `~/.kube/config` when unset. The recovered endpoint remains
-available to subsequent `kubectl` commands and the compatibility entry points. The script
+available to subsequent `kubectl` commands and standalone Maven checks. The script
 passes that context on every command and never deletes a cluster, namespace, or
 volume. Check the result:
 
@@ -1851,7 +1897,8 @@ business logic and scripts for deployment checks.
   the migration image that `up.sh` loaded; no separate Maven
   build, application JAR, or database superuser session is needed.
 
-The normal provisioning, migration and deployment command is:
+After `cluster-create.sh` prepares the foundation, the normal migration and
+deployment command is:
 
 ```bash
 bash microservices/shardshop/scripts/up.sh
@@ -1935,7 +1982,7 @@ Helmfile does not automatically roll back or uninstall a failed release. Previou
 committed SQL is retained: correct the problem and rerun, using fix-forward
 versioned migrations where required. Never repair checksums automatically, delete
 history or PVCs to force validation, or invoke Flyway clean on retained data.
-Run compatibility migration/deployment scripts separately from the Helmfile flow.
+Run migrations and application deployment through `up.sh` so the Helmfile gates stay in effect.
 
 `cluster-create.sh`, `up.sh`, `down.sh` and `cluster-destroy.sh` share the local exclusive directory
 lock `${TMPDIR:-/tmp}/shardshop-up.lock`. Use the same `TMPDIR` for all four. A

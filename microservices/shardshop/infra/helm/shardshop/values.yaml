@@ -1,8 +1,8 @@
-# Deploy with Helmfile using the environment values and ordered shard inventory.
+# cluster-create.sh provisions infrastructure; up.sh deploys migrations and applications through Helmfile.
 render: infrastructure
 migrationShard: ""
 migrationStream: catalog
-# Explicit run for legacy render=seeding and workload drills; Helm hooks use the release revision.
+# Explicit run for standalone render=seeding and workload drills; Helm hooks use the release revision.
 run: ""
 # up.sh replaces this value on every deployment to restart product and reader.
 restartToken: ""
