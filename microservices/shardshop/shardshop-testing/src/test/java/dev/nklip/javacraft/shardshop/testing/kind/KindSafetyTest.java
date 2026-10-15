@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.Json;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -15,6 +17,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class KindSafetyTest {
     private static final String UID = "01234567-89ab-cdef-0123-456789abcdef";
@@ -196,6 +202,127 @@ class KindSafetyTest {
         assertFalse(KindSafety.compatibleInfrastructure(desired, defaultsWithoutHistory));
     }
 
+    @Test
+    void helmOwnedInfrastructureAcceptsApiDefaultsUsingItsStoredDeclaration() {
+        ObjectNode declared = cluster();
+        ObjectNode retained = helmOwnedCluster();
+        ((ObjectNode) retained.path("spec").path("storage")).put("resizeInUseVolumes", true);
+        ((ObjectNode) retained.path("spec").path("bootstrap").path("initdb")).put("encoding", "UTF8");
+        ((ObjectNode) retained.path("spec").path("affinity")).put("topologyKey", "kubernetes.io/hostname");
+        assertFalse(KindSafety.compatibleInfrastructure(declared, retained), "Live defaults are not a declaration");
+        assertDoesNotThrow(() -> KindSafety.validateInfrastructure(List.of(declared), List.of(retained), List.of(declared)));
+        // A stale kubectl annotation left by adoption must not replace Helm's current declaration.
+        ObjectNode stale = cluster();
+        ((ObjectNode) stale.path("spec").path("storage")).put("size", "2Gi");
+        ((ObjectNode) retained.path("metadata").path("annotations"))
+                .put("kubectl.kubernetes.io/last-applied-configuration", stale.toString());
+        assertDoesNotThrow(() -> KindSafety.validateInfrastructure(List.of(declared), List.of(retained), List.of(declared)));
+    }
+
+    @Test
+    void helmHistoryStillRejectsProtectedDeclarationChangesAndLiveDrift() {
+        List<Consumer<ObjectNode>> changes = List.of(
+                node -> ((ObjectNode) node.path("spec").path("storage")).put("size", "2Gi"),
+                node -> ((ObjectNode) node.path("spec").path("storage")).remove("size"),
+                node -> ((ObjectNode) node.path("spec")).remove("affinity"),
+                node -> ((ObjectNode) node.path("spec").path("affinity")).put("enablePodAntiAffinity", false),
+                node -> ((ObjectNode) node.path("spec").path("bootstrap").path("initdb")).remove("owner"),
+                node -> ((ObjectNode) node.path("spec").path("bootstrap").path("initdb")).put("database", "other"));
+        for (Consumer<ObjectNode> change : changes) {
+            ObjectNode desired = cluster();
+            ObjectNode retained = helmOwnedCluster();
+            change.accept(desired);
+            assertThrows(AssertionError.class,
+                    () -> KindSafety.validateInfrastructure(List.of(desired), List.of(retained), List.of(cluster())));
+            change.accept(retained);
+            assertThrows(AssertionError.class,
+                    () -> KindSafety.validateInfrastructure(List.of(cluster()), List.of(retained), List.of(cluster())));
+        }
+    }
+
+    @Test
+    void helmOwnedInfrastructureRequiresMatchingOwnershipAndUnambiguousHistory() {
+        assertThrows(AssertionError.class,
+                () -> KindSafety.validateInfrastructure(List.of(cluster()), List.of(helmOwnedCluster())));
+        for (Consumer<ObjectNode> change : List.<Consumer<ObjectNode>>of(
+                node -> ((ObjectNode) node.path("metadata")).put("namespace", "other"),
+                node -> ((ObjectNode) node.path("metadata").path("labels")).put("app.kubernetes.io/managed-by", "other"),
+                node -> ((ObjectNode) node.path("metadata").path("annotations")).put("meta.helm.sh/release-name", "other"),
+                node -> ((ObjectNode) node.path("metadata").path("annotations")).put("meta.helm.sh/release-namespace", "other"))) {
+            ObjectNode retained = helmOwnedCluster();
+            change.accept(retained);
+            assertThrows(AssertionError.class,
+                    () -> KindSafety.validateInfrastructure(List.of(cluster()), List.of(retained), List.of(cluster())));
+        }
+        for (List<JsonNode> history : List.of(List.<JsonNode>of(), List.<JsonNode>of(cluster(), cluster()),
+                List.<JsonNode>of(Json.object("{\"kind\":\"Cluster\",\"metadata\":{\"name\":\"shard-a\"}}")))) {
+            assertThrows(AssertionError.class,
+                    () -> KindSafety.validateInfrastructure(List.of(cluster()), List.of(helmOwnedCluster()), history));
+        }
+    }
+
+    @Test
+    void retainedGateReadsPinnedHelmHistoryAndRejectsPendingOrChangingReleases() throws Exception {
+        KindLab lab = retainedLab();
+        String status = "{\"name\":\"shardshop-infrastructure\",\"namespace\":\"shardshop\",\"version\":7,\"info\":{\"status\":\"deployed\"}}";
+        String[] statusCommand = {"helm", "status", "shardshop-infrastructure", "--kube-context", "kind-unit-lab",
+                "--namespace", "shardshop", "--output", "json"};
+        when(lab.command(statusCommand)).thenReturn(status);
+        when(lab.command("helm", "get", "manifest", "shardshop-infrastructure", "--kube-context", "kind-unit-lab",
+                "--namespace", "shardshop", "--revision", "7"))
+                .thenReturn("---\n# prior infrastructure\n" + cluster() + "\n---\n");
+        assertDoesNotThrow(() -> new KindSafety(lab).retention());
+        // Failed completed revisions remain retryable after fixing their original reconciliation failure.
+        when(lab.command(statusCommand)).thenReturn(status.replace("deployed", "failed"));
+        assertDoesNotThrow(() -> new KindSafety(lab).retention());
+        for (String rejected : List.of("pending-install", "pending-upgrade", "pending-rollback", "uninstalled")) {
+            when(lab.command(statusCommand)).thenReturn(status.replace("deployed", rejected));
+            assertThrows(AssertionError.class, () -> new KindSafety(lab).retention());
+        }
+        when(lab.command(statusCommand)).thenReturn(status, status.replace("7", "8"));
+        assertThrows(AssertionError.class, () -> new KindSafety(lab).retention());
+        assertThrows(IOException.class, () -> KindSafety.infrastructureManifest("kind: [broken"));
+    }
+
+    @Test
+    void retainedGateIgnoresUnrelatedHelmOwnedDatabaseClusters() throws Exception {
+        KindLab lab = retainedLab();
+        ObjectNode unrelated = helmOwnedCluster();
+        ((ObjectNode) unrelated.path("metadata")).put("name", "another-application");
+        ((ObjectNode) unrelated.path("metadata").path("annotations")).put("meta.helm.sh/release-name", "another-release");
+        when(lab.kubectl("get", "clusters.postgresql.cnpg.io", "-o", "json"))
+                .thenReturn("{\"items\":[" + cluster() + "," + unrelated + "]}");
+        when(lab.command(any(String[].class))).thenThrow(new IOException("Unrelated Helm history must not be needed"));
+        assertDoesNotThrow(() -> new KindSafety(lab).retention());
+    }
+
+    private static KindLab retainedLab() throws Exception {
+        KindLab lab = mock(KindLab.class);
+        when(lab.inventory()).thenReturn(Json.newObject());
+        when(lab.clusterName()).thenReturn("unit-lab");
+        when(lab.snapshot()).thenReturn(Path.of("/snapshot"));
+        when(lab.kubectl(any(String[].class))).thenReturn("");
+        when(lab.kubectl("get", "configmap", "shardshop-snowflake-generators", "shardshop-generator-identity",
+                "--ignore-not-found", "-o", "json"))
+                .thenReturn("{\"items\":[" + registry("0") + "," + identity() + "]}");
+        when(lab.kubectl("create", "--dry-run=client", "--validate=false", "-f", "/snapshot/infrastructure.yaml", "-o", "json"))
+                .thenReturn(cluster().toString());
+        ObjectNode live = helmOwnedCluster();
+        ((ObjectNode) live.path("spec").path("storage")).put("resizeInUseVolumes", true);
+        when(lab.kubectl("get", "clusters.postgresql.cnpg.io", "-o", "json"))
+                .thenReturn("{\"items\":[" + live + "]}");
+        return lab;
+    }
+
+    private static ObjectNode helmOwnedCluster() {
+        ObjectNode retained = cluster();
+        ObjectNode metadata = (ObjectNode) retained.path("metadata");
+        metadata.putObject("labels").put("app.kubernetes.io/managed-by", "Helm");
+        metadata.putObject("annotations").put("meta.helm.sh/release-name", "shardshop-infrastructure")
+                .put("meta.helm.sh/release-namespace", "shardshop");
+        return retained;
+    }
+
     private static ObjectNode configuration() {
         ObjectNode config = Json.object("{\"kind\":\"Cluster\",\"apiVersion\":\"kind.x-k8s.io/v1alpha4\","
                 + "\"name\":\"shardshop\",\"networking\":{\"apiServerAddress\":\"127.0.0.1\"},\"nodes\":[]}");
@@ -239,7 +366,7 @@ class KindSafetyTest {
 
     private static ObjectNode cluster() {
         return Json.object("""
-                {"kind":"Cluster","metadata":{"name":"shard-a"},"spec":{
+                {"apiVersion":"postgresql.cnpg.io/v1","kind":"Cluster","metadata":{"name":"shard-a","namespace":"shardshop"},"spec":{
                   "instances":3,"imageName":"postgres:18.4@sha256:old",
                   "storage":{"size":"1Gi","storageClass":"standard"},
                   "affinity":{"enablePodAntiAffinity":true},

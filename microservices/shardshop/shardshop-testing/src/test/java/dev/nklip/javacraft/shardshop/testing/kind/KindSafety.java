@@ -1,6 +1,10 @@
 package dev.nklip.javacraft.shardshop.testing.kind;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.Json;
 
 import java.io.IOException;
@@ -16,6 +20,8 @@ import java.util.regex.Pattern;
 
 /** Read-only retained-lab guards; admission requests always use server dry-run. */
 public final class KindSafety {
+    private static final String INFRASTRUCTURE_RELEASE = "shardshop-infrastructure";
+    private static final ObjectMapper JSON = new ObjectMapper();
     private static final String REGISTRY = "shardshop-snowflake-generators";
     private static final String IDENTITY = "shardshop-generator-identity";
     private static final String POLICY = "shardshop-generator-retention";
@@ -69,9 +75,57 @@ public final class KindSafety {
             String desired = lab.kubectl("create", "--dry-run=client", "--validate=false", "-f",
                     lab.snapshot().resolve("infrastructure.yaml").toString(), "-o", "json");
             List<JsonNode> resources = Json.documents(desired).stream().flatMap(node -> KindLab.items(node).stream()).toList();
-            validateInfrastructure(resources, KindLab.items(KindLab.parse(lab.kubectl("get", "clusters.postgresql.cnpg.io",
-                    "-o", "json"))));
+            List<JsonNode> current = KindLab.items(KindLab.parse(lab.kubectl("get", "clusters.postgresql.cnpg.io",
+                    "-o", "json")));
+            validateInfrastructure(resources, current, helmInfrastructure(resources, current));
         }
+    }
+
+    private List<JsonNode> helmInfrastructure(List<JsonNode> desired, List<JsonNode> current) throws IOException, InterruptedException {
+        Set<String> names = new HashSet<>();
+        desired.stream().filter(resource -> "Cluster".equals(text(resource.path("kind"))))
+                .forEach(resource -> names.add(text(resource.path("metadata").path("name"))));
+        if (current.stream().filter(resource -> names.contains(text(resource.path("metadata").path("name"))))
+                .noneMatch(KindSafety::hasHelmOwnership)) return List.of();
+        long revision = infrastructureRevision();
+        String manifest = lab.command("helm", "get", "manifest", INFRASTRUCTURE_RELEASE,
+                "--kube-context", "kind-" + lab.clusterName(), "--namespace", "shardshop",
+                "--revision", Long.toString(revision));
+        List<JsonNode> previous = infrastructureManifest(manifest);
+        require(infrastructureRevision() == revision, "Infrastructure Helm revision changed during the retention check");
+        return previous;
+    }
+
+    private long infrastructureRevision() throws IOException, InterruptedException {
+        String status = lab.command("helm", "status", INFRASTRUCTURE_RELEASE,
+                "--kube-context", "kind-" + lab.clusterName(), "--namespace", "shardshop", "--output", "json");
+        JsonNode release;
+        try {
+            release = JSON.readTree(status);
+        } catch (IOException failure) {
+            throw new IOException("Cannot parse infrastructure Helm release metadata");
+        }
+        require(release != null && INFRASTRUCTURE_RELEASE.equals(release.path("name").asText())
+                        && "shardshop".equals(release.path("namespace").asText())
+                        && Set.of("deployed", "failed").contains(release.path("info").path("status").asText())
+                        && release.path("version").isIntegralNumber() && release.path("version").canConvertToLong()
+                        && release.path("version").asLong() > 0,
+                "Infrastructure Helm release must have a completed current revision; inspect it before retrying startup");
+        return release.path("version").asLong();
+    }
+
+    static List<JsonNode> infrastructureManifest(String manifest) throws IOException {
+        List<JsonNode> resources = new ArrayList<>();
+        LoaderOptions options = new LoaderOptions();
+        options.setAllowDuplicateKeys(false);
+        try {
+            for (Object document : new Yaml(new SafeConstructor(options)).loadAll(manifest)) {
+                if (document != null) resources.add(JSON.valueToTree(document));
+            }
+        } catch (RuntimeException failure) {
+            throw new IOException("Cannot parse the retained infrastructure Helm manifest");
+        }
+        return List.copyOf(resources);
     }
 
     public void bootstrapAdmission() throws IOException, InterruptedException {
@@ -195,23 +249,63 @@ public final class KindSafety {
     }
 
     static void validateInfrastructure(List<JsonNode> desired, List<JsonNode> current) {
+        validateInfrastructure(desired, current, List.of());
+    }
+
+    static void validateInfrastructure(List<JsonNode> desired, List<JsonNode> current, List<JsonNode> previous) {
+        Map<String, JsonNode> stored = new HashMap<>();
+        for (JsonNode resource : previous) {
+            if (!"Cluster".equals(text(resource.path("kind")))) continue;
+            String name = text(resource.path("metadata").path("name"));
+            require("postgresql.cnpg.io/v1".equals(text(resource.path("apiVersion")))
+                            && "shardshop".equals(text(resource.path("metadata").path("namespace")))
+                            && !name.isEmpty() && resource.path("spec").isObject()
+                            && stored.putIfAbsent(name, resource) == null,
+                    "Retained infrastructure Helm manifest has invalid or duplicate database Cluster identities");
+        }
         Map<String, JsonNode> live = new HashMap<>();
         current.forEach(node -> live.put(text(node.path("metadata").path("name")), node));
         for (JsonNode resource : desired) {
             String name = text(resource.path("metadata").path("name"));
             if ("Cluster".equals(text(resource.path("kind"))) && live.containsKey(name)) {
-                require(compatibleInfrastructure(resource, live.get(name)), "Unsafe infrastructure change for " + name
+                JsonNode retained = live.get(name);
+                JsonNode baseline = null;
+                if (hasHelmOwnership(retained)) {
+                    JsonNode metadata = retained.path("metadata");
+                    require("postgresql.cnpg.io/v1".equals(text(retained.path("apiVersion")))
+                                    && "shardshop".equals(text(metadata.path("namespace")))
+                                    && "Helm".equals(text(metadata.path("labels").path("app.kubernetes.io/managed-by")))
+                                    && INFRASTRUCTURE_RELEASE.equals(text(metadata.path("annotations").path("meta.helm.sh/release-name")))
+                                    && "shardshop".equals(text(metadata.path("annotations").path("meta.helm.sh/release-namespace")))
+                                    && stored.containsKey(name),
+                            "Database Cluster " + name + " does not match the retained infrastructure Helm ownership/manifest");
+                    baseline = stored.get(name);
+                }
+                require(compatibleInfrastructure(resource, retained, baseline), "Unsafe infrastructure change for " + name
                         + ": storage, placement, bootstrap, instance count or PostgreSQL major version differs. "
                         + "Restore the retained configuration; up.sh does not migrate or reset database storage.");
             }
         }
     }
 
+    private static boolean hasHelmOwnership(JsonNode resource) {
+        JsonNode metadata = resource.path("metadata");
+        return "Helm".equals(text(metadata.path("labels").path("app.kubernetes.io/managed-by")))
+                || metadata.path("annotations").has("meta.helm.sh/release-name")
+                || metadata.path("annotations").has("meta.helm.sh/release-namespace");
+    }
+
     static boolean compatibleInfrastructure(JsonNode desired, JsonNode current) {
+        return compatibleInfrastructure(desired, current, null);
+    }
+
+    static boolean compatibleInfrastructure(JsonNode desired, JsonNode current, JsonNode declared) {
         JsonNode spec = desired.path("spec");
         JsonNode live = current.path("spec");
         String annotation = text(current.path("metadata").path("annotations").path("kubectl.kubernetes.io/last-applied-configuration"));
-        JsonNode previous = annotation.isEmpty() ? live : KindLab.parse(annotation).path("spec");
+        // Helm's stored manifest is the declaration after ownership transfer, even if kubectl's annotation remains.
+        JsonNode previous = declared != null ? declared.path("spec")
+                : annotation.isEmpty() ? live : KindLab.parse(annotation).path("spec");
         if (previous.isMissingNode()) {
             previous = live;
         }

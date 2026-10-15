@@ -1,6 +1,7 @@
 # Dataset sources and reproducibility
 
-Reviewed on **2026-10-07**. All source pools, generated fixtures and definitions
+Source selection reviewed on **2026-10-07**; Java reproduction verified on
+**2026-10-15**. All source pools, generated fixtures and definitions
 belong to this workload module. They contain no entity IDs; product/order create
 IDs when workloads submit the payloads.
 
@@ -31,7 +32,7 @@ inputs to the offline generator.
 | [`sources/names/EU-given.tsv`](sources/names/EU-given.tsv), [`EU-surname.tsv`](sources/names/EU-surname.tsv) | 1,000 aggregated EU27 given names and 1,000 surnames |
 | [`sources/names/ASIA-given.tsv`](sources/names/ASIA-given.tsv), [`ASIA-surname.tsv`](sources/names/ASIA-surname.tsv) | 345 curated given names and 503 surnames from China, Vietnam, South Korea and Japan |
 | [`sources/address-patterns.tsv`](sources/address-patterns.tsv) | Fictional example streets, city names and postal-code patterns |
-| [`scripts/generate-buyers.py`](scripts/generate-buyers.py) | Offline generation of the three `buyers-v1` TSVs |
+| [`BuyerDatasetGenerator.java`](src/test/java/dev/nklip/javacraft/shardshop/workload/dataset/BuyerDatasetGenerator.java) | Development-only offline generation of the three `buyers-v1` TSVs |
 | [`sources/licenses`](sources/licenses) | Faker MIT license and Onomaverse CC BY 4.0 attribution notice |
 | [`catalog-selection.json`](catalog-selection.json) | Company source ranks, domicile classifications, aliases, exclusions, selection order and resource checksums |
 
@@ -112,19 +113,38 @@ needed by the build or runtime.
 Run from the repository root:
 
 ```bash
-python3 -B microservices/shardshop/shardshop-workload/shardshop-datasets/scripts/generate-buyers.py
+mvn -B -ntp -f microservices/shardshop/shardshop-workload/shardshop-datasets/pom.xml test-compile exec:exec@regenerate-buyers
 ```
 
-The script uses only the Python standard library and checked-in pools. It makes
-no network calls and produces exactly 1,000 profiles in each of
-`src/main/resources/datasets/buyers-v1/US.tsv`, `EU.tsv` and `ASIA.tsv`.
+Export `JAVA_HOME` to a JDK **25 or newer**, following the ShardShop build
+baseline. The named Maven execution launches that JDK with the test classpath.
+The generator uses only the JDK and checked-in pools, makes no network calls,
+and produces exactly 1,000 profiles in each of
+`target/generated-datasets/buyers-v1/US.tsv`, `EU.tsv` and `ASIA.tsv` within this
+module. Maven may need its normal build dependencies cached before using `-o`
+for an entirely offline invocation. The generator itself needs no downloads.
+
+Generation is an explicit development action: the execution has no lifecycle
+phase, and ordinary builds and `up.sh` never regenerate checked-in fixtures.
+The tool is compiled from `src/test/java`, excluded from the production JAR,
+and adds no runtime dependencies. Output paths are fixed under `target` and
+symbolic-link outputs are rejected. Compare generated files with the retained
+resources before deliberately copying any reviewed dataset changes into source
+control; the command never writes `src/main/resources`.
+
+`BuyerDatasetGeneratorTest` regenerates all three files in temporary module
+directories and compares every byte with the frozen resources. It also verifies
+repeatability under a changed default locale, invalid or exhausted name pools,
+malformed inputs, complete address coverage and output boundaries. UTF-8, LF
+line endings, region/country/source ordering, unsigned SHA-256 arithmetic and
+the global unique-email search preserve the original `buyers-v1` bytes.
 
 `DatasetSourcesTest` verifies the name pools, the name/email pairing, the country
 sets and every retained file hash. `Contracts.feature` of `shardshop-testing`
 verifies every creation payload against the product and order contracts:
 
 ```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-workload/shardshop-datasets -am clean verify
+mvn -B -ntp -f microservices/shardshop/shardshop-workload/shardshop-datasets/pom.xml clean verify
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
 ```
 

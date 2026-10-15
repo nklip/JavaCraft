@@ -73,7 +73,7 @@ Retained baselines are now immutable. Later schema changes use fix-forward migra
    no project-local tool folders such as `.local/bin` and no Maven Wrapper. Record
    tested versions in [VERSIONS.md](VERSIONS.md) instead. Third-party charts and
    manifests are artifacts, not tools: vendor them only with a verified checksum
-   in the lock. Keep `up.sh` and `down.sh` as local bootstrap orchestration around
+   in the lock. Keep the four lifecycle scripts as local bootstrap orchestration around
    Maven, Skaffold builds, Helmfile release dependencies/hooks and native Kubernetes
    or kind/Docker operations. Put reusable lab assertions in Java tests;
    steps 3.13–3.20 retire the remaining helper and verification scripts. Record
@@ -115,13 +115,20 @@ Retained baselines are now immutable. Later schema changes use fix-forward migra
    - Java applications: application and workload behavior, with platform-managed
      libraries before custom code.
 
-   The normal lifecycle uses `scripts/up.sh` to build, reconcile, deploy and
-   verify the lab, and `scripts/down.sh` to stop every node while retaining data.
-   The user-requested `scripts/cluster-destroy.sh` is the explicit destructive
-   reset exception: it removes the lab, attached storage and kubeconfig entries.
-   All three share the lifecycle lock. Steps 3.13–3.20 replace the other scripts;
-   do not add further entry points, sourced shell helpers or replacement Python
-   wrappers. Keep the scripts focused on bootstrap: use native bounded waits where they prove the
+   The lifecycle starts with the user-requested `scripts/cluster-create.sh`,
+   which creates Kubernetes and the database/allocator foundation without
+   applications, and resumes/reconciles existing infrastructure under retained-state
+   guards without resetting allocator history. Then `scripts/up.sh` builds, migrates, deploys and
+   verifies applications on that existing cluster. Every invocation restarts
+   application pods, including unchanged builds. `scripts/down.sh` stops every node while
+   retaining data. `scripts/cluster-destroy.sh` removes the lab, attached storage
+   and kubeconfig entries. All four share the lifecycle lock. Steps 3.13–3.20 replace the other scripts;
+   do not add further entry points or replacement Python wrappers. The requested
+   `scripts/lib/lifecycle.sh` is a sourced implementation helper shared by creation
+   and startup for locks/traps, snapshots/rendering, verifiers/readiness and node
+   resumption, not another entry point. Startup never provisions namespaces,
+   credentials or infrastructure releases; shutdown/destruction remain separate
+   bounded workflows. Keep the scripts focused on bootstrap: use native bounded waits where they prove the
    requirement, and bounded Maven assertions for cross-resource or SQL checks.
    Do not embed Python, custom JSON/YAML parsing or reusable assertions in Bash,
    download tool binaries, or replace shell code with a Java reconciler. Java kind
@@ -137,7 +144,14 @@ Retained baselines are now immutable. Later schema changes use fix-forward migra
    only after processes and hook Jobs are no longer active; the idle guard does not
    clear a pending Helm operation.
    Later milestones extend those workflows and suites without requiring local
-   GitOps or cloud services. The current kind foundation starts `up.sh` with
+   GitOps or cloud services. Creation first caches repository and microservices parent POM
+   metadata through non-recursive `install:install-file` calls, without building
+   their reactors. It builds, verifies and installs only the safety observer
+   and its shared common test-helper dependencies through
+   `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Dshardshop.infrastructureOnly=true clean install -DinstallAtEnd=true`.
+   Its direct Failsafe gates use the same property to avoid application reactor-order
+   dependencies and previously installed application POMs; default builds retain
+   those dependencies. Creation does not build applications. Startup uses `up.sh` with
    `mvn -B -ntp -f microservices/shardshop/pom.xml clean install -DinstallAtEnd=true`:
    `install` includes `verify` and puts the verified reactor artifacts in Maven's
    local cache only after the reactor succeeds, so later Failsafe phase gates can
@@ -187,12 +201,14 @@ Milestone numbers 0-7 remain stable for references from other documents.
 
 ### Milestone 3: Product contracts, IDs, and workloads
 
-Steps 3.13–3.20 establish the two-command normal lifecycle, with a separate
-explicit `cluster-destroy.sh` reset command. A normal `up.sh` invocation
-builds the current ShardShop sources, creates or resumes the cluster, applies
-supported configuration changes, migrates the databases, deploys the built image
+Steps 3.13–3.20 establish explicit creation, deployment, retained stop and
+destruction commands. `cluster-create.sh` prepares the Kubernetes/database
+foundation. A subsequent normal `up.sh` invocation builds the current ShardShop
+sources, resumes an existing cluster when needed, checks the infrastructure
+prepared or reconciled by `cluster-create.sh`, migrates the databases, deploys the built image
 digests, and returns success only after deployment verification passes. `down.sh`
-stops the whole cluster without deleting storage. Completed rows below retain
+stops the whole cluster without deleting storage. Every `up.sh` now restarts
+application pods as requested alongside step 3.19. Completed rows below retain
 their historical commands; the new steps replace those commands, not their
 acceptance requirements. At this milestone, deploy product, the seeder and the
 reader; step 4.8 adds order, ledger and the order producer when they are functional.
@@ -217,8 +233,8 @@ reader; step 4.8 adds order, ledger and the order producer when they are functio
 | 3.16 Migrate and deploy current image digests through up.sh | 3.15 | Done | Use Skaffold for packaged image builds and Helmfile for ordered operator, infrastructure, migration and application releases under the tool-ownership rules above. Explicitly adopt matching legacy resources once; preserve unmanaged namespace, credentials and allocator state. Verify all qualified images on every node before SQL. Gate migrations on retained topology, allocator safety and readiness; run weighted catalog-all-shards → ordering-all-shards → ledger hooks, then require current-generation publications before application/routing sync. Flyway validates database history on every invocation; Helm owns revision-named attempts, waits and cleanup. Reject overlapping migration Jobs, document interrupted Helm recovery, and retain committed SQL on failure. Rerun idempotent seeding while preserving unchanged application pod templates, generator allocations and catalog IDs. Product configuration checksums cover the complete rendered file. Prove unchanged convergence, configuration rollouts, failure blocking and safe retry. **2026-10-14:** two full native startup runs pass 1,034 unit/startup tests and 55 routing checks each; unchanged pod/data preservation, Flyway failure/recovery and A → B → A, configuration rollout/restoration and all three live deployment scenarios pass. [Evidence](CHANGELOG.md#step-316-native-tool-ownership). Earlier implementation evidence remains [historical](CHANGELOG.md#step-316). |
 | 3.17 Complete up.sh with a deployment success gate | 3.15, 3.16 | Done | Add final deployment acceptance to the existing Skaffold build and Helmfile release workflow. Helm already waits for release resources and the current revision's seeder hook; use a declarative Helmfile phase hook to invoke Maven checks of desired generations/images, service readiness and reader catalog resolution. Invoke the step 3.15 deployment suite to verify routing, credential restrictions, traffic on both product pods within 120 seconds and a fresh all-OK reader interval at the existing accepted rate. Do not include pod deletion, standby fencing or repeated-release drills in normal startup. Preserve Java-owned catalog/load gating and leave the reader running. Keep every phase bounded, propagate failures and report bounded diagnostics without secrets; never report complete acceptance for a partially updated release. Record empty-lab startup, unchanged pod convergence with fresh no-op migration/idempotent seeder attempts, changed build/configuration, retained-data resume and failed migration/seeding/readiness. **2026-10-14:** native Helmfile acceptance passed fresh/repeated, changed-build/configuration and retained-data qualifications; migration, seeder, readiness and insufficient-traffic failures propagated, with two product replicas and one reader restored ([evidence](CHANGELOG.md#step-317)). |
 | 3.18 Stop the entire cluster through down.sh | 3.14 | Done | `down.sh` stops every kind node of the ShardShop cluster, including control plane and workers, and verifies all of those containers are stopped with a bounded shutdown timeout. A missing or already stopped cluster succeeds without changes. Preserve volumes, Secrets, databases and generator history; do not delete the cluster or stop Docker Desktop or unrelated containers. Serialize `up.sh` and `down.sh` so concurrent lifecycle calls cannot race, and release the lock on failure or interruption. Verify shutdown while workloads run, repeated shutdown, missing-cluster shutdown and a subsequent `up.sh` that recovers the same data and allocator identity. **2026-10-15:** 30 lifecycle tests and live stop/restart pass; all ten PVC bindings, catalog IDs and allocator identity are retained. The requested `cluster-destroy.sh` also passes disposable-cluster deletion and repeat checks. [Evidence](CHANGELOG.md#step-318) |
-| 3.19 Replace the offline dataset generator with Java tooling | 3.12 | Planned | Replace `shardshop-workload/shardshop-datasets/scripts/generate-buyers.py` with a development-only Java generator invoked through Maven in `shardshop-datasets`; do not package it into services or add another script. Reproduce the three checked-in `buyers-v1` TSVs byte for byte from the retained source pools, offline and without generating entity IDs. Generate into `target` for verification so ordinary builds and `up.sh` never rewrite source fixtures. Document the explicit dataset regeneration command and update `SOURCES.md`, `source-manifest.json` and provenance tests. Delete the Python generator only after reproducibility and the module's existing dataset checks pass. |
-| 3.20 Retire old scripts and qualify the two-script workflow | 3.17, 3.18, 3.19 | Planned | Delete the remaining `deploy.sh`, `migrate.sh`, `render.sh` and `shards.sh` after their replacements pass; step 3.15 already retired the two live verification scripts. Together with step 3.19, only `scripts/up.sh`, `scripts/down.sh` and the user-requested destructive reset `scripts/cluster-destroy.sh` remain as maintained scripts anywhere under ShardShop; do not hide the removed entry points in another directory or a task-runner wrapper. Update README, architecture, chart comments, artifact-lock metadata and active command references; preserve historical CHANGELOG evidence. Document two normal lifecycle commands, separate Maven test/drill commands and explicit data-recovery procedures. Run the relevant module builds, Testcontainers scenarios, default `kind` deployment suite and an explicit `-Pkind -Dshardshop.kind.tags=kind-drill` qualification run, then prove clean bootstrap, changed-version deployment, unchanged rerun, full stop and retained-data restart using only the two lifecycle scripts. Record exact commands and results in CHANGELOG. |
+| 3.19 Replace the offline dataset generator with Java tooling | 3.12 | Done | Replace `shardshop-workload/shardshop-datasets/scripts/generate-buyers.py` with a development-only Java generator invoked through Maven in `shardshop-datasets`; do not package it into services or add another script. Reproduce the three checked-in `buyers-v1` TSVs byte for byte from the retained source pools, offline and without generating entity IDs. Generate into `target` for verification so ordinary builds and `up.sh` never rewrite source fixtures. Document the explicit dataset regeneration command and update `SOURCES.md`, `source-manifest.json` and provenance tests. Delete the Python generator only after reproducibility and the module's existing dataset checks pass. **2026-10-15:** all 38 dataset tests and explicit offline Java generation pass; all three buyer TSVs reproduce byte for byte, source fixtures remain unchanged, and the generator is excluded from production JARs. [Evidence](CHANGELOG.md#step-319) |
+| 3.20 Retire old scripts and qualify the explicit lifecycle workflow | 3.17, 3.18, 3.19 | Planned | Delete the remaining `deploy.sh`, `migrate.sh`, `render.sh` and `shards.sh` after their replacements pass; step 3.15 already retired the two live verification scripts. Together with step 3.19, only `scripts/cluster-create.sh`, `scripts/up.sh`, `scripts/down.sh` and `scripts/cluster-destroy.sh` remain as maintained entry points anywhere under ShardShop, with `scripts/lib/lifecycle.sh` as their creation/startup implementation helper; do not hide the removed entry points in another directory or a task-runner wrapper. Update README, architecture, chart comments, artifact-lock metadata and active command references; preserve historical CHANGELOG evidence. Document creation, application deployment/restart, retained shutdown and destruction, separate Maven test/drill commands and explicit data-recovery procedures. Run the relevant module builds, Testcontainers scenarios, default `kind` deployment suite and an explicit `-Pkind -Dshardshop.kind.tags=kind-drill` qualification run, then prove clean bootstrap, changed-version deployment, unchanged-build application restart, full stop and retained-data restart using only the explicit lifecycle commands. Record exact commands and results in CHANGELOG. |
 
 ### Milestone 4: Complete order-to-ledger saga
 
@@ -525,8 +541,10 @@ microservices/shardshop/
   infra/images/flyway/            # Flyway migration image on the Canonical JRE
   infra/images/application/       # application images on the OpenJDK runtime, without kubectl
   infra/terraform/               # milestone 7: AWS infrastructure (optional)
-  scripts/                       # two normal lifecycle commands and an explicit reset
-    up.sh                        # build, reconcile cluster, migrate, deploy, verify success
+  scripts/                       # explicit cluster/application lifecycle
+    cluster-create.sh            # provision/reconcile infrastructure; fresh allocator only; no applications
+    up.sh                        # resume existing nodes, build, migrate, deploy and restart pods
+    lib/lifecycle.sh             # sourced creation/startup implementation; no extra entry point
     down.sh                      # stop every cluster node, retain data
     cluster-destroy.sh           # permanently remove cluster, storage and kubeconfig
 ```

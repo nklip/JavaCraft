@@ -1,6 +1,6 @@
 {{- if eq .Values.render "infrastructure" }}
 {{/* The registry and immutable identity are deliberately not chart resources.
-up.sh creates them only for a fresh cluster after this retention policy is effective. */}}
+cluster-create.sh creates them only for a fresh cluster after this retention policy is effective. */}}
 {{- range $service := list "product" "order" }}
 ---
 apiVersion: v1

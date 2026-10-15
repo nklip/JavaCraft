@@ -51,6 +51,9 @@ spec:
     metadata:
       annotations:
         shardshop.javacraft/configuration: {{ include "shardshop.productRevision" . | quote }}
+        {{- if .Values.restartToken }}
+        shardshop.javacraft/restart: {{ .Values.restartToken | quote }}
+        {{- end }}
       labels:
         app.kubernetes.io/name: shardshop-product
         app.kubernetes.io/part-of: shardshop
@@ -143,6 +146,10 @@ spec:
       app.kubernetes.io/name: shardshop-product-reader
   template:
     metadata:
+      {{- if .Values.restartToken }}
+      annotations:
+        shardshop.javacraft/restart: {{ .Values.restartToken | quote }}
+      {{- end }}
       labels:
         app.kubernetes.io/name: shardshop-product-reader
         app.kubernetes.io/part-of: shardshop

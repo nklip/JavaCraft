@@ -42,51 +42,6 @@
     </dependencyManagement>
 
     <dependencies>
-        <!--
-            The scenarios start the packaged quarkus-app folders of these applications. A POM dependency
-            without transitive dependencies only makes the reactor package them first; no application
-            class enters this classpath.
-        -->
-        <dependency>
-            <groupId>dev.nklip.javacraft</groupId>
-            <artifactId>shardshop-product</artifactId>
-            <version>${project.version}</version>
-            <type>pom</type>
-            <scope>test</scope>
-            <exclusions>
-                <exclusion>
-                    <groupId>*</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>dev.nklip.javacraft</groupId>
-            <artifactId>shardshop-product-seeder</artifactId>
-            <version>${project.version}</version>
-            <type>pom</type>
-            <scope>test</scope>
-            <exclusions>
-                <exclusion>
-                    <groupId>*</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>dev.nklip.javacraft</groupId>
-            <artifactId>shardshop-product-reader</artifactId>
-            <version>${project.version}</version>
-            <type>pom</type>
-            <scope>test</scope>
-            <exclusions>
-                <exclusion>
-                    <groupId>*</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
         <dependency>
             <groupId>io.cucumber</groupId>
             <artifactId>cucumber-java</artifactId>
@@ -219,6 +174,61 @@
     </build>
 
     <profiles>
+        <profile>
+            <id>application-test-artifacts</id>
+            <!-- Infrastructure observers need no packaged applications or installed application POMs. -->
+            <activation>
+                <property>
+                    <name>!shardshop.infrastructureOnly</name>
+                </property>
+            </activation>
+            <dependencies>
+                <!--
+                    The scenarios start the packaged quarkus-app folders of these applications. A POM dependency
+                    without transitive dependencies only makes the reactor package them first; no application
+                    class enters this classpath.
+                -->
+                <dependency>
+                    <groupId>dev.nklip.javacraft</groupId>
+                    <artifactId>shardshop-product</artifactId>
+                    <version>${project.version}</version>
+                    <type>pom</type>
+                    <scope>test</scope>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>*</groupId>
+                            <artifactId>*</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>dev.nklip.javacraft</groupId>
+                    <artifactId>shardshop-product-seeder</artifactId>
+                    <version>${project.version}</version>
+                    <type>pom</type>
+                    <scope>test</scope>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>*</groupId>
+                            <artifactId>*</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>dev.nklip.javacraft</groupId>
+                    <artifactId>shardshop-product-reader</artifactId>
+                    <version>${project.version}</version>
+                    <type>pom</type>
+                    <scope>test</scope>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>*</groupId>
+                            <artifactId>*</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+            </dependencies>
+        </profile>
         <profile>
             <id>kind</id>
             <properties>

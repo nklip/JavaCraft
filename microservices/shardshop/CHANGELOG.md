@@ -1678,3 +1678,199 @@ shardshop-318-destroy --kubeconfig /private/tmp/shardshop-318-destroy/kubeconfig
 --wait 120s` with the repository's pinned node image, and native `kind delete
 cluster` in its EXIT cleanup. Temporary qualification files and logs remain outside
 the repository; they are evidence of this run, not maintained entry points.
+
+
+<a id="step-319"></a>
+## Step 3.19 — Offline Java buyer generation and explicit cluster creation
+
+**2026-10-15:** Replaced the Python buyer generator with development-only
+`BuyerDatasetGenerator` in the dataset module's test sources. The explicit Maven
+`regenerate-buyers` execution writes only `target/generated-datasets/buyers-v1`;
+ordinary builds never regenerate source fixtures. It uses the retained name and
+address pools, frozen country order and unsigned SHA-256 coordinates to reproduce
+all three original TSVs byte for byte, with no network access or entity IDs.
+Malformed/incomplete pools, exhausted unique emails and output symlinks fail
+explicitly. Provenance now records the Java source hash and invocation; the source
+pools and checked-in buyer TSVs are unchanged, and the generator is absent from
+the production JAR. All **38 dataset tests** pass. An explicit offline Maven run
+also reproduced the three files before the Python script was removed.
+
+The additional user-requested `cluster-create.sh` separates fresh creation from
+application deployment. It validates/builds the current safety suites, creates
+kind and the database/credential foundation, initializes allocator identity only
+on that invocation's fresh cluster, and verifies readiness without migrations or
+application workloads. Existing clusters are a no-op; partial creation never
+implicitly authorizes resetting allocator history. `up.sh` now requires that
+foundation, resumes retained nodes, builds/scans current images, reconciles,
+migrates and deploys. As requested, every `up.sh` invocation adds a fresh shared
+Helm pod-template annotation for product and reader, even for an unchanged build;
+`--restart` is an equivalent explicit alias. Each restarted product JVM reserves
+a new non-reusable generator slot.
+All four lifecycle commands share the existing exclusive lock. The remaining
+compatibility helpers stay until step 3.20.
+
+The testing module initially passed **163 tests**, including create/startup boundary and
+failure fixtures, shared-lock contention and restart-only chart/schema checks.
+Initial fixture failures were corrected: the mock registry now uses a valid UUID,
+and the hung-stop timeout allows discovery to reach the deliberately blocked
+command before verifying that the watchdog reaps it. The final input-copy fixture
+also passed its focused eight-test startup suite.
+
+Fresh first-start qualification exposed a retained guard that assumed kubectl's
+last-applied annotation: new Helm-created CNPG resources have API defaults but no
+such annotation. The fix reads the current infrastructure Helm revision's stored
+manifest, validates ownership/identity, and retains exact protected declaration
+and live-drift checks. Completed failed revisions can be retried; pending/changing
+revisions and missing/ambiguous history fail closed. A regression run against the
+old comparison failed for the reported reason; the corrected **14-test safety
+suite** and a live retained guard check passed. The disposable failed lab was
+removed and the retained lab restored with its original catalog IDs before retry.
+
+The successful fresh qualification used the owned four-node
+`shardshop-319-retry` lab and a private kubeconfig, with cleanup registered before
+creation. Only the fixed cluster/context and the kind/Helmfile context settings
+were changed in temporary script/configuration copies outside the repository.
+The retained lab was stopped to keep only one full database lab running in the
+12 GB Docker VM. `cluster-create.sh` finished with four healthy CNPG databases,
+ten Bound PVCs, no application Deployments or migration/seeder Jobs, and allocator
+high-water **0**. Repeated creation made no changes. The subsequent `up.sh`
+passed its **1,117 unit/startup tests** (including **38 dataset** and **168 testing
+module tests**), **55 packaged routing checks**, all four image/advisory gates,
+retained-state guards, migrations, seeding and all four final deployment scenarios.
+The temporary cluster, node volumes and kubeconfig context were removed. A live
+startup attempt after that deletion correctly failed before the build and directed
+the caller to `cluster-create.sh`.
+
+Commands run from the repository root (temporary qualification helpers are not
+maintained project entry points):
+
+```bash
+mvn -B -ntp -f microservices/shardshop/shardshop-workload/shardshop-datasets/pom.xml clean verify
+mvn -o -B -ntp -f microservices/shardshop/shardshop-workload/shardshop-datasets/pom.xml \
+  test-compile exec:exec@regenerate-buyers
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing verify
+# The original comparison failed this regression; the fixed comparison passes:
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dtest=KindSafetyTest#helmOwnedInfrastructureAcceptsApiDefaultsUsingItsStoredDeclaration test
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Dtest=KindSafetyTest test
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  failsafe:integration-test failsafe:verify -Dit.test=KindIT \
+  -Dshardshop.kind.tags=kind-retention \
+  -Dshardshop.kind.snapshot=/private/tmp/shardshop-319-guard/snapshot
+bash /private/tmp/shardshop-319-retry/qualify.sh
+```
+
+The owned qualification wrapper runs the real `down.sh`, then temporary copies
+of `cluster-create.sh` (twice) and `up.sh` for `shardshop-319-retry`. After deleting
+that lab and verifying its cleanup, it runs the repository's ordinary `up.sh`
+twice against `kind-shardshop`, without `--restart`. Each lifecycle build invokes
+`mvn -B -ntp -f microservices/shardshop/pom.xml clean install -DinstallAtEnd=true`.
+Native startup after deletion was checked separately with the temporary copy and
+private kubeconfig; its expected error directed the caller to create the cluster.
+
+Retained recovery and the subsequent unchanged-build run both passed every phase
+and all four final acceptance scenarios. Product kept the same image; reader moved
+from `sha256:530cdf60fc3346e2034611b120548cf2f43352dbe5ed93dc5c024c99d261dda1`
+to `sha256:7450c1c46bf0d1837a464f8850d428ee78e91870674248b5c1502cbc824cb49f`.
+The unchanged rerun replaced all **three application pod UIDs**, as requested.
+The four node IDs/mounts, four CNPG Cluster and Database UIDs, ten PVC/PV bindings
+and allocator registry/identity UIDs match the pre-stop snapshot. High-water
+advanced **96 → 100 → 102** across recovery/deployment and the unchanged restart,
+without rollback or slot reuse. The reader retained catalog key-to-ID digest
+`97af5c774026fb993e04a7b80e3c74bc2ad6c8c6ff7ccc6b27ffe56a7f57ca88`
+and reported **6,000 all-OK requests in 30 seconds (200/s)**. Two product replicas
+and one reader are Ready; only the original four kind nodes remain, and both
+qualification and ordinary lifecycle locks were released.
+
+A final offline generation reproduced all three TSVs byte for byte; source pools
+and source resources have no Git diff, and the production dataset JAR contains
+no generator class. `git diff --check` passes. Step 3.19 is Done.
+
+### Lifecycle responsibility refactor after step 3.19
+
+**2026-10-15:** At the user's request, infrastructure provisioning now belongs
+exclusively to `cluster-create.sh`: namespace, missing credentials, operator and
+database release reconciliation, and fresh-only allocator initialization. An
+existing lab is guarded and reconciled instead of being a no-op; retained
+allocator identity and admission protection must pass before provisioning.
+`up.sh` builds/scans/loads current application images, migrates, deploys and
+restarts application pods on every invocation. It can resume retained nodes and
+observe readiness but never creates credentials/namespaces or syncs infrastructure.
+The migration release retains its infrastructure readiness gate before SQL.
+
+`scripts/lib/lifecycle.sh` shares the invocation lock, signal cleanup, snapshots,
+rendering, Maven observers, memory check, node resume and DNS checks. The two
+entry points now contain **105** and **62** lines respectively, with **123** shared
+helper lines, replacing the previous **221 + 140** lines. The user's explicit
+helper request supersedes the earlier plan restriction on sourced shell helpers;
+the helper is not another lifecycle entry point.
+
+Creation's `shardshop.infrastructureOnly=true` build selects only the observer
+and common test-helper dependencies, without application reactor-order POMs.
+Default and integration builds retain their original dependencies. Creation also
+caches the two inherited parent POMs using nonrecursive `install:install-file`
+calls from ShardShop; neither ancestor reactor is built. An isolated Maven cache
+with no JavaCraft artifacts exposed the missing common test JAR and inherited POM
+metadata, and the corrected scoped install plus standalone `kind-config` gate
+passed with no application artifacts present. The scoped build passes **195 common
+tests and 171 testing-module tests**. Boundary regression tests reject the old
+infrastructure-writing `up.sh` and existing-cluster no-op behavior; fixture tests
+also cover retained guards, credential preservation, restart tokens, shared locking
+and interruption. A fixture's positional-argument parsing was corrected after
+adding the shared kubectl timeout; the complete scoped build then passed.
+
+The first live retained reconciliation passed without changing the three
+application pod identities, credentials, allocator state or database/PVC identity.
+Fresh creation and repeated creation then passed on the disposable
+`shardshop-split-retry` lab: four database clusters, ten PVCs, no application
+Deployments or Jobs and allocator high-water mark zero. Reconciliation preserved
+the protected identities. Its first application startup passed all four final
+acceptance scenarios without changing either infrastructure Helm revision.
+
+The first disposable attempt exhausted its bounded DNS-probe deadline while one
+worker was still pulling the pinned PostgreSQL image. Cleanup removed that lab and
+restored the retained application; the second fresh attempt passed with the same
+timeouts. A later retained startup failed safely at image inspection: Skaffold had
+deleted the newly rebuilt reader image while building a subsequent artifact.
+Docker events showed successful tagging followed by deletion, and the pinned
+[Skaffold 2.25.0 implementation](https://github.com/GoogleContainerTools/skaffold/blob/v2.25.0/pkg/skaffold/config/options.go)
+enables asynchronous pruning when artifact caching is disabled. Deterministic
+image IDs and the fixed image creation timestamp allow that cleanup to select an
+image reused by the current build. `up.sh` now explicitly enables artifact caching
+with an empty invocation-local cache file. Every artifact still builds from current
+Maven outputs, Docker layers remain reusable, and Skaffold pruning stays disabled.
+The restart regression first failed against the old flag, then verifies unique,
+initially absent cache files and their cleanup across repeated startup calls.
+
+The final corrected `up.sh` passed **1,120 unit tests, 55 routing startup tests**,
+all four image builds and advisory gates, and all four final live acceptance
+scenarios. The private artifact cache reported a miss and built every artifact.
+All three application pods were replaced, while both infrastructure Helm revisions,
+the original four node identities and volume attachments, all ten PVC identities,
+credential hashes, and retained allocator identity were preserved. The allocator
+high-water mark advanced normally. The reader retained dataset digest
+`97af5c774026fb993e04a7b80e3c74bc2ad6c8c6ff7ccc6b27ffe56a7f57ca88`.
+Two product replicas and one reader are Ready, all ten PVCs are Bound, disposable
+labs and their volumes/configuration are removed, and the lifecycle lock is released.
+Shell syntax checks and `git diff --check` pass.
+
+Commands run from the repository root:
+
+```bash
+# Boundary regression before the implementation change:
+mvn -B -ntp -f microservices/shardshop/shardshop-testing/pom.xml -Dtest=KindStartupScriptTest test
+# Scoped build, also run offline with an isolated repository lacking JavaCraft artifacts:
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true clean install -DinstallAtEnd=true
+bash /private/tmp/shardshop-lifecycle-refactor/qualify.sh
+bash /private/tmp/shardshop-lifecycle-refactor/retry/qualify.sh
+bash /private/tmp/shardshop-lifecycle-refactor/retry/verify-final.sh
+```
+
+The temporary qualification wrapper registers cleanup before creating its owned
+`shardshop-split-check` or `shardshop-split-retry` lab, uses a private kubeconfig and stops the retained lab
+for Docker VM capacity. Temporary copies change only cluster identity/context and
+input paths. It runs the real creation/startup workflows and restores the retained
+lab, comparing protected identities, credential hashes, application pod identities
+and infrastructure Helm revisions. The wrapper and its logs are local evidence,
+not maintained project entry points.

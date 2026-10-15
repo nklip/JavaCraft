@@ -27,8 +27,18 @@ class KindStopScriptTest {
         for (String directory : List.of("scripts", "bin", "tmp", "state")) {
             Files.createDirectories(temporary.resolve(directory));
         }
-        for (String script : List.of("up.sh", "down.sh")) {
+        for (String script : List.of("up.sh", "down.sh", "cluster-create.sh")) {
             Files.copy(source.resolve("scripts").resolve(script), temporary.resolve("scripts").resolve(script));
+        }
+        Path library = source.resolve("scripts/lib");
+        if (Files.isDirectory(library)) {
+            try (var paths = Files.walk(library)) {
+                for (Path path : paths.toList()) {
+                    Path target = temporary.resolve("scripts/lib").resolve(library.relativize(path));
+                    if (Files.isDirectory(path)) Files.createDirectories(target);
+                    else Files.copy(path, target);
+                }
+            }
         }
         Files.write(temporary.resolve("nodes"), NODES);
         Files.writeString(temporary.resolve("mode"), "normal");
@@ -176,10 +186,10 @@ class KindStopScriptTest {
     }
 
     @Test
-    void existingLifecycleLockRejectsUpAndDownWithoutTouchingItsOwner() throws Exception {
+    void existingLifecycleLockRejectsCreateUpAndDownWithoutTouchingItsOwner() throws Exception {
         Files.createDirectory(lock());
         Files.writeString(lock().resolve("owner"), "other lifecycle");
-        for (String script : List.of("down.sh", "up.sh")) {
+        for (String script : List.of("down.sh", "up.sh", "cluster-create.sh")) {
             Result result = run(script, "60");
             assertNotEquals(0, result.exit(), result.output());
             assertTrue(events().isEmpty(), "A competing lifecycle call reached kind or Docker: " + events());
@@ -219,9 +229,12 @@ class KindStopScriptTest {
 
     private void assertTimedOut(String mode) throws Exception {
         mode(mode);
-        Result result = run("down.sh", "2");
+        // The global deadline includes discovery and four bounded inspections before stop.
+        // Leave time for that preflight so this test reaches the intended unresponsive CLI.
+        Result result = run("down.sh", mode.equals("hang-stop") ? "5" : "2");
         assertEquals(124, result.exit(), result.output());
         assertTrue(result.output().contains("timeout"), result.output());
+        assertTrue(Files.exists(temporary.resolve("active-pid")), "The intended blocking CLI was not reached: " + result.output());
         assertFalse(ProcessHandle.of(activePid()).map(ProcessHandle::isAlive).orElse(false));
         assertFalse(Files.exists(lock()));
     }
@@ -231,7 +244,7 @@ class KindStopScriptTest {
         try (Running stopping = start("down.sh", "60")) {
             await(() -> Files.exists(temporary.resolve("active-pid")), "down did not reach Docker stop");
             long child = activePid();
-            for (String script : List.of("up.sh", "down.sh")) {
+            for (String script : List.of("up.sh", "down.sh", "cluster-create.sh")) {
                 Result contender = run(script, "60");
                 assertNotEquals(0, contender.exit(), contender.output());
                 assertTrue(Files.exists(lock()));

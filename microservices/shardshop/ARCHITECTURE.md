@@ -22,8 +22,11 @@ Argo CD GitOps, and may add cloud-only
 durability such as S3 backups with WAL archiving and a three-broker RabbitMQ. No
 local behavior or check may depend on a cloud service.
 
-Cluster creation, reconciliation, migration and application deployment use
-`scripts/up.sh`; retained shutdown uses `scripts/down.sh`. The explicit
+Cluster creation, infrastructure reconciliation and fresh database/allocator preparation use
+`scripts/cluster-create.sh`. Application startup, retained-node resumption,
+readiness checks, migration and deployment use `scripts/up.sh`; retained shutdown
+uses `scripts/down.sh`. Creation never deploys applications, and `up.sh` refuses a
+missing cluster instead of recreating it. The explicit
 `scripts/cluster-destroy.sh` reset removes the lab, its attached volumes and
 `kind-shardshop` kubeconfig entries. `up.sh` snapshots the inventory,
 environment values, database migration files, kind configuration, operator chart
@@ -79,7 +82,15 @@ infrastructure safety gates remain individually selectable. Tests observe native
 reconciliation or make only the explicitly selected temporary drill changes;
 production migration and deployment run through `up.sh`. Compatibility
 `migrate.sh`, `deploy.sh`, `render.sh` and `shards.sh` remain until step 3.20.
-The initial ShardShop-only Maven
+`cluster-create.sh` first caches repository and microservices parent POM metadata
+using non-recursive `install:install-file` calls, without building their reactors.
+It builds, verifies and installs only `shardshop-testing` and
+its shared common test-helper dependencies with
+`-pl shardshop-testing -am -Dshardshop.infrastructureOnly=true clean install -DinstallAtEnd=true`.
+This invocation disables application reactor-order dependencies, and its direct
+Failsafe gates use the same property; creation does not build applications or
+require installed application POMs. Default builds retain those dependencies.
+The initial ShardShop-only Maven build in `up.sh`,
 `clean install -DinstallAtEnd=true` includes `verify` and installs verified reactor
 artifacts in Maven's local cache after the reactor succeeds; subsequent Failsafe
 gates resolve these packages without another build. This is local artifact caching,
@@ -91,13 +102,31 @@ its standalone build has no deployer and does not load kind images. Native image
 delivery verifies the qualified build's config ID and a consistent manifest digest
 on every node before migrations or a new application release.
 
-Helmfile syncs `cnpg` and `shardshop-infrastructure` first, then Bash initializes
-allocator identity only for a cluster demonstrably created by this invocation.
+`cluster-create.sh` syncs `cnpg` and `shardshop-infrastructure` through Helmfile,
+then initializes allocator identity only for a cluster demonstrably created by
+that invocation. It verifies database readiness and returns without migrations or
+application deployment or application image builds. On an existing cluster it
+resumes stopped nodes and reconciles supported infrastructure changes after
+retained-state guards pass. Partial allocator initialization requires explicit
+recovery and never authorizes a counter reset. `up.sh` requires valid retained
+allocator state, observes prepared infrastructure readiness and never provisions
+namespaces, credentials or infrastructure releases. Both source
+`scripts/lib/lifecycle.sh` for locks, traps, snapshots, rendering, verifiers,
+readiness and retained-node resumption; this helper is not an entry point.
+Shutdown and destruction retain their separate bounded workflows. For Helm-owned
+databases, retained protected declarations come from the pinned current release
+manifest, while live values are checked for drift. This separates API defaults
+from intended storage/placement/bootstrap changes; the legacy kubectl annotation
+remains the baseline only for resources outside Helm ownership.
 After readiness/image delivery, Helmfile syncs `shardshop-migrations` and
 `shardshop-application` in dependency order. Each revision runs ordered Flyway
 hooks and idempotent seeding. Flyway's actual history is authoritative; no completed
-Job cache suppresses validation. Unchanged application pod templates remain in
-place, preserving generator allocations. Product's pod checksum is SHA-256 of
+Job cache suppresses validation. Every `up.sh` invocation changes a shared restart
+annotation on the product/reader templates through Helm, triggering replacement
+followed by the seeding and acceptance gates even for unchanged code. Each new
+product JVM consumes a fresh, non-reusable generator slot; a normal two-replica
+rollout uses at least two slots. `--restart` is an equivalent explicit alias.
+Product's pod checksum is SHA-256 of
 the full rendered `application.properties`, sharing the mounted file's named
 template and static defaults. Image/resource/workload settings are direct template
 inputs. Seeder revision identity is recorded on reader Deployment metadata,
@@ -243,7 +272,7 @@ Dataset definitions and service-side creation follow section 3.
    stays completed rather than being restarted as a Deployment. Reader and order
    producer run until the scenario controller scales them to zero. Each new run
    gets a new Helm-revision seeder Job on each deployment invocation while
-   unchanged workload pods remain in place. Legacy explicit runs remain available
+   startup replaces workload pods even when their build is unchanged. Legacy explicit runs remain available
    for compatibility and drills. If the dataset is already complete, a workload can
    continue its load before
    the Job of its run completes, because the seeder sends the same keys and
@@ -615,7 +644,7 @@ The infrastructure's fail-closed admission policy matches the admitted object's
 name and rejects individual or collection deletion, non-increasing counters and
 identity changes. Namespace deletion consequently leaves the namespace terminating
 with the two allocator objects retained. Registry creation
-is performed by `up.sh` only for a cluster created during that invocation, after the
+is performed by `cluster-create.sh` only for a cluster created during that invocation, after the
 guard is effective; normal startup of an existing cluster only checks it.
 The [startup runbook](README.md#generator-allocation-at-jvm-startup-steps-34-and-311)
 defines the configuration, initialization and verification. Step 3.9 wires the
@@ -966,9 +995,9 @@ run on the kind lab and on EKS (PLAN milestone 7), where Argo CD applies them.
 
 | Layer | Contents | Defined in | Applied on kind / on EKS |
 |---|---|---|---|
-| Instances | CNPG `Cluster`s, parameters, storage, database-wide hardening | `infra/helm/shardshop/templates/clusters.yaml` | `up.sh` / Argo CD |
-| Identities | Group roles, login roles, memberships | CNPG `DatabaseRole`s in `infra/helm/shardshop/templates/databases.yaml` for each inventory entry and `ledger-database.yaml` for ledger; one password Secret per login role, with shard credentials shared across shards and ledger credentials separate | `up.sh`, which generates the Secrets / Argo CD, with Secrets synced from AWS Secrets Manager |
-| Containers | Databases, schemas and their owners, CDC publications | CNPG `Database` and `Publication` resources in the per-shard template; `ledger-db-ledger` Database and schema in `ledger-database.yaml` | `up.sh` / Argo CD |
+| Instances | CNPG `Cluster`s, parameters, storage, database-wide hardening | `infra/helm/shardshop/templates/clusters.yaml` | `cluster-create.sh` / Argo CD |
+| Identities | Group roles, login roles, memberships | CNPG `DatabaseRole`s in `infra/helm/shardshop/templates/databases.yaml` for each inventory entry and `ledger-database.yaml` for ledger; one password Secret per login role, with shard credentials shared across shards and ledger credentials separate | `cluster-create.sh`, which generates the Secrets / Argo CD, with Secrets synced from AWS Secrets Manager |
+| Containers | Databases, schemas and their owners, CDC publications | CNPG `Database` and `Publication` resources in the per-shard template; `ledger-db-ledger` Database and schema in `ledger-database.yaml` | `cluster-create.sh` / Argo CD |
 | Contents | Tables, constraints, indexes, grants, data | Flyway streams under `database/`, run by Helm hooks from `infra/helm/shardshop/templates/migrations.yaml` and `_migrations.tpl` | `up.sh` / Argo CD `PreSync` hook Jobs |
 
 `database/` holds one Flyway stream per schema. Each stream is a folder with its
@@ -981,7 +1010,7 @@ or Maven build and invokes Flyway's main class directly because the JRE image ha
 no shell. It copies only the libraries, drivers, configuration and licenses of the
 pinned upstream Flyway image, not its Temurin runtime. The image and Jobs select
 UID/GID 10001. `up.sh` builds and scans the image before cluster mutation, then
-loads it into kind after provisioning and verifies its manifest digest on every
+loads it into the prepared kind cluster and verifies its manifest digest on every
 node before SQL or a new application release, as the
 [migration runbook](README.md#database-schemas-and-migrations-step-23) describes.
 This is the local ARM64 delivery path; a future cloud deployment must publish and
@@ -1027,7 +1056,7 @@ up to 180 seconds for exact current-generation applied outbox Publications befor
 the application release can publish routing. Failed releases retain already
 committed SQL; there is no automatic SQL rollback, history repair or database reset.
 
-`up.sh`, `down.sh` and `cluster-destroy.sh` serialize local invocations with
+`cluster-create.sh`, `up.sh`, `down.sh` and `cluster-destroy.sh` serialize local invocations with
 `${TMPDIR:-/tmp}/shardshop-up.lock`; a concurrent invocation fails before mutation.
 Use the same `TMPDIR` for lifecycle calls. Ordinary failure and INT/TERM release
 the lock after the active command ends. Inspect retained Jobs and confirm no

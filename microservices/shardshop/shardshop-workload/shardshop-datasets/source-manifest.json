@@ -4,6 +4,14 @@
     "catalog": "catalog-v1",
     "buyers": "buyers-v1"
   },
+  "buyerGeneration": {
+    "reproducedOn": "2026-10-15",
+    "source": "src/test/java/dev/nklip/javacraft/shardshop/workload/dataset/BuyerDatasetGenerator.java",
+    "mainClass": "dev.nklip.javacraft.shardshop.workload.dataset.BuyerDatasetGenerator",
+    "mavenGoal": "exec:exec@regenerate-buyers",
+    "outputDirectory": "target/generated-datasets/buyers-v1",
+    "networkRequired": false
+  },
   "notice": "Downloaded source artifacts are identified for audit, not redistributed. Retained files below are the frozen inputs and generated fixtures. See SOURCES.md for source-specific license conditions and ranking limitations.",
   "downloads": [
     {
@@ -84,6 +92,6 @@
     "src/main/resources/datasets/catalog-v1/EU.tsv": "ab980bc8cca39de57942f2fc97fb56ee5833e16cb5ccd323ce91514c05b0d2ba",
     "src/main/resources/datasets/catalog-v1/US.tsv": "986ccd29a9a8edfd0f446e9bc2e4120b942b1c4220e0f261687366f932ca84a9",
     "catalog-selection.json": "0c939518c6fd478fb1eee284d1a1a614091fa97cf55e302560be800696e3f26a",
-    "scripts/generate-buyers.py": "0c91d5e6e7a2ea814e1aeff9703ebed271506e722851db7d7603d0fc3d014aef"
+    "src/test/java/dev/nklip/javacraft/shardshop/workload/dataset/BuyerDatasetGenerator.java": "0f3173f727323579bed265733d9db3ca0c445f57d02af92b060f9600617eca7f"
   }
 }

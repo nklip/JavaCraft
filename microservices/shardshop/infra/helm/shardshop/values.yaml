@@ -4,6 +4,8 @@ migrationShard: ""
 migrationStream: catalog
 # Explicit run for legacy render=seeding and workload drills; Helm hooks use the release revision.
 run: ""
+# up.sh replaces this value on every deployment to restart product and reader.
+restartToken: ""
 datasetVersion: catalog-v1
 images:
   product: ""

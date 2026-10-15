@@ -194,6 +194,50 @@ class HelmReleaseTest {
     }
 
     @Test
+    void changingRestartTokenChangesOnlyProductAndReaderPodTemplatesAndSameTokenIsStable() throws Exception {
+        List<JsonNode> before = render("application-release");
+        List<JsonNode> infrastructureBefore = render("infrastructure");
+        String firstToken = "restart-" + "a".repeat(24);
+        values.put("restartToken", firstToken);
+        List<JsonNode> restarted = render("application-release");
+        assertEquals(restarted, render("application-release"), "Rendering the same token must preserve pod templates");
+        values.put("restartToken", "restart-" + "b".repeat(24));
+        List<JsonNode> restartedAgain = render("application-release");
+        for (String application : List.of("shardshop-product", "shardshop-product-reader")) {
+            JsonNode initialTemplate = named(before, application).path("spec").path("template");
+            JsonNode restartedTemplate = named(restarted, application).path("spec").path("template");
+            JsonNode nextTemplate = named(restartedAgain, application).path("spec").path("template");
+            assertFalse(initialTemplate.path("metadata").path("annotations").has("shardshop.javacraft/restart"));
+            assertEquals(firstToken, annotation(restartedTemplate, "shardshop.javacraft/restart"));
+            assertNotEquals(initialTemplate, restartedTemplate);
+            assertNotEquals(restartedTemplate, nextTemplate);
+            assertEquals(initialTemplate.path("spec"), restartedTemplate.path("spec"));
+            ObjectNode withoutRestart = restartedTemplate.deepCopy();
+            object(withoutRestart.path("metadata").path("annotations")).remove("shardshop.javacraft/restart");
+            // Reader has no other pod annotations; absence and an empty map have equal Kubernetes behavior.
+            if (withoutRestart.path("metadata").path("annotations").isEmpty()) {
+                object(withoutRestart.path("metadata")).remove("annotations");
+            }
+            assertEquals(initialTemplate, withoutRestart, "The explicit restart must only change its annotation");
+        }
+        assertEquals(jobs(before), jobs(restarted), "A restart token must not change seeding inputs");
+        assertEquals(before.stream().filter(resource -> !resource.path("kind").asText().equals("Deployment")).toList(),
+                restarted.stream().filter(resource -> !resource.path("kind").asText().equals("Deployment")).toList());
+        assertEquals(infrastructureBefore, render("infrastructure"), "Restarting applications must preserve infrastructure");
+    }
+
+    @Test
+    void malformedRestartTokensAreRejectedBeforeDeployment() throws Exception {
+        for (String invalid : List.of("restart-", "restart-" + "a".repeat(23), "restart-" + "a".repeat(25),
+                "restart-" + "A".repeat(24), "arbitrary-token", "restart-" + "a".repeat(24) + "\n")) {
+            values.put("restartToken", invalid);
+            assertRejected("application-release");
+        }
+        values.put("restartToken", "");
+        render("application-release");
+    }
+
+    @Test
     void changedConfigurationAndImagesRollOnlyTheirAffectedApplicationPods() throws Exception {
         List<JsonNode> before = render("application-release");
         ((ObjectNode) values.path("images")).put("product-seeder", image("product-seeder", 'b'));

@@ -14,6 +14,10 @@
     "shards"
   ],
   "properties": {
+    "restartToken": {
+      "type": "string",
+      "pattern": "^$|^restart-[0-9a-f]{24}$"
+    },
     "render": {
       "type": "string",
       "enum": [

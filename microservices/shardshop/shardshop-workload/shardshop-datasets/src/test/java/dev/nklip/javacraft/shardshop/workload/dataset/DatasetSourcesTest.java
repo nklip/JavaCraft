@@ -109,6 +109,22 @@ class DatasetSourcesTest {
         }
     }
 
+    @Test
+    void buyerProvenanceIdentifiesTheDevelopmentOnlyJavaGenerator() throws IOException {
+        JsonNode manifest = new ObjectMapper().readTree(Path.of("source-manifest.json").toFile());
+        JsonNode generator = manifest.get("buyerGeneration");
+        String source = "src/test/java/dev/nklip/javacraft/shardshop/workload/dataset/BuyerDatasetGenerator.java";
+        assertEquals(source, generator.get("source").asText());
+        assertTrue(manifest.get("retainedFiles").has(source), "Generator implementation is covered by the provenance hash");
+        assertEquals(BuyerDatasetGenerator.class.getName(), generator.get("mainClass").asText());
+        assertEquals("exec:exec@regenerate-buyers", generator.get("mavenGoal").asText());
+        assertEquals("target/generated-datasets/buyers-v1", generator.get("outputDirectory").asText());
+        assertFalse(generator.get("networkRequired").asBoolean());
+        assertFalse(manifest.get("retainedFiles").has("scripts/generate-buyers.py"));
+        assertFalse(Files.exists(Path.of("target/classes/dev/nklip/javacraft/shardshop/workload/dataset/BuyerDatasetGenerator.class")),
+                "Development tooling must not enter production classes");
+    }
+
     /** A pool row with this name and email part; Asian rows also have the country of the buyer. */
     private static boolean paired(List<Map<String, String>> pool, String name, String emailPart,
                                   BuyerDataset.BuyerDefinition buyer) {

@@ -1,0 +1,123 @@
+# Shared implementation for cluster-create.sh and up.sh; source from Bash.
+# Provisioning and application delivery remain in their respective entry points.
+
+lifecycle_init() {
+    root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+    cluster_name=shardshop
+    context="kind-$cluster_name"
+    export KIND_EXPERIMENTAL_PROVIDER=docker
+    created_cluster=false
+    work=
+    lock="${TMPDIR:-/tmp}/shardshop-up.lock"
+    mkdir "$lock" 2>/dev/null || {
+        echo "Another ShardShop lifecycle call owns $lock. If its process has ended, inspect the retained Jobs before removing that lock." >&2
+        exit 1
+    }
+    trap lifecycle_cleanup EXIT
+    # Bash defers signals until its foreground CLI exits. Keep the lock until
+    # that mutation finishes; neither a signal nor cleanup may release it early.
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+}
+
+lifecycle_cleanup() {
+    trap '' INT TERM
+    if [[ -n "$work" && -f "$work/dns-probes.yaml" ]]; then
+        k delete -f "$work/dns-probes.yaml" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    fi
+    [[ -z "$work" ]] || rm -rf -- "$work"
+    rmdir "$lock"
+}
+
+require_tools() {
+    local tool
+    for tool in "$@"; do
+        command -v "$tool" >/dev/null || { echo "$tool is not on PATH" >&2; exit 1; }
+    done
+}
+
+k() { kubectl --context "$context" --request-timeout=10s -n shardshop "$@"; }
+
+render() {
+    local mode=$1
+    shift
+    helm template shardshop "$work/chart" --namespace shardshop \
+        --values "$work/environment.yaml" --values "$work/inventory.yaml" \
+        --set-string "render=$mode" "$@" |
+        if [[ "$mode" == inventory || "$mode" == kind-configuration ]]; then
+            sed '/^# Source:/d; /^---$/d'
+        else cat; fi
+}
+
+snapshot_configuration() {
+    # All gates and Helmfile releases consume this one immutable invocation copy.
+    work=$(mktemp -d)
+    cp -R "$root/infra/helm/shardshop" "$work/chart"
+    cp "$root/infra/helmfile.yaml.gotmpl" "$work/helmfile.yaml.gotmpl"
+    export SHARDSHOP_ROOT="$root" SHARDSHOP_SNAPSHOT="$work"
+    cp -R "$root/database" "$work/chart/migrations"
+    cp "$root/infra/kind.yaml" "$work/chart/kind.yaml"
+    cp "${SHARDSHOP_ENV_VALUES:-$root/infra/helm/shardshop/kind-values.yaml}" "$work/environment.yaml"
+    cp "${SHARDSHOP_INVENTORY:-$root/infra/shards.yaml}" "$work/inventory.yaml"
+    # Helmfile parses these release inputs even when selecting application only.
+    cp "$root/infra/helm/cnpg/values.yaml" "$work/operator-values.yaml"
+    cp "$root/infra/helm/cnpg/cloudnative-pg-0.29.1.tgz" "$work/operator.tgz"
+    render inventory >"$work/inventory.json"
+    render kind-configuration >"$work/kind.json"
+    render infrastructure >"$work/infrastructure.yaml"
+}
+
+require_memory() {
+    local mem
+    # The 12 GB Docker VM in PLAN.md §5 reports about 11.7 GiB.
+    mem=$(docker info --format '{{.MemTotal}}')
+    (( mem >= 11 * 1024**3 + 512 * 1024**2 )) \
+        || { echo "Docker VM has $(( mem / 1024**2 )) MiB; set Docker Desktop to 12 GB" >&2; exit 1; }
+}
+
+verify_kind() {
+    local phase=$1
+    shift
+    echo "Verifying kind phase: $phase"
+    # Both entry points compile these observers first. Direct Failsafe goals
+    # reuse them; no application artifact is needed on the observer classpath.
+    mvn -B -ntp -f "$root/pom.xml" -pl shardshop-testing -Pkind \
+        -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+        -Dit.test=KindIT \
+        -Dshardshop.kind.tags="$phase" -Dshardshop.kind.snapshot="$work" \
+        -Dshardshop.kind.cluster="$cluster_name" -Dshardshop.kind.fresh="$created_cluster" "$@"
+}
+
+resume_cluster() {
+    local node running attempt started_nodes=false
+    verify_kind kind-nodes
+    for node in $nodes; do
+        running=$(docker inspect --format '{{.State.Running}}' "$node")
+        if [[ "$running" != true ]]; then
+            docker start "$node" >/dev/null
+            started_nodes=true
+        fi
+    done
+    # kind respects KUBECONFIG, otherwise updating ~/.kube/config.
+    kind export kubeconfig --name "$cluster_name"
+    for attempt in {1..60}; do
+        k get --raw /readyz >/dev/null 2>&1 && break
+        (( attempt < 60 )) || { echo "$context API server did not start" >&2; exit 1; }
+        sleep 2
+    done
+    k wait --for=condition=Ready nodes --all --timeout=180s
+    verify_kind kind-retention
+    # Refresh downward-API HOST_IP after Docker assigns new node addresses.
+    if [[ "$started_nodes" == true ]]; then
+        k -n kube-system rollout restart daemonset/kindnet
+        k -n kube-system rollout status daemonset/kindnet --timeout=180s
+    fi
+}
+
+verify_dns() {
+    local probe_run="dns-$(openssl rand -hex 6)"
+    k -n kube-system rollout status deployment/coredns --timeout=180s
+    render dns-probes --set-literal "probe.nodes=${nodes//$'\n'/,}" \
+        --set-literal "probe.run=$probe_run" >"$work/dns-probes.yaml"
+    verify_kind kind-dns
+}
