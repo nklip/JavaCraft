@@ -1415,6 +1415,54 @@ snapshot throughout. Its initial `clean install -DinstallAtEnd=true` includes al
 the successful reactor artifacts into the local Maven cache. It then invokes Failsafe
 directly against those current packages without repeating the build.
 
+### Stop and resume the entire cluster (step 3.18)
+
+```bash
+bash microservices/shardshop/scripts/down.sh
+bash microservices/shardshop/scripts/up.sh
+```
+
+`down.sh` stops every ShardShop kind node, including the control plane and all
+workers, and verifies their stopped state. It succeeds without Docker mutations
+when the cluster is missing or all nodes are already stopped. The overall deadline
+for discovery, stop and verification defaults to 60 seconds; set
+`SHARDSHOP_SHUTDOWN_TIMEOUT_SECONDS` to an integer from 1 to 3600 to change it.
+Terminating an unresponsive CLI may take up to two additional seconds. Docker
+allows ten seconds for graceful shutdown before killing a remaining node process.
+A failed or timed-out stop returns nonzero and releases the lifecycle lock;
+inspect the nodes and retry. `up.sh` resumes the same containers and reconciles
+the lab, preserving databases, PVCs, Secrets and allocator identity/history.
+Each restarted product JVM still reserves a new generator ID.
+
+### Permanently destroy the cluster
+
+```bash
+bash microservices/shardshop/scripts/cluster-destroy.sh
+```
+
+This command immediately and irreversibly deletes the fixed `shardshop` kind
+cluster, running or stopped, with all its databases, PVC data, Secrets, Helm
+releases, Kubernetes configuration and generator history. Use `down.sh` when you
+want to retain data. The script uses kind's Docker provider, removes exclusively
+attached node volumes, and verifies that the containers, volumes and
+`kind-shardshop` context/cluster/user entries are gone from the selected
+`KUBECONFIG` (or the default kubeconfig). A missing cluster is safe to repeat;
+stale kubeconfig entries are still removed. Before deletion, a private
+`${TMPDIR:-/tmp}/shardshop-destroy.json` inventory records the Docker daemon identity
+and exact attached volumes. A failed deletion retains it so a retry with the same
+`TMPDIR` and daemon can remove volumes even if their nodes are already gone.
+Success removes this inventory; do not discard it while cleanup is incomplete.
+Exported kubeconfig copies outside that selection and external backups must be
+managed separately.
+
+The supported lab stores its data in Docker node volumes. Destruction refuses
+volumes referenced by unrelated containers, custom host mounts, or another
+kubeconfig context referencing ShardShop's cluster/credentials, before deleting
+anything. Resolve those ownership conflicts explicitly. It preserves repository
+source/configuration, Docker Desktop, unrelated containers, shared images/build
+caches and the shared kind network. A subsequent `up.sh` creates a fresh lab;
+previous entity IDs and allocator history cannot be recovered by restarting it.
+
 ### One-time adoption of an existing apply-managed lab
 
 Fresh labs need no adoption. A retained lab created by the earlier `kubectl apply`
@@ -1822,11 +1870,12 @@ versioned migrations where required. Never repair checksums automatically, delet
 history or PVCs to force validation, or invoke Flyway clean on retained data.
 Run compatibility migration/deployment scripts separately from the Helmfile flow.
 
-`up.sh` takes the local exclusive directory lock
-`${TMPDIR:-/tmp}/shardshop-up.lock`. Ordinary exit releases it. After SIGKILL or a
-machine failure, verify that no invocation remains active and inspect retained
-Jobs before removing a stale lock directory. `down.sh` does not yet share this
-lock (PLAN step 3.18); keep stop and startup operations sequential.
+`up.sh`, `down.sh` and `cluster-destroy.sh` share the local exclusive directory
+lock `${TMPDIR:-/tmp}/shardshop-up.lock`. Use the same `TMPDIR` for all three. A
+concurrent call fails before changing the lab; retry it after the first finishes.
+Ordinary failure and INT/TERM release the lock after the active command ends.
+After SIGKILL or a machine failure, verify that no invocation remains active and
+inspect retained Jobs before removing a stale lock directory.
 
 After correcting the failure and any pending Helm bookkeeping, rerun with the
 same inventory.

@@ -23,7 +23,9 @@ durability such as S3 backups with WAL archiving and a three-broker RabbitMQ. No
 local behavior or check may depend on a cloud service.
 
 Cluster creation, reconciliation, migration and application deployment use
-`scripts/up.sh`; shutdown uses `scripts/down.sh`. `up.sh` snapshots the inventory,
+`scripts/up.sh`; retained shutdown uses `scripts/down.sh`. The explicit
+`scripts/cluster-destroy.sh` reset removes the lab, its attached volumes and
+`kind-shardshop` kubeconfig entries. `up.sh` snapshots the inventory,
 environment values, database migration files, kind configuration, operator chart
 and operator values once per invocation. It accepts only the fixed kind topology
 of one control plane and three workers and reviewed image/port settings; changes requiring
@@ -122,8 +124,9 @@ deployed. The observer does not repair resources, retry the release or roll it b
 Kubernetes continues its normal reconciliation. Diagnostics remain bounded and
 contain no secrets. The reader remains running and disruptive drills are still
 explicitly selected. A new `kind-release` run requires `images.json` in the
-snapshot; standalone legacy `kind-deployment` runs do not. The final two-script workflow remains
-planned for step 3.20, without extra wrappers, embedded Python, downloaded tool
+snapshot; standalone legacy `kind-deployment` runs do not. The final normal lifecycle
+and separate destructive reset command remain subject to step 3.20 qualification,
+without extra wrappers, embedded Python, downloaded tool
 binaries or a Java lifecycle controller.
 
 Build and test with JDK 25 or newer (bytecode targets release 25), and run the
@@ -1024,10 +1027,17 @@ up to 180 seconds for exact current-generation applied outbox Publications befor
 the application release can publish routing. Failed releases retain already
 committed SQL; there is no automatic SQL rollback, history repair or database reset.
 
-`up.sh` serializes local invocations with `${TMPDIR:-/tmp}/shardshop-up.lock`.
-Inspect retained Jobs and confirm no invocation remains active before removing a
-stale lock after unclean termination. `down.sh` joins this lock in PLAN step 3.18;
-until then, stop and startup operations must run sequentially.
+`up.sh`, `down.sh` and `cluster-destroy.sh` serialize local invocations with
+`${TMPDIR:-/tmp}/shardshop-up.lock`; a concurrent invocation fails before mutation.
+Use the same `TMPDIR` for lifecycle calls. Ordinary failure and INT/TERM release
+the lock after the active command ends. Inspect retained Jobs and confirm no
+invocation remains active before removing a stale lock after SIGKILL or host failure.
+`down.sh` bounds discovery, stopping and verification by one shutdown deadline and
+retains every node container, volume, Secret and allocator identity. Missing or
+already stopped clusters require no Docker mutation. The explicit destroy command
+deletes that retained state, including databases, Kubernetes/Helm configuration and
+allocator history; it refuses shared volumes and unexpected host mounts. Repository
+configuration and shared Docker networks/images are outside cluster ownership.
 
 ```text
 database/

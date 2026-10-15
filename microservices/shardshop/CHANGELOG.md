@@ -1590,3 +1590,91 @@ bash "$q/run-fixture.sh" bad-readiness name=shardshop-application fail
 bash "$q/run-fixture.sh" bad-acceptance name=shardshop-application fail
 bash "$q/run-fixture.sh" snapshot name=shardshop-application pass
 ```
+
+
+## Step 3.18
+
+**2026-10-15:** `down.sh` now acquires the same exclusive lifecycle lock as
+`up.sh`, stops only running ShardShop nodes with an explicit ten-second Docker
+grace period, and verifies every control-plane/worker container is stopped. One
+60-second deadline covers discovery, stopping and verification; its configurable
+range is 1–3600 seconds, plus up to two seconds to terminate an unresponsive CLI.
+Missing and already stopped labs succeed without a Docker mutation. Ordinary
+failure and INT/TERM release the lock after active commands end. `up.sh` takes
+its lock before preflights and retains it while a foreground command finishes
+after interruption. SIGKILL/host failures still require the documented stale-lock
+inspection. All lifecycle entry points explicitly select Docker as kind's provider.
+
+The user also requested `cluster-destroy.sh`, an explicit exception to the previous
+exactly-two-scripts target. It shares the lock and permanently removes the fixed
+lab, attached volumes and its selected kubeconfig entries, including all in-cluster
+configuration, databases, Secrets and allocator history. It rejects shared volumes,
+custom host binds and unrelated kubeconfig references before deletion. A private,
+daemon-bound volume inventory survives failed cleanup, allowing safe retries after
+the nodes are gone. It never prunes Docker or removes shared networks/images,
+repository configuration, external backups or unselected kubeconfig copies.
+
+Thirty deterministic Bash-command fixture tests cover complete/partial/repeated/
+missing shutdown, Docker failures and false success, hung discovery/stop, INT/TERM,
+up/down lock contention and preflight cleanup; destructive cleanup, repeat/missing
+clusters, host/shared-volume guards, kubeconfig ownership, removal verification and
+retry after volume cleanup failure (including wrong-daemon and reattached-volume
+rejection). The original `down.sh` fails the lock regression: it calls kind and
+Docker while a competing lifecycle owner holds the lock. The revised scripts pass.
+The first sandboxed test run could not use macOS process inspection; the successful
+runs used the normal host execution permissions. An initial Bash 3.2 fixture syntax
+error was corrected before qualification.
+
+Live shutdown ran while the retained reader sustained about 200 all-OK requests/s.
+All four nodes stopped; a second shutdown succeeded with identical node IDs and
+volume mounts. Native destruction was tested separately against the owned,
+one-node `shardshop-318-destroy` cluster while the retained lab was stopped. The
+test used a private kubeconfig with an unrelated context, an in-cluster ConfigMap
+and a file in the node's persistent `/var` volume. A temporary copy of the actual
+destroy script changed only its fixed cluster name. Destruction and a repeated
+invocation succeeded; the node, its volume and owned kubeconfig entries were gone,
+the unrelated context survived, and the recovery inventory was removed. A matching
+temporary copy of `down.sh` then passed the live missing-cluster check. Cleanup was
+registered before cluster creation and verified on exit. No retained cluster data
+was destroyed.
+
+The complete `up.sh` recovery passed its ShardShop-only clean install: **1,090
+unit/startup tests**, including **153 shardshop-testing tests**, and **55 packaged
+routing checks**, followed by image/advisory qualification and every live phase
+gate. All four final `kind-release | kind-deployment` scenarios passed. The four
+CNPG Cluster and Database UIDs, ten PVC/PV bindings, four Docker node IDs/mounts,
+and allocator registry/identity UIDs match the pre-stop snapshot. The allocator
+high-water mark advanced **92 → 94**, as required by the two restarted product
+JVMs. The reader retained catalog key-to-ID digest
+`97af5c774026fb993e04a7b80e3c74bc2ad6c8c6ff7ccc6b27ffe56a7f57ca88`
+and reported **6,000 all-OK requests in 30 seconds (200/s)**. Two product replicas
+and one reader are Ready; only the four retained ShardShop kind nodes remain.
+The lifecycle lock was released. Shell syntax and `git diff --check` pass.
+Step 3.18 is Done.
+
+Commands run from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dtest=KindStopScriptTest,KindDestroyScriptTest test
+# Original-script regression, expected to fail on the native calls under the lock:
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dshardshop.directory=/private/tmp/shardshop-318-baseline \
+  -Dtest=KindStopScriptTest#existingLifecycleLockRejectsUpAndDownWithoutTouchingItsOwner test
+bash microservices/shardshop/scripts/down.sh
+bash microservices/shardshop/scripts/down.sh
+bash /private/tmp/shardshop-318-destroy/qualify.sh
+TMPDIR=/private/tmp/shardshop-318-destroy/tmp bash /private/tmp/shardshop-318-destroy/down.sh
+bash microservices/shardshop/scripts/up.sh
+bash /private/tmp/shardshop-318-live/compare.sh
+bash -n microservices/shardshop/scripts/up.sh microservices/shardshop/scripts/down.sh \
+  microservices/shardshop/scripts/cluster-destroy.sh
+git diff --check
+```
+
+The disposable qualification script used `kind create cluster --name
+shardshop-318-destroy --kubeconfig /private/tmp/shardshop-318-destroy/kubeconfig
+--wait 120s` with the repository's pinned node image, and native `kind delete
+cluster` in its EXIT cleanup. Temporary qualification files and logs remain outside
+the repository; they are evidence of this run, not maintained entry points.

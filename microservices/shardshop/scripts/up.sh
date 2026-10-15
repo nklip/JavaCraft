@@ -10,6 +10,7 @@ set -euo pipefail
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cluster_name=shardshop
 context="kind-$cluster_name"
+export KIND_EXPERIMENTAL_PROVIDER=docker
 k() { kubectl --context "$context" --request-timeout=10s -n shardshop "$@"; }
 
 render() {
@@ -36,6 +37,26 @@ verify_kind() {
         -Dshardshop.kind.cluster="$cluster_name" -Dshardshop.kind.fresh="$created_cluster" "$@"
 }
 
+# Share one fail-fast lock with stop and explicit cluster destruction.
+lock="${TMPDIR:-/tmp}/shardshop-up.lock"
+mkdir "$lock" 2>/dev/null || {
+    echo "Another ShardShop lifecycle call owns $lock. If its process has ended, inspect the retained Jobs before removing that lock." >&2
+    exit 1
+}
+work=
+cleanup() {
+    trap '' INT TERM
+    if [[ -n "$work" && -f "$work/dns-probes.yaml" ]]; then
+        k delete -f "$work/dns-probes.yaml" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    fi
+    [[ -z "$work" ]] || rm -rf -- "$work"
+    rmdir "$lock"
+}
+trap cleanup EXIT
+# Bash defers these traps until its foreground command has completed, so a CLI
+# mutation cannot outlive this invocation's lock when the shell is interrupted.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 for tool in mvn docker kind kubectl helm helmfile skaffold openssl jq; do
     command -v "$tool" >/dev/null || { echo "$tool is not on PATH" >&2; exit 1; }
 done
@@ -43,22 +64,7 @@ docker buildx version >/dev/null 2>&1 || { echo 'Docker Buildx is not available 
 docker scout version >/dev/null 2>&1 || { echo 'Docker Scout is not available in Docker' >&2; exit 1; }
 
 # Snapshot the inventory so one run cannot deploy two different versions.
-lock="${TMPDIR:-/tmp}/shardshop-up.lock"
-mkdir "$lock" 2>/dev/null || {
-    echo "Another up.sh invocation owns $lock. If its process has ended, inspect the retained Jobs before removing that lock." >&2
-    exit 1
-}
-work=$(mktemp -d) || { rmdir "$lock"; exit 1; }
-cleanup() {
-    if [[ -f "$work/dns-probes.yaml" ]]; then
-        k delete -f "$work/dns-probes.yaml" --ignore-not-found --wait=false >/dev/null 2>&1 || true
-    fi
-    rm -rf -- "$work"
-    rmdir "$lock"
-}
-trap cleanup EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
+work=$(mktemp -d)
 probe_run="up-$(openssl rand -hex 6)"
 cp -R "$root/infra/helm/shardshop" "$work/chart"
 cp "$root/infra/helmfile.yaml.gotmpl" "$work/helmfile.yaml.gotmpl"
