@@ -1274,7 +1274,7 @@ The order service writes `catalog.stock_reservations` and adjusts product stock
 through Java-managed transactions on the seller's shard. `catalog_reserver` has
 column-level `UPDATE (stock)` on products; `catalog_reader` supplies the reads
 needed for conditional updates. There is no stock trigger. The schema and grants
-are implemented; the Java reservation logic is planned in step 4.2.
+and the Java reservation logic are implemented through step 4.2.
 
 - **Reserve** inserts a row with `INSERT … ON CONFLICT (order_id, product_id) DO
   NOTHING`. Only when a row was inserted, issue `UPDATE catalog.products SET
@@ -1294,11 +1294,11 @@ are implemented; the Java reservation logic is planned in step 4.2.
   columns other than `stock`. Product and reservation changes must use the
   transaction protocol above; grants alone do not enforce that relationship.
 
-`CHECK (stock >= 0)` backs up the conditional decrement. The planned reservation
+`CHECK (stock >= 0)` backs up the conditional decrement. The reservation
 flow must keep `stock` equal to `initial_stock` minus active reserved quantities;
 direct SQL can violate that relationship while satisfying the table's checks.
-There is no restock operation yet. Until step 4.2 is implemented, writing a
-reservation alone does not change stock.
+There is no restock operation yet. Writing a reservation directly in SQL does not
+change stock; the Java transaction protocol performs both writes.
 
 **Decision: atomic conditional decrement.** Java issues the conditional stock
 update and the reservation write on the same connection in one shard transaction.
@@ -1582,6 +1582,18 @@ One worker at a time handles a saga's reservations and releases, for example und
 a per-saga lease, so a stale reserve retry never lands after that saga's release.
 Stock never goes below zero: the conditional decrement refuses, and the table's
 check constraint backs it up.
+
+Step 4.2 implements a database-clock lease with a monotonically increasing
+`stock_lease_version` and guarded transitions. Each short seller-shard phase is
+preceded by a lease renewal; no order transaction or advisory lock spans it.
+The catalog V3 `stock_reservation_guards` table adds a permanent per-order row
+locked before each reservation or release batch. Release permanently closes it,
+even when no reservation exists yet, preventing a paused former lease owner from
+reserving after compensation. Product locks are acquired in ascending ID order.
+The ordering V3 migration adds stock ownership, retry time and failure count;
+these retries back off from one to thirty seconds independently of the ledger's
+five-attempt reconciliation budget. Process restart resumes eligible durable
+work after lease expiry. The bounded worker runs outside HTTP request threads.
 
 ### Successful order
 
@@ -1997,6 +2009,10 @@ and saga terminal identities/states, durable order-allocation mappings, reserved
 result identities, and unresolved quarantine records; never
 recycle order IDs. An old rejected operation cannot become recorded merely because
 the ledger's currency allowlist changed.
+
+Retain catalog reservation history and closed `stock_reservation_guards` rows
+permanently. Removing a closed guard could allow a delayed former worker to
+reserve stock again for an already compensated order.
 
 Transport inbox rows and confirmed-published outbox rows may be cleaned after a
 configured operational window. For order outboxes, cleanup also requires a durable

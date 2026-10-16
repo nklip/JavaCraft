@@ -9,7 +9,8 @@ Product now runs the seller/product HTTP API from step 3.6. The product seeder
 from step 3.7 seeds and verifies the catalog through that API and then exits. The
 product reader from step 3.8 reads the seeded products at a bounded rate until it
 stops. Order now serves buyer creation, durable order allocation and order PUT/GET
-from step 4.1. Ledger and the order producer still start CDI and exit. Step 3.5
+from step 4.1, and its step 4.2 coordinator reserves stock, compensates rejected
+orders and writes the ledger command outbox. Ledger and the order producer still start CDI and exit. Step 3.5
 provides workload-owned dataset definitions and HTTP clients; the order workload
 loop remains step 4.8. Maven module tests need no Docker or
 Kubernetes; chart rendering and release orchestration tests require `helm` and
@@ -214,7 +215,7 @@ Run the normal external migration workflow before starting the API. The additive
 stored `name`, backfills descriptions/costs and profit rows, and adds key lookup
 indexes and the per-order/product profit-credit identity. Product can initialize
 zero balances but cannot update or reset them. Applying confirmed margin remains
-step 4.7; stock mutation remains step 4.2. No SQL functions or triggers are added.
+step 4.7; step 4.2 implements stock mutation. No SQL functions or triggers are added.
 
 Connection configuration is deployment-only. Defaults target each inventory
 cluster's `-rw` and `-ro` Services in database `shardshop`, using `product_app` and
@@ -836,7 +837,7 @@ use exact arithmetic; totals outside `NUMERIC(19,2)` return `400`. The response 
 `202` with a relative `Location` equal to `statusUrl`. Identical PUT retries and
 status GETs use saved state, even during a catalog outage. Pending retries return
 `202`; terminal retries return `200`. Acceptance does not change stock or create
-an outbox record; reservation and later saga transitions are subsequent steps.
+an outbox record; the background stock coordinator performs those subsequent steps.
 
 Primary pools and lookup concurrency are bounded. Each database phase runs on its
 own virtual thread and waits at most one second for a pooled connection, thus a
@@ -853,6 +854,10 @@ HTTP/2 is disabled until its qualification in step 6.5.
 | `shardshop.order.max-id-candidates` | `1024` | Buyer ID placement attempts, 1–65536 |
 | `shardshop.order.catalog-concurrency` | `4` | Concurrent catalog lookups per request, 1–64 |
 | `shardshop.order.catalog-deadline` | `3s` | Shared catalog deadline, 2–3 s; leaves room for the one-second pool acquisition bound |
+| `shardshop.order.stock.enabled` | `true` | Run the stock coordinator; tests can isolate HTTP acceptance with `false` |
+| `shardshop.order.stock.poll-interval` | `250ms` | Delay between scans, 100 ms–30 s |
+| `shardshop.order.stock.lease` | `30s` | Durable per-saga ownership, renewed before each catalog phase; 10 s–5 min |
+| `shardshop.order.stock.batch-size` | `8` | Maximum sagas processed per shard per scan, 1–100 |
 | `shardshop.order.connections.<shard>.primary-url` | `jdbc:postgresql://<shard>-rw:5432/shardshop` | Primary endpoint for both ordering and catalog IO |
 | `shardshop.order.connections.<shard>.username` | `order_app` | Runtime role with ordering and catalog grants |
 | `shardshop.order.connections.<shard>.password` | Empty | Supply through protected runtime configuration |
@@ -891,6 +896,51 @@ order. The packaged startup tests of product and order show that every invalid
 setting stops the start before a generator reservation. The first command also
 builds product, because product shares the phase engine. The retained kind lab is
 not changed by these checks.
+
+## Stock reservation and compensation (step 4.2)
+
+After HTTP acceptance commits, the order process polls each buyer shard for
+`PENDING_STOCK` sagas and cancelled sagas with unfinished releases. It claims a
+durable versioned lease in a short transaction, then reserves each seller shard's
+items in ascending product-ID order. Reservation insertion and conditional stock
+decrement share one `READ COMMITTED` transaction. Retries of an existing active
+reservation keep its original quantity and do not decrement again.
+
+Once every reservation succeeds, a single buyer-shard transaction changes the
+order and saga to `PENDING_LEDGER`, reserves distinct transport/result IDs, and
+inserts the complete `RecordOrder` envelope. No broker is required by this step;
+CDC delivery and ledger consumers follow in steps 4.4–4.6.
+
+Insufficient stock commits `CANCELLED` with `OUT_OF_STOCK` before compensation.
+Each seller shard atomically marks active reservations released and restores
+their quantities. Completion is saved in `stock_released_at` only after all
+shards succeed. A permanent `catalog.stock_reservation_guards` row closes each
+order on release, including shards with no reservation, so a paused former owner
+cannot reserve after compensation. These guards and reservation history must be
+retained. The Java API offers no quantity changes, reactivation or deletion.
+
+Catalog outages, unknown commit outcomes and unavailable transport IDs keep work
+pending. Persisted retries back off for 1, 2, 4, 8, 16 and then at most 30 seconds;
+stock retries use a separate counter from ledger reconciliation. A crashed
+worker's lease expires; another process resumes the same immutable snapshots.
+Each database phase keeps the existing three-second deadline. No order
+transaction, connection or advisory lock spans catalog writes.
+
+The fix-forward V3 migrations add catalog guards and ordering lease/retry fields.
+Apply both streams through the existing migration workflow before starting the
+new worker. V1/V2 are unchanged, and there are no SQL functions or triggers.
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify '-Dcucumber.filter.tags=@stock-reservation or @order-api or @catalog-migration'
+```
+
+The stock scenarios run actual packaged coordinators and runtime-role SQL against
+disposable PostgreSQL databases. They verify multi-region envelopes, competing
+workers and scarce stock, partial compensation, outages, restarts, reserve/release
+rollback under injected constraints, and denied `TRUNCATE`. Every phase checks
+`stock = initial_stock - active reserved quantities`. The separate order API
+scenarios disable the worker to isolate acceptance's atomicity and validation.
 
 ## HTTP and message contracts (step 3.1)
 
@@ -2136,10 +2186,10 @@ characters (not empty or only spaces), a non-negative `NUMERIC(19,2)` price
 `stock`, with `0 <= stock <= initial_stock`. The product service sets `stock` to
 `initial_stock` when it creates a product. `catalog.stock_reservations` keeps one
 row per order and product, with the quantity the buyer ordered. The order service
-will reserve with `INSERT … ON CONFLICT (order_id, product_id) DO NOTHING` and,
+reserves with `INSERT … ON CONFLICT (order_id, product_id) DO NOTHING` and,
 only for a new reservation, conditionally decrement stock in the same Java-managed
-shard transaction. Insufficient stock rolls back the reservation. Release will
-mark an active reservation released and restore its quantity in one transaction;
+shard transaction. Insufficient stock rolls back the reservation. Release
+marks an active reservation released and restores its quantity in one transaction;
 retries must change stock at most once. There are no ID sequences. Products
 inherit the seller's region and store no independent region column. The local
 seller foreign key and placement checks prevent creating products on a different
@@ -2157,8 +2207,8 @@ premature profit permissions from earlier development revisions.
 
 The stock-column grant permits direct updates without allowing changes to product
 names, prices or other columns. There is no stock trigger: reservation writes by
-themselves do not change stock. Java reserve/release logic and its integration
-tests remain planned in step 4.2. The database checks still enforce
+themselves do not change stock. Step 4.2 implements the Java transaction protocol
+and its integration tests. The database checks also enforce
 `0 <= stock <= initial_stock`, but the application must keep stock and reservation
 rows consistent.
 

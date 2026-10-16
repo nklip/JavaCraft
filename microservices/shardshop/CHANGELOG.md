@@ -2123,3 +2123,61 @@ Validation after the fixes, on Maven 3.9.16 and OpenJDK 25:
 mvn -o -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order,shardshop-product -am verify
 mvn -o -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify
 ```
+
+## Step 4.2
+
+**2026-10-16:** order now runs a background stock coordinator after HTTP
+acceptance. It claims versioned, expiring database leases and reserves each
+seller shard's items in product-ID order using the existing bounded database
+phase engine. Reservation insertion and conditional decrement share one
+`READ COMMITTED` transaction; unchanged retries never decrement twice.
+
+All reservations must succeed before a buyer-shard transaction moves the order
+and saga to `PENDING_LEDGER`, reserves the command/result transport identities
+and inserts the schema-valid `RecordOrder` outbox. An out-of-stock decision
+commits `CANCELLED` before release. Release restores only active reservations,
+and completion is durable after every seller shard finishes. Catalog V3 adds
+permanent per-order guards, including closed guards for shards with no earlier
+reservation, to fence delayed reserve calls after compensation. Ordering V3
+adds lease ownership and independent stock retry fields. V1/V2 remain unchanged;
+there are no new SQL functions, triggers or library dependencies.
+
+Unavailable shards and unknown outcomes remain pending with durable exponential
+backoff capped at thirty seconds. Restarts resume work after lease expiry. Each
+catalog phase follows a lease renewal and holds no order transaction, connection
+or advisory lock. New settings are checked before generator allocation, and
+`--check-startup` performs no stock polling. The order API scenarios explicitly
+disable the coordinator to retain their isolated acceptance checks.
+
+Validation on Maven 3.9.16 and OpenJDK 25:
+
+- **Order:** 208 unit/provider tests and 35 packaged startup checks pass. JDBC
+  tests cover unknown reserve/ledger commit outcomes and atomic outbox rollback;
+  coordinator tests cover cancellation ordering, stale ownership and retry bounds.
+- **Testing module:** all 174 unit tests pass. Five catalog migration scenarios,
+  nine existing order API scenarios and seven stock scenarios pass across the
+  initial integration run and the final focused run. Other scenarios were
+  excluded by the explicit tag filters.
+- Two actual coordinator JVMs race 16 orders for four units of stock. Exactly
+  four reach `PENDING_LEDGER`; twelve cancel with `OUT_OF_STOCK` and compensate
+  earlier reservations. Cross-region success retains one envelope and reservation
+  per item through retries and restarts. A catalog outage preserves partial work.
+- Injected product CHECK constraints fail the Java decrement after reservation
+  insertion and fail restoration after the release update, proving both pairs
+  roll back together. Restart completes compensation after recovery. An active
+  lease is skipped at an observed database barrier; explicitly expiring it allows
+  one takeover from version 7 to 8. Closed guards survive compensation/restart,
+  including shards without a reservation. Runtime guard permissions and denied
+  reservation `TRUNCATE` pass. Every stock scenario checks the stock invariant.
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify '-Dcucumber.filter.tags=@stock-reservation or @order-api or @catalog-migration'
+# Recompile the final added scenarios and reuse the verified packaged applications:
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration test-compile failsafe:integration-test failsafe:verify '-Dcucumber.filter.tags=@stock-reservation or @catalog-migration'
+```
+
+Apply both V3 migration streams before starting the new worker against a retained
+database. These checks use disposable PostgreSQL databases; they do not change
+the retained kind lab. Broker delivery, ledger results and order deployment remain
+the subsequent milestone steps.

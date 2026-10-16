@@ -21,3 +21,8 @@ GRANT INSERT (seller_id, currency) ON catalog.seller_profits TO catalog_writer;
 GRANT SELECT, INSERT, UPDATE, DELETE ON catalog.stock_reservations TO catalog_reserver;
 -- Java updates stock and reservations in the same transaction (PLAN step 4.2).
 GRANT UPDATE (stock) ON catalog.products TO catalog_reserver;
+-- The guard is permanent. Runtime may only create, inspect and close it.
+REVOKE ALL (closed) ON catalog.stock_reservation_guards
+    FROM PUBLIC, catalog_reader, catalog_writer, catalog_reserver;
+GRANT SELECT, INSERT ON catalog.stock_reservation_guards TO catalog_reserver;
+GRANT UPDATE (closed) ON catalog.stock_reservation_guards TO catalog_reserver;

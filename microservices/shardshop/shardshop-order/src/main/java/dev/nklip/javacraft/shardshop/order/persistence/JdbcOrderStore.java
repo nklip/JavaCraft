@@ -6,6 +6,9 @@ import dev.nklip.javacraft.shardshop.common.jdbc.JdbcUrls;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderFailure;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderStore;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.Product;
+import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.ItemSnapshot;
+import dev.nklip.javacraft.shardshop.order.stock.StockFailure;
+import dev.nklip.javacraft.shardshop.order.stock.StockStore;
 import dev.nklip.javacraft.shardshop.sharding.Shard;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.configuration.supplier.AgroalDataSourceConfigurationSupplier;
@@ -14,15 +17,19 @@ import io.agroal.api.security.NamePrincipal;
 import io.agroal.api.security.SimplePassword;
 import org.postgresql.Driver;
 
+import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.function.LongSupplier;
 
 /** Bounded per-endpoint pools and a hard deadline for the entire database phase. */
-public final class JdbcOrderStore implements OrderStore, AutoCloseable {
+public final class JdbcOrderStore implements OrderStore, StockStore, AutoCloseable {
     private final Map<String, AgroalDataSource> pools;
     private final DatabasePhases phases;
 
@@ -102,6 +109,63 @@ public final class JdbcOrderStore implements OrderStore, AutoCloseable {
         return phases.run(DatabasePhases.Pool.of(pool, () -> pool.flush(AgroalDataSource.FlushMode.ALL)), readOnly,
                 budget, (connection, deadline) -> work.apply(new JdbcOrderSession(connection, deadline, unavailable)),
                 OrderFailure.class, () -> new OrderFailure(unavailable));
+    }
+
+    @Override
+    public Optional<Saga> claim(Shard shard, Duration lease) {
+        return stock(shard, session -> session.claim(lease));
+    }
+
+    @Override
+    public boolean renew(Shard shard, Saga saga, Duration lease) {
+        return stock(shard, session -> session.renew(saga, lease));
+    }
+
+    @Override
+    public void reserve(Shard shard, long orderId, List<ItemSnapshot> items) {
+        stock(shard, session -> { session.reserve(orderId, items); return null; });
+    }
+
+    @Override
+    public void release(Shard shard, long orderId, List<ItemSnapshot> items) {
+        stock(shard, session -> { session.release(orderId, items); return null; });
+    }
+
+    @Override
+    public boolean cancel(Shard shard, Saga saga) {
+        return stock(shard, session -> session.cancel(saga));
+    }
+
+    @Override
+    public boolean pendingLedger(Shard shard, Saga saga, LongSupplier ids) {
+        return stock(shard, session -> session.pendingLedger(saga, ids));
+    }
+
+    @Override
+    public boolean released(Shard shard, Saga saga) {
+        return stock(shard, session -> session.released(saga));
+    }
+
+    @Override
+    public void retry(Shard shard, Saga saga, Duration delay) {
+        stock(shard, session -> { session.retry(saga, delay); return null; });
+    }
+
+    @FunctionalInterface
+    private interface StockWork<T> {
+        T apply(JdbcStockSession session) throws SQLException;
+    }
+
+    private <T> T stock(Shard shard, StockWork<T> work) {
+        AgroalDataSource pool = pools.get(shard.clusterName());
+        if (pool == null) {
+            throw new StockFailure(StockFailure.Reason.UNAVAILABLE);
+        }
+        return phases.run(DatabasePhases.Pool.of(pool, () -> pool.flush(AgroalDataSource.FlushMode.ALL)), false,
+                DatabasePhases.PHASE_BUDGET, (connection, deadline) -> {
+                    connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+                    return work.apply(new JdbcStockSession(connection, deadline, Clock.systemUTC()));
+                }, StockFailure.class, () -> new StockFailure(StockFailure.Reason.UNAVAILABLE));
     }
 
     @Override

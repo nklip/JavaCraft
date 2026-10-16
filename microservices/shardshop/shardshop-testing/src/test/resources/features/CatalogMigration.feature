@@ -1,3 +1,4 @@
+@catalog-migration
 Feature: Catalog migrations with the Flyway Java API
   The database layer owns the catalog schema. Flyway 13.8.1 applies database/shard/catalog as catalog_migrator,
   which acts as catalog_owner, with the settings of the stream's flyway.toml. The roles, the memberships, the
@@ -13,7 +14,7 @@ Feature: Catalog migrations with the Flyway Java API
           VALUES (11, 1, 'Legacy item', 19.95, 'USD', 10, 8)
       """
     When Flyway migrates the catalog stream
-    Then Flyway applies the migrations "2 catalog creation, catalog grants"
+    Then Flyway applies the migrations "2 catalog creation, 3 stock coordination, catalog grants"
     And catalog_reader reads these rows:
       | query                                                                                                     | rows                    |
       | SELECT company_name, creation_key IS NULL FROM catalog.sellers WHERE seller_id = 1                         | Legacy company,t        |
@@ -192,6 +193,17 @@ Feature: Catalog migrations with the Flyway Java API
       | order_app   | catalog.stock_reservations |          | UPDATE    | yes     |
       | order_app   | catalog.stock_reservations |          | DELETE    | yes     |
       | order_app   | catalog.stock_reservations |          | TRUNCATE  | no      |
+      | order_app   | catalog.stock_reservation_guards |          | SELECT   | yes     |
+      | order_app   | catalog.stock_reservation_guards |          | INSERT   | yes     |
+      | order_app   | catalog.stock_reservation_guards | closed   | UPDATE   | yes     |
+      | order_app   | catalog.stock_reservation_guards | order_id | UPDATE   | no      |
+      | order_app   | catalog.stock_reservation_guards |          | DELETE   | no      |
+      | order_app   | catalog.stock_reservation_guards |          | TRUNCATE | no      |
+      | product_app | catalog.stock_reservation_guards | any      | SELECT   | no      |
+      | product_app | catalog.stock_reservation_guards | any      | INSERT   | no      |
+      | product_app | catalog.stock_reservation_guards | any      | UPDATE   | no      |
+      | product_app | catalog.stock_reservation_guards |          | DELETE   | no      |
+      | product_app | catalog.stock_reservation_guards |          | TRUNCATE | no      |
 
   Scenario: Flyway reapplies a changed grants file, and the file removes stale privileges
     Given a new shard database that Flyway migrated

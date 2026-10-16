@@ -149,7 +149,10 @@ class ShardRoutingStartupIT {
             "shardshop.order.max-pool-size=0|Order pool size must be between 1 and 32",
             "shardshop.order.max-id-candidates=0|Order ID candidate budget must be in 1..65536",
             "shardshop.order.catalog-concurrency=0|Catalog concurrency must be in 1..64",
-            "shardshop.order.catalog-deadline=5s|Order catalog deadline must be between 2s and 3s"
+            "shardshop.order.catalog-deadline=5s|Order catalog deadline must be between 2s and 3s",
+            "shardshop.order.stock.poll-interval=1ms|Stock poll interval must be between 100ms and 30s",
+            "shardshop.order.stock.lease=1s|Stock lease must be between 10s and 5m",
+            "shardshop.order.stock.batch-size=0|Stock batch size must be between 1 and 100"
     })
     void checksTheOrderConfigurationBeforeTheGeneratorReservation(String property, String message) throws Exception {
         assertNotEquals(0, launch(VALID_ROUTING + property + "\n", null, null, reservationWithoutCaFile()));

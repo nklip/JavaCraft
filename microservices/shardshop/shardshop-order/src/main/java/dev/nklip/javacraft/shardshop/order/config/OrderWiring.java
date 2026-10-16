@@ -5,6 +5,7 @@ import dev.nklip.javacraft.shardshop.common.jdbc.JdbcUrls;
 import dev.nklip.javacraft.shardshop.idgen.IdGenerator;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderService;
 import dev.nklip.javacraft.shardshop.order.persistence.JdbcOrderStore;
+import dev.nklip.javacraft.shardshop.order.stock.StockCoordinator;
 import dev.nklip.javacraft.shardshop.sharding.ShardRouter;
 import dev.nklip.javacraft.shardshop.sharding.ShardTopology;
 import io.quarkus.runtime.Startup;
@@ -70,6 +71,25 @@ public class OrderWiring {
     OrderService service(JdbcOrderStore store, OrderService.Settings settings, IdGenerator generator,
                          ShardRouter router, ShardTopology topology) {
         return new OrderService(store, generator, router, topology, settings);
+    }
+
+    @Produces
+    @Singleton
+    @Startup(ObserverMethod.DEFAULT_PRIORITY - 1)
+    StockWorker.Settings stockSettings(OrderConfiguration config) {
+        var stock = config.stock();
+        return new StockWorker.Settings(stock.enabled(), stock.pollInterval(), stock.lease(), stock.batchSize());
+    }
+
+    @Produces
+    @Singleton
+    StockWorker stockWorker(JdbcOrderStore store, StockWorker.Settings settings, IdGenerator generator,
+                            ShardRouter router, ShardTopology topology) {
+        return new StockWorker(new StockCoordinator(store, router, generator, settings.lease()), topology, settings);
+    }
+
+    void closeStockWorker(@Disposes StockWorker worker) {
+        worker.close();
     }
 
     void close(@Disposes JdbcOrderStore store) {

@@ -28,6 +28,7 @@ public final class OrderRuntime implements Disposable {
     private final int refusedPort = CatalogDatabase.freePort();
     private final List<PackagedApplication> applications = new ArrayList<>();
     private PackagedApplication application;
+    private boolean stockEnabled;
 
     public OrderRuntime(CatalogShards shards) throws IOException {
         this.shards = shards;
@@ -43,6 +44,8 @@ public final class OrderRuntime implements Disposable {
         values.add("shardshop.routing.regions=" + String.join(",", shards.regions()));
         values.add("shardshop.order.max-pool-size=1");
         values.add("shardshop.order.catalog-deadline=PT3S");
+        // The step 4.1 scenarios inspect atomic acceptance before any saga worker runs.
+        values.add("shardshop.order.stock.enabled=" + stockEnabled);
         for (var shard : shards.all()) {
             String prefix = "shardshop.order.connections." + shard.name() + ".";
             int endpoint = unavailableShards.contains(shard.name()) ? refusedPort : database.port();
@@ -78,6 +81,11 @@ public final class OrderRuntime implements Disposable {
     public void restart(Set<String> unavailableShards) throws IOException, InterruptedException {
         stop();
         start(unavailableShards);
+    }
+
+    /** Enables the production reservation coordinator on subsequent starts, including restarts. */
+    public void enableStock() {
+        stockEnabled = true;
     }
 
     public int port() {

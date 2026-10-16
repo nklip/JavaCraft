@@ -23,7 +23,8 @@ GRANT INSERT (message_id, payload_fingerprint, command_id, saga_id, order_id, bu
     first_seen_at, last_seen_at, delivery_count) ON ordering.conflicting_results TO ordering_writer;
 GRANT UPDATE (status, updated_at) ON ordering.orders TO ordering_writer;
 GRANT UPDATE (status, cancellation_reason, stock_released_at, reconciliation_attempts,
-    next_reconciliation_at, updated_at) ON ordering.order_sagas TO ordering_writer;
+    next_reconciliation_at, updated_at, stock_lease_version, stock_lease_until,
+    stock_failures, next_stock_attempt_at) ON ordering.order_sagas TO ordering_writer;
 GRANT UPDATE (published_at) ON ordering.order_outbox TO ordering_writer;
 -- Only disposable transport rows can be deleted. Java enforces the checkpoint/window gate.
 GRANT DELETE ON ordering.order_outbox, ordering.order_inbox TO ordering_writer;

@@ -1,8 +1,8 @@
 @order-api
 Feature: Order validation and atomic acceptance on PostgreSQL primaries
   The packaged order provider uses the runtime role and externally migrated schemas.
-  Every response is validated against the order OpenAPI. Acceptance stops at PENDING_STOCK;
-  stock reservation, command publication and ledger processing belong to later milestones.
+  Every response is validated against the order OpenAPI. The stock worker is disabled
+  to inspect atomic acceptance at PENDING_STOCK independently of subsequent coordination.
 
   Background:
     Given order acceptance uses migrated regional primaries and the packaged providers

@@ -198,6 +198,12 @@ public final class CatalogDatabase {
                 container.getUsername(), container.getPassword());
     }
 
+    /** The actual runtime login, for permission checks that must exercise inherited catalog grants. */
+    public Connection order(String database) throws SQLException {
+        return DriverManager.getConnection(catalogUrl(database) + "&connectTimeout=5&socketTimeout=10",
+                "order_app", orderPassword);
+    }
+
     /** Stops PostgreSQL like an outage. The container, its data and its host port stay. */
     public void stop() {
         DockerClientFactory.instance().client().stopContainerCmd(container.getContainerId()).withTimeout(10).exec();

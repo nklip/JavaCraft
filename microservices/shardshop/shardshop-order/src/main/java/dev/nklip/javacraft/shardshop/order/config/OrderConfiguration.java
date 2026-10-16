@@ -22,6 +22,22 @@ public interface OrderConfiguration {
     @WithDefault("3s")
     Duration catalogDeadline();
 
+    Stock stock();
+
+    interface Stock {
+        @WithDefault("true")
+        boolean enabled();
+
+        @WithDefault("250ms")
+        Duration pollInterval();
+
+        @WithDefault("30s")
+        Duration lease();
+
+        @WithDefault("8")
+        int batchSize();
+    }
+
     Map<String, Connection> connections();
 
     interface Connection {

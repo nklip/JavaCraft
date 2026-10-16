@@ -3,6 +3,8 @@ package dev.nklip.javacraft.shardshop.order.persistence;
 import dev.nklip.javacraft.shardshop.common.jdbc.DatabasePhases;
 import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderFailure;
+import dev.nklip.javacraft.shardshop.order.stock.StockFailure;
+import dev.nklip.javacraft.shardshop.order.stock.StockStore.Saga;
 import dev.nklip.javacraft.shardshop.sharding.Shard;
 import io.agroal.api.AgroalDataSource;
 import org.junit.jupiter.api.BeforeEach;
@@ -216,4 +218,98 @@ class JdbcOrderStoreTest {
         verify(primary).close();
         verify(cleanup).shutdown();
     }
+
+    @Test
+    void stockForeignKeyFailureRollsBackAndNeverMasqueradesAsOutOfStock() throws SQLException {
+        PreparedStatement insert = mock();
+        when(connection.prepareStatement(startsWith("INSERT INTO catalog.stock_reservations "))).thenReturn(insert);
+        when(insert.executeUpdate()).thenThrow(new SQLException("sensitive foreign key data", "23503"));
+        StockFailure failure = assertThrows(StockFailure.class,
+                () -> store.reserve(SHARD, 41, stockSaga().items()));
+        assertEquals(StockFailure.Reason.UNAVAILABLE, failure.reason());
+        assertEquals("UNAVAILABLE", failure.getMessage());
+        assertNull(failure.getCause());
+        verify(connection).setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+        verify(connection).rollback();
+        verify(connection, never()).commit();
+        verify(connection).close();
+    }
+
+    @Test
+    void unknownReservationCommitOutcomeRemainsUnavailableAndCanBeSafelyRetried() throws SQLException {
+        PreparedStatement insert = mock();
+        PreparedStatement decrement = mock();
+        when(connection.prepareStatement(startsWith("INSERT INTO catalog.stock_reservations "))).thenReturn(insert);
+        when(connection.prepareStatement(startsWith("UPDATE catalog.products SET stock = stock -"))).thenReturn(decrement);
+        when(insert.executeUpdate()).thenReturn(1);
+        when(decrement.executeUpdate()).thenReturn(1);
+        doThrow(new SQLException("password=secret")).when(connection).commit();
+        StockFailure failure = assertThrows(StockFailure.class,
+                () -> store.reserve(SHARD, 41, stockSaga().items()));
+        assertEquals(StockFailure.Reason.UNAVAILABLE, failure.reason());
+        assertNull(failure.getCause());
+        verify(insert).executeUpdate();
+        verify(decrement).executeUpdate();
+        verify(connection).rollback();
+        verify(primary).getConnection();
+    }
+
+    @Test
+    void unknownLedgerTransitionCommitOutcomeDoesNotPublishOrCancelLocally() throws SQLException {
+        PreparedStatement transition = mock();
+        PreparedStatement order = mock();
+        PreparedStatement identity = mock();
+        PreparedStatement outbox = mock();
+        when(connection.prepareStatement(startsWith("UPDATE ordering.order_sagas"))).thenReturn(transition);
+        when(connection.prepareStatement(startsWith("UPDATE ordering.orders"))).thenReturn(order);
+        when(connection.prepareStatement(startsWith("INSERT INTO ordering.order_result_ids"))).thenReturn(identity);
+        when(connection.prepareStatement(startsWith("INSERT INTO ordering.order_outbox"))).thenReturn(outbox);
+        for (PreparedStatement statement : List.of(transition, order, identity, outbox)) {
+            when(statement.executeUpdate()).thenReturn(1);
+        }
+        doThrow(new SQLException("unknown outcome")).when(connection).commit();
+        AtomicInteger ids = new AtomicInteger(91);
+        StockFailure failure = assertThrows(StockFailure.class,
+                () -> store.pendingLedger(SHARD, stockSaga(), ids::incrementAndGet));
+        assertEquals(StockFailure.Reason.UNAVAILABLE, failure.reason());
+        assertNull(failure.getCause());
+        assertEquals(93, ids.get());
+        verify(transition).executeUpdate();
+        verify(order).executeUpdate();
+        verify(identity).executeUpdate();
+        verify(outbox).executeUpdate();
+        verify(connection).rollback();
+        verify(primary).getConnection();
+    }
+
+    @Test
+    void outboxInsertFailureRollsBackBothStatusesAndPermanentTransportBinding() throws SQLException {
+        PreparedStatement transition = mock();
+        PreparedStatement order = mock();
+        PreparedStatement identity = mock();
+        PreparedStatement outbox = mock();
+        when(connection.prepareStatement(startsWith("UPDATE ordering.order_sagas"))).thenReturn(transition);
+        when(connection.prepareStatement(startsWith("UPDATE ordering.orders"))).thenReturn(order);
+        when(connection.prepareStatement(startsWith("INSERT INTO ordering.order_result_ids"))).thenReturn(identity);
+        when(connection.prepareStatement(startsWith("INSERT INTO ordering.order_outbox"))).thenReturn(outbox);
+        for (PreparedStatement statement : List.of(transition, order, identity)) {
+            when(statement.executeUpdate()).thenReturn(1);
+        }
+        when(outbox.executeUpdate()).thenThrow(new SQLException("outbox storage unavailable"));
+        AtomicInteger ids = new AtomicInteger(91);
+        assertEquals(StockFailure.Reason.UNAVAILABLE, assertThrows(StockFailure.class,
+                () -> store.pendingLedger(SHARD, stockSaga(), ids::incrementAndGet)).reason());
+        verify(transition).executeUpdate();
+        verify(order).executeUpdate();
+        verify(identity).executeUpdate();
+        verify(connection).rollback();
+        verify(connection, never()).commit();
+    }
+
+    private Saga stockSaga() {
+        return new Saga(71, 81, new Order(31, 41, "a".repeat(64), "USD", new BigDecimal("39.90"),
+                "PENDING_STOCK", null), List.of(new ItemSnapshot(0, 51, 61, 2, "Product",
+                new BigDecimal("19.95"), new BigDecimal("12.50"), "USD")), 1, 0);
+    }
+
 }
