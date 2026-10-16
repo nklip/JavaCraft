@@ -1,0 +1,166 @@
+{
+  "vhosts": [
+    {
+      "name": "shardshop"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "shardshop.dlx",
+      "vhost": "shardshop",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "ledger.commands",
+      "vhost": "shardshop",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "order.saga-results",
+      "vhost": "shardshop",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "ledger.record-order.dlq",
+      "vhost": "shardshop",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-quorum-initial-group-size": 1,
+        "x-delivery-limit": -1
+      }
+    },
+    {
+      "name": "order.ledger-results.dlq",
+      "vhost": "shardshop",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-quorum-initial-group-size": 1,
+        "x-delivery-limit": -1
+      }
+    },
+    {
+      "name": "ledger.record-order",
+      "vhost": "shardshop",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-quorum-initial-group-size": 1
+      }
+    },
+    {
+      "name": "order.ledger-results",
+      "vhost": "shardshop",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-quorum-initial-group-size": 1
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "source": "shardshop.dlx",
+      "vhost": "shardshop",
+      "destination": "ledger.record-order.dlq",
+      "destination_type": "queue",
+      "routing_key": "ledger.record-order.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "shardshop.dlx",
+      "vhost": "shardshop",
+      "destination": "order.ledger-results.dlq",
+      "destination_type": "queue",
+      "routing_key": "order.ledger-results.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "ledger.commands",
+      "vhost": "shardshop",
+      "destination": "ledger.record-order",
+      "destination_type": "queue",
+      "routing_key": "ledger.record-order",
+      "arguments": {}
+    },
+    {
+      "source": "order.saga-results",
+      "vhost": "shardshop",
+      "destination": "order.ledger-results",
+      "destination_type": "queue",
+      "routing_key": "order.ledger-results",
+      "arguments": {}
+    }
+  ],
+  "policies": [
+    {
+      "name": "ledger-command-delivery",
+      "vhost": "shardshop",
+      "pattern": "^ledger\\.record-order$",
+      "apply-to": "queues",
+      "priority": 0,
+      "definition": {
+        "delivery-limit": 5,
+        "delayed-retry-type": "failed",
+        "delayed-retry-min": 1000,
+        "delayed-retry-max": 5000,
+        "dead-letter-strategy": "at-least-once",
+        "overflow": "reject-publish",
+        "max-length": 1000,
+        "max-length-bytes": 16777216,
+        "dead-letter-exchange": "shardshop.dlx",
+        "dead-letter-routing-key": "ledger.record-order.dlq"
+      }
+    },
+    {
+      "name": "order-result-delivery",
+      "vhost": "shardshop",
+      "pattern": "^order\\.ledger-results$",
+      "apply-to": "queues",
+      "priority": 0,
+      "definition": {
+        "delivery-limit": 5,
+        "delayed-retry-type": "failed",
+        "delayed-retry-min": 1000,
+        "delayed-retry-max": 5000,
+        "dead-letter-strategy": "at-least-once",
+        "overflow": "reject-publish",
+        "max-length": 1000,
+        "max-length-bytes": 16777216,
+        "dead-letter-exchange": "shardshop.dlx",
+        "dead-letter-routing-key": "order.ledger-results.dlq"
+      }
+    },
+    {
+      "name": "parking-capacity",
+      "vhost": "shardshop",
+      "pattern": "^(ledger\\.record-order|order\\.ledger-results)\\.dlq$",
+      "apply-to": "queues",
+      "priority": 0,
+      "definition": {
+        "overflow": "reject-publish",
+        "max-length": 1000,
+        "max-length-bytes": 16777216
+      }
+    }
+  ]
+}

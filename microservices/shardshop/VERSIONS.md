@@ -61,8 +61,8 @@ successor before the LTS deadline.
 | Helm | **4.3.0** tested; `helm` from the user's `PATH` | Maintained stable 4.x with no fixed LTS term; 4.3.x supports Kubernetes 1.34–1.37, covering the 1.36 lab. It installs only vendored, verified third-party charts, starting with CloudNativePG; a later cloud target reuses the same charts and values. [Version skew](https://helm.sh/docs/topics/version_skew/), [release](https://github.com/helm/helm/releases/tag/v4.3.0) |
 | Helmfile | **1.8.0**, installed through Homebrew; `helmfile` from the user's `PATH` | Maintained stable 1.8 series with no fixed LTS term. Owns ordered Helm releases; the current upstream patch is 1.8.1. Review monthly, first by **2026-11-13**. Two complete native `up.sh` runs deployed all releases on **2026-10-14**; the unchanged rerun preserved application and database identities and allocator state. Official archive checksum and the installed Homebrew executable identity are recorded separately in the lock. [Selected release](https://github.com/helmfile/helmfile/releases/tag/v1.8.0), [configuration](https://helmfile.readthedocs.io/en/stable/configuration/) |
 | Skaffold | **2.25.0**, installed through Homebrew; `skaffold` from the user's `PATH` | Maintained stable release with no fixed LTS term. Builds and tags the packaged Maven outputs using local Docker; native kind loads qualified images and Helmfile deploys them. Review monthly, first by **2026-11-13**. Two complete native `up.sh` runs on **2026-10-14** built all four artifacts, scanned them with Docker Scout and verified consistent qualified images on every kind node. Each run passed 1,034 unit/startup tests and 55 packaged routing checks. [Release](https://github.com/GoogleContainerTools/skaffold/releases/tag/v2.25.0), [Docker builder](https://skaffold.dev/docs/builders/builder-types/docker/) |
-| RabbitMQ | **4.3.6**, maintained GA patches and subsequent supported series | Community support ends **2026-11-30**. This is a rolling-support exception, not LTS; no newer stable series is listed at review time. Native quorum delayed retry requires 4.3+. [Support timeline](https://www.rabbitmq.com/release-information), [retry feature](https://www.rabbitmq.com/docs/quorum-queues#delayed-retry) |
-| Erlang/OTP | **27.3.4.17**, bundled by the selected official RabbitMQ image | This corrects the draft's 28.x assumption. OTP 27 is supported by RabbitMQ 4.3.6; upgrade the broker/runtime image together. No fixed-date LTS is assumed. [Compatibility](https://www.rabbitmq.com/docs/which-erlang), [immutable image recipe](https://github.com/docker-library/rabbitmq/blob/a2d49841fbcf81713cf0e1c279facbce545e2292/4.3/ubuntu/Dockerfile), [OTP security policy](https://github.com/erlang/otp/security) |
+| RabbitMQ | **4.3.6**, maintained GA patches and subsequent supported series | Community support ends **2027-01-31** (rechecked 2026-10-16). This is a rolling-support exception, not LTS; no newer stable series is listed at review time. Native quorum delayed retry requires 4.3+. [Support timeline](https://www.rabbitmq.com/release-information), [retry feature](https://www.rabbitmq.com/docs/quorum-queues#delayed-retry) |
+| Erlang/OTP | **27.3.4.19**, bundled by the selected official RabbitMQ image | This corrects the draft's 28.x assumption. OTP 27 is supported by RabbitMQ 4.3.6; upgrade the broker/runtime image together. No fixed-date LTS is assumed. [Compatibility](https://www.rabbitmq.com/docs/which-erlang), [immutable image recipe](https://github.com/docker-library/rabbitmq/blob/a2d49841fbcf81713cf0e1c279facbce545e2292/4.3/ubuntu/Dockerfile), [OTP security policy](https://github.com/erlang/otp/security) |
 | PostgreSQL/operator image OS | Vendor-maintained **Debian 13 (trixie)** images | Full support through **2028-08-09**, Debian LTS through **2030-06-30**, subject to package/architecture coverage. The database/operator support window can expire first. [CNPG image baseline](https://cloudnative-pg.io/docs/1.30/release_notes/v1.30/), [Debian lifecycle](https://www.debian.org/releases/trixie/) |
 | Application and migration image OS | **Canonical OpenJDK 25** on **Ubuntu 26.04 LTS (resolute)**; `ubuntu/jdk` and `ubuntu/jre` stable tracks, pinned by digest | Canonical advertises these tracks through **May 2031**. Native ARM64 base-image build/runtime checks passed on Java **25.0.4.1**. Requalify derived images separately; the runtime is shell-free and final images must explicitly select a non-root user. [JDK support](https://hub.docker.com/r/ubuntu/jdk), [JRE support](https://hub.docker.com/r/ubuntu/jre) |
 | Schema migrations | **Flyway OSS 13.8.1** libraries on the selected Canonical OpenJDK 25 JRE; local image defined by `infra/images/flyway/Dockerfile`, pinned by manifest digest | The official Flyway image supplies libraries, drivers, configuration and licenses only. Frequent releases have no published fixed EOL; review monthly, first by **2026-10-30**, and requalify the final image and migration Jobs through `scripts/up.sh` on the lab. Application BOMs do not select the external migration runtime. [Distribution source](https://hub.docker.com/r/flyway/flyway), [release notes](https://help.red-gate.com/help/flyway-cli13/help_8.aspx?topic=release-notes-and-older-versions/release-notes-for-flyway-engine) |
@@ -744,11 +744,11 @@ verify checksums/signatures and record native CPU-architecture compatibility.
   security/bug-fix updates promptly, rebuild pinned images for OS fixes, and test
   the result. A digest pin ensures reproducibility, not indefinite maintenance.
 - Start supported-branch migration planning at least 90 days before EOL where
-  feasible. Components already inside that window, currently RabbitMQ and CNPG,
-  need an active upgrade item immediately. Complete upgrades before EOL; do not
+  feasible. CNPG is already inside that window and needs an active upgrade item;
+  begin RabbitMQ migration planning by 2026-11-02. Complete upgrades before EOL; do not
   substitute an unreleased successor or count a roadmap date as availability.
-- Qualify RabbitMQ's supported successor by **2026-11-15**, before its November
-  EOL. Review the next stable CNPG release immediately on availability and upgrade
+- Qualify RabbitMQ's supported successor by **2027-01-15**, before its January
+  2027 EOL. Review the next stable CNPG release immediately on availability and upgrade
   before 1.30's published EOL, currently approximately December 2026. If no suitable
   successor is available, stop deployment past EOL or qualify a supported community
   replacement; do not silently run an unsupported version or assume paid coverage.
@@ -965,3 +965,45 @@ test image, with the SQL mounted in a ConfigMap-style folder. It applied V1, rer
 without changes, and failed as expected on checksum drift, runtime credentials and a
 missing schema. A 20-second statement was cancelled at the 15-second limit and
 rolled back.
+
+
+### Step 4.3 RabbitMQ qualification
+
+On 2026-10-16, the [release timeline](https://www.rabbitmq.com/release-information)
+still lists RabbitMQ **4.3.6** as the newest maintained GA and now gives **2027-01-31**
+as community EOL. The selected management image was rebuilt on 2026-10-14; its
+index, ARM64 manifest and config identities are recorded in the lock. It bundles
+**Erlang/OTP 27.3.4.19** and Ubuntu 24.04. Recheck on **2026-11-16** and qualify a
+supported successor by **2027-01-15**.
+
+The test-only AMQP client is **5.37.0**, published on 2026-10-01. Its
+[release notes](https://github.com/rabbitmq/rabbitmq-java-client/releases/tag/v5.37.0)
+confirm compatibility with 5.36.0 and the deprecated JSON-reader fix. Cached
+Java-client overview pages still list 5.36.0; current Maven Central metadata and
+the immutable release were used. Central JAR/POM SHA-1 sidecars match, SHA-256
+hashes are in the lock, and the OSV query has no finding for 5.37.0. Tests use the
+default socket transport; this does not qualify the optional Netty transport.
+
+Docker Scout reports 238 packages and 97 advisories: 6 critical, 34 high,
+53 medium and 4 low. Every critical/high finding is in Go 1.22.2 embedded in
+`gosu`. The deployed command directly starts `rabbitmq-server` as an arbitrary
+non-root UID; it never uses `gosu` or the vendor entrypoint. The image retains
+that unused binary, so the unfiltered scan still reports these findings. This
+assessment applies to the restricted local broker and must be revisited before
+broader deployment. The remaining OS package findings are medium/low.
+
+
+The broker acceptance suite verifies the runtime bundle under UID 1000780001
+(absent from the image's passwd file), using the chart's startup command and
+read-only mounts. Both source queues survive container replacement with
+unacknowledged persistent messages and parked messages. The observed reject
+sequence is five delayed redeliveries, then a sixth rejection parks the message;
+`basic.nack` leaves the failure count unchanged. Capacity checks observe the
+allowed one-message overshoot before negative confirmation and verify eventual
+forwarding after a full parking queue recovers on the native 180-second retry.
+
+The test-module audit generated a 93-component SBOM with client 5.37.0 and the
+existing platform-managed Netty 4.1.139.Final. The audit succeeded; inherited
+Flyway repository metadata checks returned 401 for local reactor snapshot POMs,
+which were already resolved from the local cache. Artifact checksum and client
+advisory checks used Maven Central and OSV directly.

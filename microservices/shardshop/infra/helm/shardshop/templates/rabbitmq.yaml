@@ -1,0 +1,221 @@
+{{- if eq .Values.render "infrastructure" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shardshop-rabbitmq-config
+  namespace: {{ .Release.Namespace | quote }}
+  annotations:
+    helm.sh/resource-policy: keep
+data:
+  rabbitmq.conf: |
+    {{- .Files.Get "files/rabbitmq/rabbitmq.conf" | nindent 4 }}
+  enabled_plugins: |
+    {{- .Files.Get "files/rabbitmq/enabled_plugins" | nindent 4 }}
+  definitions.json: |
+    {{- .Files.Get "files/rabbitmq/definitions.json" | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shardshop-rabbitmq-headless
+  namespace: {{ .Release.Namespace | quote }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: shardshop-rabbitmq
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: amqp
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shardshop-rabbitmq
+  namespace: {{ .Release.Namespace | quote }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: shardshop-rabbitmq
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: amqp
+    - name: management
+      port: 15672
+      targetPort: management
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: shardshop-rabbitmq
+  namespace: {{ .Release.Namespace | quote }}
+  annotations:
+    helm.sh/resource-policy: keep
+  labels:
+    app.kubernetes.io/name: shardshop-rabbitmq
+    app.kubernetes.io/part-of: shardshop
+spec:
+  serviceName: shardshop-rabbitmq-headless
+  replicas: {{ .Values.rabbitmq.replicas }}
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: shardshop-rabbitmq
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: shardshop-rabbitmq
+        app.kubernetes.io/part-of: shardshop
+      annotations:
+        shardshop.javacraft/configuration: {{ printf "%s%s%s" (.Files.Get "files/rabbitmq/rabbitmq.conf") (.Files.Get "files/rabbitmq/enabled_plugins") (.Files.Get "files/rabbitmq/definitions.json") | sha256sum | quote }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.rabbitmq.runAsUser }}
+        runAsGroup: {{ .Values.rabbitmq.fsGroup }}
+        fsGroup: {{ .Values.rabbitmq.fsGroup }}
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.rabbitmq.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: rabbitmq
+          image: {{ .Values.rabbitmq.image | quote }}
+          imagePullPolicy: IfNotPresent
+          # Bypass the image's root-oriented entrypoint; the mounted PVC is fsGroup-writable.
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              umask 0007
+              mkdir -p /tmp/rabbitmq/definitions
+              # Kubernetes projected volumes include metadata directories; import only these files.
+              cp /etc/rabbitmq/definitions/10-topology.json /tmp/rabbitmq/definitions/10-topology.json
+              cp /etc/rabbitmq/definitions/20-users.json /tmp/rabbitmq/definitions/20-users.json
+              cp /etc/rabbitmq/credentials/erlang-cookie /tmp/rabbitmq/.erlang.cookie
+              chmod 600 /tmp/rabbitmq/.erlang.cookie
+              exec rabbitmq-server
+          env:
+            - name: HOME
+              value: /tmp/rabbitmq
+            - name: RABBITMQ_USE_LONGNAME
+              value: "true"
+            - name: RABBITMQ_NODENAME
+              value: {{ printf "rabbit@shardshop-rabbitmq-0.shardshop-rabbitmq-headless.%s.svc.cluster.local" .Release.Namespace | quote }}
+            - name: RABBITMQ_CONFIG_FILE
+              value: /etc/rabbitmq/config/rabbitmq
+            - name: RABBITMQ_ENABLED_PLUGINS_FILE
+              value: /etc/rabbitmq/config/enabled_plugins
+            - name: RABBITMQ_MNESIA_BASE
+              value: /var/lib/rabbitmq/mnesia
+            - name: RABBITMQ_LOGS
+              value: "-"
+            - name: RABBITMQ_PID_FILE
+              value: /tmp/rabbitmq/rabbitmq.pid
+            - name: RABBITMQ_PLUGINS_EXPAND_DIR
+              value: /tmp/rabbitmq/plugins
+          ports:
+            - name: amqp
+              containerPort: 5672
+            - name: management
+              containerPort: 15672
+          startupProbe:
+            exec:
+              command: [rabbitmq-diagnostics, -q, -t, "5", check_running]
+            periodSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: [/bin/sh, -ec, "rabbitmq-diagnostics -q -t 5 check_running && rabbitmq-diagnostics -q -t 5 check_local_alarms"]
+            periodSeconds: 10
+            timeoutSeconds: 15
+            failureThreshold: 3
+          # Resource alarms apply backpressure; they must not trigger a restart.
+          livenessProbe:
+            exec:
+              command: [rabbitmq-diagnostics, -q, -t, "5", ping]
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.rabbitmq.resources | nindent 12 }}
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/rabbitmq
+            - name: temporary
+              mountPath: /tmp
+            - name: configuration
+              mountPath: /etc/rabbitmq/config
+              readOnly: true
+            - name: definitions
+              mountPath: /etc/rabbitmq/definitions
+              readOnly: true
+            - name: cookie
+              mountPath: /etc/rabbitmq/credentials
+              readOnly: true
+      volumes:
+        - name: temporary
+          emptyDir: {}
+        - name: configuration
+          configMap:
+            name: shardshop-rabbitmq-config
+            items:
+              - key: rabbitmq.conf
+                path: rabbitmq.conf
+              - key: enabled_plugins
+                path: enabled_plugins
+        - name: definitions
+          projected:
+            sources:
+              - configMap:
+                  name: shardshop-rabbitmq-config
+                  items:
+                    - key: definitions.json
+                      path: 10-topology.json
+              - secret:
+                  name: shardshop-rabbitmq
+                  items:
+                    - key: users.json
+                      path: 20-users.json
+        - name: cookie
+          secret:
+            secretName: shardshop-rabbitmq
+            defaultMode: 0440
+            items:
+              - key: erlang-cookie
+                path: erlang-cookie
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        annotations:
+          helm.sh/resource-policy: keep
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.rabbitmq.storage.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.rabbitmq.storage.size | quote }}
+{{- end }}

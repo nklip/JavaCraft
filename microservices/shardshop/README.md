@@ -942,6 +942,75 @@ rollback under injected constraints, and denied `TRUNCATE`. Every phase checks
 `stock = initial_stock - active reserved quantities`. The separate order API
 scenarios disable the worker to isolate acceptance's atomicity and validation.
 
+## RabbitMQ topology and delivery policies (step 4.3)
+
+`cluster-create.sh` provisions one persistent RabbitMQ 4.3.6 broker through the
+infrastructure Helm release. `shardshop-rabbitmq.shardshop.svc:5672` serves AMQP;
+port 15672 serves management inside the cluster. The `shardshop` vhost contains
+the durable direct exchanges `ledger.commands`, `order.saga-results` and
+`shardshop.dlx`, with these single-member quorum queues:
+
+| Queue | Complete policy | Dead-letter destination |
+|---|---|---|
+| `ledger.record-order` | `ledger-command-delivery` | `ledger.record-order.dlq` |
+| `order.ledger-results` | `order-result-delivery` | `order.ledger-results.dlq` |
+| Both `.dlq` queues | `parking-capacity` | None |
+
+Source policies use failed-delivery retry, delays from 1000 to 5000 ms,
+`delivery-limit=5`, and at-least-once dead-lettering. All queues use reject-publish
+limits of 1000 messages and 16 MiB; quorum admission can briefly overshoot these
+thresholds. When a full parking queue rejects a dead letter, the source retains
+it until the broker's next internal confirmation retry (180 seconds by default).
+Parking queues disable the delivery limit
+with `x-delivery-limit=-1`, with no TTL, expiry or automatic consumer. The broker
+accepts messages up to 1 MiB, has a 512 MiB memory watermark, 100 MB free-disk
+threshold and a 1 GiB container limit. `stream_queue` is enabled by the broker's
+stable feature defaults and checked by acceptance tests.
+
+The StatefulSet retains its 2 GiB PVC across restarts and deletion. A stable
+node name keeps the same broker database. `rabbitmq.runAsUser` can be any positive
+UID; `fsGroup` makes storage writable, and cookie/plugin/runtime files live in
+`/tmp`. The root filesystem is read-only and all Linux capabilities are dropped.
+Startup copies only the two named definition files out of Kubernetes projected
+volumes, avoiding their metadata directories. A ConfigMap checksum rolls the
+broker when public configuration changes. One broker provides persistence but
+no availability during broker or node downtime.
+
+Creation generates the `shardshop-rabbitmq` Secret once. Its `users.json`,
+`admin-password`, `order-password`, `ledger-password` and `erlang-cookie` keys are
+preserved on reruns. `shardshop-admin` owns topology; `shardshop-order` can publish
+commands and read results; `shardshop-ledger` can read commands and publish
+results. Service users cannot configure resources or use management. Back up
+this Secret with broker data. If the Secret disappears while the StatefulSet or
+PVC remains, creation stops: restore the original Secret before retrying. A
+partial Secret also fails without printing credentials. Credential rotation
+requires a coordinated broker restart and consumer update; it is not performed
+by ordinary startup.
+
+Run provisioning and the read-only live readiness/topology gate:
+
+```bash
+bash microservices/shardshop/scripts/cluster-create.sh
+```
+
+`up.sh` also runs that gate before migrations. To verify the chart, lifecycle
+preservation, non-image UID, permissions, native retry boundary, persistent
+message recovery and full-queue backpressure in isolated containers:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true -Pintegration \
+  -Dcucumber.filter.tags=@rabbitmq verify
+```
+
+The scenarios publish persistent mandatory messages and require publisher
+confirms. They verify that `basic.nack(requeue=true)` preserves the failure
+budget, while `basic.reject(requeue=true)` spends it, and malformed-message
+rejection parks immediately. Test containers and their temporary volumes are
+removed on completion. The test-only Java client uses its socket transport.
+Application consumers, CDC publication and the full operational drills remain
+the later steps 4.4–4.6 and 5.4.
+
 ## HTTP and message contracts (step 3.1)
 
 | Owner | Contract |
@@ -1549,8 +1618,9 @@ building either parent reactor. It builds, verifies and installs only the safety
 test-helper dependencies with
 `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Dshardshop.infrastructureOnly=true clean install -DinstallAtEnd=true`,
 validates the pinned kind configuration, creates the four nodes, and prepares the namespace, credentials,
-CloudNativePG, databases and allocator identity. It verifies DNS, admission and
-database readiness. It does not build/load application images, run Flyway or deploy
+CloudNativePG, databases, RabbitMQ and allocator identity. It verifies DNS,
+admission, database readiness and the broker's effective delivery topology.
+It does not build/load application images, run Flyway or deploy
 application workloads. On an existing cluster it resumes stopped nodes and safely
 reconciles supported infrastructure changes after retained-state guards pass; it
 never reinitializes retained allocator history.
@@ -1592,7 +1662,9 @@ seconds for each release, installs CloudNativePG 1.30.1 from the vendored chart,
 and reconciles the shared infrastructure chart. `cluster-create.sh` creates the `shardshop`
 namespace with the `restricted` Pod Security label; the infrastructure release creates three
 three-instance clusters (`shard-a`/US, `shard-b`/EU, `shard-c`/ASIA), and the single-instance
-`ledger-db` cluster. It waits up to 300 seconds for every database cluster to be
+`ledger-db` cluster, plus the persistent broker described in
+[step 4.3](#rabbitmq-topology-and-delivery-policies-step-43).
+It waits up to 300 seconds for every database cluster to be
 Ready and for every database pod to use the requested PostgreSQL image, operator
 image and resource budget, accounting for Kubernetes defaulting an omitted resource
 request to its limit. Explicit requests still take precedence. It verifies every

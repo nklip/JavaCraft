@@ -228,6 +228,79 @@
           "minimum": 86400
         }
       }
+    },
+    "rabbitmq": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "image",
+        "replicas",
+        "runAsUser",
+        "fsGroup",
+        "storage",
+        "resources"
+      ],
+      "properties": {
+        "image": {
+          "type": "string",
+          "pattern": "^docker\\.io/library/rabbitmq(:4\\.[3-9][0-9]*\\.[0-9]+-management)?@sha256:[0-9a-f]{64}$"
+        },
+        "replicas": {
+          "type": "integer",
+          "const": 1
+        },
+        "runAsUser": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fsGroup": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "size"
+          ],
+          "properties": {
+            "size": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*(Mi|Gi|Ti)$"
+            },
+            "storageClass": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "resources": {
+          "type": "object",
+          "required": [
+            "requests",
+            "limits"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            }
+          }
+        },
+        "affinity": {
+          "type": "object"
+        }
+      }
     }
   }
 }

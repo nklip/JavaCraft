@@ -98,12 +98,22 @@ class KindStartupScriptTest {
                     arguments="$*"
                     secret=${arguments#*get secret }
                     secret=${secret%% *}
-                    if [[ -f "$FIXTURE/secret-$secret" ]]; then echo "secret/$secret"; fi;;
+                    if [[ -f "$FIXTURE/secret-$secret" ]]; then
+                      if [[ "$*" == *' -o json' ]]; then cat "$FIXTURE/secret-$secret"
+                      else echo "secret/$secret"; fi
+                    fi;;
                   *'create secret generic '*)
                     arguments="$*"
                     secret=${arguments#*create secret generic }
                     secret=${secret%% *}
-                    touch "$FIXTURE/secret-$secret";;
+                    if [[ "$secret" == shardshop-rabbitmq ]]; then
+                      for argument in "$@"; do
+                        case "$argument" in --from-file=users.json=*) cp "${argument#--from-file=users.json=}" "$FIXTURE/rabbitmq-users.json";; esac
+                      done
+                      echo '{"data":{"users.json":"eA==","admin-password":"eA==","order-password":"eA==","ledger-password":"eA==","erlang-cookie":"eA=="}}' > "$FIXTURE/secret-$secret"
+                    else touch "$FIXTURE/secret-$secret"; fi;;
+                  *'get statefulset/shardshop-rabbitmq persistentvolumeclaim/data-shardshop-rabbitmq-0 '*)
+                    if [[ -f "$FIXTURE/rabbitmq-retained" ]]; then cat "$FIXTURE/rabbitmq-retained"; fi;;
                   *'get --raw /readyz'|*'wait --for=condition=Ready nodes '*|*'rollout status '*|*'rollout restart '*) ;;
                   *'apply -f '*|*'create -f '*|*'delete -f '*) ;;
                   *) exit 99;;
@@ -161,7 +171,14 @@ class KindStartupScriptTest {
         assertTrue(events.stream().anyMatch(line -> line.startsWith("mvn build ")
                 && line.contains("-pl shardshop-testing -am -Dshardshop.infrastructureOnly=true clean install -DinstallAtEnd=true")), events.toString());
         assertEquals(2, events.stream().filter(line -> line.contains(" install:install-file ")).count());
-        assertEquals(7, events.stream().filter(line -> line.contains("create secret generic ")).count());
+        assertEquals(8, events.stream().filter(line -> line.contains("create secret generic ")).count());
+        JsonNode users = JSON.readTree(Files.readString(temporary.resolve("rabbitmq-users.json")));
+        assertEquals(List.of("shardshop-admin", "shardshop-order", "shardshop-ledger"),
+                users.path("users").findValuesAsText("name"));
+        assertEquals("^ledger\\.commands$", users.path("permissions").get(1).path("write").asText());
+        assertEquals("^order\\.ledger-results$", users.path("permissions").get(1).path("read").asText());
+        assertEquals("^order\\.saga-results$", users.path("permissions").get(2).path("write").asText());
+        assertEquals("^ledger\\.record-order$", users.path("permissions").get(2).path("read").asText());
         assertTrue(events.stream().anyMatch(line -> line.startsWith("helmfile fresh=true ") && line.contains("stage=infrastructure")));
         assertBefore("mvn kind-admission-bootstrap ", "kubectl --context kind-shardshop --request-timeout=10s -n shardshop create configmap shardshop-snowflake-generators ");
         assertTrue(events.stream().anyMatch(line -> line.contains("create -f ") && line.contains("generator-identity.yaml")));
@@ -182,7 +199,7 @@ class KindStartupScriptTest {
         assertBefore("mvn kind-allocator ", "kubectl --context kind-shardshop --request-timeout=30s apply -f ");
         assertBefore("mvn kind-allocator ", "helmfile fresh=false ", "stage=infrastructure");
         assertTrue(phases().contains("kind-infrastructure"));
-        assertEquals(7, events().stream().filter(line -> line.contains("create secret generic ")).count());
+        assertEquals(8, events().stream().filter(line -> line.contains("create secret generic ")).count());
         assertNoAllocatorBootstrap();
         assertNoApplicationDelivery();
         assertFalse(Files.exists(lock()));
@@ -200,6 +217,30 @@ class KindStartupScriptTest {
         assertTrue(events().stream().noneMatch(line -> line.contains("create secret generic ") || line.startsWith("docker start ")));
         assertNoAllocatorBootstrap();
         assertNoApplicationDelivery();
+        assertFalse(Files.exists(lock()));
+    }
+
+    @Test
+    void retainedRabbitMqWithoutCredentialsStopsBeforeReconciliation() throws Exception {
+        state("nodes", NODES);
+        state("rabbitmq-retained", "persistentvolumeclaim/data-shardshop-rabbitmq-0\n");
+        Result result = run("cluster-create.sh");
+        assertNotEquals(0, result.exit());
+        assertTrue(result.output().contains("Restore shardshop-rabbitmq from backup"), result.output());
+        assertTrue(events().stream().noneMatch(line -> line.contains("create secret generic shardshop-rabbitmq")
+                || line.startsWith("helmfile ")));
+        assertFalse(Files.exists(lock()));
+    }
+
+    @Test
+    void incompleteRabbitMqSecretStopsBeforeReconciliationWithoutPrintingIt() throws Exception {
+        state("nodes", NODES);
+        state("secret-shardshop-rabbitmq", "{\"data\":{\"admin-password\":\"private-value\"}}");
+        Result result = run("cluster-create.sh");
+        assertNotEquals(0, result.exit());
+        assertTrue(result.output().contains("RabbitMQ Secret is incomplete"), result.output());
+        assertFalse(result.output().contains("private-value"), result.output());
+        assertTrue(events().stream().noneMatch(line -> line.startsWith("helmfile ")));
         assertFalse(Files.exists(lock()));
     }
 

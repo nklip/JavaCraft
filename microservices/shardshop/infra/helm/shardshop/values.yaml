@@ -98,3 +98,19 @@ productReader:
     limits:
       cpu: "2"
       memory: 384Mi
+
+# A single durable broker for the lab; the image starts directly under the selected UID.
+rabbitmq:
+  image: docker.io/library/rabbitmq:4.3.6-management@sha256:b575d00b4e309e1eacc68e772298af74fe0f5672fac5b46ba698ffef379f68f7
+  replicas: 1
+  runAsUser: 10001
+  fsGroup: 10001
+  storage:
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi

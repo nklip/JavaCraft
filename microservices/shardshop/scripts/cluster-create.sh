@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create or safely reconcile the kind/database foundation; never deploy applications.
+# Create or safely reconcile the kind/database/broker foundation; never deploy applications.
 # Run up.sh afterward to build, migrate and restart the applications.
 set -euo pipefail
 
@@ -47,6 +47,7 @@ for role in catalog_migrator ordering_migrator product_app order_app ordering_cd
             --from-literal="username=$role" --from-file="password=$work/password"
     fi
 done
+provision_rabbitmq_credentials
 export SHARDSHOP_FRESH="$created_cluster"
 helmfile -f "$work/helmfile.yaml.gotmpl" -l stage=infrastructure sync --skip-deps --skip-needs
 if [[ "$created_cluster" == true ]]; then
@@ -58,5 +59,5 @@ if [[ "$created_cluster" == true ]]; then
 fi
 verify_kind kind-allocator
 verify_kind kind-infrastructure
-echo 'ShardShop cluster and database foundation are ready; no application release was changed.'
+echo 'ShardShop cluster, database and broker foundation are ready; no application release was changed.'
 echo 'Run scripts/up.sh to build, migrate and start the applications.'

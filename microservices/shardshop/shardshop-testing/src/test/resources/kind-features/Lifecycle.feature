@@ -29,3 +29,7 @@ Feature: Kind lab lifecycle infrastructure gates
   @kind-infrastructure
   Scenario: Infrastructure has reconciled and serves the required database topology
     Then the databases have reconciled and serve the required topology
+
+  @kind-infrastructure
+  Scenario: RabbitMQ has reconciled and serves the durable retry and parking topology
+    Then the RabbitMQ broker is ready with the required durable delivery topology

@@ -10,3 +10,14 @@ postgresql:
           - matchExpressions:
               - key: node-role.kubernetes.io/control-plane
                 operator: DoesNotExist
+
+rabbitmq:
+  storage:
+    storageClass: standard
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: DoesNotExist

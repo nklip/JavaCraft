@@ -107,7 +107,15 @@ on every node before migrations or a new application release.
 
 `cluster-create.sh` syncs `cnpg` and `shardshop-infrastructure` through Helmfile,
 then initializes allocator identity only for a cluster demonstrably created by
-that invocation. It verifies database readiness and returns without migrations or
+that invocation. Step 4.3 also provisions a retained single-broker RabbitMQ
+StatefulSet, public topology ConfigMap and runtime-generated credential Secret.
+The infrastructure gate verifies the broker's persistent storage, readiness,
+stream feature flag, exact quorum queue arguments, bindings and effective
+delivery policies. Broker configuration imports public topology and private
+users through a clean temporary directory, excluding Kubernetes projection
+metadata. The broker runs with an arbitrary non-root UID and a read-only root
+filesystem; its PVC is writable through fsGroup. It verifies database and broker
+readiness and returns without migrations or
 application deployment or application image builds. On an existing cluster it
 resumes stopped nodes and reconciles supported infrastructure changes after
 retained-state guards pass. Partial allocator initialization requires explicit

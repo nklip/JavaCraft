@@ -2181,3 +2181,83 @@ Apply both V3 migration streams before starting the new worker against a retaine
 database. These checks use disposable PostgreSQL databases; they do not change
 the retained kind lab. Broker delivery, ledger results and order deployment remain
 the subsequent milestone steps.
+
+
+## Step 4.3
+
+**2026-10-16:** RabbitMQ 4.3.6 now runs as a single persistent StatefulSet in the
+infrastructure release. The chart imports three durable direct exchanges, four
+single-member quorum queues and the three complete policies from architecture
+section 6. Source queues have native failed-delivery retry and at-least-once
+parking; parking queues have no expiry, onward DLX or automatic consumer. All
+queues have reject-publish capacity limits. Configuration, credentials and data
+use separate mounts; the broker runs under an arbitrary non-root UID with a
+read-only root filesystem and dropped capabilities.
+
+`cluster-create.sh` generates the broker's role credentials and cookie once,
+retains them on reruns, and stops if retained broker storage has lost its Secret.
+The live infrastructure gate checks the desired image/configuration checksum,
+Ready StatefulSet and Pod, Bound PVC, feature flag, effective policies, exact
+queue arguments, exchanges and bindings. The projected-volume regression test
+proves that startup excludes Kubernetes metadata directories from definition
+imports. Version, artifact hash and advisory records are in
+[VERSIONS.md](VERSIONS.md#step-43-rabbitmq-qualification) and the lock.
+
+Validation:
+
+- All **192 testing-module unit tests** pass, including seven broker chart tests,
+  nine live-gate fixture tests and credential retention/recovery guards. The scoped
+  creation build also passes the shared common module tests.
+- All **six broker scenarios** pass on native ARM64 with RabbitMQ **4.3.6**,
+  Erlang **27.3.4.19** and the test-only socket client **5.37.0**. The broker runs
+  under UID **1000780001**, absent from the image's passwd file. Guest access and
+  unauthorized topology, publishing, consuming and management access are denied.
+- Both source queues deliver five failed retries at approximately 1/2/3/4/5 seconds;
+  the sixth rejection parks with `delivery_limit`. A nack preserves failure count
+  zero. Both queues retain unacknowledged persistent messages and parked messages
+  across container replacement on the same volume; malformed-message rejection
+  parks with `rejected`.
+- Source and parking queues accept 1001 messages before negative confirmation,
+  demonstrating the documented quorum overshoot of the 1000-message threshold.
+  A full parking queue leaves the dead letter retained at the source with broker
+  alarms clear. After capacity returns, the native **180-second** internal retry
+  forwards it without loss. The test allows a bounded 210-second recovery window.
+- A final focused topology/authorization run passes after adding an explicit
+  five-second AMQP RPC timeout. Isolated broker containers and volumes are removed.
+- Two actual `cluster-create.sh` runs pass on retained `kind-shardshop`, first
+  with UID 1000780001 and then with the repository default UID 10001. Both pods
+  become Ready without restarts; the PVC identity/binding and a hash of the
+  credential Secret's identity/data remain equal. All ten pre-existing database
+  PVC identities/bindings, product/reader Deployment templates/replicas and
+  allocator identities/data remain equal. The lab remains running.
+- The module audit generates its effective POM, resolved graph, plugin inventory
+  and a **93-component SBOM**; direct Central checksums and client OSV review pass.
+  Broker image advisories and the unused `gosu` assessment are recorded in VERSIONS.
+
+Executed commands (from the repository root):
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true test
+mvn -B -ntp -f microservices/shardshop/shardshop-testing/pom.xml \
+  -Dshardshop.infrastructureOnly=true -Pintegration -Dtest=RabbitMqChartTest \
+  -Dcucumber.filter.tags=@rabbitmq verify
+# Final focused check after the RPC timeout adjustment:
+mvn -B -ntp -f microservices/shardshop/shardshop-testing/pom.xml \
+  -Dshardshop.infrastructureOnly=true -Pintegration -Dtest=RabbitMqChartTest \
+  -Dcucumber.filter.tags=@rabbitmq \
+  '-Dcucumber.filter.name=Effective topology, feature flags, runtime and least privilege are ready' verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dshardshop.infrastructureOnly=true -Paudit \
+  help:effective-pom@effective-pom-report dependency:tree@dependency-tree-report \
+  dependency:resolve-plugins@plugin-dependencies-report cyclonedx:makeBom@application-sbom
+# Temporary copy of kind-values.yaml, adding rabbitmq.runAsUser: 1000780001:
+SHARDSHOP_ENV_VALUES=/tmp/shardshop-rabbitmq-arbitrary-uid-values.yaml \
+  bash microservices/shardshop/scripts/cluster-create.sh
+bash microservices/shardshop/scripts/cluster-create.sh
+```
+
+Each live creation executes the scoped `clean install` plus kind safety, DNS,
+allocator, database and broker gates. Source and broker integration checks remain
+independent of the unimplemented application consumers/CDC steps. The one-broker
+lab provides persistence, not high availability.

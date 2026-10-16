@@ -38,6 +38,39 @@ require_tools() {
 
 k() { kubectl --context "$context" --request-timeout=10s -n shardshop "$@"; }
 
+provision_rabbitmq_credentials() {
+    local existing retained key
+    existing=$(k get secret shardshop-rabbitmq --ignore-not-found -o name)
+    if [[ -n "$existing" ]]; then
+        # Never print Secret contents or rotate credentials on retained storage.
+        k get secret shardshop-rabbitmq -o json | jq -e '
+            .data as $data | ["users.json", "admin-password", "order-password", "ledger-password", "erlang-cookie"] |
+            all(.[]; $data[.] | type == "string" and length > 0)' >/dev/null || {
+            echo 'RabbitMQ Secret is incomplete. Restore shardshop-rabbitmq from backup before reconciling.' >&2
+            exit 1
+        }
+        return
+    fi
+    retained=$(k get statefulset/shardshop-rabbitmq persistentvolumeclaim/data-shardshop-rabbitmq-0 \
+        --ignore-not-found -o name)
+    [[ -z "$retained" ]] || {
+        echo 'RabbitMQ data exists but its Secret is missing. Restore shardshop-rabbitmq from backup; credentials were not regenerated.' >&2
+        exit 1
+    }
+    # The invocation directory is private and removed by lifecycle_cleanup.
+    for key in admin order ledger erlang-cookie; do
+        openssl rand -hex 32 | tr -d '\n' >"$work/rabbitmq-$key"
+    done
+    jq -n --rawfile admin "$work/rabbitmq-admin" --rawfile order "$work/rabbitmq-order" \
+        --rawfile ledger "$work/rabbitmq-ledger" -f "$work/chart/files/rabbitmq/users.jq" >"$work/rabbitmq-users.json"
+    k create secret generic shardshop-rabbitmq \
+        --from-file="users.json=$work/rabbitmq-users.json" \
+        --from-file="admin-password=$work/rabbitmq-admin" \
+        --from-file="order-password=$work/rabbitmq-order" \
+        --from-file="ledger-password=$work/rabbitmq-ledger" \
+        --from-file="erlang-cookie=$work/rabbitmq-erlang-cookie"
+}
+
 render() {
     local mode=$1
     shift

@@ -159,17 +159,17 @@ support_policies:
       exact date monthly.
   rabbitmq_4_3:
     model: community_branch
-    checked_on: '2026-09-28'
-    review_by: '2026-10-28'
+    checked_on: '2026-10-16'
+    review_by: '2026-11-16'
     source_refs:
     - rabbitmq
-    eol: '2026-11-30'
-    qualify_successor_by: '2026-11-15'
-    upgrade_before: '2026-11-30'
+    eol: '2027-01-31'
+    qualify_successor_by: '2027-01-15'
+    upgrade_before: '2027-01-31'
   erlang_vendor_bundle:
     model: community_rolling
-    checked_on: '2026-09-28'
-    review_by: '2026-10-28'
+    checked_on: '2026-10-16'
+    review_by: '2026-11-16'
     source_refs:
     - erlang
     - otp_policy
@@ -336,7 +336,9 @@ compatibility:
     current_patch_exception_authorized: true
   rabbitmq:
     version: 4.3.6
-    erlang_otp: 27.3.4.17
+    erlang_otp: 27.3.4.19
+    checked_on: '2026-10-16'
+    review_by: '2026-11-16'
     support_refs:
     - rabbitmq_4_3
     - erlang_vendor_bundle
@@ -516,20 +518,28 @@ images:
       406 MiB of layers; the Alpine variant saves only about 25 MiB.
   rabbitmq:
     version: 4.3.6
+    checked_on: '2026-10-16'
+    review_by: '2026-11-16'
     purpose: broker and broker integration tests
     support_refs:
     - rabbitmq_4_3
     - erlang_vendor_bundle
     - ubuntu_24_04
     tag_observed: docker.io/library/rabbitmq:4.3.6-management
-    reference: docker.io/library/rabbitmq@sha256:cdf40d8cb363d145e377ed88d59696a42386ffe54b30125f10eb128b862eea95
-    index_digest: sha256:cdf40d8cb363d145e377ed88d59696a42386ffe54b30125f10eb128b862eea95
-    linux_arm64_digest: sha256:fe9009076fc11578b8b02ff62ea246e2c224c4972c73aa803f32791342e3d447
-    linux_arm64_config_digest: sha256:6fc2c1102eeb2ad1cc1c8a2b9daf0ec23a5005a9d88280fe08c059bf73ec9f4f
-    manifest_url: https://registry-1.docker.io/v2/library/rabbitmq/manifests/sha256:cdf40d8cb363d145e377ed88d59696a42386ffe54b30125f10eb128b862eea95
-    config_url: https://registry-1.docker.io/v2/library/rabbitmq/blobs/sha256:6fc2c1102eeb2ad1cc1c8a2b9daf0ec23a5005a9d88280fe08c059bf73ec9f4f
+    reference: docker.io/library/rabbitmq@sha256:b575d00b4e309e1eacc68e772298af74fe0f5672fac5b46ba698ffef379f68f7
+    index_digest: sha256:b575d00b4e309e1eacc68e772298af74fe0f5672fac5b46ba698ffef379f68f7
+    linux_arm64_digest: sha256:ab142d7664d978084bf9156d0cd80d5851510a420314001549ad6113b06070c6
+    linux_arm64_config_digest: sha256:627737a930f78b41cb0626043adf209b7b9b2baec4f6c49583348510240f2923
+    manifest_url: https://registry-1.docker.io/v2/library/rabbitmq/manifests/sha256:b575d00b4e309e1eacc68e772298af74fe0f5672fac5b46ba698ffef379f68f7
+    config_url: https://registry-1.docker.io/v2/library/rabbitmq/blobs/sha256:627737a930f78b41cb0626043adf209b7b9b2baec4f6c49583348510240f2923
     version_environment_observed:
     - RABBITMQ_VERSION=4.3.6
+    advisories: 'Docker Scout 2026-10-16: 97 advisories (6 critical, 34 high,
+      53 medium, 4 low) in 10 of 238 packages. All critical/high findings belong
+      to Go stdlib 1.22.2 in the bundled gosu executable. The chart bypasses the
+      vendor entrypoint and never invokes gosu; non-root startup drops all Linux
+      capabilities. Remaining OS findings are medium/low. Recheck monthly and
+      before broader deployment; this record is scoped to the local lab.'
   shardshop_applications:
     purpose: Application images of product, order, ledger and the three workloads
     dockerfile: infra/images/application/Dockerfile
@@ -812,13 +822,16 @@ tools:
 vendor_bundles:
   rabbitmq:
     image_ref: rabbitmq
-    erlang_otp: 27.3.4.17
+    erlang_otp: 27.3.4.19
     ubuntu: '24.04'
     source_refs:
     - rabbitmq_recipe
     - rabbitmq_management_recipe
-    verification: Official immutable Dockerfile and image config/history. Runtime
-      execution pending.
+    checked_on: '2026-10-16'
+    review_by: '2026-11-16'
+    verification: Native ARM64 broker management API reports RabbitMQ 4.3.6 and OTP
+      27.3.4.19 on the pinned rebuilt image. This supersedes the older recipe-based
+      OTP 27.3.4.17 inventory; runtime values are asserted by the broker acceptance suite.
   docker_desktop_target:
     tool_ref: docker_desktop
     containerd: 2.3.5
@@ -1328,6 +1341,23 @@ maven:
       io.netty:netty-codec-http: {"version":"4.1.139.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http/4.1.139.Final/netty-codec-http-4.1.139.Final.jar","sha256":"627cfdac2cd5dbd8a33af85977fb81fa6b46f0c00389ab4c8677a415f0f85480","published_checksum":{"algorithm":"sha1","value":"f52d30aeadc0af8c0d1cad9970e5a9c5df62bdd1","url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http/4.1.139.Final/netty-codec-http-4.1.139.Final.jar.sha1"}}
       io.netty:netty-codec-http2: {"version":"4.1.139.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http2/4.1.139.Final/netty-codec-http2-4.1.139.Final.jar","sha256":"4cb8bc95386112f3a9da935272781d577d9e70ca4c56cf0eef603a45e9526e02","published_checksum":{"algorithm":"sha1","value":"7b86d21a5578c431d2ccf898f22b444a38a4c0b2","url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http2/4.1.139.Final/netty-codec-http2-4.1.139.Final.jar.sha1"}}
       io.netty:netty-handler: {"version":"4.1.139.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/netty/netty-handler/4.1.139.Final/netty-handler-4.1.139.Final.jar","sha256":"ff85f00781b956d618b20f33da076c839a5e43e0084108b07bab0c19737168ec","published_checksum":{"algorithm":"sha1","value":"436b4a15bb2fe4608996a08b6d69b22f075286a4","url":"https://repo.maven.apache.org/maven2/io/netty/netty-handler/4.1.139.Final/netty-handler-4.1.139.Final.jar.sha1"}}
+  step_4_3_rabbitmq_client:
+    checked_on: '2026-10-16'
+    review_by: '2026-11-16'
+    scope: Test-only AMQP socket transport for broker provisioning and delivery acceptance
+    support: Maintained 5.x GA; 5.37.0 is compatible with 5.36.0 and fixes the deprecated JSON reader advisory
+    verification: Maven Central JAR and POM match published SHA-1 sidecars; SHA-256 independently calculated
+    advisories: OSV query for 5.37.0 returned no findings on 2026-10-16
+    transport: Default socket transport only; Netty transport is not enabled or qualified. Existing platform Netty and SLF4J management remains in force
+    sources:
+    - https://github.com/rabbitmq/rabbitmq-java-client/releases/tag/v5.37.0
+    - https://github.com/rabbitmq/rabbitmq-java-client/security/advisories/GHSA-cqgh-8p3p-mx4m
+    - https://repo.maven.apache.org/maven2/com/rabbitmq/amqp-client/5.37.0/
+    - https://api.osv.dev/v1/query
+    artifacts:
+      com.rabbitmq:amqp-client: {"version":"5.37.0","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/com/rabbitmq/amqp-client/5.37.0/amqp-client-5.37.0.jar","sha256":"b27134820890c5e56ed57d27cc50b70742fa2c31b36a6e9e28e14a43f34ff96f","published_checksum":{"algorithm":"sha1","value":"8add79f8648cb8564a49fe7f1de98657f14ac2f1","url":"https://repo.maven.apache.org/maven2/com/rabbitmq/amqp-client/5.37.0/amqp-client-5.37.0.jar.sha1"}}
+    pom_sha256: 47e11487e18d65685b267c7b6ad2add3198a8bfa42f214466d8c49c91c1764ee
+    pom_published_sha1: 01c4ff4127bddb44722c6cb00f5743a9acbc7c9d
   step_3_8_reader_dependencies:
     checked_on: '2026-10-08'
     review_by: '2026-11-05'
