@@ -28,6 +28,30 @@ public final class JsonFields {
         return value.textValue();
     }
 
+    /**
+     * Nonblank text of 1 to {@code maximumCodePoints} Unicode scalar values without NUL. Blank text contains only
+     * characters for which Python's {@code str.isspace()} is true.
+     */
+    public static String nonblankText(JsonNode node, String field, int maximumCodePoints) {
+        String value = text(node, field);
+        if (value.isEmpty() || value.codePointCount(0, value.length()) > maximumCodePoints) {
+            throw new IllegalArgumentException("Invalid JSON text length");
+        }
+        boolean nonblank = false;
+        for (int offset = 0; offset < value.length(); ) {
+            int codePoint = value.codePointAt(offset);
+            if (codePoint == 0 || codePoint >= Character.MIN_SURROGATE && codePoint <= Character.MAX_SURROGATE) {
+                throw new IllegalArgumentException("Invalid JSON text");
+            }
+            nonblank |= !Character.isWhitespace(codePoint) && !Character.isSpaceChar(codePoint) && codePoint != 0x85;
+            offset += Character.charCount(codePoint);
+        }
+        if (!nonblank) {
+            throw new IllegalArgumentException("Blank JSON text");
+        }
+        return value;
+    }
+
     public static String matchingText(JsonNode node, String field, String pattern) {
         String value = text(node, field);
         if (!value.matches(pattern)) {

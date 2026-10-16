@@ -3,6 +3,7 @@ package dev.nklip.javacraft.shardshop.common;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -50,6 +51,26 @@ class JsonFieldsTest {
         JsonNode node = json.createObjectNode().put("region", "secret");
         assertEquals("Invalid JSON string", assertThrows(IllegalArgumentException.class,
                 () -> JsonFields.matchingText(node, "region", "US|EU|ASIA")).getMessage());
+    }
+
+    @Test
+    void nonblankTextCountsScalarValuesAndPreservesTheTextExactly() {
+        String supplementary = "🛒".repeat(4);
+        assertEquals(supplementary, JsonFields.nonblankText(named(supplementary), "name", 4));
+        assertEquals("  Market 🛒  ", JsonFields.nonblankText(named("  Market 🛒  "), "name", 12));
+        assertEquals("﻿", JsonFields.nonblankText(named("﻿"), "name", 1));
+        assertThrows(IllegalArgumentException.class, () -> JsonFields.nonblankText(named(supplementary), "name", 3));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", "\t\n\u000b\f\r", "\u001c\u001f", "\u0085", " ", " ", " ",
+            "  ", " ", " ", "　", "a\u0000", "\ud800", "a\udc00b"})
+    void nonblankTextRejectsEmptyBlankNulAndUnpairedSurrogates(String value) {
+        assertThrows(IllegalArgumentException.class, () -> JsonFields.nonblankText(named(value), "name", 200));
+    }
+
+    private ObjectNode named(String value) {
+        return json.createObjectNode().put("name", value);
     }
 
     @ParameterizedTest

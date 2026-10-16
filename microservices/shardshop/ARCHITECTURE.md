@@ -312,12 +312,20 @@ logic used across ShardShop: `IdParser` validates
 canonical positive IDs from text or a current JSON string token, and
 `Sha256.unsignedDigest` hashes unchanged UTF-8 text as an unsigned big-endian
 integer. Step 3.5 added the bounded JSON HTTP client `JsonHttpClient` and the
-strict JSON readers `JsonFields` and `JsonResponses`. Their unit tests and
-boundary vectors live in common. Add reusable
+strict JSON readers `JsonFields` and `JsonResponses`. Step 4.1 moved copied
+product and order code here: `JsonRequests` and
+`JsonFields.nonblankText` decode request bodies strictly, and
+`dev.nklip.javacraft.shardshop.common.jdbc` holds the bounded transaction engine
+`DatabasePhases`, `Endpoint` and the TLS and driver defaults of `JdbcUrls`. Their
+unit tests and boundary vectors live in common. Add reusable
 validation and utilities here when multiple modules need them. Common has no
-Quarkus startup/CDI wiring, application dependencies, shard topology, ID generation,
-database access or messaging. Its JSON parser uses the platform-managed Jackson
-streaming API. All six applications depend on common directly.
+Quarkus startup/CDI wiring, application dependencies, shard topology, ID generation
+or messaging, and it manages no database connections: each application owns its
+pools, endpoints, credentials and configuration, and the shared PostgreSQL code runs
+on connections of these pools. Thus the HTTP deadline filters of product and order
+stay in the applications, because they need Vert.x, JAX-RS and CDI wiring. The JSON
+parser of common uses the platform-managed Jackson streaming API. All six
+applications depend on common directly.
 
 `shardshop-sharding`, in `shardshop-core/sharding`, depends on `shardshop-common`
 for digest calculation and owns the version-2 routing rule, shard topology and
@@ -395,8 +403,8 @@ nonnegative fixed-two-decimal strings; profit balances are signed canonical
 fixed-two-decimal strings, excluding negative zero. Allocation `requestOrdinal`
 is a nonnegative decimal string through the
 signed-long maximum, preserving retry-coordinate precision without making it an
-application ID. It permits `"0"`, which `IdParser` rejects, thus step 4.1 needs
-a separate validator. Orders allow at most 1,000 distinct seller/product pairs; duplicate
+application ID. It permits `"0"`, which `IdParser` rejects; the order provider
+validates that additional value separately. Orders allow at most 1,000 distinct seller/product pairs; duplicate
 pairs are invalid, and item order participates in the normalized fingerprint.
 The order API specifies its exact SHA-256 serialization. The message field is
 `requestFingerprint`; envelope `occurredAt` is distinct from the ledger's permanent
@@ -629,9 +637,11 @@ registry and sends a JSON patch through the Kubernetes API with Apache HttpClien
 The request uses the projected service account token. The client trusts only the
 service account CA, and the server certificate must name the host of the URL. The
 patch tests the UID, the resource version and the counter, and it replaces the
-counter in the same request. The producer starts after the other startup beans, thus
-an invalid routing snapshot or catalog configuration stops the start before a
-reservation and uses no slot.
+counter in the same request. The producer starts after the other startup beans. A
+bean that injects the generator creates it at once, thus product and order create
+their stores and checked service settings at an earlier startup priority than their
+services. An invalid routing snapshot, connection, pool or service setting stops
+the start before a reservation and uses no slot.
 Each request is bounded by five seconds within a 30-second allocation deadline;
 CAS retries back off from 25 to 500 milliseconds. A refused PATCH (401, 403 or 404)
 stops the start at once. A conflict, a policy denial, a server error or a lost
@@ -651,7 +661,7 @@ is performed by `cluster-create.sh` only for a cluster created during that invoc
 guard is effective; normal startup of an existing cluster only checks it.
 The [startup runbook](README.md#generator-allocation-at-jvm-startup-steps-34-and-311)
 defines the configuration, initialization and verification. Step 3.9 wires the
-product image and Deployment; step 4.8 wires order.
+product image and Deployment; step 4.9 wires order.
 
 Never reuse a slot while any data from that lab can be restored/replayed. This
 allows at most 1,023 ID-producing process starts, including burned reservations,
@@ -723,7 +733,7 @@ the existing ID with `200`; first creation returns `201`, and a different payloa
 under the same scope/key returns `409`. Retries reuse the original region/key.
 Creation-key retention must match entity retention, and existing retries must
 work without generating another ID. Step 3.6 adds catalog keys and lookup indexes
-through V2; buyer keys and enriched person fields remain step 4.1. Existing V1
+through V2; step 4.1 adds buyer keys and enriched person fields through ordering V2. Existing V1
 migrations remain immutable.
 A dataset version may select subsets, but never changes a retained key's payload.
 
@@ -844,8 +854,8 @@ are independent of database shard IDs.
 | `catalog.sellers` | `seller_id` | Product service |
 | `catalog.products` | the product's `seller_id` | Product service creates them; the order service reads them and updates only `stock` in its reservation transactions |
 | `catalog.stock_reservations` | the product's `seller_id` | Order service, writing reservations and adjusting product stock in the same shard transaction |
-| `catalog.seller_profits` | `seller_id` | Product service inserts the zero USD/EUR balances. From step 4.6, the order service applies confirmed credits |
-| `catalog.profit_credits` | the product's `seller_id` | From step 4.6, the order service inserts one immutable credit for each order and product |
+| `catalog.seller_profits` | `seller_id` | Product service inserts the zero USD/EUR balances. From step 4.7, the order service applies confirmed credits |
+| `catalog.profit_credits` | the product's `seller_id` | From step 4.7, the order service inserts one immutable credit for each order and product |
 | `ordering.buyers` | `buyer_id` | Order service |
 | `ordering.order_allocations` | `buyer_id` | Order service; permanent allocation retry mappings |
 | `ordering.orders`, `ordering.order_items` | the order's `buyer_id` | Order service |
@@ -1173,7 +1183,7 @@ Java must write a successful decision and its entry atomically; SQL does not
 require every recorded decision to have an entry.
 
 The runtime has no `UPDATE` privilege on decisions, so it cannot use `SELECT ...
-FOR UPDATE` or `FOR KEY SHARE` to serialize them. Step 4.4 must use a transaction
+FOR UPDATE` or `FOR KEY SHARE` to serialize them. Step 4.5 must use a transaction
 advisory lock such as `pg_advisory_xact_lock(order_id)`, or insert-conflict handling
 followed by reading and comparing the saved decision. Keep the decision immutable.
 
@@ -1253,7 +1263,7 @@ The fix-forward catalog migration V2 of step 3.6 added `companyName`, product
 `description`/`unitCost`, creation-key mappings and service-owned profit storage.
 The deployed V1 checksums did not change. Step 4.1 similarly adds buyer
 person/contact/address fields and durable creation keys to ordering, plus
-immutable unit-cost snapshots on accepted order items. Step 4.6 adds the profit
+immutable unit-cost snapshots on accepted order items. Step 4.7 adds the profit
 crediting.
 
 The implemented `ordering.buyers` table likewise persists an immutable home region
@@ -1264,7 +1274,7 @@ The order service writes `catalog.stock_reservations` and adjusts product stock
 through Java-managed transactions on the seller's shard. `catalog_reserver` has
 column-level `UPDATE (stock)` on products; `catalog_reader` supplies the reads
 needed for conditional updates. There is no stock trigger. The schema and grants
-are implemented; the Java reservation logic is planned in step 4.9.
+are implemented; the Java reservation logic is planned in step 4.2.
 
 - **Reserve** inserts a row with `INSERT … ON CONFLICT (order_id, product_id) DO
   NOTHING`. Only when a row was inserted, issue `UPDATE catalog.products SET
@@ -1287,7 +1297,7 @@ are implemented; the Java reservation logic is planned in step 4.9.
 `CHECK (stock >= 0)` backs up the conditional decrement. The planned reservation
 flow must keep `stock` equal to `initial_stock` minus active reserved quantities;
 direct SQL can violate that relationship while satisfying the table's checks.
-There is no restock operation yet. Until step 4.9 is implemented, writing a
+There is no restock operation yet. Until step 4.2 is implemented, writing a
 reservation alone does not change stock.
 
 **Decision: atomic conditional decrement.** Java issues the conditional stock
@@ -1359,7 +1369,7 @@ cannot double-credit. Pending, reserved, cancelled and rejected orders earn no
 profit. This cross-shard work requires explicit recovery and least-privilege
 storage/grant migrations; the existing order role cannot update seller balances,
 initialize profit currencies, or access profit credits. Step 3.6 permits product
-to initialize zero balances; profit-write grants remain part of step 4.6
+to initialize zero balances; profit-write grants remain part of step 4.7
 alongside its transaction protocol.
 No profit engine or changed message snapshot is introduced by the dataset step.
 
@@ -2047,7 +2057,7 @@ Acceptance scenarios for implementation:
    collisions on all primaries. Assert the role matrix: `order_app` can select
    sellers and products, write stock reservations without `TRUNCATE`, and update
    only the `stock` column of products. No other catalog writes or DDL are allowed,
-   except the profit-credit writes that step 4.6 adds.
+   except the profit-credit writes that step 4.7 adds.
    `product_app` cannot touch reservations or
    ordering tables; Flyway creates no custom functions or triggers, and no login
    role owns an object.

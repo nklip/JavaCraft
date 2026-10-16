@@ -3,6 +3,7 @@ package dev.nklip.javacraft.shardshop.product;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
@@ -141,11 +142,16 @@ class ShardRoutingStartupIT {
         assertFalse(output().contains("Kubernetes API access is not configured correctly"), output());
     }
 
-    @Test
-    void checksTheCatalogConfigurationBeforeTheGeneratorReservation() throws Exception {
-        assertNotEquals(0, launch(VALID_ROUTING + "shardshop.catalog.connections.shard-x.password=secret\n", null, null,
-                reservationWithoutCaFile()));
-        assertTrue(output().contains("Catalog connections must name only configured routing shards"), output());
+    /** A misconfigured pod restarts repeatedly; each start before these checks would burn one lifetime slot. */
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "shardshop.catalog.connections.shard-x.password=secret|Catalog connections must name only configured routing shards",
+            "shardshop.catalog.max-pool-size=0|Catalog pool size must be between 1 and 32",
+            "shardshop.catalog.max-id-candidates=0|Catalog ID candidate budget must be in 1..65536"
+    })
+    void checksTheCatalogConfigurationBeforeTheGeneratorReservation(String property, String message) throws Exception {
+        assertNotEquals(0, launch(VALID_ROUTING + property + "\n", null, null, reservationWithoutCaFile()));
+        assertTrue(output().contains(message), output());
         assertFalse(output().contains("Kubernetes API access is not configured correctly"), output());
     }
 

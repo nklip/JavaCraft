@@ -1,12 +1,13 @@
 package dev.nklip.javacraft.shardshop.product.persistence;
 
+import dev.nklip.javacraft.shardshop.common.jdbc.DatabasePhases;
+import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import dev.nklip.javacraft.shardshop.product.catalog.CatalogFailure;
 import dev.nklip.javacraft.shardshop.sharding.Shard;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.configuration.supplier.AgroalDataSourceConfigurationSupplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.postgresql.Driver;
 
 import java.sql.Connection;
@@ -19,17 +20,13 @@ import java.util.Properties;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+/** Product's pools and failure categories; the shared phase engine has its own tests in common. */
 class JdbcCatalogStoreTest {
     private static final Shard SHARD = new Shard("shard-a", "US");
     private AgroalDataSource primary;
@@ -69,7 +66,7 @@ class JdbcCatalogStoreTest {
             return null;
         }).when(cleanup).execute(any());
         store = new JdbcCatalogStore(Map.of(new JdbcCatalogStore.PoolKey("shard-a", false), primary,
-                new JdbcCatalogStore.PoolKey("shard-a", true), replica), workers, cleanup, () -> 0);
+                new JdbcCatalogStore.PoolKey("shard-a", true), replica), new DatabasePhases(workers, cleanup, () -> 0));
     }
 
     @Test
@@ -135,48 +132,7 @@ class JdbcCatalogStoreTest {
     }
 
     @Test
-    void failedRollbackDiscardsTheConnectionAndPreservesDomainFailure() throws SQLException {
-        doThrow(new SQLException("rollback failed")).when(connection).rollback();
-        CatalogFailure expected = new CatalogFailure(CatalogFailure.Reason.PRODUCT_CONFLICT);
-        assertSame(expected, assertThrows(CatalogFailure.class,
-                () -> store.write(SHARD, session -> { throw expected; })));
-        verify(connection).abort(any());
-        verify(connection, never()).close();
-    }
-
-    @Test
-    void lateCleanupCannotAbortAnAlreadyReleasedLease() throws SQLException {
-        AtomicReference<Runnable> queued = new AtomicReference<>();
-        doAnswer(invocation -> {
-            queued.set(invocation.getArgument(0));
-            return null;
-        }).when(cleanup).execute(any());
-        doThrow(new SQLException("rollback failed")).when(connection).rollback();
-        CatalogFailure expected = new CatalogFailure(CatalogFailure.Reason.PRODUCT_CONFLICT);
-
-        assertSame(expected, assertThrows(CatalogFailure.class,
-                () -> store.write(SHARD, session -> { throw expected; })));
-
-        verify(connection).abort(any());
-        assertNotNull(queued.get());
-        queued.get().run();
-        verify(connection, times(1)).abort(any());
-        verify(connection, never()).close();
-    }
-
-    @Test
-    void rejectedCleanupStillAbortsOnWorkerRelease() throws SQLException {
-        doThrow(new RejectedExecutionException("closed")).when(cleanup).execute(any());
-        doThrow(new SQLException("rollback failed")).when(connection).rollback();
-        CatalogFailure expected = new CatalogFailure(CatalogFailure.Reason.PRODUCT_CONFLICT);
-        assertSame(expected, assertThrows(CatalogFailure.class,
-                () -> store.write(SHARD, session -> { throw expected; })));
-        verify(connection).abort(any());
-        verify(connection, never()).close();
-    }
-
-    @Test
-    void abortFailureFlushesThePool() throws SQLException {
+    void abortFailureFlushesTheAgroalPool() throws SQLException {
         doThrow(new SQLException("rollback failed")).when(connection).rollback();
         doThrow(new SQLException("abort failed")).when(connection).abort(any());
         CatalogFailure expected = new CatalogFailure(CatalogFailure.Reason.PRODUCT_CONFLICT);
@@ -187,72 +143,8 @@ class JdbcCatalogStoreTest {
     }
 
     @Test
-    void fullWorkerCapacityRejectsImmediately() {
-        when(workers.submit(org.mockito.ArgumentMatchers.<Callable<Object>>any()))
-                .thenThrow(new RejectedExecutionException("full"));
-        CatalogFailure failure = assertThrows(CatalogFailure.class,
-                () -> store.write(SHARD, session -> "unexpected"));
-        assertEquals(CatalogFailure.Reason.UNAVAILABLE, failure.reason());
-        verifyNoInteractions(primary, replica);
-    }
-
-    @Test
-    void timeoutCancelsWorkBeforeALateConnectionCanBeUsed() throws Exception {
-        Future<Object> future = mock();
-        when(future.get(anyLong(), eq(TimeUnit.NANOSECONDS))).thenThrow(new TimeoutException());
-        when(workers.submit(org.mockito.ArgumentMatchers.<Callable<Object>>any())).thenReturn(future);
-        CatalogFailure failure = assertThrows(CatalogFailure.class,
-                () -> store.write(SHARD, session -> "must not execute"));
-        assertEquals(CatalogFailure.Reason.UNAVAILABLE, failure.reason());
-        verify(future).get(3_000_000_000L, TimeUnit.NANOSECONDS);
-        verify(future).cancel(true);
-        ArgumentCaptor<Callable<Object>> callable = ArgumentCaptor.captor();
-        verify(workers).submit(callable.capture());
-        assertThrows(SQLException.class, () -> callable.getValue().call());
-        verify(connection).abort(any());
-        verify(connection, never()).setAutoCommit(anyBoolean());
-        verify(connection, never()).close();
-    }
-
-    @Test
-    void interruptedCallerPreservesInterruptAndCancelsWork() throws Exception {
-        Future<Object> future = mock();
-        when(future.get(anyLong(), eq(TimeUnit.NANOSECONDS))).thenThrow(new InterruptedException());
-        when(workers.submit(org.mockito.ArgumentMatchers.<Callable<Object>>any())).thenReturn(future);
-        try {
-            CatalogFailure failure = assertThrows(CatalogFailure.class,
-                    () -> store.write(SHARD, session -> "unexpected"));
-            assertEquals(CatalogFailure.Reason.UNAVAILABLE, failure.reason());
-            assertTrue(Thread.currentThread().isInterrupted());
-            verify(future).cancel(true);
-        } finally {
-            assertTrue(Thread.interrupted());
-        }
-    }
-
-    @Test
-    void budgetIncludesDispatchAndDoesNotRestartForAcquisition() throws SQLException {
-        AtomicLong time = new AtomicLong();
-        JdbcCatalogStore delayed = new JdbcCatalogStore(
-                Map.of(new JdbcCatalogStore.PoolKey("shard-a", false), primary), workers, cleanup,
-                () -> time.getAndAdd(2_500_000_000L));
-        CatalogFailure failure = assertThrows(CatalogFailure.class,
-                () -> delayed.write(SHARD, session -> "unexpected"));
-        assertEquals(CatalogFailure.Reason.UNAVAILABLE, failure.reason());
-        verify(primary, never()).getConnection();
-    }
-
-    @Test
-    void deadlinesNeverAllowZeroOrExpiredNetworkTimeouts() throws SQLException {
-        assertEquals(1, new JdbcCatalogStore.Deadline(() -> 0, 1_000_000L).remainingMillis());
-        assertThrows(SQLException.class, () -> new JdbcCatalogStore.Deadline(() -> 0, 0).remainingNanos());
-        assertThrows(SQLException.class,
-                () -> new JdbcCatalogStore.Deadline(() -> 0, 999_999L).remainingMillis());
-    }
-
-    @Test
     void poolsStartEmptyAndKeepFiniteDriverLimitsEvenWhenUrlOverridesThem() throws SQLException {
-        JdbcCatalogStore.Endpoint endpoint = new JdbcCatalogStore.Endpoint(
+        Endpoint endpoint = new Endpoint(
                 "jdbc:postgresql://localhost/catalog?connectTimeout=0&socketTimeout=0", "user", "secret");
         try (AgroalDataSource pool = JdbcCatalogStore.pool(endpoint, 4)) {
             var configuration = pool.getConfiguration().connectionPoolConfiguration();
@@ -271,12 +163,11 @@ class JdbcCatalogStoreTest {
             assertEquals(Duration.ofSeconds(1), factory.loginTimeout());
             assertEquals(Duration.ofSeconds(3), factory.networkTimeout());
         }
-        assertEquals("Endpoint[configured]", endpoint.toString());
     }
 
     @Test
     void brokenPostgresqlConnectionsAreDiscardedInsteadOfBeingReused() throws SQLException {
-        var endpoint = new JdbcCatalogStore.Endpoint("jdbc:postgresql://localhost/a", "user", "secret");
+        var endpoint = new Endpoint("jdbc:postgresql://localhost/a", "user", "secret");
         try (AgroalDataSource pool = JdbcCatalogStore.pool(endpoint, 2)) {
             var sorter = pool.getConfiguration().connectionPoolConfiguration().exceptionSorter();
             assertTrue(sorter.isFatal(new SQLException("Connection is closed", "08003")));
@@ -286,18 +177,10 @@ class JdbcCatalogStoreTest {
     }
 
     @Test
-    void constructorValidatesEndpointsAndBuildsPoolsWithoutOpeningConnections() {
-        assertThrows(NullPointerException.class, () -> new JdbcCatalogStore.Endpoint(null, "user", "secret"));
-        assertThrows(NullPointerException.class,
-                () -> new JdbcCatalogStore.Endpoint("jdbc:postgresql://localhost/a", null, "secret"));
-        assertThrows(NullPointerException.class,
-                () -> new JdbcCatalogStore.Endpoint("jdbc:postgresql://localhost/a", "user", null));
-        assertThrows(IllegalArgumentException.class, () -> new JdbcCatalogStore.Endpoint("wrong", "user", ""));
-        assertThrows(IllegalArgumentException.class,
-                () -> new JdbcCatalogStore.Endpoint("jdbc:postgresql://localhost/a", " ", ""));
+    void constructorValidatesPoolSizesAndBuildsPoolsWithoutOpeningConnections() {
         assertThrows(IllegalArgumentException.class, () -> new JdbcCatalogStore(Map.of(), Map.of(), 0));
         assertThrows(IllegalArgumentException.class, () -> new JdbcCatalogStore(Map.of(), Map.of(), 33));
-        var endpoint = new JdbcCatalogStore.Endpoint("jdbc:postgresql://localhost:1/a", "user", "secret");
+        var endpoint = new Endpoint("jdbc:postgresql://localhost:1/a", "user", "secret");
         try (JdbcCatalogStore constructed = new JdbcCatalogStore(Map.of("a", endpoint), Map.of("a", endpoint), 1)) {
             CatalogFailure failure = assertThrows(CatalogFailure.class,
                     () -> constructed.read(SHARD, false, session -> "unexpected"));
@@ -307,7 +190,7 @@ class JdbcCatalogStoreTest {
 
     @Test
     void failedPoolInitializationClosesPoolsAlreadyCreated() {
-        var endpoint = new JdbcCatalogStore.Endpoint("jdbc:postgresql://localhost/a", "user", "secret");
+        var endpoint = new Endpoint("jdbc:postgresql://localhost/a", "user", "secret");
         try (var factory = mockStatic(AgroalDataSource.class)) {
             factory.when(() -> AgroalDataSource.from(any(AgroalDataSourceConfigurationSupplier.class)))
                     .thenReturn(primary).thenThrow(new SQLException("initialization failed"));

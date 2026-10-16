@@ -174,15 +174,15 @@ Ubuntu gives all 14 the priority medium, and none has a fix for 26.04. Their CVS
 vectors give six of them a high base score of 7.0–8.1: five openjdk-25 advisories
 and the zlib advisory. OSV listed no advisory for gcc-16, base-files, base-passwd,
 nspr, nss, pcsc-lite and sqlite3. No reviewed statement covers these advisories.
-`SBOM-AND-RUNTIME` in the lock stays open and blocks step 4.8, which builds the other
+`SBOM-AND-RUNTIME` in the lock stays open and blocks step 4.9, which builds the other
 images with the same script. It lists the advisory IDs. Close it
 only when a check covers every package of the base image and a review handles these
 advisories. [OSV](https://osv.dev/),
 [Ubuntu CVE tracker](https://ubuntu.com/security/cves).
 
-### Step 6.7 request balancer candidates
+### Step 6.5 request balancer candidates
 
-Step 6.7 needs a request-level balancer for HTTP/2, because a Kubernetes Service
+Step 6.5 needs a request-level balancer for HTTP/2, because a Kubernetes Service
 balances only TCP connections. The review on 2026-10-08 found these candidates:
 
 - Istio ambient mode with a waypoint: Istio 1.30 supports Kubernetes 1.32–1.36.
@@ -192,7 +192,7 @@ balances only TCP connections. The review on 2026-10-08 found these candidates:
 - Cilium replaces the kind network plugin. Thus it needs a new cluster without the
   current PVCs.
 
-Step 6.7 selects the component and records its versions, support window and
+Step 6.5 selects the component and records its versions, support window and
 resource use here.
 
 ## 2. Java libraries and build tools
@@ -230,6 +230,29 @@ images, and audit any retained Lombok processor against Java 25. Add only the
 dependencies a module uses. [REST](https://quarkus.io/guides/rest/),
 [datasources](https://quarkus.io/guides/datasource/),
 [testing](https://quarkus.io/guides/getting-started-testing/).
+
+### Step 4.1 order provider qualification
+
+On **2026-10-16**, order adds the already-qualified Quarkus REST/Jackson and
+PostgreSQL JDBC/Agroal extensions, with Mockito only for tests. No artifact
+versions or lock pins change. Its packaged runtime contains **126 JARs**, all
+byte-identical to the corresponding product runtime JARs. The `audit` profile
+passes and emits the effective model, dependency tree, plugin report and a
+244-component SBOM under `shardshop-order/target/audit/`. The
+[OSV batch API](https://google.github.io/osv.dev/post-v1-querybatch/) reports no
+advisories for its **123 third-party runtime coordinates** on this date; the
+three internal ShardShop libraries are excluded from that public lookup.
+The existing family review deadlines still apply.
+
+After the validation fixes, qualification passes 165 order unit/provider tests, 32
+packaged startup checks and all 51 Cucumber scenarios, including nine order
+scenarios. The bounded JDBC phase engine that product and order now share in
+`shardshop-common` uses only the JDK's `java.sql` module, thus common gains no
+dependency. HTTP/1.1 is explicit; HTTP/2 qualification remains step 6.5. No order
+container image or Kubernetes deployment is introduced before step 4.9.
+The CycloneDX goal emitted Maven's existing blocked HTTP snapshot-metadata
+warning for the internal parent POM; SBOM generation and validation succeeded.
+See [step 4.1 evidence](CHANGELOG.md#step-41) for the commands.
 
 ### Step 3.6 provider dependencies
 
@@ -545,7 +568,7 @@ OpenJDK **25+36-3489**, Maven **3.9.16**, host kubectl **1.36.3**, and the exist
 Kubernetes **1.36.4** lab. The temporary container drill copies kubectl from the
 locked kind node image into the locked Canonical OpenJDK 25 JRE image; both source
 digests remain unchanged. That image exists only for verification and does not
-replace the final service image qualification in steps 3.9/4.8. The
+replace the final service image qualification in steps 3.9/4.9. The
 [runbook](README.md#generator-allocation-at-jvm-startup-steps-34-and-311) records
 the scoped Maven and live verification commands. Step 3.11 replaced the launcher, the
 kubectl calls and the drill with a reservation in the application JVM

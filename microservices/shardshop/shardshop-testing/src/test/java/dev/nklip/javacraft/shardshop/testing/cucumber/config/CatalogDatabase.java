@@ -119,15 +119,17 @@ public final class CatalogDatabase {
     private void createRoles() throws SQLException {
         try (Connection connection = superuser("postgres"); Statement statement = connection.createStatement()) {
             for (String group : List.of("shardshop_owner", "catalog_owner", "catalog_reader", "catalog_writer",
-                    "catalog_reserver")) {
+                    "catalog_reserver", "ordering_owner", "ordering_writer", "ordering_cdc_reader")) {
                 statement.execute("CREATE ROLE " + group + " NOLOGIN");
             }
             statement.execute("CREATE ROLE catalog_migrator LOGIN NOINHERIT PASSWORD '" + migratorPassword
                     + "' IN ROLE catalog_owner");
+            statement.execute("CREATE ROLE ordering_migrator LOGIN NOINHERIT PASSWORD '" + migratorPassword
+                    + "' IN ROLE ordering_owner");
             statement.execute("CREATE ROLE product_app LOGIN INHERIT PASSWORD '" + productPassword
                     + "' IN ROLE catalog_writer");
             statement.execute("CREATE ROLE order_app LOGIN INHERIT PASSWORD '" + orderPassword
-                    + "' IN ROLE catalog_reader, catalog_reserver");
+                    + "' IN ROLE catalog_reader, catalog_reserver, ordering_writer");
         }
     }
 
@@ -141,6 +143,7 @@ public final class CatalogDatabase {
             statement.execute("REVOKE TEMPORARY ON DATABASE " + name + " FROM PUBLIC");
             statement.execute("REVOKE ALL ON SCHEMA public FROM PUBLIC");
             statement.execute("CREATE SCHEMA catalog AUTHORIZATION catalog_owner");
+            statement.execute("CREATE SCHEMA ordering AUTHORIZATION ordering_owner");
         }
         return name;
     }
@@ -156,11 +159,19 @@ public final class CatalogDatabase {
      * not read TOML files, thus a change of flyway.toml needs the same change here.
      */
     public MigrateResult migrate(String database, Path location, Map<String, String> placeholders) {
+        return migrate(database, location, placeholders, "catalog");
+    }
+
+    /** Runs either owner-controlled stream with the same bounded Flyway settings as the lab. */
+    public MigrateResult migrate(String database, Path location, Map<String, String> placeholders, String schema) {
+        if (!List.of("catalog", "ordering").contains(schema)) {
+            throw new IllegalArgumentException("Unknown shard schema");
+        }
         return Flyway.configure()
-                .dataSource(catalogUrl(database), "catalog_migrator", migratorPassword)
+                .dataSource(catalogUrl(database), schema + "_migrator", migratorPassword)
                 .locations("filesystem:" + location)
-                .schemas("catalog")
-                .defaultSchema("catalog")
+                .schemas(schema)
+                .defaultSchema(schema)
                 .table("flyway_schema_history")
                 .createSchemas(false)
                 .validateMigrationNaming(true)
@@ -170,7 +181,7 @@ public final class CatalogDatabase {
                 .connectRetries(2)
                 .connectRetriesInterval(1)
                 .jdbcProperties(Map.of("connectTimeout", "5", "socketTimeout", "30",
-                        "options", "-c role=catalog_owner -c statement_timeout=15000 -c lock_timeout=5000"))
+                        "options", "-c role=" + schema + "_owner -c statement_timeout=15000 -c lock_timeout=5000"))
                 .placeholders(placeholders)
                 .load()
                 .migrate();
@@ -221,6 +232,10 @@ public final class CatalogDatabase {
 
     public String productPassword() {
         return productPassword;
+    }
+
+    public String orderPassword() {
+        return orderPassword;
     }
 
     /** A local port that refuses connections. */

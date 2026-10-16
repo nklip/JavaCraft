@@ -3,6 +3,7 @@ package dev.nklip.javacraft.shardshop.order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
@@ -141,6 +142,21 @@ class ShardRoutingStartupIT {
         assertFalse(output().contains("Kubernetes API access is not configured correctly"), output());
     }
 
+    /** A misconfigured pod restarts repeatedly; each start before these checks would burn one lifetime slot. */
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "shardshop.order.connections.shard-x.password=secret|Order connections must name only configured routing shards",
+            "shardshop.order.max-pool-size=0|Order pool size must be between 1 and 32",
+            "shardshop.order.max-id-candidates=0|Order ID candidate budget must be in 1..65536",
+            "shardshop.order.catalog-concurrency=0|Catalog concurrency must be in 1..64",
+            "shardshop.order.catalog-deadline=5s|Order catalog deadline must be between 2s and 3s"
+    })
+    void checksTheOrderConfigurationBeforeTheGeneratorReservation(String property, String message) throws Exception {
+        assertNotEquals(0, launch(VALID_ROUTING + property + "\n", null, null, reservationWithoutCaFile()));
+        assertTrue(output().contains(message), output());
+        assertFalse(output().contains("Kubernetes API access is not configured correctly"), output());
+    }
+
     /** A reservation stops at its missing CA file, before any request; an earlier failure never reaches it. */
     private Map<String, String> reservationWithoutCaFile() {
         return Map.of("SHARDSHOP_ID_REGISTRY_UID", REGISTRY_UID,
@@ -169,7 +185,8 @@ class ShardRoutingStartupIT {
                 Path.of(System.getProperty("java.home"), "bin", "java").toString(),
                 "-Dshardshop.routing.config=" + config.toUri(),
                 "-Dquarkus.profile=prod",
-                "-jar", Path.of("target", "quarkus-app", "quarkus-run.jar").toAbsolutePath().toString())
+                "-Dquarkus.http.port=0",
+                "-jar", Path.of("target", "quarkus-app", "quarkus-run.jar").toAbsolutePath().toString(), "--check-startup")
                 .directory(directory.toFile())
                 .redirectErrorStream(true)
                 .redirectOutput(directory.resolve("startup.log").toFile());

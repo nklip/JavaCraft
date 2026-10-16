@@ -23,17 +23,23 @@ public final class CatalogService {
     private final boolean replicaReads;
     private final int maxCandidates;
 
-    public CatalogService(CatalogStore store, IdGenerator generator, ShardRouter router,
-                          ShardTopology topology, boolean replicaReads, int maxCandidates) {
-        if (maxCandidates < 1 || maxCandidates > 65536) {
-            throw new IllegalArgumentException("Catalog ID candidate budget must be in 1..65536");
+    /** Checked service settings; the wiring creates them before any bean reserves a generator ID. */
+    public record Settings(boolean replicaReads, int maxIdCandidates) {
+        public Settings {
+            if (maxIdCandidates < 1 || maxIdCandidates > 65536) {
+                throw new IllegalArgumentException("Catalog ID candidate budget must be in 1..65536");
+            }
         }
+    }
+
+    public CatalogService(CatalogStore store, IdGenerator generator, ShardRouter router,
+                          ShardTopology topology, Settings settings) {
         this.store = store;
         this.generator = generator;
         this.router = router;
         this.topology = topology;
-        this.replicaReads = replicaReads;
-        this.maxCandidates = maxCandidates;
+        this.replicaReads = settings.replicaReads();
+        this.maxCandidates = settings.maxIdCandidates();
     }
 
     public Creation<Seller> createSeller(String key, SellerCreation creation) {

@@ -1,5 +1,6 @@
 package dev.nklip.javacraft.shardshop.product.persistence;
 
+import dev.nklip.javacraft.shardshop.common.jdbc.DatabasePhases;
 import dev.nklip.javacraft.shardshop.product.catalog.CatalogFailure;
 import dev.nklip.javacraft.shardshop.product.catalog.CatalogStore;
 
@@ -20,33 +21,18 @@ final class JdbcCatalogSession implements CatalogStore.Session {
             + "currency, initial_stock, stock";
 
     private final Connection connection;
-    private final JdbcCatalogStore.Deadline deadline;
+    private final DatabasePhases.Deadline deadline;
     private final CatalogFailure.Reason unavailable;
 
-    JdbcCatalogSession(Connection connection, JdbcCatalogStore.Deadline deadline,
+    JdbcCatalogSession(Connection connection, DatabasePhases.Deadline deadline,
                        CatalogFailure.Reason unavailable) {
         this.connection = connection;
         this.deadline = deadline;
         this.unavailable = unavailable;
     }
 
-    void refreshTimeouts() throws SQLException {
-        int milliseconds = deadline.remainingMillis();
-        connection.setNetworkTimeout(Runnable::run, milliseconds);
-        try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT set_config('statement_timeout', ?, true), set_config('lock_timeout', ?, true)")) {
-            statement.setString(1, Integer.toString(milliseconds));
-            statement.setString(2, Integer.toString(milliseconds));
-            try (ResultSet result = statement.executeQuery()) {
-                if (!result.next()) {
-                    throw new SQLException("Database timeout configuration failed");
-                }
-            }
-        }
-    }
-
     private PreparedStatement prepare(String sql) throws SQLException {
-        refreshTimeouts();
+        DatabasePhases.refreshTimeouts(connection, deadline);
         return connection.prepareStatement(sql);
     }
 

@@ -2002,3 +2002,124 @@ catalog key-to-ID digest remains
 Two product replicas and one reader are Ready, all ten PVCs are Bound, and both
 qualification and restoration completed successfully with lifecycle locks released.
 Step 3.20 is complete.
+
+## Step 4.1
+
+**2026-10-16:** order serves buyer POST/GET, durable allocation POST and order
+PUT/GET. The provider stores region-scoped creation keys and normalized immutable
+payloads, recovers identical retries after restart, and owns buyer/order/saga/
+logical-command IDs. Ordering V2 adds person/contact/address fields and item
+unit-cost snapshots without changing V1. Legacy unknown values remain NULL;
+incomplete historical buyer profiles fail closed until explicitly reconciled.
+
+Acceptance uses two short, bounded, locked primary transactions around catalog
+queries. The first releases its transaction, advisory lock and connection before
+catalog IO; the second repeats quarantine, allocation and fingerprint checks
+before using the lookup outcome. Exact catalog-derived totals and ordered item
+snapshots commit with one PENDING_STOCK saga. The request changes neither stock
+nor outbox state. Strict HTTP decoding and error precedence match the OpenAPI,
+including a relative Location equal to statusUrl and saved terminal responses.
+
+Validation on Maven 3.9.16 and OpenJDK 25:
+
+- **177 order unit/provider tests** and **27 packaged startup checks** pass.
+  Tests cover exact numeric normalization/fingerprint/overflow, ID generation
+  failure, unknown commit recovery, reversed catalog lookup completion order,
+  both locked checks, strict wire validation, and bounded JDBC failure handling.
+- **174 shardshop-testing unit tests** pass, including chart/migration inventory
+  checks; V2 is automatically included by the existing migration packaging.
+- All **seven OrderApi.feature PostgreSQL scenarios** pass using the packaged
+  product and order JVMs, verify-full TLS, real owner migrations and runtime roles.
+  Concurrent buyer/allocation/order retries preserve one identity, snapshots and
+  saga; restarts recover persisted mappings; injected saga-insert failure rolls
+  back the complete acceptance. A blocked catalog query holds no order
+  transaction or advisory lock, and a new allocation succeeds with a one-connection
+  order pool. Concurrent creation and quarantine both override its timeout during
+  the final locked recheck. V1-to-V2 migration preserves historical data.
+- All **five existing catalog migration/role scenarios** pass after the shared
+  PostgreSQL fixture gains ordering roles/schema. Both disposable PostgreSQL
+  containers are removed by the test JVM's shutdown cleanup. The retained kind
+  lab is unchanged.
+- The dependency/SBOM audit passes. All 126 packaged runtime JARs match the product
+  runtime byte for byte, and OSV reports no findings for the 123 third-party Maven
+  coordinates. No version or image pins changed. The audit retains Maven's
+  existing blocked HTTP snapshot-metadata warning; the SBOM validates successfully.
+
+Commands executed, using the existing packaged product and reactor library
+artifacts after the scoped dependency checks:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -Paudit verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify -Dcucumber.filter.tags=@order-api
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration \
+  '-Dcucumber.filter.name=^(Flyway|The constraints keep|Profit credits keep|Each role has).*' \
+  failsafe:integration-test@integration-tests failsafe:verify@integration-tests
+```
+
+For a fresh checkout, add `-am` to the first two commands as the
+[runbook](README.md#buyer-and-order-acceptance-step-41) shows. The order runtime
+is HTTP/1.1: the provider test's HTTP/2-preferring client negotiates HTTP/1.1,
+while HTTP/2 qualification remains step 6.5. The HTTP limit is ten seconds,
+covering the two three-second database phases and a two-to-three-second shared
+catalog deadline. `--check-startup` remains available for bounded startup checks.
+Stock reservation, broker/ledger processing, producer load and Kubernetes order
+deployment remain their separately planned steps.
+
+**Validation fixes (2026-10-16).** An independent validation found five problems.
+The regression tests failed before the fixes for the reported reasons:
+
+1. **503 at low concurrency.** Each copied JDBC store ran database phases on a
+   platform executor with `shards × max-pool-size` threads and no queue, thus each
+   further phase got an immediate 503. A probe with the lab regions, pool size 4 and
+   healthy PostgreSQL showed 12 successful concurrent phases, and two of four
+   concurrent 6-item PUTs failed with `CATALOG_UNAVAILABLE` or
+   `ORDER_STORE_UNAVAILABLE`. The scenario helper retried every 503 and hid this.
+   The shared engine now runs each phase on its own virtual thread, and a burst waits
+   at most one second for a pooled connection. The helper never retries, and a new
+   scenario sends eight concurrent acceptances and 16 status reads through
+   one-connection pools. Before the fix, it and the two older concurrency steps failed
+   because of 503 responses. After the fix, the same probe got no 503 for up to 64
+   concurrent allocations, reads or 1- and 6-item PUTs. The slowest of 64 concurrent
+   6-item PUTs took 467 ms, and a 1,000-item PUT took 1.3–1.4 s.
+2. **Generator slots on invalid settings.** The order service producer injected the
+   generator before it checked the catalog deadline, the catalog concurrency and the
+   ID candidate budget. Product did the same for its candidate budget. On Kubernetes,
+   each crash-loop restart would use a lifetime slot. The stores and the checked
+   service settings now start at an earlier priority than the services. New packaged
+   startup rows set a registry UID without a CA file and expect the error of the
+   setting. Before the fix, three order rows and one product row showed the
+   reservation error instead.
+3. **Untested advisory locks.** With all three locks removed, all unit tests and
+   scenarios passed. The in-memory store of `OrderServiceTest` now requires the lock
+   before the first read of each write. A new scenario holds each lock with SQL:
+   buyer creation, allocation and acceptance wait for it, and an order lock held past
+   the phase budget gives 503 within four seconds and writes nothing. With the locks
+   removed, 19 of 24 `OrderServiceTest` tests and this scenario fail.
+4. **Copied code.** The phase engine `DatabasePhases`, `Endpoint`, the TLS and driver
+   defaults of `JdbcUrls`, strict request decoding (`JsonRequests`) and the nonblank
+   text rule moved from product and order into `shardshop-common`, with no new
+   dependency. By the user's decision, common manages no connections: the
+   applications keep their pools, endpoints and credentials. The HTTP deadline
+   filters stay in the applications, because they need Vert.x, JAX-RS and CDI wiring.
+   The copies differed in one rule: after a failed rollback, a domain failure now
+   stays unchanged in order too, as in product, because no commit occurred. The
+   TLS configuration errors no longer name the service.
+5. **Old step numbers.** This entry and `R__catalog_grants.sql` use the new numbers.
+   The changed repeatable file applies the catalog grants again at the next `up.sh`.
+
+Validation after the fixes, on Maven 3.9.16 and OpenJDK 25:
+
+- **Common:** 258 unit tests (63 new). **Product:** 235 unit tests and 30 packaged
+  startup checks. **Order:** 165 unit/provider tests and 32 packaged startup checks.
+  The generic store tests moved from product and order to common.
+- **shardshop-testing:** 174 unit tests and all **51 Cucumber scenarios**, including
+  the nine order scenarios, in one `-Pintegration` run. The only warning is the
+  accepted Testcontainers Ryuk line.
+- The runtime JAR sets of product and order did not change, and all 142 order JARs
+  stay byte-identical to the product JARs. The audit profile did not run again,
+  because no dependency changed.
+
+```bash
+mvn -o -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order,shardshop-product -am verify
+mvn -o -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify
+```

@@ -1,5 +1,7 @@
 package dev.nklip.javacraft.shardshop.product.config;
 
+import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
+import dev.nklip.javacraft.shardshop.common.jdbc.JdbcUrls;
 import dev.nklip.javacraft.shardshop.idgen.IdGenerator;
 import dev.nklip.javacraft.shardshop.product.catalog.CatalogService;
 import dev.nklip.javacraft.shardshop.product.persistence.JdbcCatalogStore;
@@ -8,22 +10,24 @@ import dev.nklip.javacraft.shardshop.sharding.ShardTopology;
 import io.quarkus.runtime.Startup;
 import jakarta.enterprise.inject.Disposes;
 import jakarta.enterprise.inject.Produces;
+import jakarta.enterprise.inject.spi.ObserverMethod;
 import jakarta.inject.Singleton;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.net.URLDecoder;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 
+/**
+ * The store and the settings start before the default startup priority: a configuration error stops the start
+ * before any bean injects the generator, which reserves a lifetime slot.
+ */
 @Singleton
 public class CatalogWiring {
     @Produces
     @Singleton
-    @Startup
+    @Startup(ObserverMethod.DEFAULT_PRIORITY - 1)
     JdbcCatalogStore store(CatalogConfiguration config, ShardTopology topology) {
-        Map<String, JdbcCatalogStore.Endpoint> primary = new HashMap<>();
-        Map<String, JdbcCatalogStore.Endpoint> replica = new HashMap<>();
+        Map<String, Endpoint> primary = new HashMap<>();
+        Map<String, Endpoint> replica = new HashMap<>();
         for (var shard : topology.shards()) {
             String name = shard.clusterName();
             var connection = config.connections().get(name);
@@ -35,11 +39,11 @@ public class CatalogWiring {
             String certificate = connection == null
                     ? defaultCertificate
                     : connection.rootCertificate().orElse(defaultCertificate);
-            primary.put(name, new JdbcCatalogStore.Endpoint(secureUrl(connection == null
+            primary.put(name, new Endpoint(JdbcUrls.secure(connection == null
                     ? primaryUrl
                     : connection.primaryUrl().orElse(primaryUrl), certificate), username, password)
             );
-            replica.put(name, new JdbcCatalogStore.Endpoint(secureUrl(connection == null
+            replica.put(name, new Endpoint(JdbcUrls.secure(connection == null
                     ? replicaUrl
                     : connection.replicaUrl().orElse(replicaUrl), certificate), username, password)
             );
@@ -50,54 +54,20 @@ public class CatalogWiring {
         return new JdbcCatalogStore(primary, replica, config.maxPoolSize());
     }
 
-    private String secureUrl(String url, String certificate) {
-        String mode = parameter(url, "sslmode");
-        if (mode == null || mode.isBlank()) {
-            mode = "verify-full";
-            url = append(url, "sslmode", mode);
-        }
-        if (mode.equalsIgnoreCase("verify-full") || mode.equalsIgnoreCase("verify-ca")) {
-            String root = parameter(url, "sslrootcert");
-            if (root == null || root.isBlank()) {
-                if (certificate.isBlank()) {
-                    throw new IllegalArgumentException("Catalog root certificate must not be blank");
-                }
-                url = append(url, "sslrootcert", certificate);
-            }
-        }
-        return url;
-    }
-
-    private String parameter(String url, String name) {
-        int query = url.indexOf('?');
-        if (query < 0) {
-            return null;
-        }
-        String value = null;
-        for (String part : url.substring(query + 1).split("&")) {
-            if (part.startsWith(name + "=")) {
-                try {
-                    value = URLDecoder.decode(part.substring(name.length() + 1), StandardCharsets.UTF_8);
-                } catch (IllegalArgumentException failure) {
-                    throw new IllegalArgumentException("Invalid catalog TLS parameter encoding");
-                }
-            }
-        }
-        return value;
-    }
-
-    private String append(String url, String name, String value) {
-        return url + (url.contains("?") ? "&" : "?") + name + "="
-                + URLEncoder.encode(value, StandardCharsets.UTF_8);
+    @Produces
+    @Singleton
+    @Startup(ObserverMethod.DEFAULT_PRIORITY - 1)
+    CatalogService.Settings settings(CatalogConfiguration config) {
+        return new CatalogService.Settings(config.readProfile() == CatalogConfiguration.ReadProfile.REPLICA,
+                config.maxIdCandidates());
     }
 
     @Produces
     @Singleton
     @Startup
-    CatalogService service(JdbcCatalogStore store, IdGenerator generator, ShardRouter router,
-                           ShardTopology topology, CatalogConfiguration config) {
-        return new CatalogService(store, generator, router, topology,
-                config.readProfile() == CatalogConfiguration.ReadProfile.REPLICA, config.maxIdCandidates());
+    CatalogService service(JdbcCatalogStore store, CatalogService.Settings settings, IdGenerator generator,
+                           ShardRouter router, ShardTopology topology) {
+        return new CatalogService(store, generator, router, topology, settings);
     }
 
     void close(@Disposes JdbcCatalogStore store) {

@@ -8,9 +8,10 @@ All six applications use **Quarkus 3.40.1** in JVM mode on Java 25.
 Product now runs the seller/product HTTP API from step 3.6. The product seeder
 from step 3.7 seeds and verifies the catalog through that API and then exits. The
 product reader from step 3.8 reads the seeded products at a bounded rate until it
-stops. The other entry points start CDI and exit. Step 3.5 provides workload-owned
-dataset definitions and HTTP clients; the buyer provider remains step 4.1, and the
-order workload loop remains step 4.7. Maven module tests need no Docker or
+stops. Order now serves buyer creation, durable order allocation and order PUT/GET
+from step 4.1. Ledger and the order producer still start CDI and exit. Step 3.5
+provides workload-owned dataset definitions and HTTP clients; the order workload
+loop remains step 4.8. Maven module tests need no Docker or
 Kubernetes; chart rendering and release orchestration tests require `helm` and
 `helmfile` on `PATH`. The Cucumber scenarios of `shardshop-testing` run product, the seeder
 and the reader against a PostgreSQL container in the `integration` profile
@@ -103,8 +104,8 @@ The clients send `POST /api/v1/sellers`,
 persists the entity ID before returning `201`; a retry returns `200` with the
 same ID. A conflicting payload under that scope/key returns `409`. Seller/buyer
 keys are scoped by requested region; product keys are scoped by parent seller ID.
-Product's step 3.6 provider persists these keys in the catalog. Buyer creation-key
-storage remains step 4.1; process-local caches cannot satisfy the restart contract.
+Product's step 3.6 provider persists these keys in the catalog. Order's step 4.1
+provider persists buyer creation keys in ordering, including recovery after restart.
 
 Seller requests contain `companyName` and `region`. Seller responses also include
 service-owned `profitsEarned` balances by currency, starting with `USD: "0.00"`
@@ -118,9 +119,9 @@ products remain grouped by their returned seller ID. Buyer requests include
 `postalCode` and `countryCode`.
 
 Existing catalog/ordering V1 migrations remain immutable. Step 3.6 adds catalog
-creation fields, durable keys and profit storage through V2. Ordering fields and
-unit-cost snapshots remain step 4.1; confirmed-item profit crediting remains step
-4.6. Pending, reserved, cancelled or rejected orders earn no profit.
+creation fields, durable keys and profit storage through V2. Step 4.1 adds ordering
+fields and unit-cost snapshots through its own V2; confirmed-item profit crediting remains step
+4.7. Pending, reserved, cancelled or rejected orders earn no profit.
 
 The seeder retains returned seller IDs while creating products. Reader and order
 producer resolve catalog IDs through ordinary read-only resource lookups:
@@ -213,7 +214,7 @@ Run the normal external migration workflow before starting the API. The additive
 stored `name`, backfills descriptions/costs and profit rows, and adds key lookup
 indexes and the per-order/product profit-credit identity. Product can initialize
 zero balances but cannot update or reset them. Applying confirmed margin remains
-step 4.6; stock mutation remains step 4.9. No SQL functions or triggers are added.
+step 4.7; stock mutation remains step 4.2. No SQL functions or triggers are added.
 
 Connection configuration is deployment-only. Defaults target each inventory
 cluster's `-rw` and `-ro` Services in database `shardshop`, using `product_app` and
@@ -246,9 +247,12 @@ connections; the default is four. Writes always use primaries. The optional
 SQL; there is no product cache. The complete database phase has a three-second
 deadline, including pool acquisition, connection setup, locks and commit. HTTP
 requests have a four-second deadline: before response serialization it returns
-503; if output has already started, it closes the connection. Pool exhaustion
-rejects within the budget; uncertain writes are recovered through their durable key, without an internal
-write retry. `--check-startup` validates configuration and exits for packaged
+503; if output has already started, it closes the connection. Each phase runs on
+its own virtual thread and waits at most one second for a pooled connection, thus
+a burst queues; a pool that stays full gives 503 within the budget. Uncertain
+writes are recovered through their durable key, without an internal write retry.
+The phase engine, TLS defaults and strict request decoding are shared with order in
+`shardshop-common`. `--check-startup` validates configuration and exits for packaged
 startup checks; ordinary product startup waits for shutdown and serves HTTP.
 
 Build product and run its scenarios of step 3.10:
@@ -541,7 +545,7 @@ directory `/app`, user `10001:10001` and `HOME=/tmp`, and their entrypoint start
 reserve their generator IDs with Java code in their own JVM.
 
 `up.sh` currently builds and qualifies `flyway`, `product`, `product-seeder` and
-`product-reader`. Step 4.8 adds the order, ledger and order producer images. It:
+`product-reader`. Step 4.9 adds the order, ledger and order producer images. It:
 
 1. Uses [`skaffold.yaml`](skaffold.yaml) to build the four ARM64 artifacts from
    current packaged Maven outputs and the reviewed Dockerfiles. Skaffold owns the
@@ -792,6 +796,102 @@ the JDK, and they read the dataset TSV files, not the Java definitions. On the l
 every `up.sh` invocation runs Flyway through Helm hooks and validates actual
 history under the [migration rules](#database-schemas-and-migrations-step-23).
 
+## Buyer and order acceptance (step 4.1)
+
+Order is now a long-running HTTP/1.1 provider. `--check-startup` validates its
+routing, generator and pool configuration and exits without opening a database
+connection. Its Kubernetes deployment and producer workload remain steps 4.9 and
+4.8. Apply the external catalog and ordering migrations before serving requests;
+the application never runs Flyway.
+
+`POST /api/v1/buyers` persists the person profile and region-scoped
+`Idempotency-Key` together. Buyer key placement uses unsigned SHA-256 of UTF-8
+`buyer\0region\0key` modulo the ordered shards in that region, then bounded ID
+generation selects an ID routed to that exact shard. A matching retry returns
+the stored buyer with `200`, including after a restart; first creation is `201`,
+and a changed payload is `409 BUYER_IDEMPOTENCY_CONFLICT`.
+
+`POST /api/v1/buyers/{buyerId}/order-allocations` persists a generated order ID
+under `(buyerId, runName, requestOrdinal)`. New mappings return `201`, retries
+return `200`, and allocation creates no order or saga. Both operations recover
+existing identities without consuming another generator ID.
+
+`PUT /api/v1/buyers/{buyerId}/orders/{orderId}` accepts only an allocation for
+that buyer. It checks quarantine and the saved request fingerprint under a
+transaction advisory lock, releases the transaction and connection, and resolves
+products through their sellers' primaries. Catalog outcomes have fixed precedence:
+unavailable, missing product, mixed currencies, then currency mismatch. A second
+locked transaction repeats the durable checks before using those outcomes.
+Concurrent creation or quarantine therefore takes precedence over a failed lookup.
+
+Each creation takes a transaction advisory lock before its first read: the signed
+low 64 bits of the SHA-256 of `buyer\0region\0key`,
+`allocation\0buyerId\0runName\0requestOrdinal` or `order\0\0orderId`, as for the
+product keys. A writer of order quarantine must take the same order lock, so that
+the final locked check sees it.
+
+Acceptance atomically saves the order, ordered item snapshots (including unit
+cost), and one `PENDING_STOCK` saga. Prices and totals come from the catalog and
+use exact arithmetic; totals outside `NUMERIC(19,2)` return `400`. The response is
+`202` with a relative `Location` equal to `statusUrl`. Identical PUT retries and
+status GETs use saved state, even during a catalog outage. Pending retries return
+`202`; terminal retries return `200`. Acceptance does not change stock or create
+an outbox record; reservation and later saga transitions are subsequent steps.
+
+Primary pools and lookup concurrency are bounded. Each database phase runs on its
+own virtual thread and waits at most one second for a pooled connection, thus a
+burst queues instead of failing. A pool that stays full or an unknown commit
+result returns `503`; clients retain the same key, allocation or order payload
+when retrying. Request validation rejects malformed/duplicate/unknown
+fields, numeric IDs, fractional quantities and invalid Unicode before database
+access. Bodies are limited to 256 KiB, enough for the contract's 1,000 items.
+HTTP/2 is disabled until its qualification in step 6.5.
+
+| Property | Default | Purpose |
+|---|---|---|
+| `shardshop.order.max-pool-size` | `4` | Primary connections per shard, 1–32 |
+| `shardshop.order.max-id-candidates` | `1024` | Buyer ID placement attempts, 1–65536 |
+| `shardshop.order.catalog-concurrency` | `4` | Concurrent catalog lookups per request, 1–64 |
+| `shardshop.order.catalog-deadline` | `3s` | Shared catalog deadline, 2–3 s; leaves room for the one-second pool acquisition bound |
+| `shardshop.order.connections.<shard>.primary-url` | `jdbc:postgresql://<shard>-rw:5432/shardshop` | Primary endpoint for both ordering and catalog IO |
+| `shardshop.order.connections.<shard>.username` | `order_app` | Runtime role with ordering and catalog grants |
+| `shardshop.order.connections.<shard>.password` | Empty | Supply through protected runtime configuration |
+| `shardshop.order.connections.<shard>.root-certificate` | `/etc/shardshop/order/<shard>/ca.crt` | CA for the default `verify-full` TLS mode |
+
+Each database phase has a three-second limit, including at most one second of pool
+acquisition, lock acquisition and commit; the whole HTTP request has a ten-second
+limit for two database phases and the catalog phase. No order connection or lock
+is held across catalog IO. The phase engine, TLS defaults and strict request
+decoding are shared with product in `shardshop-common`; the HTTP deadline filter
+stays in each application.
+
+Ordering V2 keeps V1 and historical rows intact. Legacy buyers without complete
+person profiles fail closed with `ORDER_STORE_UNAVAILABLE` until an operator
+supplies truthful data. Historical item costs remain NULL, meaning unknown;
+they must be reconciled before later profit crediting. New API writes always
+persist complete profiles and costs. Existing table-level runtime grants cover
+the new columns without broadening privileges.
+
+Run the module checks and packaged-provider PostgreSQL scenarios:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order,shardshop-product -am -Paudit verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify -Dcucumber.filter.tags=@order-api
+```
+
+The scenarios use disposable PostgreSQL containers with the pinned test image,
+owner migrations, runtime credentials and verified TLS. They check regional and
+concurrent retries, restart recovery, exact snapshots, rollback, outages and races
+with blocked catalog IO. Concurrent requests never retry a `503`: with one
+connection per shard pool, they must queue for the connection. Each creation must
+wait for its advisory lock, and an order lock held past the phase budget gives
+`503` without writes. Unit tests inject unknown commit results and generator
+failure, and assert deterministic catalog precedence with reversed completion
+order. The packaged startup tests of product and order show that every invalid
+setting stops the start before a generator reservation. The first command also
+builds product, because product shares the phase engine. The retained kind lab is
+not changed by these checks.
+
 ## HTTP and message contracts (step 3.1)
 
 | Owner | Contract |
@@ -806,8 +906,8 @@ classpath directory. Applications do not import another module's schemas or mode
 clients keep their own DTOs. HTTP examples appear inline. The two result examples
 show alternative decisions for one example command, never two outcomes for one
 retained order. Example IDs illustrate the format and are not an issued dataset.
-The product provider and its contract tests are implemented in step 3.6; order and
-ledger providers remain steps 4.1–4.5.
+The product and order HTTP providers and their contract tests are implemented in
+steps 3.6 and 4.1; ledger message processing remains steps 4.5–4.6.
 
 Workloads select a pinned local dataset version and send its ID-free creation
 payloads with stable `Idempotency-Key` values. Product/order generate and return
@@ -841,8 +941,7 @@ and `2e0` as the same exact value and reject fractional values such as `2.5`; th
 fingerprint serializes the normalized integer.
 
 Providers enforce strict decoding before they construct typed DTOs or touch
-storage. Since step 3.6, the product provider does this. The order provider must
-do it from step 4.1. Enable unknown-property rejection and duplicate-member
+storage. Product and order both enforce this. Enable unknown-property rejection and duplicate-member
 detection, require JSON string tokens for string fields, and validate integral
 numeric values exactly before conversion. Do not rely on Jackson's default string
 coercion or float-to-int truncation. Contract/provider tests must include raw JSON
@@ -988,9 +1087,13 @@ generator in `shardshop-idgen` does this before the generator exists:
 No kubectl binary, launcher process, init container or sidecar takes part.
 Higher-priority configuration cannot substitute an ID for the reservation: a fixed
 `shardshop.id.generator-id` together with a registry UID stops the start. The
-producer has a later startup priority than the other startup beans. Thus the checks
-of the routing snapshot and of the catalog configuration come first, and a local
-configuration error stops the start before a reservation.
+producer has a later startup priority than the other startup beans, and a bean
+that injects the generator creates it at once. Thus product and order create their
+stores and checked service settings at an earlier priority than their services:
+the checks of the routing snapshot, the connections, the pools and the service
+settings come first, and a local configuration error stops the start before a
+reservation. The packaged startup tests set a registry UID without a CA file and
+show this for every setting.
 
 | Property | Environment variable | Default and rule |
 |---|---|---|
@@ -1067,7 +1170,7 @@ created sellers, the permissions of each service account, the policy, and the
 failures. It replaces the step 3.4 drill and consumes no lab slots. The
 [step 3.9 lab check](#live-check) shows a new generator ID after a product pod
 replacement. The [product image and Deployment](#product-deployment-and-seeding-gate-step-39)
-(step 3.9) and the order image and Deployment (step 4.8) start `quarkus-run.jar`
+(step 3.9) and the order image and Deployment (step 4.9) start `quarkus-run.jar`
 directly. They use the owning service's ServiceAccount and set
 `SHARDSHOP_ID_REGISTRY_UID` from the identity ConfigMap. The images contain no
 kubectl, and no tool binaries are downloaded or stored in the repository.
@@ -2046,7 +2149,7 @@ Step 3.6 adds company-name, product-description, unit-cost and creation-key
 storage through `V2__catalog_creation.sql`, plus service-owned `seller_profits`
 and immutable `profit_credits` identities. Legacy descriptions backfill from the
 product name; legacy unit cost and initial USD/EUR balances are zero. Profit
-posting and the order role's profit-write privileges remain step 4.6. Neither
+posting and the order role's profit-write privileges remain step 4.7. Neither
 `catalog_reserver` nor `order_app` can initialize profit currencies, change
 balances, or access profit credits. The repeatable grants revoke obsolete table
 and column permissions before reapplying the current privilege matrix, including
@@ -2055,7 +2158,7 @@ premature profit permissions from earlier development revisions.
 The stock-column grant permits direct updates without allowing changes to product
 names, prices or other columns. There is no stock trigger: reservation writes by
 themselves do not change stock. Java reserve/release logic and its integration
-tests remain planned in step 4.9. The database checks still enforce
+tests remain planned in step 4.2. The database checks still enforce
 `0 <= stock <= initial_stock`, but the application must keep stock and reservation
 rows consistent.
 
@@ -2101,7 +2204,7 @@ as sellers. Allocations retain a unique `(buyer_id, run_name, request_ordinal)`
 mapping; ordinals are nonnegative. Orders reference both their local buyer and
 the allocation for that buyer. Items store immutable seller/product IDs, quantity,
 name, unit price and currency snapshots, without cross-shard catalog foreign keys.
-The future step 4.1 migration adds buyer first name/surname, contact and address
+The step 4.1 V2 migration adds buyer first name/surname, contact and address
 fields, durable creation keys, and immutable unit-cost snapshots for confirmed
 profit accounting; the existing V1 migration is unchanged. Orders and sagas start
 in `PENDING_STOCK`. Sagas retain cancellation/release state,
@@ -2114,10 +2217,9 @@ IDs; deleting transport records leaves these bindings and the saga intact.
 Runtime grants keep buyer, allocation, order/item payload and message identities
 immutable. Outbox inserts cannot supply `created_at` or `published_at`: the
 database assigns creation time and rows start unpublished. Only outbox publication
-metadata can be updated. Java remains
-responsible for atomic writes, valid state transitions, envelope validation,
-stock reserve/release, and cleanup only after the retention and CDC checkpoint
-gates; those behaviors are later milestones.
+metadata can be updated. Step 4.1 implements atomic acceptance writes. Later Java
+milestones add state transitions, envelope validation, stock reserve/release, and
+cleanup only after the retention and CDC checkpoint gates.
 
 `orphan_results` and `conflicting_results` retain envelopes, correlation IDs,
 fingerprints, outcomes, reasons and audit metadata. Their composite key is message
@@ -2212,7 +2314,7 @@ confirmation, and cleanup only after confirmed publication and retention remain
 later steps. A DELETE grant does not enforce these cleanup gates. The ledger
 application is still a skeleton and does not migrate at startup.
 Decisions have no runtime `UPDATE` privilege, including for `FOR UPDATE`/`FOR KEY
-SHARE` row locks. Step 4.4 must serialize with a transaction advisory lock or
+SHARE` row locks. Step 4.5 must serialize with a transaction advisory lock or
 insert-conflict handling followed by reading and comparing the saved decision.
 
 Provision, migrate, and inspect the ledger from the repository root:

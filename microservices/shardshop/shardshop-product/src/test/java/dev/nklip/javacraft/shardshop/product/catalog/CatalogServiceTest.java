@@ -24,7 +24,7 @@ class CatalogServiceTest {
     private final IdGenerator generator = mock(IdGenerator.class);
     private final ShardTopology topology = ShardTopology.fromNamesAndRegions("a,b,c,d", "US,EU,ASIA,US");
     private final ShardRouter router = new ShardRouter(topology);
-    private final CatalogService service = new CatalogService(store, generator, router, topology, false, 1024);
+    private final CatalogService service = new CatalogService(store, generator, router, topology, new CatalogService.Settings(false, 1024));
     private final ProductCreation payload = new ProductCreation("Mug", "Insulated mug", "19.95", "12.50", "EUR", 10);
     private final Seller seller = new Seller(1, "Company", "US", Map.of("USD", "0.00", "EUR", "12.30"));
     private final Product product = new Product(1, 2, payload, 7);
@@ -40,7 +40,7 @@ class CatalogServiceTest {
         assertEquals(Map.of("USD", "0.00", "EUR", "0.00"), result.entity().profitsEarned());
         verify(session).insertSeller(result.entity().sellerId(), "key", new SellerCreation("Company", "US"));
         when(session.sellerByKey("US", "key")).thenReturn(Optional.of(result.entity()));
-        CatalogService restarted = new CatalogService(store, generator, router, topology, false, 1024);
+        CatalogService restarted = new CatalogService(store, generator, router, topology, new CatalogService.Settings(false, 1024));
         assertEquals(result.entity(), restarted.sellerByKey("US", "key"));
         verify(store).read(eq(router.route(result.entity().sellerId())), eq(false), any());
         verify(store).write(eq(router.route(result.entity().sellerId())), any());
@@ -74,7 +74,7 @@ class CatalogServiceTest {
         fails(INVALID_REQUEST, () -> service.createSeller("key", new SellerCreation("Company", "AU")));
         fails(INVALID_REQUEST, () -> service.sellerByKey("AU", "key"));
         var usOnly = ShardTopology.fromNamesAndRegions("a", "US");
-        var limited = new CatalogService(store, generator, new ShardRouter(usOnly), usOnly, false, 1);
+        var limited = new CatalogService(store, generator, new ShardRouter(usOnly), usOnly, new CatalogService.Settings(false, 1));
         fails(INVALID_REQUEST, () -> limited.createSeller("key", new SellerCreation("Company", "ASIA")));
         fails(INVALID_REQUEST, () -> limited.sellerByKey("ASIA", "key"));
         verifyNoInteractions(store, generator);
@@ -86,7 +86,7 @@ class CatalogServiceTest {
         long wrongRegionId = LongStream.range(1, 100).filter(id -> router.route(id).region().equals("EU"))
                 .findFirst().orElseThrow();
         when(generator.nextId()).thenReturn(wrongRegionId);
-        CatalogService bounded = new CatalogService(store, generator, router, topology, false, 3);
+        CatalogService bounded = new CatalogService(store, generator, router, topology, new CatalogService.Settings(false, 3));
         fails(ID_UNAVAILABLE, () -> bounded.createSeller("key", new SellerCreation("Company", "US")));
         verify(generator, times(3)).nextId();
         verify(session, never()).insertSeller(anyLong(), anyString(), any());
@@ -144,7 +144,7 @@ class CatalogServiceTest {
         assertEquals(seller, service.seller(1));
         assertEquals(product, service.product(1, 2));
         assertEquals(product, service.productByKey(1, "key"));
-        CatalogService replica = new CatalogService(store, generator, router, topology, true, 1);
+        CatalogService replica = new CatalogService(store, generator, router, topology, new CatalogService.Settings(true, 1));
         assertEquals(product, replica.product(1, 2));
         verify(store).read(eq(router.route(1)), eq(true), any());
         verifyNoInteractions(generator);
@@ -164,7 +164,7 @@ class CatalogServiceTest {
     void invalidCandidateBudgetsFailAtConfiguration() {
         for (int invalid : new int[]{0, 65537}) {
             assertThrows(IllegalArgumentException.class,
-                    () -> new CatalogService(store, generator, router, topology, false, invalid));
+                    () -> new CatalogService.Settings(false, invalid));
         }
     }
 

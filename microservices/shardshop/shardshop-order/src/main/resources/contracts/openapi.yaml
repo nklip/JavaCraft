@@ -4,7 +4,7 @@ info:
   title: ShardShop order API
   version: 1.0.0
   description: |
-    Design contract for PLAN step 3.1; providers are implemented in step 4.1.
+    Contract introduced in PLAN step 3.1; HTTP providers implemented in step 4.1.
     Workloads own dataset definitions and submit creation payloads. Order generates
     buyer IDs and owns durable order allocations. Clients retain returned IDs
     unchanged and keep their own DTOs. No public operation accepts a shard selector.

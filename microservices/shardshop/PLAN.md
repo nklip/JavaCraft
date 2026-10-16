@@ -3,7 +3,7 @@
 ## 1. Implementation milestones
 
 This is the implementation checklist for `microservices/shardshop`, updated on
-2026-10-15. Every step starts as **Planned**; existing design documents and routing
+2026-10-16. Every step starts as **Planned**; existing design documents and routing
 vectors do not mean the corresponding application behavior is implemented.
 
 **Framework:** all six applications use **Quarkus 3.40.1** (3.40 LTS line) in JVM
@@ -85,8 +85,8 @@ Retained baselines are now immutable. Later schema changes use fix-forward migra
    starts after step 6.6; never make a local step depend on it or on a cloud
    service.
 8. Keep each installed component inside its support window at all times. This
-   rule replaces step 6.5. Before you start a step, read the review deadlines in
-   [VERSIONS.md](VERSIONS.md#4-maintenance-and-acceptance-gates) and the lock. If a
+   gate applies throughout implementation. Before you start a step, read the review
+   deadlines in [VERSIONS.md](VERSIONS.md#4-maintenance-and-acceptance-gates) and the lock. If a
    deadline occurs before the step can end, upgrade that component first. In
    VERSIONS.md, record these items:
    - the successor and its compatibility checks
@@ -170,6 +170,11 @@ their prerequisites transitively. Scenario numbers refer to the
 [architecture's acceptance scenarios](ARCHITECTURE.md#7-consistency-tradeoffs-and-verification).
 Milestone numbers 0-7 remain stable for references from other documents.
 
+On 2026-10-16, unfinished steps were renumbered to match execution order:
+stock reservation moved from 4.9 to 4.2, the former 4.2–4.8 became 4.3–4.9,
+and HTTP/2 moved from 6.7 to 6.5. Completed step IDs are unchanged. Historical
+changelog entries and immutable migration comments retain their original numbers.
+
 ### Milestone 0: Supported baseline and project skeleton
 
 | Step / deliverable | Depends on | Status | Acceptance condition |
@@ -211,7 +216,7 @@ stops the whole cluster without deleting storage. Every `up.sh` now restarts
 application pods as requested alongside step 3.19. Completed rows below retain
 their historical commands; the new steps replace those commands, not their
 acceptance requirements. At this milestone, deploy product, the seeder and the
-reader; step 4.8 adds order, ledger and the order producer when they are functional.
+reader; step 4.9 adds order, ledger and the order producer when they are functional.
 
 | Step / deliverable | Depends on | Status | Acceptance condition |
 |---|---|---|---|
@@ -223,7 +228,7 @@ reader; step 4.8 adds order, ledger and the order producer when they are functio
 | 3.6 Seller and product API on primaries | 0.4, 2.3, 3.2, 3.4, 3.5 | Done | Product serves the seller/product API of [ARCHITECTURE §4](ARCHITECTURE.md#4-product-generation-and-read-load) on primaries, with the fix-forward catalog migration V2. **2026-10-07:** 163 OpenAPI-validated provider responses pass, and the lab applied V2 on all primaries. [Evidence](CHANGELOG.md#step-36) |
 | 3.7 Product seeder application | 3.5, 3.6 | Done | Repeated seeding recovers the same service-issued IDs for all 150 sellers and 300 products, and completion requires successful verification reads. **2026-10-07:** `verify-product-seeder.py` passes on four disposable shards. [Evidence](CHANGELOG.md#step-37) |
 | 3.8 Product reader application | 3.5, 3.6 | Done | The reader sends bounded read load and reports request, latency and error metrics, as the [HTTP connection policy](ARCHITECTURE.md#http-connection-policy) defines. **2026-10-08:** `verify-product-reader.py` passes twice on four disposable shards. [Evidence](CHANGELOG.md#step-38) |
-| 3.9 Product deployment and seeding gate | 3.7, 3.8 | Done | Product, the seeder Job and the reader run on the lab. The reader owns its [lifecycle](ARCHITECTURE.md#workload-lifecycle) in Java: it sends load only after it resolves the complete `catalog-v1` dataset through product, and it stops with an error after a bounded wait. `deploy.sh` only renders and applies the manifests; it does not wait for the Job or scale the reader. Maven tests show that the reader sends no load while the dataset is incomplete. Repeated runs pass scenario 1 for the reader and scenario 3 for primary reads. Application images share a Dockerfile and OS inventory/advisory qualification. Step 3.16 moves build ownership to Skaffold; step 4.8 extends that configuration. Product counts the requests of each pod with the Micrometer Prometheus extension ([§4](#quarkus-framework-migration)). Do not tune the reader's connection rotation, because step 6.7 replaces the HTTP/1.1 client. **2026-10-11:** `CatalogWaitTest` shows the wait of the reader, and `verify-product-workload.py` passes on the lab with a `deploy.sh` that only renders and applies. [Evidence](CHANGELOG.md#step-39) |
+| 3.9 Product deployment and seeding gate | 3.7, 3.8 | Done | Product, the seeder Job and the reader run on the lab. The reader owns its [lifecycle](ARCHITECTURE.md#workload-lifecycle) in Java: it sends load only after it resolves the complete `catalog-v1` dataset through product, and it stops with an error after a bounded wait. `deploy.sh` only renders and applies the manifests; it does not wait for the Job or scale the reader. Maven tests show that the reader sends no load while the dataset is incomplete. Repeated runs pass scenario 1 for the reader and scenario 3 for primary reads. Application images share a Dockerfile and OS inventory/advisory qualification. Step 3.16 moves build ownership to Skaffold; step 4.9 extends that configuration. Product counts the requests of each pod with the Micrometer Prometheus extension ([§4](#quarkus-framework-migration)). Do not tune the reader's connection rotation, because step 6.5 replaces the HTTP/1.1 client. **2026-10-11:** `CatalogWaitTest` shows the wait of the reader, and `verify-product-workload.py` passes on the lab with a `deploy.sh` that only renders and applies. [Evidence](CHANGELOG.md#step-39) |
 | 3.10 Maven integration tests with Testcontainers | 3.6, 3.7, 3.8, 3.9 | Done | Qualify Testcontainers and its pinned images in VERSIONS.md and the lock. Maven integration tests in the `integration` profile run product, the seeder and the reader against real PostgreSQL containers, and they apply the catalog migrations with the Flyway Java API. They cover the cases of `verify-product-provider.py`, `verify-product-transport.py`, `verify-product-seeder.py`, `verify-product-reader.py` and `verify-catalog-migration.py` that the architecture needs. Then delete these five scripts and `verify-catalog-lab.sh`, because Flyway validates the applied migrations on the lab. Their CHANGELOG evidence stays. **2026-10-12:** the 27 Cucumber scenarios of `shardshop-testing` replace the six scripts and pass in the full `-Pintegration,audit` build. [Evidence](CHANGELOG.md#step-310) |
 | 3.11 Generator IDs in the application JVM | 3.4, 3.9, 3.10 | Done | Product, and order from step 4.1, reserve a fresh generator ID with Java code in their own JVM at every start, also after a container restart. The Kubernetes API calls use Apache HttpClient 5, which the workloads already use. The registry, compare-and-set, retention and RBAC rules of [ARCHITECTURE](ARCHITECTURE.md#generator-identity-across-processes-and-restarts) stay, and that section is updated. No kubectl binary, launcher process, init container, sidecar, separate pod or service takes part. The application images contain no kubectl: remove the kubectl stage, its VEX document, its image pin and its advisory records. Maven integration tests with Testcontainers cover concurrent reservations, restarts and registry failures against a real Kubernetes API, and they replace `verify-generator-allocation.sh`. The step 3.9 lab check shows a new ID after a pod replacement. **2026-10-13:** the 11 k3s scenarios of `GeneratorAllocation.feature` replace `verify-generator-allocation.sh`, and on the lab each replacement product pod reserves a new ID in its own JVM. [Evidence](CHANGELOG.md#step-311) |
 | 3.12 Contract checks in Maven and one image script | 3.10 | Done | Each module that owns an OpenAPI document or a message schema checks it, its examples and its boundaries in a Maven unit test, as `verify-contracts.py` does. Then delete `verify-contracts.py` and `contract-validation-requirements.txt`. `build-application-images.sh` also builds, scans and loads the Flyway migration image on the OpenJDK runtime, and `build-migration-image.sh` is deleted. **2026-10-13:** 51 contract unit tests, `DatasetSourcesTest` and 4 `Contracts.feature` scenarios replace the Python checks, and on the lab `migrate.sh` ran on the reviewed migration image that `build-application-images.sh flyway` scanned and loaded. [Evidence](CHANGELOG.md#step-312) |
@@ -240,21 +245,21 @@ reader; step 4.8 adds order, ledger and the order producer when they are functio
 
 | Step / deliverable | Depends on | Status | Acceptance condition |
 |---|---|---|---|
-| 4.1 Order validation and atomic acceptance | 2.5, 3.6, 3.11, 3.12 | Planned | Order serves buyer creation, order allocation and order PUT/GET, as [ARCHITECTURE §5](ARCHITECTURE.md#5-order-creation-and-ledger-saga) and the order OpenAPI define. Fix-forward ordering migrations add the buyer person fields, creation keys and unit-cost snapshots, and V1 stays unchanged. Scenario 9 passes, and provider tests match the order OpenAPI. |
-| 4.9 Stock reservation step | 2.5, 4.1 | Planned | Order reserves and releases stock as the [stock reservation rules](ARCHITECTURE.md#stock-reservation) define. Scenario 11 passes. |
-| 4.2 RabbitMQ topology and policies | 1.1, 0.5, 3.1 | Planned | The persistent broker and its queues, policies, feature flags and limits match [ARCHITECTURE §6](ARCHITECTURE.md#6-rabbitmq-and-delivery-reliability). Select a release inside its support window when the step starts, and record it in VERSIONS.md and the lock. The broker runs with an arbitrary user ID ([portability rule 5](#portability-beyond-kind)). |
-| 4.3 Order outbox CDC relay | 4.2, 4.9 | Planned | Pin and qualify Debezium in VERSIONS.md. The relay obeys the [CDC rules](ARCHITECTURE.md#cdc-from-shard-writes-to-the-ledger), and published `RecordOrder` envelopes match the order-owned message schema. The relay checks of scenario 6 pass. Steps 5.5 and 6.2 add its crash and failover cases. |
-| 4.4 Ledger command consumer | 2.6, 3.2, 4.2 | Planned | The ledger consumer records decisions, replays duplicates and quarantines conflicts, as [ARCHITECTURE](ARCHITECTURE.md#ledger-decisions-replay-identities-and-transport) sections 3 and 5 define, with the advisory-lock serialization. Commands with invalid IDs are rejected without requeue. |
-| 4.5 Ledger result publisher | 4.4 | Planned | The result relay publishes stored outcomes with the reserved IDs and the publication-attempt checks of [ARCHITECTURE §5](ARCHITECTURE.md#reconciliation-and-replayed-outcomes). Result envelopes match the ledger message schema. |
-| 4.6 Order result consumer | 4.3, 4.5 | Planned | Order applies results, releases stock after a cancellation, and quarantines absent or conflicting results, as [ARCHITECTURE §5](ARCHITECTURE.md#5-order-creation-and-ledger-saga) defines. Confirmation credits seller profit exactly once for each item, as the [profit rules](ARCHITECTURE.md#4-product-generation-and-read-load) define. Results with invalid IDs are rejected without requeue. |
-| 4.7 Order producer application | 3.5, 4.1 | Planned | The HTTP-only order producer creates the buyers, then allocates and submits orders, as [ARCHITECTURE](ARCHITECTURE.md#workload-datasets-service-issued-ids-and-routing) sections 1 and 3 define. This includes cross-region, mixed-region and EUR-rejection orders. The producer keeps the returned IDs over retries and restarts, and it polls the order status within bounded deadlines. |
-| 4.8 Saga deployment and first end-to-end run | 3.20, 4.6, 4.7 | Planned | Add order, ledger and order-producer artifacts to Skaffold and their resources/hooks to the Helmfile releases; extend Maven acceptance while keeping `up.sh` focused on bootstrap. Like the reader, the order producer sends load only after it verifies the seeded catalog. A replacement order pod on either worker resumes CDC from the stored offsets. Scenarios 4, 5 and 11 pass end to end in the step 3.15 Maven kind suites; extend the deployment success gate without adding scripts. |
+| 4.1 Order validation and atomic acceptance | 2.5, 3.6, 3.11, 3.12 | Done | Order serves buyer creation, order allocation and order PUT/GET, as [ARCHITECTURE §5](ARCHITECTURE.md#5-order-creation-and-ledger-saga) and the order OpenAPI define. Fix-forward ordering migrations add the buyer person fields, creation keys and unit-cost snapshots, and V1 stays unchanged. **2026-10-16:** scenario 9 passes across 165 order unit/provider tests, 32 packaged startup checks and nine PostgreSQL scenarios, including blocked-catalog races, advisory-lock waits, concurrent requests without retries and atomic rollback. [Evidence](CHANGELOG.md#step-41) |
+| 4.2 Stock reservation step | 2.5, 4.1 | Planned | Order reserves and releases stock as the [stock reservation rules](ARCHITECTURE.md#stock-reservation) define. Scenario 11 passes. |
+| 4.3 RabbitMQ topology and policies | 0.5, 1.1, 3.1 | Planned | The persistent broker and its queues, policies, feature flags and limits match [ARCHITECTURE §6](ARCHITECTURE.md#6-rabbitmq-and-delivery-reliability). Select a release inside its support window when the step starts, and record it in VERSIONS.md and the lock. The broker runs with an arbitrary user ID ([portability rule 5](#portability-beyond-kind)). |
+| 4.4 Order outbox CDC relay | 4.2, 4.3 | Planned | Pin and qualify Debezium in VERSIONS.md. The relay obeys the [CDC rules](ARCHITECTURE.md#cdc-from-shard-writes-to-the-ledger), and published `RecordOrder` envelopes match the order-owned message schema. The relay checks of scenario 6 pass. Steps 5.5 and 6.2 add its crash and failover cases. |
+| 4.5 Ledger command consumer | 2.6, 3.2, 4.3 | Planned | The ledger consumer records decisions, replays duplicates and quarantines conflicts, as [ARCHITECTURE](ARCHITECTURE.md#ledger-decisions-replay-identities-and-transport) sections 3 and 5 define, with the advisory-lock serialization. Commands with invalid IDs are rejected without requeue. |
+| 4.6 Ledger result publisher | 4.5 | Planned | The result relay publishes stored outcomes with the reserved IDs and the publication-attempt checks of [ARCHITECTURE §5](ARCHITECTURE.md#reconciliation-and-replayed-outcomes). Result envelopes match the ledger message schema. |
+| 4.7 Order result consumer | 4.4, 4.6 | Planned | Order applies results, releases stock after a cancellation, and quarantines absent or conflicting results, as [ARCHITECTURE §5](ARCHITECTURE.md#5-order-creation-and-ledger-saga) defines. Confirmation credits seller profit exactly once for each item, as the [profit rules](ARCHITECTURE.md#4-product-generation-and-read-load) define. Results with invalid IDs are rejected without requeue. |
+| 4.8 Order producer application | 3.5, 4.1 | Planned | The HTTP-only order producer creates the buyers, then allocates and submits orders, as [ARCHITECTURE](ARCHITECTURE.md#workload-datasets-service-issued-ids-and-routing) sections 1 and 3 define. This includes cross-region, mixed-region and EUR-rejection orders. The producer keeps the returned IDs over retries and restarts, and it polls the order status within bounded deadlines. |
+| 4.9 Saga deployment and first end-to-end run | 3.20, 4.7, 4.8 | Planned | Add order, ledger and order-producer artifacts to Skaffold and their resources/hooks to the Helmfile releases; extend Maven acceptance while keeping `up.sh` focused on bootstrap. Like the reader, the order producer sends load only after it verifies the seeded catalog. A replacement order pod on either worker resumes CDC from the stored offsets. Scenarios 4, 5 and 11 pass end to end in the step 3.15 Maven kind suites; extend the deployment success gate without adding scripts. |
 
 ### Milestone 5: Recovery, retention, and backpressure
 
 | Step / deliverable | Depends on | Status | Acceptance condition |
 |---|---|---|---|
-| 5.1 Durable saga reconciliation | 4.8 | Planned | Lost results recover through stored ledger outcomes; injected-clock checks prove at most five automatic replay enqueues even after restarts and published-row cleanup. |
+| 5.1 Durable saga reconciliation | 4.9 | Planned | Lost results recover through stored ledger outcomes; injected-clock checks prove at most five automatic replay enqueues even after restarts and published-row cleanup. |
 | 5.2 Safe transport cleanup | 5.1 | Planned | Transport cleanup obeys the [retention rules](ARCHITECTURE.md#retention). Permanent records, unpublished messages and unresolved quarantine survive, and cleanup deletes never become commands. |
 | 5.3 Manual reconciliation reset | 5.2 | Planned | Implement the operator reset of [ARCHITECTURE §5](ARCHITECTURE.md#reconciliation-and-replayed-outcomes). Define how an operator starts the reset and which database login it uses. Give that login only the grants that the reset needs. The reset part of scenario 7 passes. |
 | 5.4 Retry and capacity drills | 5.3 | Planned | The retry and capacity drills of scenario 7 pass on the pinned broker. |
@@ -268,8 +273,8 @@ reader; step 4.8 adds order, ledger and the order producer when they are functio
 | 6.2 Synchronous failover drills | 5.5, 6.1 | Planned | The failover parts of scenarios 6 and 8 pass for switchover and primary failure. Each drill proves a real promotion, not a restart. The former primary rejoins safely, and a shard never has two writable primaries. Design the drills for the [CNPG failover behavior](https://cloudnative-pg.io/docs/1.30/failover/). |
 | 6.3 Coordinated backup and isolated restore | 5.3, 6.2 | Planned | Isolated restores retain schema/routing metadata, permanent outcomes, quarantine, and the latest allocator high-water mark; backup artifacts live outside kind. After each restore, checks prove schema/routing compatibility and the consistency of orders, sagas and the ledger. |
 | 6.4 Restore audit and recovery | 6.3 | Planned | The restore and audit parts of scenario 8 pass, as [ARCHITECTURE §5](ARCHITECTURE.md#orders-lost-by-asynchronous-failover-or-restore) defines. This step also runs the optional asynchronous-loss drill. |
-| 6.7 HTTP/2 transport | 4.8, 6.1 | Planned | All workload calls to product and order use HTTP/2 over cleartext (h2c) with prior knowledge. A qualified request-level balancer sends the requests of each HTTP/2 connection to all ready pods, because a Kubernetes Service balances only TCP connections. [VERSIONS.md](VERSIONS.md#step-67-request-balancer-candidates) lists the candidates. Record the selected component, its versions, support window and resource use there, and vendor its charts with verified checksums. Application namespaces keep `restricted` Pod Security. The workloads change to an HTTP/2 client, because the classic Apache API supports only HTTP/1.1. Verify that Quarkus 3.40 accepts h2c with prior knowledge. Update the [HTTP connection policy](ARCHITECTURE.md#http-connection-policy) and scenario 1. The read deadline, product's `503` behavior, the reader's startup deadline check and the reader metrics stay the same. The checks of steps 3.9, 4.8 and 6.1 pass again. Record an HTTP/1.1 baseline first, then measure the latency and CPU cost of the proxy hop under the same load. |
-| 6.6 Complete demo and acceptance run | 6.4, 6.7 | Planned | A fresh lab follows the README without hidden steps; all eleven architecture scenarios have commands and passing evidence, including full Snowflake lifecycle checks. Every installed component is inside its support window. |
+| 6.5 HTTP/2 transport | 4.9, 6.1 | Planned | All workload calls to product and order use HTTP/2 over cleartext (h2c) with prior knowledge. A qualified request-level balancer sends the requests of each HTTP/2 connection to all ready pods, because a Kubernetes Service balances only TCP connections. [VERSIONS.md](VERSIONS.md#step-65-request-balancer-candidates) lists the candidates. Record the selected component, its versions, support window and resource use there, and vendor its charts with verified checksums. Application namespaces keep `restricted` Pod Security. The workloads change to an HTTP/2 client, because the classic Apache API supports only HTTP/1.1. Verify that Quarkus 3.40 accepts h2c with prior knowledge. Update the [HTTP connection policy](ARCHITECTURE.md#http-connection-policy) and scenario 1. The read deadline, product's `503` behavior, the reader's startup deadline check and the reader metrics stay the same. The checks of steps 3.9, 4.9 and 6.1 pass again. Record an HTTP/1.1 baseline first, then measure the latency and CPU cost of the proxy hop under the same load. |
+| 6.6 Complete demo and acceptance run | 6.4, 6.5 | Planned | A fresh lab follows the README without hidden steps; all eleven architecture scenarios have commands and passing evidence, including full Snowflake lifecycle checks. Every installed component is inside its support window. |
 
 ### Milestone 7: AWS deployment (optional, advanced)
 
@@ -287,7 +292,7 @@ before use, and record costs and teardown commands.
 
 The supported-version gate (milestone 0) and first replicated shard (1.3) must
 pass before repeating database infrastructure. The first complete order demo is
-4.8: accepting an order alone is not completion of the saga. Individual recovery
+4.9: accepting an order alone is not completion of the saga. Individual recovery
 and failover steps retain their own acceptance gates.
 
 ## 2. Scope and target topology
@@ -338,8 +343,8 @@ Follow the dated baseline and lifecycle evidence in [VERSIONS.md](VERSIONS.md).
 | Persistence | Explicit JDBC repositories with PostgreSQL JDBC and Agroal; bounded pools per service, pod, shard, and endpoint |
 | Identifiers | Explicitly pinned `de.mkammerer.snowflake-id:snowflake-id:0.0.2`; decimal strings on the wire and positive `BIGINT` in PostgreSQL; reviewed support-policy exception |
 | Database change management | CNPG `DatabaseRole`, `Database` and `Publication` resources for roles, schemas and CDC publications; the Flyway OSS CLI (13.8.1 initially) from its official image, pinned by digest, on the OpenJDK runtime of the Ubuntu JRE image, for one migration stream per schema under `database/`, run as Kubernetes Jobs by that schema's migrator |
-| Messaging | Stable RabbitMQ 4.3 or later (native quorum delayed retry) with its bundled Erlang/OTP. Step 4.2 installs a release inside its support window, and VERSIONS.md and the lock record it. The [architecture's retry/DLQ contract](ARCHITECTURE.md#6-rabbitmq-and-delivery-reliability) applies |
-| Change data capture | Debezium Engine and its PostgreSQL connector (`pgoutput`), embedded in the order service with one reader per shard and offsets in each shard database (JDBC offset store); pinned and qualified under VERSIONS.md in step 4.3 |
+| Messaging | Stable RabbitMQ 4.3 or later (native quorum delayed retry) with its bundled Erlang/OTP. Step 4.3 installs a release inside its support window, and VERSIONS.md and the lock record it. The [architecture's retry/DLQ contract](ARCHITECTURE.md#6-rabbitmq-and-delivery-reliability) applies |
+| Change data capture | Debezium Engine and its PostgreSQL connector (`pgoutput`), embedded in the order service with one reader per shard and offsets in each shard database (JDBC offset store); pinned and qualified under VERSIONS.md in step 4.4 |
 | Deployment packaging | Skaffold 2.25.0 for packaged image builds, Helmfile 1.8.0 for ordered real Helm releases, and vendored verified operator charts (CloudNativePG chart 0.29.1 today); one ordered inventory/shared chart with environment values. Native kind delivery verifies build IDs/manifest digests; the same inventory/templates serve the later cloud target |
 | Cloud target (optional) | AWS EKS provisioned with Terraform in milestone 7, after the local lab passes step 6.6: an EKS overlay, the same operator charts, and Argo CD GitOps delivery for the database layer and the applications. No local step depends on it |
 | Libraries | Quarkus platform-managed extensions and compatible JDBC/Jackson/logging/test libraries; qualify RabbitMQ and Debezium separately and audit inherited overrides |
@@ -451,7 +456,7 @@ OpenShift, or another distribution confined to the cluster bootstrap and environ
    drain nodes). A drill that must stop a whole node is a kind-only extra, kept
    separate from the portable drills.
 5. Verify that RabbitMQ runs and keeps its data under an arbitrary user ID when
-   step 4.2 deploys it.
+   step 4.3 deploys it.
 6. Install third-party operators from their vendored, verified Helm charts with
    shared values in `infra/helm/`, so every cluster runs the same chart version
    and image pins; cluster-specific settings belong in that cluster's values file.
@@ -606,7 +611,7 @@ kubectl --context kind-shardshop -n shardshop get pods,pvc,svc
 ```
 
 Step 3.15 documents the explicit Maven suite/tag selection for disruptive drills;
-neither default builds nor `up.sh` run them. Step 4.8 extends the workload scenarios
+neither default builds nor `up.sh` run them. Step 4.9 extends the workload scenarios
 and deployment gate, and step 6.2 extends the topology scenarios.
 
 Live scenarios must restrict mutations to this disposable lab and report their

@@ -1,5 +1,6 @@
 package dev.nklip.javacraft.shardshop.product.persistence;
 
+import dev.nklip.javacraft.shardshop.common.jdbc.DatabasePhases;
 import dev.nklip.javacraft.shardshop.product.catalog.CatalogFailure;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,7 +40,7 @@ class JdbcCatalogSessionTest {
         when(statement.executeQuery()).thenReturn(rows);
         when(timeout.executeQuery()).thenReturn(timeoutRows);
         when(timeoutRows.next()).thenReturn(true);
-        session = new JdbcCatalogSession(connection, new JdbcCatalogStore.Deadline(() -> 0, 3_000_000_000L),
+        session = new JdbcCatalogSession(connection, new DatabasePhases.Deadline(() -> 0, 3_000_000_000L),
                 CatalogFailure.Reason.UNAVAILABLE);
     }
 
@@ -176,7 +177,7 @@ class JdbcCatalogSessionTest {
     void everyQueryRefreshesTimeoutsFromTheRemainingBudget() throws SQLException {
         AtomicLong time = new AtomicLong();
         JdbcCatalogSession shrinking = new JdbcCatalogSession(connection,
-                new JdbcCatalogStore.Deadline(() -> time.getAndAdd(100_000_000L), 3_000_000_000L),
+                new DatabasePhases.Deadline(() -> time.getAndAdd(100_000_000L), 3_000_000_000L),
                 CatalogFailure.Reason.REPLICA_UNAVAILABLE);
         assertTrue(shrinking.seller(1).isEmpty());
         assertTrue(shrinking.seller(2).isEmpty());

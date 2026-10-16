@@ -1622,7 +1622,7 @@ unresolved:
     maven.plugin_prerelease_exception; other plugin security overrides are retained.
 - id: SBOM-AND-RUNTIME
   blocks:
-  - '4.8'
+  - '4.9'
   status: open
   finding: Node inventory and advisory scan completed on 2026-09-28 (Docker Scout
     1.20.3); 160 OS binary packages; 597 indexed packages; 155 distinct advisories
@@ -1672,7 +1672,7 @@ unresolved:
     OpenVEX statements (images.shardshop_applications), but the gate covers only the
     packages that Docker Scout indexes. On 2026-10-10 the user decided to record this
     gap and keep this item open. Step 3.9 stays done with the gap recorded. The item
-    blocks step 4.8, because that step checks the order, ledger and order producer
+    blocks step 4.9, because that step checks the order, ledger and order producer
     images with the same script and the same JRE base. Close it only when a check
     covers every package of the base image and a review handles the OSV advisories
     above.
