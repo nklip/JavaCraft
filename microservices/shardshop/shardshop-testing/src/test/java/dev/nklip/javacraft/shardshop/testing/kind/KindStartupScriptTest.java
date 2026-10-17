@@ -9,7 +9,6 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -338,7 +337,7 @@ class KindStartupScriptTest {
     }
 
     @Test
-    void everyUpRotatesTheRestartTokenAndTheRestartAliasBehavesTheSame() throws Exception {
+    void everyUpRotatesTheRestartToken() throws Exception {
         state("nodes", NODES);
         Result first = run("up.sh");
         assertEquals(0, first.exit(), first.output());
@@ -347,18 +346,14 @@ class KindStartupScriptTest {
         Result unchanged = run("up.sh");
         assertEquals(0, unchanged.exit(), unchanged.output());
         assertEquals("restart-" + "b".repeat(24), applicationValues().path("restartToken").asText());
-        state("random-digit", "c");
-        Result alias = run("up.sh", "--restart");
-        assertEquals(0, alias.exit(), alias.output());
-        assertEquals("restart-" + "c".repeat(24), applicationValues().path("restartToken").asText());
         List<String> builds = events().stream().filter(line -> line.startsWith("skaffold build ")).toList();
-        assertEquals(3, builds.size());
+        assertEquals(2, builds.size());
         assertTrue(builds.stream().allMatch(line -> line.contains("--cache-artifacts=true ")),
                 "Disabling Skaffold caching enables pruning that can delete an image rebuilt by the same invocation");
         List<Path> caches = builds.stream().flatMap(line -> List.of(line.split(" ")).stream())
                 .filter(argument -> argument.startsWith("--cache-file="))
                 .map(argument -> Path.of(argument.substring("--cache-file=".length()))).toList();
-        assertEquals(3, caches.stream().distinct().count(), "Every build must use a fresh artifact cache");
+        assertEquals(2, caches.stream().distinct().count(), "Every build must use a fresh artifact cache");
         assertTrue(caches.stream().noneMatch(Files::exists), "Invocation artifact caches must be cleaned up: " + caches);
         assertNoAllocatorBootstrap();
         assertNoInfrastructureProvisioning();
@@ -419,11 +414,10 @@ class KindStartupScriptTest {
         return events().stream().filter(line -> line.startsWith("mvn kind-")).map(line -> line.split(" ")[1]).toList();
     }
 
-    private Result run(String script, String... arguments) throws Exception {
+    private Result run(String script) throws Exception {
         Path output = temporary.resolve("output-" + invocation++);
-        List<String> command = new ArrayList<>(List.of("/bin/bash", temporary.resolve("scripts").resolve(script).toString()));
-        command.addAll(List.of(arguments));
-        ProcessBuilder builder = new ProcessBuilder(command).directory(temporary.toFile())
+        ProcessBuilder builder = new ProcessBuilder("/bin/bash", temporary.resolve("scripts").resolve(script).toString())
+                .directory(temporary.toFile())
                 .redirectErrorStream(true).redirectOutput(output.toFile());
         builder.environment().putAll(Map.of("PATH", temporary.resolve("bin") + ":" + System.getenv("PATH"),
                 "TMPDIR", temporary.resolve("tmp").toString(), "FIXTURE", temporary.toString(), "REAL_HELM", helm));

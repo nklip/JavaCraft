@@ -1,4 +1,5 @@
-# Shared implementation for cluster-create.sh and up.sh; source from Bash.
+# Shared implementation for the four lifecycle scripts. Source it from Bash.
+# down.sh and cluster-destroy.sh use only lifecycle_init and require_tools.
 # Provisioning and application delivery remain in their respective entry points.
 
 lifecycle_init() {

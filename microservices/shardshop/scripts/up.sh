@@ -3,11 +3,7 @@
 # Infrastructure provisioning and updates belong to cluster-create.sh.
 set -euo pipefail
 
-case "$*" in
-    '') [[ $# == 0 ]] || { echo 'Usage: up.sh [--restart]' >&2; exit 1; };;
-    --restart) [[ $# == 1 ]] || { echo 'Usage: up.sh [--restart]' >&2; exit 1; };;
-    *) echo 'Usage: up.sh [--restart]' >&2; exit 1;;
-esac
+[[ $# == 0 ]] || { echo 'Usage: up.sh' >&2; exit 1; }
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib/lifecycle.sh"
 lifecycle_init
 require_tools mvn docker kind kubectl helm helmfile skaffold openssl jq

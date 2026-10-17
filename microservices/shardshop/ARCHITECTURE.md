@@ -124,7 +124,8 @@ allocator state, observes prepared infrastructure readiness and never provisions
 namespaces, credentials or infrastructure releases. Both source
 `scripts/lib/lifecycle.sh` for locks, traps, snapshots, rendering, verifiers,
 readiness and retained-node resumption; this helper is not an entry point.
-Shutdown and destruction retain their separate bounded workflows. For Helm-owned
+`down.sh` and `cluster-destroy.sh` source it only for the lock and traps, then call
+`docker stop` and `kind delete cluster`. For Helm-owned
 databases, retained protected declarations come from the pinned current release
 manifest, while live values are checked for drift. This separates API defaults
 from intended storage/placement/bootstrap changes; the legacy kubectl annotation
@@ -136,7 +137,7 @@ Job cache suppresses validation. Every `up.sh` invocation changes a shared resta
 annotation on the product/reader templates through Helm, triggering replacement
 followed by the seeding and acceptance gates even for unchanged code. Each new
 product JVM consumes a fresh, non-reusable generator slot; a normal two-replica
-rollout uses at least two slots. `--restart` is an equivalent explicit alias.
+rollout uses at least two slots.
 Product's pod checksum is SHA-256 of
 the full rendered `application.properties`, sharing the mounted file's named
 template and static defaults. Image/resource/workload settings are direct template
@@ -1084,11 +1085,11 @@ committed SQL; there is no automatic SQL rollback, history repair or database re
 Use the same `TMPDIR` for lifecycle calls. Ordinary failure and INT/TERM release
 the lock after the active command ends. Inspect retained Jobs and confirm no
 invocation remains active before removing a stale lock after SIGKILL or host failure.
-`down.sh` bounds discovery, stopping and verification by one shutdown deadline and
-retains every node container, volume, Secret and allocator identity. Missing or
-already stopped clusters require no Docker mutation. The explicit destroy command
-deletes that retained state, including databases, Kubernetes/Helm configuration and
-allocator history; it refuses shared volumes and unexpected host mounts. Repository
+`down.sh` stops all nodes with one `docker stop --time 10` call and retains every
+node container, volume, Secret and allocator identity. Docker does not change a node
+that is already stopped. The explicit destroy command runs `kind delete cluster`,
+which deletes that retained state, including databases, Kubernetes/Helm configuration
+and allocator history. Docker keeps a volume that another container uses. Repository
 configuration and shared Docker networks/images are outside cluster ownership.
 
 ```text

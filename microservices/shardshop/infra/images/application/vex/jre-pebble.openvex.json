@@ -2,8 +2,8 @@
   "@context": "https://openvex.dev/ns/v0.2.0",
   "@id": "https://github.com/nklip/JavaCraft/blob/main/microservices/shardshop/infra/images/application/vex/jre-pebble.openvex.json",
   "author": "ShardShop image review",
-  "timestamp": "2026-10-13T21:19:38Z",
-  "version": 3,
+  "timestamp": "2026-10-17T22:32:47Z",
+  "version": 4,
   "statements": [
     {
       "vulnerability": {
@@ -602,6 +602,72 @@
     {
       "vulnerability": {
         "name": "CVE-2026-97031"
+      },
+      "products": [
+        {
+          "@id": "pkg:docker/shardshop-product",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-ledger",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-seeder",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-product-reader",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-order-producer",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        },
+        {
+          "@id": "pkg:docker/shardshop-flyway",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.26.7"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Pebble is the service manager of the pinned Canonical JRE base image. The application images and the Flyway migration image replace its entrypoint with Java, thus /usr/bin/pebble never runs in ShardShop containers."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-97032"
       },
       "products": [
         {

@@ -528,8 +528,7 @@ The reader remains running and disruptive drills remain opt-in. A new
 `kind-deployment` runs do not. The four maintained lifecycle entry points are
 `cluster-create.sh`, `up.sh`, `down.sh` and `cluster-destroy.sh`. Create the foundation
 with `cluster-create.sh`, then use `up.sh` for application startup and deployment.
-Every `up.sh` restarts application pods, including unchanged builds; `--restart`
-is an optional compatibility spelling for the same behavior.
+Every `up.sh` restarts application pods, including unchanged builds.
 `cluster-create.sh` applies and verifies the retention admission policy, then creates
 the generator registry and immutable identity on its new cluster. `up.sh` only checks
 existing allocator state: missing, partial, malformed, or mismatched
@@ -1640,7 +1639,7 @@ creates namespaces or credentials or syncs infrastructure releases.
 Every invocation replaces the product and reader pods, even when code and
 configuration are unchanged. Helm applies a fresh shared restart annotation to
 both Deployment templates; its seeder hook and final acceptance gate verify the
-new workload. `--restart` is accepted as an explicit alias for the same behavior.
+new workload.
 Each restarted product JVM consumes a fresh generator ID; the retained lab has
 1,023 non-reusable slots, so an ordinary two-replica rollout uses at least two.
 Changed code is rebuilt and deployed through this same command.
@@ -1688,7 +1687,8 @@ focused reruns.
 and fresh allocator initialization; `up.sh` owns current application builds,
 Maven/Scout, migration and application image delivery. Both may resume retained
 nodes and share snapshot, lock, rendering, verifier and readiness functions in
-`scripts/lib/lifecycle.sh`. This sourced helper is not another entry point. Skaffold owns image
+`scripts/lib/lifecycle.sh`. This sourced helper is not another entry point.
+`down.sh` and `cluster-destroy.sh` use it only for the lock and the signal traps. Skaffold owns image
 build configuration. Helmfile owns release dependencies and phase hooks; Helm
 owns declarative resources and migration/seeder hook Jobs. Kubernetes and
 CloudNativePG own reconciliation. Namespace, DNS probes and immutable allocator
@@ -1715,14 +1715,12 @@ bash microservices/shardshop/scripts/up.sh
 ```
 
 `down.sh` stops every ShardShop kind node, including the control plane and all
-workers, and verifies their stopped state. It succeeds without Docker mutations
-when the cluster is missing or all nodes are already stopped. The overall deadline
-for discovery, stop and verification defaults to 60 seconds; set
-`SHARDSHOP_SHUTDOWN_TIMEOUT_SECONDS` to an integer from 1 to 3600 to change it.
-Terminating an unresponsive CLI may take up to two additional seconds. Docker
-allows ten seconds for graceful shutdown before killing a remaining node process.
-A failed or timed-out stop returns nonzero and releases the lifecycle lock;
-inspect the nodes and retry. `up.sh` resumes the same containers, checks the prepared infrastructure and
+workers, with one `docker stop --time 10` call. Docker stops the nodes in parallel.
+It sends SIGKILL to a node process that did not stop after ten seconds. It returns
+an error if a node does not stop. Docker does not change a node that is already
+stopped, and a missing cluster needs no Docker call. A failed stop returns nonzero
+and releases the lifecycle lock. Inspect the nodes and run `down.sh` again. If
+Docker Desktop does not respond, `down.sh` waits until you stop it with Ctrl+C. `up.sh` resumes the same containers, checks the prepared infrastructure and
 redeploys applications, preserving databases, PVCs, Secrets and allocator identity/history.
 Each restarted product JVM still reserves a new generator ID.
 
@@ -1735,22 +1733,19 @@ bash microservices/shardshop/scripts/cluster-destroy.sh
 This command immediately and irreversibly deletes the fixed `shardshop` kind
 cluster, running or stopped, with all its databases, PVC data, Secrets, Helm
 releases, Kubernetes configuration and generator history. Use `down.sh` when you
-want to retain data. The script uses kind's Docker provider, removes exclusively
-attached node volumes, and verifies that the containers, volumes and
-`kind-shardshop` context/cluster/user entries are gone from the selected
-`KUBECONFIG` (or the default kubeconfig). A missing cluster is safe to repeat;
-stale kubeconfig entries are still removed. Before deletion, a private
-`${TMPDIR:-/tmp}/shardshop-destroy.json` inventory records the Docker daemon identity
-and exact attached volumes. A failed deletion retains it so a retry with the same
-`TMPDIR` and daemon can remove volumes even if their nodes are already gone.
-Success removes this inventory; do not discard it while cleanup is incomplete.
+want to retain data. The script takes the lifecycle lock and runs
+`kind delete cluster --name shardshop` with kind's Docker provider. kind removes the
+node containers with `docker rm -f -v`, which also removes their anonymous `/var`
+volumes. Then kind removes the `kind-shardshop` context, cluster and user entries
+from the selected `KUBECONFIG` (or the default kubeconfig). kind returns an error if
+one of these steps fails. A missing cluster is safe to repeat. Docker keeps a volume
+that another container uses. If Docker cannot remove a node volume, `docker volume ls`
+still shows it after the deletion. Remove it with `docker volume rm`.
 Exported kubeconfig copies outside that selection and external backups must be
 managed separately.
 
-The supported lab stores its data in Docker node volumes. Destruction refuses
-volumes referenced by unrelated containers, custom host mounts, or another
-kubeconfig context referencing ShardShop's cluster/credentials, before deleting
-anything. Resolve those ownership conflicts explicitly. It preserves repository
+The supported lab stores its data in Docker node volumes. `infra/kind.yaml` adds no
+host mounts. Destruction preserves repository
 source/configuration, Docker Desktop, unrelated containers, shared images/build
 caches and the shared kind network. Run `cluster-create.sh` and then `up.sh` to create a fresh lab;
 previous entity IDs and allocator history cannot be recovered by restarting it.

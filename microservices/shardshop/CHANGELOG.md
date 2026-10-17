@@ -2261,3 +2261,107 @@ Each live creation executes the scoped `clean install` plus kind safety, DNS,
 allocator, database and broker gates. Source and broker integration checks remain
 independent of the unimplemented application consumers/CDC steps. The one-broker
 lab provides persistence, not high availability.
+
+<a id="lifecycle-script-reduction"></a>
+## Lifecycle script reduction after step 4.3
+
+**2026-10-18:** At the user's request, `down.sh` and `cluster-destroy.sh` keep only
+the shared lifecycle lock and the one command that does the work. Both scripts now
+source `scripts/lib/lifecycle.sh` and call `lifecycle_init`, as `cluster-create.sh`
+and `up.sh` do. The lifecycle Bash code goes from 564 to 354 lines.
+
+- `down.sh` (111 → 18 lines) gets the nodes from `kind get nodes` and stops them
+  with one `docker stop --time 10` call. Docker stops the nodes in parallel, does not
+  change a stopped node and returns an error if a node does not stop. The script
+  deadline, `SHARDSHOP_SHUTDOWN_TIMEOUT_SECONDS`, the background command control and
+  the node inspections before and after the stop are removed. If Docker Desktop does
+  not respond, `down.sh` waits until Ctrl+C.
+- `cluster-destroy.sh` (129 → 15 lines) runs `kind delete cluster --name shardshop`.
+  kind removes the node containers with `docker rm -f -v`, which also removes their
+  anonymous `/var` volumes. Then kind removes its kubeconfig entries. The removed
+  parts are the volume inventory for the Docker daemon, the host-mount, shared-volume
+  and kubeconfig-reference guards, and the checks after the deletion.
+  `infra/kind.yaml` adds no host mounts, and Docker keeps a volume that another
+  container uses.
+- `up.sh` no longer accepts `--restart`. Every run already restarted the
+  application pods, thus the alias had no effect.
+- `KindLifecycleLockTest` (5 tests) replaces `KindStopScriptTest` (16 tests) and
+  `KindDestroyScriptTest` (14 tests). It keeps the lock test for all four entry
+  points, the INT/TERM tests of `up.sh` and the failure test of `down.sh`. The Java
+  test code is 431 lines shorter.
+
+Validation:
+
+- Before a `clean` build, the compiled classes of the two deleted tests ran against
+  the new scripts, and 21 of their 30 tests failed. Thus these tests checked only the
+  removed logic.
+- After `clean`, all **167 testing-module unit tests** pass (197 before). Their
+  surefire time goes from 68.1 s to 47.7 s. Bash 3.2 and Bash 5.3 accept the syntax
+  of the five script files.
+- The new `down.sh` stopped the four retained nodes in 11 seconds. Docker stopped
+  them with SIGKILL after the grace period (exit 137), as with the earlier script.
+  A second run made no change. An argument gives the usage error.
+- While the retained lab was stopped, copies of the new `cluster-destroy.sh` and
+  `down.sh` ran against a disposable one-node kind cluster. The copies changed only
+  the cluster name to `shardshop-destroy-test`. The cluster used the pinned node
+  image and a private kubeconfig with an unrelated context. The node had only the
+  anonymous `/var` volume and the read-only `/lib/modules` bind. The deletion
+  removed the container, the volume and all kind kubeconfig entries, and the
+  unrelated context stayed. A second deletion and `down.sh` for the missing cluster
+  ended with success. Each run released the lock.
+- `up.sh` passed the ShardShop `clean install` with all module tests and the
+  `kind-config` gate. Then the Docker Scout gate stopped it with exit 2, before any
+  cluster change. CVE-2026-97032 (high, Go `stdlib` before 1.26.9) in the Pebble
+  binary of the `ubuntu/jre` base image has no reviewed VEX statement. The VEX
+  document covers only the ten earlier Go CVEs. This gate failure is independent
+  of the script reduction, and it blocks `up.sh` until the advisory is reviewed.
+- `cluster-create.sh` then resumed the stopped lab in 140 seconds. All its gates
+  passed, including DNS on every node, the allocator and the database and broker
+  topology. The node container IDs and mounts, PVC bindings, CNPG Cluster and
+  Database UIDs, Secret UIDs and versions, and the allocator registry and identity
+  are equal to the state before the stop. Only the infrastructure Helm history
+  changed: Helm added revision 11 and removed revision 1. The two restarted product
+  JVMs moved `highWaterMark` from 129 to 131. Product (2/2), the reader (1/1) and
+  RabbitMQ (1/1) are ready with the images of the previous deployment.
+- At the user's request, version 4 of `infra/images/application/vex/jre-pebble.openvex.json`
+  adds CVE-2026-97032 with the products and justification of the ten earlier
+  statements. OSV lists it as GO-2026-6617, an HTTP/2 server crash in `net/http`,
+  fixed in Go 1.26.9 and 1.27.2. The vulnerable code is in `/usr/bin/pebble`, the
+  only Go binary of the images, and pebble never runs. Scout now reports 2 critical,
+  9 high and 2 medium advisories for this package. Until 2026-10-13 it reported
+  2 critical, 8 high and 3 unrated. With version 4, the gate passes for the current
+  Flyway, product, seeder and reader builds. VERSIONS.md and the lock record the
+  new counts.
+- The second `up.sh` passed in 487 seconds: all 1,405 module tests, all kind gates,
+  the advisory gate, the delivery of the four images to every node and the Helmfile
+  phase gates. Flyway kept the reviewed pin `sha256:96efa775…`. This first `up.sh`
+  after steps 4.1–4.3 applied the pending catalog V3 and ordering V2 and V3
+  migrations, with their repeatable migrations, on all three shards. All of them
+  succeeded, and ledger had no pending migration. Product (2/2) and the reader (1/1)
+  run the new digests, which the lock records. In the retained state, only the Helm
+  release history changed. The two new product JVMs moved `highWaterMark` from 131
+  to 133.
+
+Commands run from the repository root:
+
+```bash
+bash -n microservices/shardshop/scripts/up.sh microservices/shardshop/scripts/down.sh \
+  microservices/shardshop/scripts/cluster-create.sh \
+  microservices/shardshop/scripts/cluster-destroy.sh microservices/shardshop/scripts/lib/lifecycle.sh
+mvn -B -ntp -o -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dshardshop.infrastructureOnly=true clean test
+bash microservices/shardshop/scripts/down.sh
+bash microservices/shardshop/scripts/down.sh
+bash microservices/shardshop/scripts/up.sh
+bash microservices/shardshop/scripts/cluster-create.sh
+# After version 4 of the VEX document, for each current Flyway, product, seeder and reader tag:
+docker scout cves --exit-code --only-severity critical,high --format only-packages \
+  --only-vuln-packages --vex-location microservices/shardshop/infra/images/application/vex \
+  --vex-author '^ShardShop image review$' --ignore-suppressed local://shardshop-<image>:<tag>
+bash microservices/shardshop/scripts/up.sh
+```
+
+The disposable qualification script ran between the second `down.sh` and the first `up.sh`.
+It used `kind create cluster --name shardshop-destroy-test --image <pinned node
+image> --wait 120s` with a private `KUBECONFIG`, and native `kind delete cluster` in
+its EXIT cleanup. Its files and logs remain outside the repository.

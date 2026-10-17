@@ -125,16 +125,23 @@ image:
 
 | Binary | Images | Package | Critical | High | Other |
 |---|---|---|---|---|---|
-| `/usr/bin/pebble` of the JRE base | All | Go stdlib 1.26.7 | 2 | 8 | 3 unrated |
+| `/usr/bin/pebble` of the JRE base | All | Go stdlib 1.26.7 | 2 | 9 | 2 medium |
+
+The scans until 2026-10-13 gave 2 critical, 8 high and 3 unrated advisories. On
+**2026-10-18**, Scout reported 2 critical, 9 high and 2 medium advisories for the same
+package in all four current images. The new high advisory CVE-2026-97032
+(GO-2026-6617, an HTTP/2 server crash in `net/http`) is fixed in Go 1.26.9 and 1.27.2.
 
 The newest `ubuntu/jre:25-26.04_stable` digest
 (`sha256:a27b7c6734762d8c7d373018b6dd921a7d42a021490c1497ee9904ca06f21853`) changes
 only pebble, to 1.33.1 with Go 1.27.1, and that pebble still has 2 critical and 8
 high advisories. Thus the base pin stays the same as for the migration image.
+Go 1.27.1 is also in the affected range of CVE-2026-97032, thus this digest does not
+remove it.
 
 Reviewed OpenVEX statements cover these findings. The document
-`infra/images/application/vex/jre-pebble.openvex.json` contains 10 `not_affected`
-statements for 10 CVE IDs. Each statement names the images and the exact package
+`infra/images/application/vex/jre-pebble.openvex.json` contains 11 `not_affected`
+statements for 11 CVE IDs. Each statement names the images and the exact package
 version: the images replace the pebble entrypoint with Java, thus pebble never runs.
 
 `up.sh` applies only statements with the author
@@ -148,6 +155,10 @@ which contains the same pebble binary. Version 3 (2026-10-14) uses named Docker
 product PURLs without a tag, so Scout matches Skaffold content tags as well as the
 older fixed tags. The exact Go package version and ten CVEs stay unchanged.
 A newly built image passed; wrong product-name and package-version controls failed.
+Version 4 (2026-10-18) adds CVE-2026-97032 with the same products and justification.
+The vulnerable HTTP/2 server code is in `/usr/bin/pebble`, which never runs. Before
+this statement, the gate stopped `up.sh` with exit 2. After it, all four current
+images passed the gate.
 Review these recipe-specific statements whenever the Java entrypoint changes too.
 
 #### OS packages without an advisory check
@@ -926,7 +937,9 @@ image had 417 packages and 12 findings (4 high, 8 medium), all in copied librari
 the migrations never used. On **2026-10-13**, the gate of step 3.12 scanned the same
 image again: 74 packages, and only the Go stdlib 1.26.7 of `/usr/bin/pebble` (2
 critical, 8 high, 3 unrated), which the reviewed [pebble statements](#step-39-application-images)
-cover. Recheck the final image on the next Flyway/base refresh, by 2026-10-28. The
+cover. On **2026-10-18**, the same image had 2 critical, 9 high and 2 medium advisories
+in that package. Version 4 of the statements covers the new high advisory
+CVE-2026-97032. Recheck the final image on the next Flyway/base refresh, by 2026-10-28. The
 lock records the actual CRI and config digests. The historical upstream-image scan
 below is separate evidence for the superseded image.
 
