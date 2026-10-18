@@ -1071,3 +1071,21 @@ to OSV for all **81 third-party runtime JAR coordinates** return no findings.
 All five RabbitMQ, PostgreSQL JDBC and Agroal JARs match Maven Central's published
 SHA-1 checksums; their SHA-256 hashes are recorded in the lock. RabbitMQ client
 release and support evidence remains in the step 4.3 qualification above.
+
+### Step 4.6 shared RabbitMQ publisher
+
+On **2026-10-18**, the step 4.6 validation moved the copied RabbitMQ publishers of
+order and ledger into `shardshop-common`. Common declares the already qualified
+RabbitMQ Java client **5.37.0** as an optional dependency. Maven does not give
+optional dependencies to dependent modules, thus only order and ledger, which
+declare the client themselves, contain it. A `dependency:list` comparison of all
+14 reactor modules before and after the change shows the same runtime sets, except
+the own list of common. That list now names the client, its Netty
+**4.1.139.Final** modules and SLF4J API **2.0.18**. Product, sharding and the
+workloads receive no RabbitMQ classes. The tests of common use the
+platform-managed JBoss Log Manager **3.2.2.Final** and `slf4j-jboss-logmanager`
+**2.0.2.Final**, the same as `shardshop-testing`. The audit SBOM of common grows
+from **34 to 48 components**: the client, SLF4J API, these two test artifacts and
+the ten platform artifacts that the JBoss Log Manager uses. The order and ledger
+SBOMs keep **304** and **193** components. OSV returns no findings for the 14 added
+coordinates.

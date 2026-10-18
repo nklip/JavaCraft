@@ -2620,3 +2620,128 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pinteg
 The pre-fix runs used a scratch copy of the step 4.5 code with the new tests. The
 tests that need the new API were left out of that copy: `FailuresTest`, the new
 `DatabasePhasesTest` case, `LedgerServiceTest` and `LedgerCommandConsumerTest`.
+
+## Step 4.6
+
+**2026-10-18:** Ledger now publishes committed result outboxes to
+`order.saga-results` with routing key `order.ledger-results`. It sends the exact
+saved result envelope as persistent JSON, with mandatory routing and the
+order-reserved result ID. Only a positive broker confirm without a return permits
+the separate database transaction to mark that result published.
+
+The mark checks both `message_id` and the sent `publication_attempt`, so an older
+confirm cannot clear a replay that increments the permanent counter and rearms
+the outbox. Failed publishes and uncertain mark commits retry from durable state;
+they can deliver the same result again without changing its ID, timestamps,
+decision or envelope. No database transaction spans broker IO. A single worker
+reads bounded batches (100 by default) and publishes one result at a time, with
+finite database/send/confirm deadlines and reconnect backoff from 500 ms to
+30 seconds. `--check-startup` starts neither worker; disabling the publisher
+leaves command consumption available.
+
+No migration or dependency change is required. The audit still produces a
+**193-component SBOM** using the step 4.5 dependency graph. The publisher leaves
+confirmed outbox rows for the later retention step; order result consumption
+remains step 4.7 and kind application deployment remains step 4.9.
+
+Validation:
+
+- **48 ledger unit/contract tests** pass, including positive/negative/missing
+  confirms, mandatory returns, a blocked socket write, disabled workers, a stale
+  mark, and replay after an uncertain database mark.
+- **Six packaged publisher scenarios** pass on PostgreSQL 18.6 and RabbitMQ
+  4.3.6. They verify recorded and rejected envelopes/properties, restart and
+  startup probes, duplicate replay after cleanup and a policy change,
+  reconciliation, missing-route recovery, and reconnect after both ledger broker
+  connections are closed. A held outbox row lock forces a confirmed old attempt
+  to wait while its permanent/outbox attempt advances; the newer row remains
+  pending until its own successful publication, without a database timeout.
+- **12 existing ledger consumer scenarios** pass with the publisher disabled,
+  preserving the command consumer's pending-result checks.
+- **167 testing-module unit tests** and **two ledger migration scenarios** pass.
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-ledger test
+mvn -B -ntp -f microservices/shardshop/shardshop-ledger/pom.xml -Paudit -DskipTests install
+mvn -B -ntp -f microservices/shardshop/shardshop-testing/pom.xml -Pintegration \
+  -Dtest=KindSafetyTest '-Dcucumber.filter.tags=@ledger-publisher' verify
+mvn -B -ntp -f microservices/shardshop/shardshop-testing/pom.xml -Pintegration \
+  -Dtest=KindSafetyTest '-Dcucumber.filter.tags=@ledger-consumer' verify
+mvn -B -ntp -f microservices/shardshop/shardshop-testing/pom.xml -Pintegration \
+  '-Dcucumber.filter.tags=@ledger-migration' verify
+```
+
+### Step 4.6 validation fixes
+
+**2026-10-18:** A validation of the step found five problems, and the user asked
+to fix all of them. For the first problem, the user selected one shared publisher
+class.
+
+1. The ledger result publisher was a copy of the order command publisher, and the
+   two copies were already different. Both relays now use
+   `dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher` in
+   `shardshop-common`. It keeps the normal close, the single abort, the 10-second
+   heartbeat and the named threads of the ledger copy, and the error texts of both
+   copies, for example `RabbitMQ returned unroutable command publication`. Common
+   declares the RabbitMQ client as an optional dependency. Thus only order and
+   ledger, which declare the client themselves, contain it. ARCHITECTURE now
+   permits this shared publisher in common.
+2. Two documented behaviors had no test. `LedgerWiringTest` now starts both
+   workers with `shardshop.ledger.enabled=false`, and no worker may connect to a
+   local broker port or read the outbox. The full-batch test of
+   `LedgerResultRelayTest` now uses a 30-second poll interval and requires the next
+   read within 2 seconds.
+3. The publisher log did not always show the state. Each new connection now logs
+   one INFO line, for example `RabbitMQ result publisher connected to
+   order.saga-results`. A connection that the broker closed while it was idle is
+   replaced before the next publication. Before, that publication failed one time,
+   with a WARN line and a 500 ms backoff. A timeout cause now names its phase, for
+   example `RabbitMQ result publisher connection timed out`. The client's WARN
+   `An unexpected connection driver error occurred` for the socket of a failed or
+   aborted stream is now a DEBUG line, because the publication reports the failure
+   itself.
+4. Two document errors: ARCHITECTURE still called the relay a future relay, and
+   the README commands of this step had no `-am`.
+5. Two Testcontainers of an earlier session, PostgreSQL and RabbitMQ, ran next to
+   the lab from 2026-10-17 23:16 UTC. Ryuk is off, thus a stopped test JVM left
+   them. They and their two volumes were removed after a check that no process
+   used their ports.
+
+Validation:
+
+- Before the fixes, the new tests ran against a copy of the step 4.6 code. Three
+  ledger unit tests failed for the reported reasons: two timeout messages were
+  `null`, and the next publication after an idle close failed with
+  `AlreadyClosedException`. The stronger reconnect scenario failed, because the log
+  had a publisher retry line. The two new behavior tests passed, because the code
+  already obeyed these rules. Each of them failed against the mutant that it
+  covers: without `config.enabled()` in the relay wiring, and with a wait after
+  each full batch.
+- After the fixes, common passes **271 unit tests**, with 11 for
+  `ConfirmedPublisher`. The ledger passes **44 unit tests**, and order passes
+  **228 unit and provider tests** and **38 startup checks**. The two publisher test
+  classes of order and ledger became `ConfirmedPublisherTest`. The full
+  `-pl shardshop-testing -am -Pintegration clean verify` passes **100 scenarios**
+  in 1,383 seconds, with the 6 publisher and 15 CDC scenarios. Its only WARN line
+  is the accepted Ryuk line.
+- Live probes with the packaged ledger pass on disposable PostgreSQL 18.6 and
+  RabbitMQ 4.3.6: a full result queue, a memory alarm, a frozen broker, a SIGKILL
+  between the confirm and the mark, two ledger processes, and a locked outbox
+  table. With the frozen broker, the log had no client driver WARN line, where it
+  had three before the fixes. The timeout causes named their phases.
+- The runtime sets of all 14 reactor modules did not change, except the own list
+  of common. The audit SBOM of common has 48 components, 34 before. Order and
+  ledger keep 304 and 193. OSV returns no findings for the 14 added coordinates.
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-ledger,shardshop-order -am -Paudit verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
+```
+
+The pre-fix runs used a scratch copy of the step 4.6 code with the new tests. In
+that copy, the publisher regression tests used the old ledger publisher class,
+because `ConfirmedPublisher` did not exist there.

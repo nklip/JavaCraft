@@ -9,6 +9,8 @@ import dev.nklip.javacraft.shardshop.ledger.command.LedgerCommand;
 import dev.nklip.javacraft.shardshop.ledger.command.LedgerDecision;
 import dev.nklip.javacraft.shardshop.ledger.command.LedgerStore;
 import dev.nklip.javacraft.shardshop.ledger.command.TransportBinding;
+import dev.nklip.javacraft.shardshop.ledger.result.PendingResult;
+import dev.nklip.javacraft.shardshop.ledger.result.ResultOutbox;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.configuration.supplier.AgroalDataSourceConfigurationSupplier;
 import io.agroal.api.exceptionsorter.PostgreSQLExceptionSorter;
@@ -29,7 +31,7 @@ import java.util.TreeSet;
 import java.util.function.Function;
 
 /** Atomic, bounded ledger decisions and duplicate-result rearming on the ledger primary. */
-public final class JdbcLedgerStore implements LedgerStore, AutoCloseable {
+public final class JdbcLedgerStore implements LedgerStore, ResultOutbox, AutoCloseable {
     private final AgroalDataSource pool;
     private final DatabasePhases phases;
 
@@ -57,6 +59,55 @@ public final class JdbcLedgerStore implements LedgerStore, AutoCloseable {
             throw new IllegalStateException("Ledger store unavailable");
         }
         phases = new DatabasePhases("ledger", maxPoolSize);
+    }
+
+    @Override
+    public List<PendingResult> pending(int limit) {
+        if (limit < 1 || limit > 1000) {
+            throw new IllegalArgumentException("Ledger result batch size must be between 1 and 1000");
+        }
+        return phases.run(DatabasePhases.Pool.of(pool, () -> pool.flush(AgroalDataSource.FlushMode.ALL)),
+                true, DatabasePhases.PHASE_BUDGET, (connection, deadline) -> {
+                    DatabasePhases.refreshTimeouts(connection, deadline);
+                    try (PreparedStatement statement = connection.prepareStatement(
+                            "SELECT outbox.message_id, outbox.publication_attempt, binding.envelope::text "
+                                    + "FROM ledger.ledger_outbox AS outbox "
+                                    + "JOIN ledger.ledger_result_ids AS binding "
+                                    + "ON binding.result_message_id=outbox.message_id "
+                                    + "AND binding.publication_attempt=outbox.publication_attempt "
+                                    + "WHERE outbox.published_at IS NULL "
+                                    + "ORDER BY outbox.created_at, outbox.message_id LIMIT ?")) {
+                        statement.setInt(1, limit);
+                        List<PendingResult> results = new ArrayList<>();
+                        try (ResultSet rows = statement.executeQuery()) {
+                            while (rows.next()) {
+                                results.add(new PendingResult(rows.getLong(1), rows.getLong(2), rows.getString(3)));
+                            }
+                        }
+                        return List.copyOf(results);
+                    }
+                }, IllegalArgumentException.class,
+                failure -> new IllegalStateException("Ledger result outbox unavailable", failure));
+    }
+
+    /** A stale confirm must leave a newer replay pending, including after outbox cleanup/recreation. */
+    @Override
+    public boolean markPublished(long messageId, long publicationAttempt) {
+        if (messageId < 1 || publicationAttempt < 1) {
+            throw new IllegalArgumentException("Ledger result ID and publication attempt must be positive");
+        }
+        return phases.run(DatabasePhases.Pool.of(pool, () -> pool.flush(AgroalDataSource.FlushMode.ALL)),
+                false, DatabasePhases.PHASE_BUDGET, (connection, deadline) -> {
+                    DatabasePhases.refreshTimeouts(connection, deadline);
+                    try (PreparedStatement statement = connection.prepareStatement(
+                            "UPDATE ledger.ledger_outbox SET published_at=GREATEST(clock_timestamp(), created_at) "
+                                    + "WHERE message_id=? AND publication_attempt=? AND published_at IS NULL")) {
+                        statement.setLong(1, messageId);
+                        statement.setLong(2, publicationAttempt);
+                        return statement.executeUpdate() == 1;
+                    }
+                }, IllegalArgumentException.class,
+                failure -> new IllegalStateException("Ledger result publication mark unavailable", failure));
     }
 
     @Override

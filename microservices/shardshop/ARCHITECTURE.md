@@ -325,13 +325,20 @@ strict JSON readers `JsonFields` and `JsonResponses`. Step 4.1 moved copied
 product and order code here: `JsonRequests` and
 `JsonFields.nonblankText` decode request bodies strictly, and
 `dev.nklip.javacraft.shardshop.common.jdbc` holds the bounded transaction engine
-`DatabasePhases`, `Endpoint` and the TLS and driver defaults of `JdbcUrls`. Their
+`DatabasePhases`, `Endpoint` and the TLS and driver defaults of `JdbcUrls`. The
+step 4.6 validation moved the copied RabbitMQ publishers of order and ledger to
+`dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher`: one ordered stream
+with persistent mandatory messages, publisher confirms and finite timeouts. Their
 unit tests and boundary vectors live in common. Add reusable
-validation and utilities here when multiple modules need them. Common has no
-Quarkus startup/CDI wiring, application dependencies, shard topology, ID generation
-or messaging, and it manages no database connections: each application owns its
+validation and utilities here when multiple modules need them. Common declares the
+RabbitMQ client as an optional dependency, thus only order and ledger, which
+declare the client themselves, contain it. Common has no
+Quarkus startup/CDI wiring, application dependencies, shard topology or ID
+generation, and it manages no database connections: each application owns its
 pools, endpoints, credentials and configuration, and the shared PostgreSQL code runs
-on connections of these pools. Thus the HTTP deadline filters of product and order
+on connections of these pools. Each application also owns its broker settings and
+credentials; a publisher opens and closes only the connection of its own stream.
+Thus the HTTP deadline filters of product and order
 stay in the applications, because they need Vert.x, JAX-RS and CDI wiring. The JSON
 parser of common uses the platform-managed Jackson streaming API. All six
 applications depend on common directly.
@@ -1230,12 +1237,25 @@ command/result pair. `ledger_outbox.message_id` is the reserved result ID; the
 publisher joins it to `ledger_result_ids.result_message_id` for the envelope.
 The outbox's deferred composite foreign key requires its result ID and attempt
 to match the permanent binding at commit. An index on unpublished outbox rows
-supports the future polling relay; ledger has no CDC publication.
+supports the step 4.6 polling relay; ledger has no CDC publication.
 
 SQL checks positive attempts and their committed consistency; Java controls
 monotonic increments. Section 5 defines the
 [replay of a duplicate command](#reconciliation-and-replayed-outcomes) and the
 publisher confirmation of each attempt.
+
+Step 4.6 implements a polling result relay. It reads a bounded batch of pending
+outbox rows joined to their permanent result envelopes, releases the database
+transaction, and publishes each saved envelope with mandatory routing and
+persistent delivery. Only a positive confirm without a return permits a separate
+transaction to set `published_at` where both result ID and publication attempt
+match. The relay never increments attempts or changes saved envelopes. Failed or
+uncertain publications remain pending and retry with a fresh broker stream and
+capped backoff; process restart resumes pending rows. A stream that the broker
+closed while it was idle opens a new connection before the next publication. The
+relay uses the shared `ConfirmedPublisher` of common, as the order CDC relay does.
+Multiple publishers can deliver duplicates, but cannot clear a newer replay with a
+stale confirm.
 
 `conflicting_commands` retains the received envelope and expected/received
 identity snapshots without foreign keys that could obstruct quarantine. Its
@@ -1261,9 +1281,9 @@ existing incident, modify saved payloads, create schema objects or temporary
 tables, truncate tables, or read the Flyway history. There are no ID sequences,
 SQL functions, or triggers. Step 4.5 validates envelopes and commits business
 decisions, replay requests or conflict quarantine before acknowledging commands.
-Publication confirmation and transport cleanup gates belong to the later Java
-publisher and retention steps. The DELETE grants alone do
-not enforce confirmed publication or retention windows.
+Step 4.6 implements publication confirmation with an attempt check. Transport
+cleanup belongs to the later retention step. The DELETE grants alone do not
+enforce confirmed publication or retention windows.
 
 ### Catalog: sellers, products, and stock
 

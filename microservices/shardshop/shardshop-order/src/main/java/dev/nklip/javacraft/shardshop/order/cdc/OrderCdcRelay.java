@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.order.cdc;
 
 import dev.nklip.javacraft.shardshop.common.Failures;
+import dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher;
 import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import io.debezium.engine.ChangeEvent;
 import io.debezium.engine.DebeziumEngine;
@@ -19,6 +20,9 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class OrderCdcRelay implements AutoCloseable {
     private static final Logger LOG = Logger.getLogger(OrderCdcRelay.class);
     private static final long MAX_BACKOFF_MILLIS = 30_000;
+    /** Commands route to ledger's quorum queue ledger.record-order. */
+    private static final ConfirmedPublisher.Destination COMMANDS = new ConfirmedPublisher.Destination(
+            "ledger.commands", "ledger.record-order", "command", "order-command-publisher");
 
     public record ShardSettings(String shard, Endpoint application, Endpoint replication) {
         public ShardSettings {
@@ -32,7 +36,7 @@ public final class OrderCdcRelay implements AutoCloseable {
     private final AtomicBoolean started = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
 
-    public OrderCdcRelay(List<ShardSettings> shards, RabbitCommandPublisher.Settings rabbit) {
+    public OrderCdcRelay(List<ShardSettings> shards, ConfirmedPublisher.Settings rabbit) {
         Objects.requireNonNull(shards, "shards");
         Objects.requireNonNull(rabbit, "rabbit");
         Set<String> seen = new HashSet<>();
@@ -66,14 +70,14 @@ public final class OrderCdcRelay implements AutoCloseable {
 
     private final class Reader implements Runnable {
         private final ShardSettings settings;
-        private final RabbitCommandPublisher.Settings rabbit;
+        private final ConfirmedPublisher.Settings rabbit;
         private final CdcStore store;
         private final Thread supervisor;
         private volatile DebeziumEngine<ChangeEvent<String, String>> engine;
         private volatile Thread engineThread;
         private volatile boolean recoveryRequired;
 
-        Reader(ShardSettings settings, RabbitCommandPublisher.Settings rabbit) {
+        Reader(ShardSettings settings, ConfirmedPublisher.Settings rabbit) {
             this.settings = settings;
             this.rabbit = rabbit;
             this.store = new CdcStore(settings.application(), settings.replication());
@@ -154,7 +158,7 @@ public final class OrderCdcRelay implements AutoCloseable {
                     LOG.infof("CDC reader for %s dropped the slot of a first start without a checkpoint",
                             settings.shard());
                 }
-                try (RabbitCommandPublisher publisher = new RabbitCommandPublisher(rabbit)) {
+                try (ConfirmedPublisher publisher = new ConfirmedPublisher(rabbit, COMMANDS)) {
                     CdcBatchProcessor processor = new CdcBatchProcessor(identity, publisher, store::markPublished);
                     AtomicReference<Throwable> completionFailure = new AtomicReference<>();
                     DebeziumEngine<ChangeEvent<String, String>> created = DebeziumEngine.create(Json.class)

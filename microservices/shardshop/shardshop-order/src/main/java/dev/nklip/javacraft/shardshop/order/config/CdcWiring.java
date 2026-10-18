@@ -1,8 +1,8 @@
 package dev.nklip.javacraft.shardshop.order.config;
 
+import dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher;
 import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import dev.nklip.javacraft.shardshop.order.cdc.OrderCdcRelay;
-import dev.nklip.javacraft.shardshop.order.cdc.RabbitCommandPublisher;
 import dev.nklip.javacraft.shardshop.sharding.ShardTopology;
 import io.quarkus.runtime.Startup;
 import jakarta.enterprise.inject.Disposes;
@@ -43,7 +43,7 @@ public class CdcWiring {
                 throw new IllegalArgumentException("CDC is enabled but shardshop.order.cdc.broker.password is not set");
             }
         }
-        return new OrderCdcRelay(shards, new RabbitCommandPublisher.Settings(broker.host(), broker.port(),
+        return new OrderCdcRelay(shards, new ConfirmedPublisher.Settings(broker.host(), broker.port(),
                 broker.virtualHost(), broker.username(), broker.password().orElse(""), broker.timeout()));
     }
 

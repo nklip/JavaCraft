@@ -13,7 +13,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.List;
 
-/** Packaged ledger consumer, using only the ledger_app SQL and shardshop-ledger RabbitMQ logins. */
+/** Packaged ledger runtime, using only the ledger_app SQL and shardshop-ledger RabbitMQ logins. */
 public final class LedgerRuntime implements Disposable {
     private final CatalogDatabase database = CatalogDatabase.instance();
     private final Path directory;
@@ -26,9 +26,18 @@ public final class LedgerRuntime implements Disposable {
     }
 
     public void start(String databaseName, RabbitMqBroker queue, String allowedCurrencies) throws Exception {
+        start(databaseName, queue, allowedCurrencies, false);
+    }
+
+    public void startWithPublisher(String databaseName, RabbitMqBroker queue, String allowedCurrencies) throws Exception {
+        start(databaseName, queue, allowedCurrencies, true);
+    }
+
+    private void start(String databaseName, RabbitMqBroker queue, String allowedCurrencies, boolean publisherEnabled)
+            throws Exception {
         name = databaseName;
         broker = queue;
-        Path configuration = configuration(databaseName, queue, allowedCurrencies);
+        Path configuration = configuration(databaseName, queue, allowedCurrencies, publisherEnabled);
         application = PackagedApplication.start("shardshop-ledger", directory,
                 List.of("-Dquarkus.config.locations=" + configuration.toUri()));
         long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
@@ -46,7 +55,17 @@ public final class LedgerRuntime implements Disposable {
 
     /** The one-shot startup probe must exit without consuming an already queued command. */
     public void checkStartup(String databaseName, RabbitMqBroker queue, String allowedCurrencies) throws Exception {
-        Path configuration = configuration(databaseName, queue, allowedCurrencies);
+        checkStartup(databaseName, queue, allowedCurrencies, false);
+    }
+
+    public void checkStartupWithPublisher(String databaseName, RabbitMqBroker queue, String allowedCurrencies)
+            throws Exception {
+        checkStartup(databaseName, queue, allowedCurrencies, true);
+    }
+
+    private void checkStartup(String databaseName, RabbitMqBroker queue, String allowedCurrencies,
+                              boolean publisherEnabled) throws Exception {
+        Path configuration = configuration(databaseName, queue, allowedCurrencies, publisherEnabled);
         PackagedApplication check = PackagedApplication.start("shardshop-ledger", directory,
                 List.of("-Dquarkus.config.locations=" + configuration.toUri()), List.of("--check-startup"));
         if (check.awaitExit(Duration.ofSeconds(20)) != 0) {
@@ -54,7 +73,8 @@ public final class LedgerRuntime implements Disposable {
         }
     }
 
-    private Path configuration(String databaseName, RabbitMqBroker queue, String allowedCurrencies) throws IOException {
+    private Path configuration(String databaseName, RabbitMqBroker queue, String allowedCurrencies,
+                               boolean publisherEnabled) throws IOException {
         Path configuration = Files.createTempFile(directory, "ledger-", ".properties",
                 PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
         Files.writeString(configuration, String.join("\n", List.of(
@@ -65,6 +85,9 @@ public final class LedgerRuntime implements Disposable {
                 "shardshop.ledger.database.root-certificate=" + database.trustedCa(),
                 "shardshop.ledger.max-pool-size=4",
                 "shardshop.ledger.allowed-currencies=" + allowedCurrencies,
+                "shardshop.ledger.publisher.enabled=" + publisherEnabled,
+                "shardshop.ledger.publisher.batch-size=10",
+                "shardshop.ledger.publisher.poll-interval=100ms",
                 "shardshop.ledger.broker.host=127.0.0.1",
                 "shardshop.ledger.broker.port=" + queue.port(),
                 "shardshop.ledger.broker.virtual-host=shardshop",
@@ -77,6 +100,11 @@ public final class LedgerRuntime implements Disposable {
     public void restart(String allowedCurrencies) throws Exception {
         stop();
         start(name, broker, allowedCurrencies);
+    }
+
+    public void restartWithPublisher(String allowedCurrencies) throws Exception {
+        stop();
+        startWithPublisher(name, broker, allowedCurrencies);
     }
 
     public void stop() throws InterruptedException {

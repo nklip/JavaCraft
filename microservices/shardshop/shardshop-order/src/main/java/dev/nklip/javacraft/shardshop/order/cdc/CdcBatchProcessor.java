@@ -2,6 +2,7 @@ package dev.nklip.javacraft.shardshop.order.cdc;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher;
 import io.debezium.engine.ChangeEvent;
 import io.debezium.engine.DebeziumEngine;
 
@@ -18,12 +19,12 @@ final class CdcBatchProcessor implements DebeziumEngine.ChangeConsumer<ChangeEve
     }
 
     private final String destination;
-    private final CommandPublisher publisher;
+    private final ConfirmedPublisher publisher;
     private final PublicationStatus status;
     private final ObjectMapper json = new ObjectMapper();
     private final AtomicReference<Throwable> failure = new AtomicReference<>();
 
-    CdcBatchProcessor(String identity, CommandPublisher publisher, PublicationStatus status) {
+    CdcBatchProcessor(String identity, ConfirmedPublisher publisher, PublicationStatus status) {
         this.destination = identity + ".ordering.order_outbox";
         this.publisher = Objects.requireNonNull(publisher);
         this.status = Objects.requireNonNull(status);

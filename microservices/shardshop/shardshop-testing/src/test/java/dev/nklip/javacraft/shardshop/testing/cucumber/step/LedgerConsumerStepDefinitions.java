@@ -449,7 +449,7 @@ public final class LedgerConsumerStepDefinitions {
         awaitQueueEmpty();
     }
 
-    private ObjectNode command(int ordinal, String currency) throws Exception {
+    static ObjectNode command(int ordinal, String currency) throws Exception {
         ObjectNode command = Json.object(Contracts.message("shardshop-order", "record-order.json").encode());
         long base = BASE + ordinal * 20L;
         command.put("orderId", Long.toString(base));

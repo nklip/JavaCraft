@@ -4,13 +4,16 @@ import io.quarkus.runtime.QuarkusApplication;
 import io.quarkus.runtime.Quarkus;
 import io.quarkus.runtime.annotations.QuarkusMain;
 import dev.nklip.javacraft.shardshop.ledger.messaging.LedgerCommandConsumer;
+import dev.nklip.javacraft.shardshop.ledger.result.LedgerResultRelay;
 
 @QuarkusMain
 public class LedgerApplication implements QuarkusApplication {
     private final LedgerCommandConsumer consumer;
+    private final LedgerResultRelay relay;
 
-    public LedgerApplication(LedgerCommandConsumer consumer) {
+    public LedgerApplication(LedgerCommandConsumer consumer, LedgerResultRelay relay) {
         this.consumer = consumer;
+        this.relay = relay;
     }
 
     @Override
@@ -20,9 +23,14 @@ public class LedgerApplication implements QuarkusApplication {
         }
         try {
             consumer.start();
+            relay.start();
             Quarkus.waitForExit();
         } finally {
-            consumer.close();
+            try {
+                consumer.close();
+            } finally {
+                relay.close();
+            }
         }
         return 0;
     }

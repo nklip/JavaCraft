@@ -1347,6 +1347,15 @@ maven:
       io.netty:netty-codec-http: {"version":"4.1.139.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http/4.1.139.Final/netty-codec-http-4.1.139.Final.jar","sha256":"627cfdac2cd5dbd8a33af85977fb81fa6b46f0c00389ab4c8677a415f0f85480","published_checksum":{"algorithm":"sha1","value":"f52d30aeadc0af8c0d1cad9970e5a9c5df62bdd1","url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http/4.1.139.Final/netty-codec-http-4.1.139.Final.jar.sha1"}}
       io.netty:netty-codec-http2: {"version":"4.1.139.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http2/4.1.139.Final/netty-codec-http2-4.1.139.Final.jar","sha256":"4cb8bc95386112f3a9da935272781d577d9e70ca4c56cf0eef603a45e9526e02","published_checksum":{"algorithm":"sha1","value":"7b86d21a5578c431d2ccf898f22b444a38a4c0b2","url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http2/4.1.139.Final/netty-codec-http2-4.1.139.Final.jar.sha1"}}
       io.netty:netty-handler: {"version":"4.1.139.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/netty/netty-handler/4.1.139.Final/netty-handler-4.1.139.Final.jar","sha256":"ff85f00781b956d618b20f33da076c839a5e43e0084108b07bab0c19737168ec","published_checksum":{"algorithm":"sha1","value":"436b4a15bb2fe4608996a08b6d69b22f075286a4","url":"https://repo.maven.apache.org/maven2/io/netty/netty-handler/4.1.139.Final/netty-handler-4.1.139.Final.jar.sha1"}}
+  step_4_6_shared_rabbitmq_publisher:
+    checked_on: '2026-10-18'
+    rabbitmq_client: 5.37.0
+    scope: Optional amqp-client in shardshop-common for ConfirmedPublisher, which the order CDC relay and the ledger result relay share; order and ledger keep their direct dependency
+    verification: dependency:list -DincludeScope=runtime of all 14 reactor modules before and after the change gives the same runtime sets, except the own list of shardshop-common; no application, sharding or workload runtime gains RabbitMQ, Netty or SLF4J artifacts
+    test_scope: shardshop-common tests use the platform-managed jboss-logmanager 3.2.2.Final and slf4j-jboss-logmanager 2.0.2.Final, as shardshop-testing does
+    sbom_components: {shardshop-common: 48, shardshop-order: 304, shardshop-ledger: 193}
+    advisories: OSV query of the 14 coordinates that the common SBOM adds (34 to 48 components) returned no findings
+    artifacts: No new artifact; the amqp-client hashes are in step_4_3_rabbitmq_client
   step_4_5_ledger_dependencies:
     checked_on: '2026-10-18'
     rabbitmq_client: 5.37.0

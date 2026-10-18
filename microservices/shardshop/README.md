@@ -13,7 +13,8 @@ from step 4.1, and its step 4.2 coordinator reserves stock, compensates rejected
 orders and writes the ledger command outbox. Step 4.4 embeds one Debezium reader
 per shard to deliver those envelopes to RabbitMQ with durable JDBC checkpoints.
 Ledger consumes those commands in step 4.5, committing immutable decisions and
-pending result outboxes. Its result publisher remains step 4.6. The order producer
+pending result outboxes. Its step 4.6 publisher delivers the saved results to
+RabbitMQ with confirms and publication-attempt checks. The order producer
 still starts CDI and exits. Step 3.5
 provides workload-owned dataset definitions and HTTP clients; the order workload
 loop remains step 4.8. Maven module tests need no Docker or
@@ -912,7 +913,7 @@ reservation keep its original quantity and do not decrement again.
 Once every reservation succeeds, a single buyer-shard transaction changes the
 order and saga to `PENDING_LEDGER`, reserves distinct transport/result IDs, and
 inserts the complete `RecordOrder` envelope. No broker is required by this step;
-CDC delivery and ledger consumers follow in steps 4.4–4.6.
+steps 4.4–4.6 implement CDC delivery, ledger consumption and result publication.
 
 Insufficient stock commits `CANCELLED` with `OUT_OF_STOCK` before compensation.
 Each seller shard atomically marks active reservations released and restores
@@ -961,6 +962,9 @@ leaves the row unpublished. After confirmation, an `order_app` transaction marks
 `published_at`; only then may Debezium checkpoint that source record. Snapshot
 rows already published, metadata updates, deletes and connector control records
 do not become commands. Redelivery retains the original message identity.
+Since step 4.6, order and ledger share this publisher (`ConfirmedPublisher` in
+`shardshop-common`). A connection that the broker closed while it was idle is
+replaced before the next command.
 
 Each reader sends a Debezium heartbeat every 10 seconds. Its action query,
 `SELECT pg_logical_emit_message(true, 'shardshop-cdc-heartbeat', '')`, emits a
@@ -1081,10 +1085,11 @@ shardshop.ledger.broker.timeout=5s
 ```
 
 `-Dquarkus.config.locations=file:/path/to/ledger.properties` loads an external
-configuration file. Normal starts enable the consumer; `--check-startup` validates
-configuration and exits without consuming or connecting to external services.
+configuration file. Normal starts enable the consumer and result publisher;
+`--check-startup` validates configuration and exits without consuming, publishing
+or connecting to external services.
 An enabled consumer requires both passwords. `shardshop.ledger.enabled=false`
-disables the worker. Database phases have a three-second deadline; broker
+disables both workers. Database phases have a three-second deadline; broker
 connections use the configured timeout and reconnect with capped backoff.
 The default database URL names `ledger-db-rw`, the read-write Service of the
 `ledger-db` cluster.
@@ -1109,9 +1114,65 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pinteg
   '-Dcucumber.filter.tags=@ledger-consumer or @ledger-migration'
 ```
 
-Step 4.5 leaves result outboxes pending for the publisher in step 4.6. Application
-deployment to kind remains step 4.9; the crash and failover drills remain later
-milestones.
+## Ledger result publisher (step 4.6)
+
+The ledger polls committed pending rows in `ledger_outbox`, joining
+`ledger_result_ids` for the saved result envelope. It publishes that exact JSON
+with the order-reserved result ID to `order.saga-results`, routing key
+`order.ledger-results`. Messages are persistent and mandatory; a positive broker
+confirm without a return is required before marking a row published.
+
+The mark compares both `message_id` and the sent `publication_attempt`. A replay
+that increments the permanent attempt and rearms or recreates the outbox therefore
+stays pending when an older confirm arrives. Neither publishing nor retrying
+changes the envelope, its timestamps or the attempt counter. A crash or uncertain
+database commit after publication can deliver the same result again; delivery is
+at least once.
+
+One publication is in flight per process. Reads and conditional marks use separate
+bounded database transactions, with no database connection held during broker IO.
+The relay reads at most 100 rows per batch by default, immediately continues after
+a full batch, and otherwise polls every 500 ms. Errors retain pending rows and
+replace the publisher connection, backing off from 500 ms to 30 seconds. When the
+broker or the network closed the connection while it was idle, the next publication
+opens a new one without a failed attempt. Each new connection logs one INFO line,
+`RabbitMQ result publisher connected to order.saga-results`. A restart resumes
+pending results. The retry log includes a bounded cause, without payloads. A
+timeout cause names its phase: the connection, the publication or its confirm.
+
+The publisher uses the same ledger database and broker credentials as the consumer:
+
+```properties
+shardshop.ledger.publisher.enabled=true
+shardshop.ledger.publisher.batch-size=100
+shardshop.ledger.publisher.poll-interval=500ms
+```
+
+Set `shardshop.ledger.publisher.enabled=false` to run only the command consumer. Batch size is
+limited to 1–1000 and poll interval to 1 ms–60 seconds. The broker timeout bounds
+the send and confirm phase, including a blocked socket write; connection cleanup
+can take one additional timeout. Failed streams are discarded before retry.
+Multiple ledger processes may publish duplicates, while the conditional mark
+preserves newer replay attempts.
+
+The order CDC relay and this relay share one publisher class,
+`dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher` in
+`shardshop-common`. Common declares the RabbitMQ client as an optional dependency,
+thus only order and ledger, which declare the client themselves, contain it.
+
+Run the module builds and the disposable PostgreSQL/RabbitMQ checks:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-ledger,shardshop-order -am -Paudit install
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@ledger-publisher or @ledger-consumer or @ledger-migration or @cdc-relay'
+```
+
+No migration is needed. The only new dependencies are the optional RabbitMQ client
+of common and the platform-managed JBoss Log Manager and its SLF4J provider in the
+tests of common. This step leaves confirmed outbox rows for the later retention
+worker. Order result consumption remains step 4.7 and application deployment to
+kind remains step 4.9.
 
 ## RabbitMQ topology and delivery policies (step 4.3)
 
@@ -1179,8 +1240,8 @@ confirms. They verify that `basic.nack(requeue=true)` preserves the failure
 budget, while `basic.reject(requeue=true)` spends it, and malformed-message
 rejection parks immediately. Test containers and their temporary volumes are
 removed on completion. The test-only Java client uses its socket transport.
-Application consumers, CDC publication and the full operational drills remain
-the later steps 4.4–4.6 and 5.4.
+Steps 4.4–4.6 implement command publication, ledger consumption and result
+publication; the full operational drills remain step 5.4.
 
 ## HTTP and message contracts (step 3.1)
 
@@ -1197,7 +1258,7 @@ clients keep their own DTOs. HTTP examples appear inline. The two result example
 show alternative decisions for one example command, never two outcomes for one
 retained order. Example IDs illustrate the format and are not an issued dataset.
 The product and order HTTP providers and their contract tests are implemented in
-steps 3.6 and 4.1; ledger message processing remains steps 4.5–4.6.
+steps 3.6 and 4.1; ledger message processing is implemented in steps 4.5–4.6.
 
 Workloads select a pinned local dataset version and send its ID-free creation
 payloads with stable `Idempotency-Key` values. Product/order generate and return
@@ -2600,9 +2661,10 @@ Java replays a duplicate command and confirms each publication attempt.
 
 The SQL constraints and grants supply storage boundaries. Step 4.5 implements
 Java command validation, decision/entry atomicity, conflict detection and replay
-transactions. Publisher confirmation and cleanup only after confirmed publication
-and retention remain later steps. A DELETE grant does not enforce these cleanup
-gates. The ledger application does not migrate at startup.
+transactions. Step 4.6 confirms result publication and marks only its matching
+attempt. Cleanup after confirmed publication and retention remains a later step.
+A DELETE grant does not enforce these cleanup gates. The ledger application does
+not migrate at startup.
 Decisions have no runtime `UPDATE` privilege, including for `FOR UPDATE`/`FOR KEY
 SHARE` row locks. The consumer serializes with transaction advisory locks before
 reading and comparing the saved decision.

@@ -1,10 +1,12 @@
 package dev.nklip.javacraft.shardshop.ledger.config;
 
+import dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher;
 import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import dev.nklip.javacraft.shardshop.common.jdbc.JdbcUrls;
 import dev.nklip.javacraft.shardshop.ledger.command.LedgerService;
 import dev.nklip.javacraft.shardshop.ledger.messaging.LedgerCommandConsumer;
 import dev.nklip.javacraft.shardshop.ledger.persistence.JdbcLedgerStore;
+import dev.nklip.javacraft.shardshop.ledger.result.LedgerResultRelay;
 import io.quarkus.runtime.Startup;
 import jakarta.enterprise.inject.Disposes;
 import jakarta.enterprise.inject.Produces;
@@ -14,6 +16,10 @@ import java.time.Clock;
 
 @Singleton
 public class LedgerWiring {
+    /** Results route to order's quorum queue order.ledger-results. */
+    private static final ConfirmedPublisher.Destination RESULTS = new ConfirmedPublisher.Destination(
+            "order.saga-results", "order.ledger-results", "result", "ledger-result-publisher");
+
     @Produces
     @Singleton
     JdbcLedgerStore store(LedgerConfiguration config) {
@@ -48,6 +54,23 @@ public class LedgerWiring {
 
     void closeConsumer(@Disposes LedgerCommandConsumer consumer) {
         consumer.close();
+    }
+
+    @Produces
+    @Singleton
+    @Startup
+    LedgerResultRelay relay(JdbcLedgerStore store, LedgerConfiguration config) {
+        var broker = config.broker();
+        var publisher = config.publisher();
+        var connection = new ConfirmedPublisher.Settings(broker.host(), broker.port(), broker.virtualHost(),
+                broker.username(), broker.password().orElse(""), broker.timeout());
+        return new LedgerResultRelay(store, () -> new ConfirmedPublisher(connection, RESULTS),
+                new LedgerResultRelay.Settings(config.enabled() && publisher.enabled(), publisher.batchSize(),
+                        publisher.pollInterval()));
+    }
+
+    void closeRelay(@Disposes LedgerResultRelay relay) {
+        relay.close();
     }
 
     void closeStore(@Disposes JdbcLedgerStore store) {

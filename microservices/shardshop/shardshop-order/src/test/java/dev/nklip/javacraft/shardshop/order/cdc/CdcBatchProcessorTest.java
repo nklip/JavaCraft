@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.order.cdc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher;
 import io.debezium.engine.ChangeEvent;
 import io.debezium.engine.DebeziumEngine;
 import org.junit.jupiter.api.Test;
@@ -24,7 +25,7 @@ class CdcBatchProcessorTest {
     @SuppressWarnings("unchecked")
     private final DebeziumEngine.RecordCommitter<ChangeEvent<String, String>> committer =
             mock(DebeziumEngine.RecordCommitter.class);
-    private final CommandPublisher publisher = mock(CommandPublisher.class);
+    private final ConfirmedPublisher publisher = mock(ConfirmedPublisher.class);
     private final CdcBatchProcessor.PublicationStatus status = mock(CdcBatchProcessor.PublicationStatus.class);
     private final CdcBatchProcessor processor = new CdcBatchProcessor(IDENTITY, publisher, status);
 

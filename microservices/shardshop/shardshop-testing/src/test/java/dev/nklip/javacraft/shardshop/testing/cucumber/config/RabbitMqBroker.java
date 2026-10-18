@@ -105,6 +105,11 @@ public final class RabbitMqBroker implements Disposable {
 
     /** Forces the packaged consumer to reconnect while the durable broker and its mapped port stay in place. */
     public void disconnectLedgerConsumers() throws IOException, InterruptedException {
+        disconnectLedgerConsumers(1);
+    }
+
+    /** Waits for both ledger connections when the result publisher is enabled. */
+    public void disconnectLedgerConsumers(int minimumConnections) throws IOException, InterruptedException {
         List<String> names = new java.util.ArrayList<>();
         List<String> observed = new java.util.ArrayList<>();
         try {
@@ -118,7 +123,7 @@ public final class RabbitMqBroker implements Disposable {
                         names.add(connection.path("name").asText());
                     }
                 }
-                return !names.isEmpty();
+                return names.size() >= minimumConnections;
             });
         } catch (AssertionError missing) {
             throw new AssertionError("Ledger connection not visible; observed users " + observed, missing);

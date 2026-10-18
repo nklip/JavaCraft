@@ -14,6 +14,13 @@ public interface LedgerConfiguration {
     @WithDefault("USD") Set<String> allowedCurrencies();
     Database database();
     Broker broker();
+    Publisher publisher();
+
+    interface Publisher {
+        @WithDefault("true") boolean enabled();
+        @WithDefault("100") int batchSize();
+        @WithDefault("500ms") Duration pollInterval();
+    }
 
     interface Database {
         /** The read-write Service of the CNPG cluster ledger-db. */
