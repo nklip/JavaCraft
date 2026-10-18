@@ -12,7 +12,9 @@ stops. Order now serves buyer creation, durable order allocation and order PUT/G
 from step 4.1, and its step 4.2 coordinator reserves stock, compensates rejected
 orders and writes the ledger command outbox. Step 4.4 embeds one Debezium reader
 per shard to deliver those envelopes to RabbitMQ with durable JDBC checkpoints.
-Ledger and the order producer still start CDI and exit. Step 3.5
+Ledger consumes those commands in step 4.5, committing immutable decisions and
+pending result outboxes. Its result publisher remains step 4.6. The order producer
+still starts CDI and exits. Step 3.5
 provides workload-owned dataset definitions and HTTP clients; the order workload
 loop remains step 4.8. Maven module tests need no Docker or
 Kubernetes; chart rendering and release orchestration tests require `helm` and
@@ -1026,6 +1028,90 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am -Paudit c
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify \
   '-Dcucumber.filter.tags=@cdc-relay'
 ```
+
+## Ledger command consumer (step 4.5)
+
+Ledger consumes `ledger.record-order` with manual acknowledgement and one
+prefetched delivery per process. It validates the complete `RecordOrder` schema,
+canonical string IDs, timestamp, immutable snapshot arithmetic and normalized
+request fingerprint before opening a bounded transaction on its own database.
+The parser enforces the broker's 1 MiB payload limit before JSON materialization.
+It never reads the order or catalog databases and generates no IDs.
+
+The transaction locks the order, saga, command and transport identities in a stable
+order with PostgreSQL advisory locks. A new supported-currency command inserts
+one permanent decision and ledger entry, its reserved result binding, inbox and
+pending result outbox. The default allowlist is `USD`; other valid currencies save
+a permanent `REJECTED` decision with `UNSUPPORTED_CURRENCY` and no entry. The
+consumer acknowledges only after commit. Malformed commands use
+`basic.reject(requeue=false)`; transient transaction failures use
+`basic.reject(requeue=true)` and the broker's bounded delayed-retry/DLQ policy.
+
+An identical command always rearms its saved result, including an inbox hit or a
+delivery after transport cleanup. Its durable publication attempt increments in
+the same transaction as the pending outbox. A new reconciliation transport pair
+uses the saved business outcome and `decidedAt`, even after allowlist changes.
+Conflicting logical IDs, snapshots or transport bindings commit to
+`ledger.conflicting_commands` before acknowledgement, without replacing the
+decision or generating a rejection. Repeated identical conflicts increment their
+delivery count; different canonical payloads remain separate incidents.
+
+Apply ledger V2 before starting the consumer. It permanently retains each original
+command envelope in `ledger_result_ids`, so a changed same-ID payload or timestamp
+is still detected after inbox cleanup. V2 backfills existing bindings from their
+inboxes and deliberately stops if that original payload is unavailable; reconcile
+such retained data before retrying the migration. V1 remains unchanged.
+
+Configure the dedicated ledger database and broker credentials:
+
+```properties
+shardshop.ledger.enabled=true
+shardshop.ledger.database.url=jdbc:postgresql://ledger-db-rw:5432/ledger
+shardshop.ledger.database.username=ledger_app
+shardshop.ledger.database.password=${LEDGER_DATABASE_PASSWORD}
+shardshop.ledger.database.root-certificate=/etc/shardshop/ledger/ca.crt
+shardshop.ledger.max-pool-size=4
+shardshop.ledger.allowed-currencies=USD
+shardshop.ledger.broker.host=shardshop-rabbitmq
+shardshop.ledger.broker.port=5672
+shardshop.ledger.broker.virtual-host=shardshop
+shardshop.ledger.broker.username=shardshop-ledger
+shardshop.ledger.broker.password=${RABBITMQ_LEDGER_PASSWORD}
+shardshop.ledger.broker.timeout=5s
+```
+
+`-Dquarkus.config.locations=file:/path/to/ledger.properties` loads an external
+configuration file. Normal starts enable the consumer; `--check-startup` validates
+configuration and exits without consuming or connecting to external services.
+An enabled consumer requires both passwords. `shardshop.ledger.enabled=false`
+disables the worker. Database phases have a three-second deadline; broker
+connections use the configured timeout and reconnect with capped backoff.
+The default database URL names `ledger-db-rw`, the read-write Service of the
+`ledger-db` cluster.
+
+The consumer log tells an operator why a delivery did not complete. Log lines can
+contain validated IDs and fixed rule texts, but never the command body or a password:
+
+- `Ledger command consumer stopped; retrying in <delay> ms: <cause>` follows a broker
+  connection failure, a closed channel or a cancelled consumer.
+- `Ledger command transaction failed; requested broker retry: <cause>` names the
+  database error, for example a check constraint, without the row values.
+- `Malformed ledger command rejected to its dead-letter queue: <rule>` names the
+  rule that the command does not obey.
+- `Conflicting ledger command <messageId> for order <orderId> committed to quarantine: <reason>`
+  names the conflict reason that `ledger.conflicting_commands` stores.
+
+Build the ledger and run its disposable PostgreSQL/RabbitMQ acceptance:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-ledger -am -Paudit install
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@ledger-consumer or @ledger-migration'
+```
+
+Step 4.5 leaves result outboxes pending for the publisher in step 4.6. Application
+deployment to kind remains step 4.9; the crash and failover drills remain later
+milestones.
 
 ## RabbitMQ topology and delivery policies (step 4.3)
 
@@ -2464,7 +2550,8 @@ kubectl --context kind-shardshop -n shardshop logs \
 ## Ledger schema and replay records (step 2.6)
 
 [`database/ledger/ledger/`](database/ledger/ledger/) contains `V1__ledger.sql`,
-the complete repeatable grants, and `flyway.toml`. Its history is
+the step 4.5 migration `V2__permanent_command_envelopes.sql`, the complete
+repeatable grants, and `flyway.toml`. Its history is
 `ledger.flyway_schema_history`. Flyway logs in as `ledger_migrator` and starts
 each connection as `ledger_schema_owner`, using the same TLS, retries, and session
 timeouts as the shard streams. The ledger has no shard-placement constraints,
@@ -2488,7 +2575,7 @@ temporary-table, Flyway-history, or `TRUNCATE` privileges.
 |---|---|
 | `ledger_operations` | Permanent decision per order, unique saga/command IDs, buyer, fingerprint, immutable snapshot, amount/currency, outcome, rejection reason and saved result data |
 | `ledger_entries` | One permanent row per recorded order; composite foreign key requires its amount, currency and timestamp to match a `RECORDED` decision, preventing an entry for a rejected order |
-| `ledger_result_ids` | Permanent binding of order-reserved command/result message IDs to an operation, immutable result envelope and original timestamps, plus a durable `publication_attempt` |
+| `ledger_result_ids` | Permanent binding of order-reserved command/result message IDs to an operation, immutable result envelope and original timestamps, the original command envelope (`command_envelope`, V2), plus a durable `publication_attempt` |
 | `ledger_inbox` | Disposable command deduplication rows; foreign key requires the saved command/result pair |
 | `ledger_outbox` | Pending/confirmed result delivery metadata; `message_id` references the reserved result ID and its current publication attempt |
 | `conflicting_commands` | Immutable conflicting envelope and expected/received identity snapshots, reason, delivery metadata and operator-resolution fields; no foreign keys obstruct quarantine |
@@ -2511,14 +2598,14 @@ foreign key requires the outbox attempt to match the permanent binding at commit
 [ARCHITECTURE](ARCHITECTURE.md#reconciliation-and-replayed-outcomes) defines how
 Java replays a duplicate command and confirms each publication attempt.
 
-The SQL constraints and grants supply storage boundaries. Java command validation,
-decision/entry atomicity, conflict detection, replay transactions, publisher
-confirmation, and cleanup only after confirmed publication and retention remain
-later steps. A DELETE grant does not enforce these cleanup gates. The ledger
-application is still a skeleton and does not migrate at startup.
+The SQL constraints and grants supply storage boundaries. Step 4.5 implements
+Java command validation, decision/entry atomicity, conflict detection and replay
+transactions. Publisher confirmation and cleanup only after confirmed publication
+and retention remain later steps. A DELETE grant does not enforce these cleanup
+gates. The ledger application does not migrate at startup.
 Decisions have no runtime `UPDATE` privilege, including for `FOR UPDATE`/`FOR KEY
-SHARE` row locks. Step 4.5 must serialize with a transaction advisory lock or
-insert-conflict handling followed by reading and comparing the saved decision.
+SHARE` row locks. The consumer serializes with transaction advisory locks before
+reading and comparing the saved decision.
 
 Provision, migrate, and inspect the ledger from the repository root:
 

@@ -110,6 +110,34 @@ class DatabasePhasesTest {
         verify(connection, times(2)).rollback();
     }
 
+    /** Step 4.5 regression: a background consumer must log why its transaction failed. */
+    @Test
+    void aClassifyingCallerReceivesTheFailureThatMadeThePhaseUnavailable() throws Exception {
+        SQLException statement = new SQLException("column does not exist", "42703");
+        AtomicReference<Throwable> received = new AtomicReference<>();
+        Unavailable failure = assertThrows(Unavailable.class, () -> phases.run(pool, false,
+                DatabasePhases.PHASE_BUDGET, (connection, deadline) -> {
+                    throw statement;
+                }, Conflict.class, cause -> {
+                    received.set(cause);
+                    return new Unavailable();
+                }));
+        assertSame(statement, received.get());
+        assertNull(failure.getCause());
+        verify(connection).rollback();
+
+        Future<Object> late = mock();
+        TimeoutException timeout = new TimeoutException();
+        when(late.get(anyLong(), eq(TimeUnit.NANOSECONDS))).thenThrow(timeout);
+        when(workers.submit(org.mockito.ArgumentMatchers.<Callable<Object>>any())).thenReturn(late);
+        assertThrows(Unavailable.class, () -> phases.run(pool, false, DatabasePhases.PHASE_BUDGET,
+                (connection, deadline) -> "late", Conflict.class, cause -> {
+                    received.set(cause);
+                    return new Unavailable();
+                }));
+        assertSame(timeout, received.get());
+    }
+
     @Test
     void unknownCommitResultIsUnavailableAndNeverRetriesTheWork() throws SQLException {
         doThrow(new SQLException("unknown commit; password=secret")).when(connection).commit();

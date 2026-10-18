@@ -1203,6 +1203,10 @@ that group; initialization time comes from the database.
 
 Step 2.6 implements the ledger storage contract in
 `database/ledger/ledger/V1__ledger.sql`, with grants in `R__ledger_grants.sql`.
+Step 4.5 adds the command consumer and V2's permanent `command_envelope` on
+`ledger_result_ids`. V2 backfills from retained inboxes and stops if a legacy
+binding has already lost its original command. This preserves same-transport-ID
+payload and timestamp comparisons after disposable transport cleanup.
 `ledger_operations` keeps one permanent immutable decision per order, including
 the buyer, unique logical saga/command IDs, fingerprint, snapshot, amount and
 currency, outcome, rejection reason, and saved result data. Runtime cannot update
@@ -1213,9 +1217,10 @@ Java must write a successful decision and its entry atomically; SQL does not
 require every recorded decision to have an entry.
 
 The runtime has no `UPDATE` privilege on decisions, so it cannot use `SELECT ...
-FOR UPDATE` or `FOR KEY SHARE` to serialize them. Step 4.5 must use a transaction
-advisory lock such as `pg_advisory_xact_lock(order_id)`, or insert-conflict handling
-followed by reading and comparing the saved decision. Keep the decision immutable.
+FOR UPDATE` or `FOR KEY SHARE` to serialize them. Step 4.5 takes transaction
+advisory locks for the order, saga, command and both transport IDs in sorted order
+before reading and comparing saved decisions. This also serializes conflicting
+identity reuse across different orders while keeping decisions immutable.
 
 `ledger_result_ids` permanently binds each order-reserved command `message_id`
 and `result_message_id` to its operation and exact immutable result envelope,
@@ -1254,9 +1259,10 @@ The ledger group's only updates are `ledger_result_ids.publication_attempt`,
 and outbox rows. It cannot delete permanent records or quarantine, resolve an
 existing incident, modify saved payloads, create schema objects or temporary
 tables, truncate tables, or read the Flyway history. There are no ID sequences,
-SQL functions, or triggers. Envelope validation, business-conflict detection,
-atomic decision/replay writes, publication confirmation, and transport cleanup
-gates belong to later Java consumer/publisher steps. The DELETE grants alone do
+SQL functions, or triggers. Step 4.5 validates envelopes and commits business
+decisions, replay requests or conflict quarantine before acknowledging commands.
+Publication confirmation and transport cleanup gates belong to the later Java
+publisher and retention steps. The DELETE grants alone do
 not enforce confirmed publication or retention windows.
 
 ### Catalog: sellers, products, and stock

@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
@@ -90,13 +91,24 @@ public final class DatabasePhases implements AutoCloseable {
      */
     public <T> T run(Pool pool, boolean readOnly, Duration budget, Work<T> work,
                      Class<? extends RuntimeException> domain, Supplier<? extends RuntimeException> unavailable) {
+        return run(pool, readOnly, budget, work, domain, failure -> unavailable.get());
+    }
+
+    /**
+     * Like the other {@code run}, but {@code unavailable} receives the failure, the deadline timeout, the interrupt or
+     * the rejection. A background worker can thus log the cause. Failure messages can contain connection or SQL
+     * details, thus they must never reach a client response.
+     */
+    public <T> T run(Pool pool, boolean readOnly, Duration budget, Work<T> work,
+                     Class<? extends RuntimeException> domain,
+                     Function<Throwable, ? extends RuntimeException> unavailable) {
         Deadline deadline = new Deadline(nanoTime, nanoTime.getAsLong() + budget.toNanos());
         Request request = new Request(pool, deadline);
         Future<T> future;
         try {
             future = workers.submit(() -> transact(request, readOnly, work));
         } catch (RejectedExecutionException failure) {
-            throw unavailable.get();
+            throw unavailable.apply(failure);
         }
         try {
             return future.get(deadline.remainingNanos(), TimeUnit.NANOSECONDS);
@@ -104,16 +116,16 @@ public final class DatabasePhases implements AutoCloseable {
             Thread.currentThread().interrupt();
             request.cancel();
             future.cancel(true);
-            throw unavailable.get();
+            throw unavailable.apply(failure);
         } catch (TimeoutException | SQLException failure) {
             request.cancel();
             future.cancel(true);
-            throw unavailable.get();
+            throw unavailable.apply(failure);
         } catch (ExecutionException failure) {
             if (domain.isInstance(failure.getCause())) {
                 throw domain.cast(failure.getCause());
             }
-            throw unavailable.get();
+            throw unavailable.apply(failure.getCause());
         }
     }
 

@@ -42,6 +42,7 @@ public final class CatalogDatabase {
     private final String migratorPassword = UUID.randomUUID().toString();
     private final String productPassword = UUID.randomUUID().toString();
     private final String orderPassword = UUID.randomUUID().toString();
+    private final String ledgerPassword = UUID.randomUUID().toString();
     private final String cdcPassword = UUID.randomUUID().toString();
 
     private CatalogDatabase() throws IOException, InterruptedException, SQLException {
@@ -123,7 +124,8 @@ public final class CatalogDatabase {
     private void createRoles() throws SQLException {
         try (Connection connection = superuser("postgres"); Statement statement = connection.createStatement()) {
             for (String group : List.of("shardshop_owner", "catalog_owner", "catalog_reader", "catalog_writer",
-                    "catalog_reserver", "ordering_owner", "ordering_writer", "ordering_cdc_reader")) {
+                    "catalog_reserver", "ordering_owner", "ordering_writer", "ordering_cdc_reader",
+                    "ledger_owner", "ledger_schema_owner", "ledger_writer")) {
                 statement.execute("CREATE ROLE " + group + " NOLOGIN");
             }
             statement.execute("CREATE ROLE catalog_migrator LOGIN NOINHERIT PASSWORD '" + migratorPassword
@@ -136,6 +138,10 @@ public final class CatalogDatabase {
                     + "' IN ROLE catalog_reader, catalog_reserver, ordering_writer");
             statement.execute("CREATE ROLE ordering_cdc LOGIN INHERIT REPLICATION PASSWORD '" + cdcPassword
                     + "' IN ROLE ordering_cdc_reader");
+            statement.execute("CREATE ROLE ledger_migrator LOGIN NOINHERIT PASSWORD '" + migratorPassword
+                    + "' IN ROLE ledger_schema_owner");
+            statement.execute("CREATE ROLE ledger_app LOGIN INHERIT PASSWORD '" + ledgerPassword
+                    + "' IN ROLE ledger_writer");
         }
     }
 
@@ -152,6 +158,40 @@ public final class CatalogDatabase {
             statement.execute("CREATE SCHEMA ordering AUTHORIZATION ordering_owner");
         }
         return name;
+    }
+
+    /** Separate disposable ledger database with the production bootstrap ownership boundary. */
+    public String createLedgerDatabase() throws SQLException {
+        String name = "shardshop_ledger_" + DATABASES.incrementAndGet();
+        try (Connection connection = superuser("postgres"); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE DATABASE " + name + " OWNER ledger_owner");
+        }
+        try (Connection connection = superuser(name); Statement statement = connection.createStatement()) {
+            statement.execute("REVOKE TEMPORARY ON DATABASE " + name + " FROM PUBLIC");
+            statement.execute("REVOKE ALL ON SCHEMA public FROM PUBLIC");
+            statement.execute("CREATE SCHEMA ledger AUTHORIZATION ledger_schema_owner");
+        }
+        return name;
+    }
+
+    /** Migrates the complete ledger stream as its dedicated migrator, never the runtime login. */
+    public MigrateResult migrateLedger(String database, Path location) {
+        return Flyway.configure()
+                .dataSource(catalogUrl(database), "ledger_migrator", migratorPassword)
+                .locations("filesystem:" + location)
+                .schemas("ledger")
+                .defaultSchema("ledger")
+                .table("flyway_schema_history")
+                .createSchemas(false)
+                .validateMigrationNaming(true)
+                .failOnMissingLocations(true)
+                .cleanDisabled(true)
+                .lockRetryCount(5)
+                .connectRetries(2)
+                .connectRetriesInterval(1)
+                .jdbcProperties(Map.of("connectTimeout", "5", "socketTimeout", "30",
+                        "options", "-c role=ledger_schema_owner -c statement_timeout=15000 -c lock_timeout=5000"))
+                .load().migrate();
     }
 
     public void dropDatabase(String name) throws SQLException {
@@ -232,6 +272,15 @@ public final class CatalogDatabase {
     public Connection order(String database) throws SQLException {
         return DriverManager.getConnection(catalogUrl(database) + "&connectTimeout=5&socketTimeout=10",
                 "order_app", orderPassword);
+    }
+
+    public Connection ledger(String database) throws SQLException {
+        return DriverManager.getConnection(catalogUrl(database) + "&connectTimeout=5&socketTimeout=10",
+                "ledger_app", ledgerPassword);
+    }
+
+    public String ledgerPassword() {
+        return ledgerPassword;
     }
 
     /** Stops PostgreSQL like an outage. The container, its data and its host port stay. */

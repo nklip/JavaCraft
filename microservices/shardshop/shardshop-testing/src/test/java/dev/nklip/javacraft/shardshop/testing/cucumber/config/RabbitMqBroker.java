@@ -23,6 +23,7 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -98,6 +99,40 @@ public final class RabbitMqBroker implements Disposable {
         return passwords.get("order");
     }
 
+    public String ledgerPassword() {
+        return passwords.get("ledger");
+    }
+
+    /** Forces the packaged consumer to reconnect while the durable broker and its mapped port stay in place. */
+    public void disconnectLedgerConsumers() throws IOException, InterruptedException {
+        List<String> names = new java.util.ArrayList<>();
+        List<String> observed = new java.util.ArrayList<>();
+        try {
+            await("ledger consumer appears in broker connection management", Duration.ofSeconds(10), () -> {
+                names.clear();
+                observed.clear();
+                for (JsonNode connection : get("/api/connections")) {
+                    String user = connection.path("user").asText();
+                    observed.add(user);
+                    if ("shardshop-ledger".equals(user)) {
+                        names.add(connection.path("name").asText());
+                    }
+                }
+                return !names.isEmpty();
+            });
+        } catch (AssertionError missing) {
+            throw new AssertionError("Ledger connection not visible; observed users " + observed, missing);
+        }
+        for (String connectionName : names) {
+            String name = URLEncoder.encode(connectionName, StandardCharsets.UTF_8).replace("+", "%20");
+            HttpResponse<byte[]> response = request("/api/connections/" + name, "admin",
+                    passwords.get("admin"), "DELETE");
+            if (response.statusCode() != 204) {
+                throw new AssertionError("RabbitMQ did not close the ledger connection: " + response.statusCode());
+            }
+        }
+    }
+
     public JsonNode get(String path) throws IOException, InterruptedException {
         HttpResponse<byte[]> response = request(path, "admin", passwords.get("admin"));
         if (response.statusCode() != 200) {
@@ -143,10 +178,16 @@ public final class RabbitMqBroker implements Disposable {
     }
 
     private HttpResponse<byte[]> request(String path, String user, String password) throws IOException, InterruptedException {
+        return request(path, user, password, "GET");
+    }
+
+    private HttpResponse<byte[]> request(String path, String user, String password, String method)
+            throws IOException, InterruptedException {
         String login = user.startsWith("shardshop-") || user.equals("guest") ? user : "shardshop-" + user;
         String authorization = Base64.getEncoder().encodeToString((login + ":" + password).getBytes(StandardCharsets.UTF_8));
         return http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + container.getMappedPort(15672) + path))
-                .timeout(Duration.ofSeconds(5)).header("Authorization", "Basic " + authorization).GET().build(),
+                .timeout(Duration.ofSeconds(5)).header("Authorization", "Basic " + authorization)
+                .method(method, HttpRequest.BodyPublishers.noBody()).build(),
                 HttpResponse.BodyHandlers.ofByteArray());
     }
 

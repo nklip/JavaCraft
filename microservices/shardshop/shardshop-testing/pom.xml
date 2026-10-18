@@ -221,6 +221,19 @@
                 </dependency>
                 <dependency>
                     <groupId>dev.nklip.javacraft</groupId>
+                    <artifactId>shardshop-ledger</artifactId>
+                    <version>${project.version}</version>
+                    <type>pom</type>
+                    <scope>test</scope>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>*</groupId>
+                            <artifactId>*</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>dev.nklip.javacraft</groupId>
                     <artifactId>shardshop-product-seeder</artifactId>
                     <version>${project.version}</version>
                     <type>pom</type>

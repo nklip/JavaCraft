@@ -2495,3 +2495,128 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pinteg
 
 The pre-fix runs used a scratch copy of the step 4.4 code with the new tests. The
 two unit test classes that need the new API were left out of that copy.
+
+## Step 4.5
+
+**2026-10-18:** Ledger now consumes `ledger.record-order` and commits immutable
+decisions before acknowledging deliveries. Strict validation checks canonical
+IDs, exact request fingerprints, snapshot arithmetic, integral quantities, Unicode
+names and UTC timestamps. A 1 MiB limit rejects oversized bodies before parsing.
+The default currency allowlist records USD; another valid currency saves a
+permanent `UNSUPPORTED_CURRENCY` rejection without a ledger entry.
+
+Sorted transaction advisory locks serialize order, saga, command and transport
+identities. A decision, optional entry, permanent binding, inbox and pending
+result outbox commit together. Identical deliveries rearm the exact saved result
+and increment its permanent publication attempt, including after inbox/outbox
+cleanup. A reconciliation command binds its new order-reserved transport pair to
+the saved decision without reevaluating the decision or policy. Conflicting identities or payloads are durably quarantined;
+repeated identical conflicts increment their delivery count.
+
+Malformed deliveries are rejected without requeue; database failures use
+`basic.reject(requeue=true)` to consume the broker's bounded retry budget.
+The consumer reconnects after connection or channel shutdown. RabbitMQ owns its
+callback executor, and the supervisor closes the connection once before exit,
+preventing shutdown callbacks from reaching a terminated shared executor. Configuration
+requires dedicated database and broker credentials; `--check-startup` validates
+configuration and exits without external IO.
+
+Ledger V2 stores each original command envelope permanently on `ledger_result_ids`
+so same-ID timestamp and payload conflicts remain detectable after transport
+cleanup. V1 is unchanged. V2 backfills from retained inboxes and intentionally
+fails if a legacy binding has already lost its original command; reconcile that
+data before upgrading.
+
+The scoped ledger build passes **33 tests**, including regressions that first
+failed for `24:00` timestamp normalization, oversized bodies, channel-only
+shutdown and concurrent connection aborts. The audit generates a **193-component SBOM**; OSV returns no findings
+for **81 third-party runtime JAR coordinates**, and five RabbitMQ, PostgreSQL JDBC
+and Agroal artifacts match Maven Central checksums. Dependency evidence is in
+`VERSIONS.md` and `versions.lock.yaml`.
+
+The testing module passes **167 unit tests**. Across scoped PostgreSQL 18.6 and
+RabbitMQ 4.3.6 runs, **11 packaged consumer scenarios** and **two V1→V2 migration
+checks** pass: recording, immutable rejection, replay after cleanup and policy
+changes, reconciliation, conflict quarantine, malformed-command parking,
+concurrent consumers, rollback/recovery, startup checks and reconnect. After the
+last lifecycle change, startup/clean shutdown and forced-disconnect recovery were
+rerun against the final binary. Normal shutdown has no connection-driver warning
+or rejected executor task.
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/shardshop-ledger/pom.xml -Paudit install
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify \
+  '-Dcucumber.filter.tags=@ledger-consumer'
+```
+
+Result publication remains step 4.6 and application deployment to kind remains
+step 4.9. The consumer generates no IDs and reads only its own database.
+
+### Step 4.5 validation fixes
+
+**2026-10-18:** A validation of the step found seven problems, and the user asked
+to fix all of them.
+
+1. The default database URL named `ledger-rw`, but the `ledger-db` cluster serves
+   `ledger-db-rw`. With that default, the consumer started, and then each command
+   failed six times and went to the parking queue. The default and the README
+   example now name `ledger-db-rw`. A unit test compares the default with the URL
+   of the chart's ledger migration Job.
+2. The testing reactor did not build the ledger package. Thus
+   `-pl shardshop-testing -am` tested the ledger package that was on disk, also
+   when that package was old. `shardshop-testing` now declares the ledger POM, the
+   same as the other packaged applications.
+3. Six rules had no test that failed when the rule was removed. New unit tests
+   cover the item currency, unique seller/product pairs and the `occurredAt` clamp
+   for a ledger clock that is behind the saved decision. New scenario steps cover
+   a changed snapshot on a new transport pair, a duplicate after publication and
+   the five identity locks.
+4. The consumer logs gave no cause. A restart now logs its delay and its cause. A
+   failed transaction logs the database error. The JDBC URL sets
+   `logServerErrorDetail=false`, thus no row values get into the log. A parked
+   command logs the rule that it does not obey, and a quarantined command logs its
+   message ID, order ID and reason. A second `DatabasePhases.run` gives the failure
+   to a background caller. `Failures.describe` moved from the order CDC relay to
+   `shardshop-common`, thus order and ledger write the same cause text.
+5. The PLAN row had no date, result sentence or Evidence link, and this entry was
+   a subsection of step 4.4. Both now obey PLAN instruction 5.
+6. The V1→V2 upgrade checks were a JUnit class in the fixture package. They are now
+   the two `@ledger-migration` scenarios of `LedgerMigration.feature`. The failure
+   scenario also shows that a failed V2 leaves the V1 schema and history.
+7. Text corrections: the OSV query covers 81 third-party coordinates, because one
+   of the 82 runtime JARs is `shardshop-common`. The scenario Javadoc names
+   scenarios 5, 7 and 10, and the step 2.6 README section names V2 and
+   `command_envelope`. The ledger also disables the Quarkus-managed datasource,
+   the same as product and order.
+
+Validation:
+
+- Before the fixes, the new tests ran against a copy of the step 4.5 code. Five
+  unit tests failed for the reported reasons: the default URL, and four parser
+  tests whose messages named no rule. Four of the fourteen ledger scenarios failed,
+  because their log lines had no cause, no rule or no IDs. The new behavior checks
+  passed, because the code already obeyed these rules.
+- In a scratch copy of the fixed code, each of the six earlier mutants fails a
+  new test. Two V2 mutants, without the backfill and without `NOT NULL`, each fail
+  one migration scenario.
+- After the fixes, the ledger passes **39 unit tests**. Order passes **235 unit and
+  provider tests**, one fewer than before, because its `describe` test moved to
+  `shardshop-common`. Order also passes **38 startup checks**, and product passes
+  **235 unit tests** and **30 startup checks**.
+  The **12 consumer scenarios** and **2 migration scenarios** pass. The full
+  `-pl shardshop-testing -am -Pintegration clean verify` passes **94 scenarios** in
+  1,209 seconds. Its only WARN line is the accepted Ryuk line. The ledger runtime
+  dependencies did not change, thus the SBOM and OSV evidence above stays valid.
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-ledger,shardshop-order,shardshop-product -am clean install
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
+```
+
+The pre-fix runs used a scratch copy of the step 4.5 code with the new tests. The
+tests that need the new API were left out of that copy: `FailuresTest`, the new
+`DatabasePhasesTest` case, `LedgerServiceTest` and `LedgerCommandConsumerTest`.

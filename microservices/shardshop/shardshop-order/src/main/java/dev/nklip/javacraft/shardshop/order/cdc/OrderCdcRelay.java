@@ -1,5 +1,6 @@
 package dev.nklip.javacraft.shardshop.order.cdc;
 
+import dev.nklip.javacraft.shardshop.common.Failures;
 import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import io.debezium.engine.ChangeEvent;
 import io.debezium.engine.DebeziumEngine;
@@ -7,9 +8,7 @@ import io.debezium.engine.format.Json;
 import org.jboss.logging.Logger;
 
 import java.sql.Connection;
-import java.util.Collections;
 import java.util.HashSet;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -131,7 +130,7 @@ public final class OrderCdcRelay implements AutoCloseable {
                 } catch (Exception failed) {
                     if (!closed.get()) {
                         LOG.warnf("CDC reader for %s stopped; retrying in %d ms: %s", settings.shard(), backoff,
-                                describe(failed));
+                                Failures.describe(failed));
                     }
                 }
                 if (!closed.get() && !recoveryRequired) {
@@ -224,24 +223,5 @@ public final class OrderCdcRelay implements AutoCloseable {
                 }
             }
         }
-    }
-
-    /** A single-line cause chain for the retry log, bounded in depth and length. */
-    static String describe(Throwable failure) {
-        StringBuilder text = new StringBuilder();
-        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
-        int depth = 0;
-        for (Throwable cause = failure; cause != null && depth < 6 && seen.add(cause); cause = cause.getCause()) {
-            if (depth++ > 0) {
-                text.append(" <- ");
-            }
-            text.append(cause.getClass().getSimpleName());
-            String message = cause.getMessage();
-            if (message != null && !message.isBlank()) {
-                String line = message.replaceAll("\\s+", " ").strip();
-                text.append(": ").append(line.length() > 300 ? line.substring(0, 300) + "..." : line);
-            }
-        }
-        return text.toString();
     }
 }

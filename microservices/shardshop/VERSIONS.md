@@ -1060,3 +1060,14 @@ storage APIs follow the [Engine documentation](https://debezium.io/documentation
 and [JDBC storage contract](https://debezium.io/documentation/reference/3.7/configuration/storage.html).
 The application image rollout and synchronized-standby failover remain the later
 deployment and failover milestones.
+
+### Step 4.5 ledger consumer dependencies
+
+On **2026-10-18**, ledger adds the already qualified RabbitMQ Java client **5.37.0**
+and Quarkus **3.40.1**'s PostgreSQL JDBC extension, using JDBC **42.7.13** and the
+platform-managed Agroal pool. It introduces no generator, shard-routing, Kafka or
+Debezium dependency. The ledger audit produces a **193-component SBOM**; queries
+to OSV for all **81 third-party runtime JAR coordinates** return no findings.
+All five RabbitMQ, PostgreSQL JDBC and Agroal JARs match Maven Central's published
+SHA-1 checksums; their SHA-256 hashes are recorded in the lock. RabbitMQ client
+release and support evidence remains in the step 4.3 qualification above.
