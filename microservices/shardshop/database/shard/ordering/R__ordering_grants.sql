@@ -1,5 +1,5 @@
 -- Complete runtime SQL object grants; CNPG declares role attributes and memberships.
--- Only groups receive grants; no SQL access to history.
+-- Only groups receive grants; no runtime SQL access to Flyway migration history.
 REVOKE ALL ON SCHEMA ordering FROM PUBLIC, ordering_writer, ordering_cdc_reader;
 REVOKE ALL ON ALL TABLES IN SCHEMA ordering FROM PUBLIC, ordering_writer, ordering_cdc_reader;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA ordering FROM PUBLIC, ordering_writer, ordering_cdc_reader;
@@ -30,4 +30,6 @@ GRANT UPDATE (published_at) ON ordering.order_outbox TO ordering_writer;
 GRANT DELETE ON ordering.order_outbox, ordering.order_inbox TO ordering_writer;
 GRANT UPDATE (last_seen_at, delivery_count) ON ordering.orphan_results, ordering.conflicting_results TO ordering_writer;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ordering.debezium_offset_storage TO ordering_writer;
+GRANT SELECT ON ordering.cdc_reader_state TO ordering_writer;
+GRANT INSERT (reader_name) ON ordering.cdc_reader_state TO ordering_writer;
 GRANT SELECT ON ordering.order_outbox TO ordering_cdc_reader;

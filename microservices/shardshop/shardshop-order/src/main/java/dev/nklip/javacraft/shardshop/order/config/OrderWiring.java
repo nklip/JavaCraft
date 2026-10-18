@@ -29,6 +29,10 @@ public class OrderWiring {
     @Singleton
     @Startup(ObserverMethod.DEFAULT_PRIORITY - 1)
     JdbcOrderStore store(OrderConfiguration config, ShardTopology topology) {
+        return new JdbcOrderStore(primaryEndpoints(config, topology), config.maxPoolSize());
+    }
+
+    static Map<String, Endpoint> primaryEndpoints(OrderConfiguration config, ShardTopology topology) {
         Map<String, Endpoint> primary = new HashMap<>();
         for (var shard : topology.shards()) {
             String name = shard.clusterName();
@@ -48,7 +52,7 @@ public class OrderWiring {
         if (!primary.keySet().containsAll(config.connections().keySet())) {
             throw new IllegalArgumentException("Order connections must name only configured routing shards");
         }
-        return new JdbcOrderStore(primary, config.maxPoolSize());
+        return Map.copyOf(primary);
     }
 
     @Produces

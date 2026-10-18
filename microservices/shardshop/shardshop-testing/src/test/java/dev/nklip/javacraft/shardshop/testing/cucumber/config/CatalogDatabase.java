@@ -15,6 +15,7 @@ import java.net.ServerSocket;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
@@ -41,6 +42,7 @@ public final class CatalogDatabase {
     private final String migratorPassword = UUID.randomUUID().toString();
     private final String productPassword = UUID.randomUUID().toString();
     private final String orderPassword = UUID.randomUUID().toString();
+    private final String cdcPassword = UUID.randomUUID().toString();
 
     private CatalogDatabase() throws IOException, InterruptedException, SQLException {
         String image = System.getProperty("tc.image.postgresql");
@@ -67,6 +69,8 @@ public final class CatalogDatabase {
         // The container stays up for the full Cucumber JVM. A fixed loopback port keeps the product endpoints valid
         // after a restart of the container.
         return new PostgreSQLContainer(DockerImageName.parse(image).asCompatibleSubstituteFor("postgres"))
+                .withCommand("postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=16",
+                        "-c", "max_wal_senders=16")
                 .withCreateContainerCmdModifier(command -> Objects.requireNonNull(command.getHostConfig())
                         .withPortBindings(new PortBinding(Ports.Binding.bindIpAndPort("127.0.0.1", port),
                                 ExposedPort.tcp(PostgreSQLContainer.POSTGRESQL_PORT))));
@@ -130,6 +134,8 @@ public final class CatalogDatabase {
                     + "' IN ROLE catalog_writer");
             statement.execute("CREATE ROLE order_app LOGIN INHERIT PASSWORD '" + orderPassword
                     + "' IN ROLE catalog_reader, catalog_reserver, ordering_writer");
+            statement.execute("CREATE ROLE ordering_cdc LOGIN INHERIT REPLICATION PASSWORD '" + cdcPassword
+                    + "' IN ROLE ordering_cdc_reader");
         }
     }
 
@@ -150,7 +156,31 @@ public final class CatalogDatabase {
 
     public void dropDatabase(String name) throws SQLException {
         try (Connection connection = superuser("postgres"); Statement statement = connection.createStatement()) {
+            // Logical slots outlive their reader. Remove only this disposable scenario database's inactive slots.
+            try (PreparedStatement slots = connection.prepareStatement(
+                    "SELECT slot_name, active FROM pg_replication_slots WHERE database = ?")) {
+                slots.setString(1, name);
+                try (var rows = slots.executeQuery()) {
+                    while (rows.next()) {
+                        if (rows.getBoolean("active")) {
+                            throw new SQLException("CDC reader still owns slot " + rows.getString("slot_name"));
+                        }
+                        try (PreparedStatement drop = connection.prepareStatement("SELECT pg_drop_replication_slot(?)")) {
+                            drop.setString(1, rows.getString("slot_name"));
+                            drop.execute();
+                        }
+                    }
+                }
+            }
             statement.execute("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)");
+        }
+    }
+
+    /** Publications are provisioned by the administrator after ordering migrations, never by the runtime login. */
+    public void createOrderPublication(String database) throws SQLException {
+        try (Connection connection = superuser(database); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE PUBLICATION ordering_order_outbox FOR TABLE ordering.order_outbox "
+                    + "WITH (publish = 'insert')");
         }
     }
 
@@ -242,6 +272,10 @@ public final class CatalogDatabase {
 
     public String orderPassword() {
         return orderPassword;
+    }
+
+    public String cdcPassword() {
+        return cdcPassword;
     }
 
     /** A local port that refuses connections. */

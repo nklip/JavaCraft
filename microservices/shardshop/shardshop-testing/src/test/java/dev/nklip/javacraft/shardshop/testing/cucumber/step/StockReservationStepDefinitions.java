@@ -4,10 +4,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.CatalogDatabase;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.Json;
+import dev.nklip.javacraft.shardshop.testing.cucumber.config.RabbitMqBroker;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.RawHttp;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.ShardShopFiles;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.CatalogApi;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.CatalogShards;
+import dev.nklip.javacraft.shardshop.testing.cucumber.world.CdcRelay;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.Contracts;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.OrderRuntime;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.ProductRuntime;
@@ -34,6 +36,8 @@ public final class StockReservationStepDefinitions {
     private final ProductRuntime product;
     private final CatalogApi catalog;
     private final OrderRuntime order;
+    private final RabbitMqBroker broker;
+    private final CdcRelay relay;
     private OrderRuntime competitor;
     private CatalogApi.Product abundant;
     private CatalogApi.Product european;
@@ -42,11 +46,13 @@ public final class StockReservationStepDefinitions {
     private int ordinal;
 
     public StockReservationStepDefinitions(CatalogShards shards, ProductRuntime product, CatalogApi catalog,
-                                          OrderRuntime order) {
+                                          OrderRuntime order, RabbitMqBroker broker, CdcRelay relay) {
         this.shards = shards;
         this.product = product;
         this.catalog = catalog;
         this.order = order;
+        this.broker = broker;
+        this.relay = relay;
     }
 
     @Given("stock reservation uses migrated regional primaries and packaged providers")
@@ -107,6 +113,26 @@ public final class StockReservationStepDefinitions {
         await("PENDING_LEDGER", id);
         assertEquals(envelope, envelope(id), "Restart and HTTP retries retain transport and logical identities");
         assertStocks(38, 8, 2);
+        invariant();
+    }
+
+    @Then("CDC publishes the stored RecordOrder of the accepted order unchanged")
+    public void relayedThroughCdc() throws Exception {
+        for (var shard : shards.all()) {
+            CatalogDatabase.instance().createOrderPublication(shard.database());
+        }
+        broker.start();
+        String id = accept(request(1, abundant, european));
+        order.enableStock();
+        order.enableCdc(broker);
+        order.restart(Set.of());
+        await("PENDING_LEDGER", id);
+        JsonNode envelope = envelope(id);
+        relay.delivery(envelope, "order " + id, Duration.ofSeconds(30));
+        eventually("The relayed outbox row is marked published", () -> 1 == count(home(),
+                "ordering.order_outbox o JOIN ordering.order_sagas s USING (saga_id)",
+                "s.order_id=" + id + " AND o.published_at IS NOT NULL"));
+        relay.assertNoDelivery(Duration.ofSeconds(2));
         invariant();
     }
 

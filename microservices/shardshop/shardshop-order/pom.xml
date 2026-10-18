@@ -20,6 +20,18 @@
         <shardshop.directory>${project.basedir}/..</shardshop.directory>
     </properties>
 
+    <dependencyManagement>
+        <dependencies>
+            <!-- Kafka's inherited 1.11.1 has GHSA-343h-94h5-c4wr and four related advisories.
+                 Keep this security override local to the CDC runtime; see VERSIONS.md step 4.4. -->
+            <dependency>
+                <groupId>at.yawk.lz4</groupId>
+                <artifactId>lz4-java</artifactId>
+                <version>1.12.0</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
         <dependency>
             <groupId>dev.nklip.javacraft</groupId>
@@ -44,6 +56,27 @@
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-jdbc-postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.debezium</groupId>
+            <artifactId>debezium-embedded</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.debezium</groupId>
+            <artifactId>debezium-connector-postgres</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.debezium</groupId>
+            <artifactId>debezium-storage-jdbc</artifactId>
+        </dependency>
+        <!-- JDBC storage marks this implementation dependency provided; an embedded host must supply it. -->
+        <dependency>
+            <groupId>io.debezium</groupId>
+            <artifactId>debezium-storage-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.rabbitmq</groupId>
+            <artifactId>amqp-client</artifactId>
         </dependency>
         <dependency>
             <groupId>org.mockito</groupId>

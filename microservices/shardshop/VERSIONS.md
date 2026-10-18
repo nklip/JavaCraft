@@ -63,6 +63,7 @@ successor before the LTS deadline.
 | Skaffold | **2.25.0**, installed through Homebrew; `skaffold` from the user's `PATH` | Maintained stable release with no fixed LTS term. Builds and tags the packaged Maven outputs using local Docker; native kind loads qualified images and Helmfile deploys them. Review monthly, first by **2026-11-13**. Two complete native `up.sh` runs on **2026-10-14** built all four artifacts, scanned them with Docker Scout and verified consistent qualified images on every kind node. Each run passed 1,034 unit/startup tests and 55 packaged routing checks. [Release](https://github.com/GoogleContainerTools/skaffold/releases/tag/v2.25.0), [Docker builder](https://skaffold.dev/docs/builders/builder-types/docker/) |
 | RabbitMQ | **4.3.6**, maintained GA patches and subsequent supported series | Community support ends **2027-01-31** (rechecked 2026-10-16). This is a rolling-support exception, not LTS; no newer stable series is listed at review time. Native quorum delayed retry requires 4.3+. [Support timeline](https://www.rabbitmq.com/release-information), [retry feature](https://www.rabbitmq.com/docs/quorum-queues#delayed-retry) |
 | Erlang/OTP | **27.3.4.19**, bundled by the selected official RabbitMQ image | This corrects the draft's 28.x assumption. OTP 27 is supported by RabbitMQ 4.3.6; upgrade the broker/runtime image together. No fixed-date LTS is assumed. [Compatibility](https://www.rabbitmq.com/docs/which-erlang), [immutable image recipe](https://github.com/docker-library/rabbitmq/blob/a2d49841fbcf81713cf0e1c279facbce545e2292/4.3/ubuntu/Dockerfile), [OTP security policy](https://github.com/erlang/otp/security) |
+| Debezium Engine, PostgreSQL connector and JDBC offset store | **3.7.0.Final**, embedded only in order | Latest stable series checked **2026-10-18**; PostgreSQL 18 and Java 17+ connectors are in the upstream matrix. No fixed community LTS horizon is assumed. Review monthly, next by **2026-11-18**, and qualify with the selected Quarkus, PostgreSQL and RabbitMQ versions. [Release and compatibility matrix](https://debezium.io/releases/3.7/) |
 | PostgreSQL/operator image OS | Vendor-maintained **Debian 13 (trixie)** images | Full support through **2028-08-09**, Debian LTS through **2030-06-30**, subject to package/architecture coverage. The database/operator support window can expire first. [CNPG image baseline](https://cloudnative-pg.io/docs/1.30/release_notes/v1.30/), [Debian lifecycle](https://www.debian.org/releases/trixie/) |
 | Application and migration image OS | **Canonical OpenJDK 25** on **Ubuntu 26.04 LTS (resolute)**; `ubuntu/jdk` and `ubuntu/jre` stable tracks, pinned by digest | Canonical advertises these tracks through **May 2031**. Native ARM64 base-image build/runtime checks passed on Java **25.0.4.1**. Requalify derived images separately; the runtime is shell-free and final images must explicitly select a non-root user. [JDK support](https://hub.docker.com/r/ubuntu/jdk), [JRE support](https://hub.docker.com/r/ubuntu/jre) |
 | Schema migrations | **Flyway OSS 13.8.1** libraries on the selected Canonical OpenJDK 25 JRE; local image defined by `infra/images/flyway/Dockerfile`, pinned by manifest digest | The official Flyway image supplies libraries, drivers, configuration and licenses only. Frequent releases have no published fixed EOL; review monthly, first by **2026-10-30**, and requalify the final image and migration Jobs through `scripts/up.sh` on the lab. Application BOMs do not select the external migration runtime. [Distribution source](https://hub.docker.com/r/flyway/flyway), [release notes](https://help.red-gate.com/help/flyway-cli13/help_8.aspx?topic=release-notes-and-older-versions/release-notes-for-flyway-engine) |
@@ -989,7 +990,8 @@ index, ARM64 manifest and config identities are recorded in the lock. It bundles
 **Erlang/OTP 27.3.4.19** and Ubuntu 24.04. Recheck on **2026-11-16** and qualify a
 supported successor by **2027-01-15**.
 
-The test-only AMQP client is **5.37.0**, published on 2026-10-01. Its
+The AMQP client is **5.37.0**, published on 2026-10-01; step 4.4 also uses it in
+the order runtime. Its
 [release notes](https://github.com/rabbitmq/rabbitmq-java-client/releases/tag/v5.37.0)
 confirm compatibility with 5.36.0 and the deprecated JSON-reader fix. Cached
 Java-client overview pages still list 5.36.0; current Maven Central metadata and
@@ -1020,3 +1022,41 @@ existing platform-managed Netty 4.1.139.Final. The audit succeeded; inherited
 Flyway repository metadata checks returned 401 for local reactor snapshot POMs,
 which were already resolved from the local cache. Artifact checksum and client
 advisory checks used Maven Central and OSV directly.
+
+### Step 4.4 embedded CDC dependencies
+
+On **2026-10-18**, [Debezium's release matrix](https://debezium.io/releases/3.7/)
+lists **3.7.0.Final** (released 2026-09-29) as the latest stable release, with
+PostgreSQL 18 in its tested database matrix and Java 17+ for connectors. Order
+pins the embedded engine, PostgreSQL connector, JDBC store and storage-common to
+that version. The JDBC artifact declares storage-common as provided; the embedded
+host must include it explicitly. No Debezium Server, Kafka broker or Quarkus CDC
+extension is deployed. Review this rolling community release by **2026-11-18**.
+
+The effective Quarkus 3.40.1 graph retains Kafka Connect/client **4.2.1**, Jackson
+**2.21.7** and PostgreSQL JDBC **42.7.13**, with RabbitMQ client **5.37.0**. The order
+audit produces a **304-component SBOM**. All 20 Debezium, Kafka and LZ4 JARs match
+Maven Central's published SHA-1 sidecars; their independently computed SHA-256
+hashes are in the lock. OSV queries for all **202 third-party runtime JAR
+coordinates** return no findings after the order-local LZ4 override below.
+
+Kafka introduced `at.yawk.lz4:lz4-java` **1.11.1** from platform management. OSV
+reported GHSA-343h-94h5-c4wr, GHSA-4v53-57pg-c464, GHSA-6cx8-rjf8-pr8g,
+GHSA-gm45-99xc-r7wv and GHSA-mcr4-qmvw-px4g. The order POM pins the maintained
+**1.12.0** release, which includes the fixes through 1.11.4; other modules retain
+their existing management. [Published releases](https://repo.maven.apache.org/maven2/at/yawk/lz4/lz4-java/maven-metadata.xml),
+[upstream advisory](https://github.com/yawkat/lz4-java/security/advisories/GHSA-343h-94h5-c4wr).
+
+The embedded host supplies a serial batch consumer, bounded queues and snapshot
+fetches, a pre-provisioned publication, failover-enabled retained slots, and the
+JDBC offset store. Its custom offset insert also records permanent initialization
+history in the same transaction. A 10-second Debezium heartbeat runs
+`pg_logical_emit_message` as its action query, so an empty snapshot and an idle
+outbox still save and confirm positions. All fifteen CDC scenarios and the
+accepted-order relay scenario pass using
+the packaged order JVM on Java 25 with the pinned PostgreSQL 18.6 and RabbitMQ
+4.3.6 test images; the engine and
+storage APIs follow the [Engine documentation](https://debezium.io/documentation/reference/3.7/development/engine.html)
+and [JDBC storage contract](https://debezium.io/documentation/reference/3.7/configuration/storage.html).
+The application image rollout and synchronized-standby failover remain the later
+deployment and failover milestones.

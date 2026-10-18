@@ -986,6 +986,25 @@ cross-shard transaction assembly.
   or lags past a threshold. A crash before the durable offset checkpoint can
   redeliver the same `messageId`; it must never generate a new logical command.
 
+Step 4.4 embeds Debezium 3.7.0.Final in the order JVM and serializes each shard's
+reader with an application-role session advisory lock. The connector, topic and
+slot identity is `shardshop_order_<shard_name>` with hyphens replaced by underscores.
+Ordering V4 adds permanent `cdc_reader_state` history, written in the same JDBC
+transaction as the first offset checkpoint. The runtime may insert that marker
+but cannot update or delete it. It detects simultaneous slot/offset loss even
+after outbox cleanup; recovery requires an explicit reconciliation decision.
+Each reader sends a Debezium heartbeat every 10 seconds. Its action emits a
+transactional logical decoding message with `pg_logical_emit_message`, which
+PostgreSQL permits for every login and which writes no table. Thus an empty first
+snapshot saves its first offset and reader history, and an idle outbox still confirms
+the WAL of other writes. Before each start, the reader decides from its offset rows,
+reader history and slot, never from error text. It also stops when the slot is ahead
+of the stored resume position, the condition that `trust_offset` rejects. A slot
+without an offset and without reader history belongs to a first start that failed
+before its first checkpoint. The reader drops that slot with the replication login,
+because Debezium cannot take an exported snapshot from an existing slot. The new
+exported snapshot skips rows that the failed start already published.
+
 Retain the logical slots on shutdown. Store each reader's offsets with
 Debezium's JDBC offset store in a table of its own shard database, so offsets
 replicate, fail over, and are backed up with that shard. Configure and verify
@@ -1140,7 +1159,9 @@ bootstrap role continues to own only database `ledger`. The CDC login is a
 SQL `SELECT` on `ordering.order_outbox`; those grants do not constrain WAL access.
 Its publication is a CNPG `Publication` resource.
 The Debezium offsets table belongs to the
-ordering stream, with DML granted to the order service's group.
+ordering stream, with DML granted to the order service's group. Its permanent
+`cdc_reader_state` history permits only `SELECT` and `INSERT(reader_name)` for
+that group; initialization time comes from the database.
 
 - Grant only to group roles. Each stream's repeatable `R__<schema>_grants.sql`
   revokes everything from its groups and grants the complete matrix again, so one

@@ -90,6 +90,14 @@ public final class RabbitMqBroker implements Disposable {
         return factory.newConnection("shardshop-broker-acceptance");
     }
 
+    public int port() {
+        return container.getMappedPort(5672);
+    }
+
+    public String orderPassword() {
+        return passwords.get("order");
+    }
+
     public JsonNode get(String path) throws IOException, InterruptedException {
         HttpResponse<byte[]> response = request(path, "admin", passwords.get("admin"));
         if (response.statusCode() != 200) {

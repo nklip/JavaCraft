@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -22,6 +23,11 @@ class ShardRoutingStartupIT {
 
     private static final String VALID_ROUTING = "shardshop.routing.shards=shard-b,shard-a\n"
             + "shardshop.routing.regions=EU,US\n";
+    /** Normal starts enable CDC, which needs a replication password for each routing shard and a broker password. */
+    private static final String VALID = VALID_ROUTING
+            + "shardshop.order.cdc.connections.shard-a.password=cdc-secret-a\n"
+            + "shardshop.order.cdc.connections.shard-b.password=cdc-secret-b\n"
+            + "shardshop.order.cdc.broker.password=broker-secret\n";
     private static final String REGISTRY_UID = "3b439d70-a189-4a6e-8045-ab5b1fa140ac";
 
     @TempDir
@@ -29,7 +35,7 @@ class ShardRoutingStartupIT {
 
     @Test
     void startsWithAnExternalRoutingSnapshot() throws Exception {
-        assertEquals(0, launch(VALID_ROUTING), output());
+        assertEquals(0, launch(VALID), output());
     }
 
     @Test
@@ -58,78 +64,78 @@ class ShardRoutingStartupIT {
 
     @Test
     void startsWithTheHighestLiveGeneratorId() throws Exception {
-        assertEquals(0, launch(VALID_ROUTING, "1023"), output());
+        assertEquals(0, launch(VALID, "1023"), output());
     }
 
     @Test
     void failsWhenTheGeneratorIdIsMissing() throws Exception {
-        assertNotEquals(0, launch(VALID_ROUTING, null));
+        assertNotEquals(0, launch(VALID, null));
         assertTrue(output().contains("shardshop.id.generator-id"), output());
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"0", "-1", "1024"})
     void failsWhenTheGeneratorIdIsOutsideTheLiveRange(String generatorId) throws Exception {
-        assertNotEquals(0, launch(VALID_ROUTING, generatorId));
+        assertNotEquals(0, launch(VALID, generatorId));
         assertTrue(output().contains("Live generator ID must be in 1..1023"), output());
     }
 
     @Test
     void failsWhenTheGeneratorIdIsMalformed() throws Exception {
-        assertNotEquals(0, launch(VALID_ROUTING, "not-a-number"));
+        assertNotEquals(0, launch(VALID, "not-a-number"));
         assertTrue(output().contains("shardshop.id.generator-id"), output());
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"7", "1023"})
     void startsWithAnEnvironmentGeneratorId(String generatorId) throws Exception {
-        assertEquals(0, launch(VALID_ROUTING, null, generatorId), output());
+        assertEquals(0, launch(VALID, null, generatorId), output());
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"0", "-1", "1024", "4294967297"})
     void failsWhenTheEnvironmentGeneratorIdIsOutsideTheLiveRange(String generatorId) throws Exception {
-        assertNotEquals(0, launch(VALID_ROUTING, null, generatorId));
+        assertNotEquals(0, launch(VALID, null, generatorId));
         assertTrue(output().contains("Live generator ID must be in 1..1023"), output());
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"", "1023.0", "not-a-number"})
     void failsWhenTheEnvironmentGeneratorIdIsEmptyOrMalformed(String generatorId) throws Exception {
-        assertNotEquals(0, launch(VALID_ROUTING, null, generatorId));
+        assertNotEquals(0, launch(VALID, null, generatorId));
         assertTrue(output().contains("shardshop.id.generator-id"), output());
     }
 
     @Test
     void rejectsAProfileEnvironmentGeneratorIdNextToTheRegistry() throws Exception {
-        assertNotEquals(0, launch(VALID_ROUTING, null, null, Map.of("CONFIG_ORDINAL", "500",
+        assertNotEquals(0, launch(VALID, null, null, Map.of("CONFIG_ORDINAL", "500",
                 "_PROD_SHARDSHOP_ID_GENERATOR_ID", "2", "SHARDSHOP_ID_REGISTRY_UID", REGISTRY_UID)));
         assertTrue(output().contains("Set shardshop.id.registry.uid or shardshop.id.generator-id, not both"), output());
     }
 
     @Test
     void rejectsAnExternalFileGeneratorIdNextToTheRegistry() throws Exception {
-        assertNotEquals(0, launch(VALID_ROUTING + "config_ordinal=500\nshardshop.id.generator-id=2\n", null, null,
+        assertNotEquals(0, launch(VALID + "config_ordinal=500\nshardshop.id.generator-id=2\n", null, null,
                 Map.of("SHARDSHOP_ID_REGISTRY_UID", REGISTRY_UID)));
         assertTrue(output().contains("Set shardshop.id.registry.uid or shardshop.id.generator-id, not both"), output());
     }
 
     @Test
     void rejectsAFixedGeneratorIdInAKubernetesPod() throws Exception {
-        assertNotEquals(0, launch(VALID_ROUTING, "1", null, Map.of("KUBERNETES_SERVICE_HOST", "10.96.0.1")));
+        assertNotEquals(0, launch(VALID, "1", null, Map.of("KUBERNETES_SERVICE_HOST", "10.96.0.1")));
         assertTrue(output().contains("A Kubernetes pod must reserve its generator ID"), output());
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"not-a-uid", "3B439D70-A189-4A6E-8045-AB5B1FA140AC"})
     void rejectsANonCanonicalRegistryUid(String uid) throws Exception {
-        assertNotEquals(0, launch(VALID_ROUTING, null, null, Map.of("SHARDSHOP_ID_REGISTRY_UID", uid)));
+        assertNotEquals(0, launch(VALID, null, null, Map.of("SHARDSHOP_ID_REGISTRY_UID", uid)));
         assertTrue(output().contains("A pinned generator registry UID is required"), output());
     }
 
     @Test
     void failsWithoutTheCaFileOfTheApiServerBeforeAnyRequest() throws Exception {
-        assertNotEquals(0, launch(VALID_ROUTING, null, null, reservationWithoutCaFile()));
+        assertNotEquals(0, launch(VALID, null, null, reservationWithoutCaFile()));
         assertTrue(output().contains("Kubernetes API access is not configured correctly"), output());
         assertFalse(output().contains("Reserved generator ID"), output());
     }
@@ -155,9 +161,29 @@ class ShardRoutingStartupIT {
             "shardshop.order.stock.batch-size=0|Stock batch size must be between 1 and 100"
     })
     void checksTheOrderConfigurationBeforeTheGeneratorReservation(String property, String message) throws Exception {
-        assertNotEquals(0, launch(VALID_ROUTING + property + "\n", null, null, reservationWithoutCaFile()));
+        assertNotEquals(0, launch(VALID + property + "\n", null, null, reservationWithoutCaFile()));
         assertTrue(output().contains(message), output());
         assertFalse(output().contains("Kubernetes API access is not configured correctly"), output());
+    }
+
+    /** Enabled CDC without a credential fails before the reservation and prints no credential value. */
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "shardshop.order.cdc.connections.shard-a.password|CDC is enabled but shardshop.order.cdc.connections.shard-a.password is not set",
+            "shardshop.order.cdc.broker.password|CDC is enabled but shardshop.order.cdc.broker.password is not set"
+    })
+    void checksTheCdcCredentialsBeforeTheGeneratorReservation(String missing, String message) throws Exception {
+        String properties = VALID.lines().filter(line -> !line.startsWith(missing + "="))
+                .collect(Collectors.joining("\n", "", "\n"));
+        assertNotEquals(0, launch(properties, null, null, reservationWithoutCaFile()));
+        assertTrue(output().contains(message), output());
+        assertFalse(output().contains("cdc-secret") || output().contains("broker-secret"), output());
+        assertFalse(output().contains("Kubernetes API access is not configured correctly"), output());
+    }
+
+    @Test
+    void startsWithoutCdcCredentialsWhenCdcIsDisabled() throws Exception {
+        assertEquals(0, launch(VALID_ROUTING + "shardshop.order.cdc.enabled=false\n"), output());
     }
 
     /** A reservation stops at its missing CA file, before any request; an earlier failure never reaches it. */

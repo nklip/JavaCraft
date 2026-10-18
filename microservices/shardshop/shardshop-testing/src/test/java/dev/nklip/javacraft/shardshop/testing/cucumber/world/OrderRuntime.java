@@ -3,6 +3,7 @@ package dev.nklip.javacraft.shardshop.testing.cucumber.world;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.CatalogDatabase;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.PackagedApplication;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.RawHttp;
+import dev.nklip.javacraft.shardshop.testing.cucumber.config.RabbitMqBroker;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.ShardShopFiles;
 import org.picocontainer.Disposable;
 
@@ -29,6 +30,7 @@ public final class OrderRuntime implements Disposable {
     private final List<PackagedApplication> applications = new ArrayList<>();
     private PackagedApplication application;
     private boolean stockEnabled;
+    private RabbitMqBroker cdcBroker;
 
     public OrderRuntime(CatalogShards shards) throws IOException {
         this.shards = shards;
@@ -46,6 +48,14 @@ public final class OrderRuntime implements Disposable {
         values.add("shardshop.order.catalog-deadline=PT3S");
         // The step 4.1 scenarios inspect atomic acceptance before any saga worker runs.
         values.add("shardshop.order.stock.enabled=" + stockEnabled);
+        values.add("shardshop.order.cdc.enabled=" + (cdcBroker != null));
+        if (cdcBroker != null) {
+            values.add("shardshop.order.cdc.broker.host=127.0.0.1");
+            values.add("shardshop.order.cdc.broker.port=" + cdcBroker.port());
+            values.add("shardshop.order.cdc.broker.virtual-host=shardshop");
+            values.add("shardshop.order.cdc.broker.username=shardshop-order");
+            values.add("shardshop.order.cdc.broker.password=" + cdcBroker.orderPassword());
+        }
         for (var shard : shards.all()) {
             String prefix = "shardshop.order.connections." + shard.name() + ".";
             int endpoint = unavailableShards.contains(shard.name()) ? refusedPort : database.port();
@@ -53,6 +63,10 @@ public final class OrderRuntime implements Disposable {
             values.add(prefix + "root-certificate=" + database.trustedCa());
             values.add(prefix + "username=order_app");
             values.add(prefix + "password=" + database.orderPassword());
+            if (cdcBroker != null) {
+                values.add("shardshop.order.cdc.connections." + shard.name() + ".username=ordering_cdc");
+                values.add("shardshop.order.cdc.connections." + shard.name() + ".password=" + database.cdcPassword());
+            }
         }
         Files.writeString(configuration, values.toString());
         application = PackagedApplication.start("shardshop-order", directory, List.of(
@@ -86,6 +100,11 @@ public final class OrderRuntime implements Disposable {
     /** Enables the production reservation coordinator on subsequent starts, including restarts. */
     public void enableStock() {
         stockEnabled = true;
+    }
+
+    /** Enables the production WAL relay on subsequent starts, including restarts. */
+    public void enableCdc(RabbitMqBroker broker) {
+        cdcBroker = broker;
     }
 
     public int port() {

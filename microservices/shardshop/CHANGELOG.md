@@ -2365,3 +2365,133 @@ The disposable qualification script ran between the second `down.sh` and the fir
 It used `kind create cluster --name shardshop-destroy-test --image <pinned node
 image> --wait 120s` with a private `KUBECONFIG`, and native `kind delete cluster` in
 its EXIT cleanup. Its files and logs remain outside the repository.
+
+## Step 4.4
+
+**2026-10-18:** Order embeds Debezium **3.7.0.Final** with one independently
+supervised PostgreSQL reader per shard. Each reader uses the provisioned outbox
+publication, a retained failover-capable slot, separate replication credentials,
+and the shard-local JDBC offset store. An application-role session advisory lock
+prevents overlapping readers from writing the same offsets. Queues, snapshot
+fetches, network/SQL calls and retries are bounded.
+
+The initial snapshot publishes pending outboxes; streaming publishes committed
+inserts in source order. Published snapshot rows, status changes, deletes,
+tombstones and control records do not become commands. The relay preserves the
+stored `RecordOrder` envelope and publishes it persistently with mandatory routing.
+Only a positive confirm without a return permits the local publication-status
+transaction, and only that transaction's commit permits the source checkpoint.
+Ordinary failures restart their shard reader with capped exponential backoff.
+
+Ordering **V4** adds permanent initialization history, inserted atomically with
+the first durable checkpoint. The runtime can insert but cannot update or delete
+that history. Missing or inconsistent slots, offsets or required WAL stop the
+reader for explicit reconciliation, including simultaneous slot/offset loss.
+The normal order lifecycle starts and closes CDC alongside stock reservation;
+`--check-startup` starts neither worker.
+
+The order dependency audit produces **304 SBOM components**. All **20** Debezium,
+Kafka and LZ4 JAR checksums match Maven Central, and OSV reports no findings for
+the **202** resolved third-party runtime JAR coordinates. Order explicitly
+supplies Debezium's provided storage-common dependency and overrides inherited
+LZ4 1.11.1 with **1.12.0** to address its published advisories.
+[Qualification and sources](VERSIONS.md#step-44-embedded-cdc-dependencies).
+
+Validation:
+
+- **229 order unit/provider tests** and **35 packaged startup checks** pass.
+  Batch tests cover publication/status/checkpoint ordering and failures; publisher
+  tests cover returns, negative confirms, timeouts and unusable connection cleanup.
+  The insert-with-publication-metadata regression failed before its correction
+  and passes afterward: only snapshots may skip already-published rows.
+- All **seven CDC scenarios** pass against the packaged order JVM with PostgreSQL
+  **18.6** and RabbitMQ **4.3.6**. They verify pending snapshot and committed WAL
+  delivery on every shard, exact schema-valid persistent envelopes, ignored
+  rollback/metadata events, durable restart without resnapshot, shard failure
+  isolation, mandatory-return checkpoint blocking and automatic reconnection,
+  and fail-closed behavior after slot, offset or combined loss. The combined-loss
+  scenario also verifies the runtime cannot modify or delete reader history.
+- The existing **nine order API** and **seven stock reservation** scenarios pass
+  against the updated migration and logical-replication database fixture. Both
+  scoped integration runs also pass **167 testing-module unit checks**.
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am -Paudit install
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify \
+  '-Dcucumber.filter.tags=@cdc-relay'
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify \
+  '-Dcucumber.filter.tags=@order-api or @stock-reservation'
+```
+
+Apply ordering V4 before enabling CDC against a retained database. These checks
+use disposable PostgreSQL and RabbitMQ containers. Order's kind deployment and
+Secret mounts remain step 4.9; crash injection and synchronized-standby failover
+remain steps 5.5 and 6.2.
+
+### Step 4.4 validation fixes
+
+**2026-10-18:** A validation of the step found five problems, and the user asked
+to fix all of them.
+
+1. Debezium had no heartbeat. An empty first snapshot saved no offset and no reader
+   history. Thus a normal restart latched "CDC recovery required" on every shard
+   without a command. An idle outbox never confirmed WAL: after about 100 MB of
+   other writes, the slot still retained all of it, and the lab's
+   `max_slot_wal_keep_size` (512 MB) would invalidate such a slot. Each reader now
+   sends a heartbeat every 10 seconds. Its action query
+   `SELECT pg_logical_emit_message(true, 'shardshop-cdc-heartbeat', '')` gives
+   Debezium a commit position to save and confirm. Heartbeat records and `m`
+   messages are checkpointed but never published.
+2. The acceptance cell had lost "The relay checks of scenario 6 pass", and the suite
+   did not test several relay checks. PLAN row 4.4 states the requirement again.
+   Nine scenarios are new: inserts during the initial snapshot, an idle restart, a
+   first start that fails before its first checkpoint, idle WAL release, a dropped
+   walsender, a second order process, lost WAL, a slot ahead of its offset, and an
+   accepted order whose stored `RecordOrder` the relay publishes unchanged.
+3. The relay logs named neither the cause of a retry nor the reason of a recovery
+   stop. A retry now logs its delay and a bounded single-line cause chain. A
+   recovery stop logs its reason, for example
+   `CDC recovery required for shard-a: replication slot was invalidated (wal_removed)`.
+4. Without CDC credentials, the relay started with empty passwords and retried
+   forever. With CDC enabled, startup now fails before the generator reservation
+   when a routing shard has no CDC password or the broker has no password. The
+   message names the property, never a value.
+5. A permanent stop depended on words in exception messages. The supervisor now
+   retries every failure and decides from durable state before each start. That
+   check also stops a reader when the slot is ahead of the stored resume position,
+   the condition that `trust_offset` rejects. A slot without an offset and without
+   reader history belongs to a first start that never saved a checkpoint. The
+   reader drops that slot with the replication login, because Debezium cannot take
+   an exported snapshot from an existing slot. Debezium then creates a new slot with
+   a consistent exported snapshot.
+
+Validation:
+
+- Before the fixes, the new tests ran against a copy of the step 4.4 code. Four
+  unit tests failed for the reported reasons: no heartbeat setting, an `m` record
+  stopped the batch, and two wiring tests accepted absent credentials. The two new
+  startup rows started with exit code 0. Ten of the sixteen CDC scenarios failed:
+  the idle restart (no offset after the empty snapshot), idle WAL release (WAL not
+  confirmed within 45 seconds), and eight scenarios whose log line had no cause or
+  reason. The snapshot-handoff scenario first failed on a test buyer ID collision.
+  The harness now uses each buyer ID once.
+- After the fixes, **236 order unit/provider tests** and **38 packaged startup
+  checks** pass. The full `-pl shardshop-testing -am -Pintegration clean verify`
+  passes **80 scenarios** in 1,223 seconds, with no WARN lines. The logs show one
+  slot drop of an uncheckpointed first start, and each recovery stop names its
+  reason.
+- Scratch probes before the fixes also showed that a 25-second lock of the offset
+  table and a terminated walsender recover without a recovery stop. Lost WAL stops
+  the reader. These cases are now repository scenarios.
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am clean install
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
+```
+
+The pre-fix runs used a scratch copy of the step 4.4 code with the new tests. The
+two unit test classes that need the new API were left out of that copy.

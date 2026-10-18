@@ -9,6 +9,10 @@ Feature: Durable stock reservation and compensation on PostgreSQL primaries
   Scenario: A cross-region order reaches the ledger boundary once across retries and restarts
     Then cross-region stock reservation creates one immutable RecordOrder
 
+  @cdc-relay
+  Scenario: The WAL relay publishes the stored RecordOrder of an accepted order unchanged
+    Then CDC publishes the stored RecordOrder of the accepted order unchanged
+
   Scenario: Competing coordinators never oversell scarce stock and compensate rejected orders
     Then concurrent scarce-stock orders never oversell with competing coordinators
 

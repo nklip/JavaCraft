@@ -10,7 +10,9 @@ from step 3.7 seeds and verifies the catalog through that API and then exits. Th
 product reader from step 3.8 reads the seeded products at a bounded rate until it
 stops. Order now serves buyer creation, durable order allocation and order PUT/GET
 from step 4.1, and its step 4.2 coordinator reserves stock, compensates rejected
-orders and writes the ledger command outbox. Ledger and the order producer still start CDI and exit. Step 3.5
+orders and writes the ledger command outbox. Step 4.4 embeds one Debezium reader
+per shard to deliver those envelopes to RabbitMQ with durable JDBC checkpoints.
+Ledger and the order producer still start CDI and exit. Step 3.5
 provides workload-owned dataset definitions and HTTP clients; the order workload
 loop remains step 4.8. Maven module tests need no Docker or
 Kubernetes; chart rendering and release orchestration tests require `helm` and
@@ -940,6 +942,90 @@ workers and scarce stock, partial compensation, outages, restarts, reserve/relea
 rollback under injected constraints, and denied `TRUNCATE`. Every phase checks
 `stock = initial_stock - active reserved quantities`. The separate order API
 scenarios disable the worker to isolate acceptance's atomicity and validation.
+
+## Order outbox CDC relay (step 4.4)
+
+Order starts one independently supervised Debezium 3.7.0.Final reader for each
+routing shard. The reader snapshots retained pending outboxes, then captures
+committed inserts from `ordering.order_outbox` through `pgoutput` and the
+administratively provisioned `ordering_order_outbox` publication. Slots and
+connector identities use `shardshop_order_<shard_name>`, replacing hyphens with
+underscores. Slots are retained and failover-enabled; the shard's session advisory
+lock prevents overlapping readers from writing the shared JDBC offset store.
+
+The relay sends the stored `RecordOrder` JSON unchanged, with persistent delivery,
+mandatory routing and publisher confirms. A return or negative/missing confirm
+leaves the row unpublished. After confirmation, an `order_app` transaction marks
+`published_at`; only then may Debezium checkpoint that source record. Snapshot
+rows already published, metadata updates, deletes and connector control records
+do not become commands. Redelivery retains the original message identity.
+
+Each reader sends a Debezium heartbeat every 10 seconds. Its action query,
+`SELECT pg_logical_emit_message(true, 'shardshop-cdc-heartbeat', '')`, emits a
+transactional logical decoding message. PostgreSQL permits this function for every
+login, and it writes no table. Thus an empty first snapshot saves its first offset
+and reader history, and an idle outbox still confirms the WAL of other writes.
+Heartbeat records and heartbeat messages never become commands.
+
+Each shard uses its existing `shardshop.order.connections.<shard>` primary URL
+and TLS certificate. Configure the replication login separately:
+
+```properties
+shardshop.order.cdc.enabled=true
+shardshop.order.cdc.connections.shard-a.username=ordering_cdc
+shardshop.order.cdc.connections.shard-a.password=${ORDERING_CDC_PASSWORD}
+shardshop.order.cdc.broker.host=shardshop-rabbitmq
+shardshop.order.cdc.broker.port=5672
+shardshop.order.cdc.broker.virtual-host=shardshop
+shardshop.order.cdc.broker.username=shardshop-order
+shardshop.order.cdc.broker.password=${RABBITMQ_ORDER_PASSWORD}
+shardshop.order.cdc.broker.timeout=5s
+```
+
+When CDC is enabled, startup fails before the generator reservation unless every
+routing shard has `shardshop.order.cdc.connections.<shard>.password` and the broker
+has `shardshop.order.cdc.broker.password`. The error names the property, never a value.
+Replication credentials only
+read/snapshot the source; the existing application credentials write publication
+marks and `ordering.debezium_offset_storage`. Apply ordering V4 before enabling
+CDC: its permanent `cdc_reader_state` marker is inserted atomically with the first
+durable offset and survives transport cleanup.
+
+Ordinary failures restart only the affected reader, after 0.5 s and then with a
+delay that doubles up to 30 s. Each retry logs
+`CDC reader for <shard> stopped; retrying in <delay> ms: <cause>`. Before each
+start, the reader compares its offset rows, reader history and slot, so the
+decision comes from durable state and never from an error message. A slot without
+an offset and without reader history belongs to a first start that failed before its
+first checkpoint. The reader then drops that slot with the replication login, and
+Debezium creates a new slot with a consistent exported snapshot. These states stop
+the reader with `CDC recovery required for <shard>: <reason>`:
+
+- `durable offset exists without its replication slot`
+- `replication slot exists without a durable offset`
+- `reader history exists without its offset and replication slot`
+- `durable offset exists without reader history`
+- `replication slot is ahead of its durable offset`
+- `replication slot was invalidated (<reason>)`, for example after `wal_removed`
+- `replication slot is not a failover pgoutput slot of this database`
+- an offset row that is malformed, that belongs to another connector, or that has
+  no usable source position
+
+Reconcile the retained
+outbox and permanent saga/ledger state before an operator-directed resnapshot;
+do not clear the marker or choose `trust_slot` to bypass recovery.
+
+CDC is enabled by default on normal order starts. `--check-startup` starts no
+workers, but it checks the CDC credentials. Tests can set
+`shardshop.order.cdc.enabled=false` to isolate HTTP or stock behavior. Kind deployment of order and its Secret mounts remains step 4.9.
+Crash injection and synchronized-standby failover drills remain steps 5.5 and 6.2.
+Run the relay acceptance against disposable PostgreSQL and RabbitMQ containers:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am -Paudit clean install
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify \
+  '-Dcucumber.filter.tags=@cdc-relay'
+```
 
 ## RabbitMQ topology and delivery policies (step 4.3)
 
