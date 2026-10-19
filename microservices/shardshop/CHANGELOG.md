@@ -2745,3 +2745,157 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pinteg
 The pre-fix runs used a scratch copy of the step 4.6 code with the new tests. In
 that copy, the publisher regression tests used the old ledger publisher class,
 because `ConfirmedPublisher` did not exist there.
+
+## Step 4.7
+
+**2026-10-19:** Order consumes `order.ledger-results`, validates the ledger-owned
+contract, routes by buyer ID and serializes application with order creation and
+quarantine. Only matching reserved results can confirm or cancel an order and its
+saga. The consumer acknowledges after the local transaction commits. Missing
+orders and conflicting identities/outcomes are quarantined durably; malformed
+IDs go directly to parking, while database outages use the broker's bounded
+delayed retry policy. Rejections enable the existing stock-release coordinator.
+
+Ordering V5 retains the first accepted decision and each accepted result envelope
+through transport cleanup. Same-ID payload/timestamp changes remain conflicts;
+matching results using newly reserved reconciliation IDs are harmless. Automatic
+reconciliation enqueueing remains step 5.1.
+
+Confirmation atomically creates per-item profit intents from snapshotted price,
+cost and quantity. Separate bounded seller-shard transactions insert an immutable
+credit identity and update the currency balance only for a new credit. The home
+intent is marked applied after that commit, so retries, unknown commit responses
+and competing workers cannot double-credit. Profit is eventual after
+`CONFIRMED`; negative margins and independent currency balances are preserved.
+Unknown legacy costs cannot become zero margin. Durable retries use backoff and
+jitter; permanent credit conflicts, missing catalog references and numeric
+overflow block the intent for investigation.
+
+Catalog V4 and the repeatable grants permit only the required balance/credit
+writes. Existing versioned migrations remain unchanged. No dependency, compiler
+release, SQL function or trigger was added. The audit still reports **304 order**
+and **193 ledger** SBOM components. The consumer reuses CDC's broker credentials,
+and both new workers remain inactive during `--check-startup`.
+
+Validation:
+
+- **260 order unit/provider tests**, **41 packaged order startup checks** and
+  **44 ledger unit/contract tests** pass, along with the selected common, ID and
+  sharding dependency checks.
+- **Nine new packaged result/profit scenarios** pass on PostgreSQL and RabbitMQ,
+  with **167 testing-module unit tests**. They cover recorded and rejected
+  results, signed cross-shard profit, duplicates and new reconciliation result
+  IDs, conflicts after inbox/outbox cleanup, orphan creation blocking, invalid-ID
+  parking, an unavailable home primary, catalog recovery, atomic rollback when
+  an intent insert fails, unknown historical cost quarantine, and the runtime
+  profit grants. The recovery case stops
+  a worker after a seller credit commits while its home mark is locked; two
+  replacement workers complete the intent without a second credit or increment.
+- The first order-only unit run found an outdated installed common artifact
+  without `ConfirmedPublisher`. Rebuilding the selected reactor dependencies
+  with `-am` resolved that local-cache mismatch.
+- **22 existing order API, stock and catalog migration scenarios** pass. The
+  first regression run found three stale catalog expectations for the migration
+  list, profit grants and migration-copy fixture. Updating those expectations
+  for V4 and the intended 4.7 permissions made the complete selected run pass;
+  unrelated product and immutable-credit write restrictions remain verified.
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order test
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am test
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order,shardshop-ledger -am -Pintegration,audit install
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify \
+  '-Dcucumber.filter.tags=@order-results'
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify \
+  '-Dcucumber.filter.tags=@order-results' \
+  '-Dcucumber.filter.name=Seller credit survives an interrupted home mark and competing workers'
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify \
+  '-Dcucumber.filter.tags=@order-results' \
+  '-Dcucumber.filter.name=Unknown historical item cost prevents a recorded result from confirming an order'
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify \
+  '-Dcucumber.filter.tags=@order-api or @stock-reservation or @catalog-migration'
+```
+
+### Step 4.7 validation fixes
+
+**2026-10-19:** A validation of the step found three problems, and the user asked
+to fix all of them.
+
+1. Result application did not serialize with order creation. The consumer locked
+   the raw order ID, but creation locks the SHA-256 key of `order\0\0<orderId>`.
+   In a probe with four connections for each shard, an orphan result committed
+   while creation held its lock. Then the order and an unresolved orphan with the
+   same ID both existed. An identical retry got `409 ORDER_RECONCILIATION_REQUIRED`,
+   and the stock worker skipped the saga. The consumer now takes
+   `OrderService.orderLock`, the lock of creation. In a control copy with this key,
+   the result went to `ordering.conflicting_results`, no orphan stayed, and the
+   retry got 202.
+2. The order result consumer was a copy of the ledger command consumer, and the
+   two copies were already different. The order copy logged only the class name of
+   a failure, and its malformed and quarantine warnings had no rule or reason.
+   Both modules now use `dev.nklip.javacraft.shardshop.common.amqp.QueueConsumer`.
+   `LedgerCommandConsumer` and `OrderResultConsumer` only map their outcomes to a
+   broker settlement. The shared loop logs the cause chain, the rule and the
+   reason. It also adds 25% jitter to the reconnect backoff of the ledger. The
+   publisher and both consumers use the new `BrokerSettings` record. The ledger
+   log texts did not change.
+3. The profit worker log lines did not help an operator. `System.Logger` formatted
+   the order ID with digit grouping, for example `105,614,554,681,012,225`. A
+   seller outage named the home shard, and no line gave a cause. The lines now
+   name the shard that failed and the cause, and IDs have no grouping.
+   `ProfitFailure` keeps its cause for the log.
+
+Validation:
+
+- Before the fixes, the new tests ran against a copy of the step 4.7 code. Four
+  unit tests and the new scenario failed for the reported reasons:
+  - Two `ResultServiceTest` cases expected the creation key and got the raw ID.
+  - The consumer log test got `requested broker retry: ResultFailure`, without a
+    cause, and a malformed line without its rule.
+  - The profit log test got `order 105,614,554,681,012,225` and the home shard `a`
+    instead of the seller shard `b`.
+  - The scenario "Orphan quarantine waits for the creation lock of its order ID"
+    found an orphan while a test transaction held the creation lock.
+- After the fixes, common passes **279 unit tests**, with 8 for `QueueConsumer`.
+  Order passes **260 unit and provider tests**, and ledger passes **42 unit
+  tests**. The two consumer test classes now test only the outcome mapping. The
+  ledger restart scenario accepts the jittered first delay of 375–625 ms.
+- The full `-pl shardshop-testing -am -Pintegration clean verify` ran **110
+  scenarios** in 1,770 seconds, with the ten result/profit scenarios. Two scenarios
+  failed for environment reasons. The HTTP port of one order start was already in
+  use, and the reader reached only 156 requests/s while the kind lab used most of
+  the Docker VM. A rerun of `OrderApi.feature` and `ProductReader.feature` passed
+  all 11 scenarios. The only other WARN line is the accepted Ryuk line.
+- Probes with the packaged order on a copy of the fixed code: an orphan result
+  waited for a held creation lock. In the creation race, the result went to the
+  conflict table and the retry got 202. The log named `shard-c` for a seller
+  outage, gave order IDs without grouping, and gave the cause chains and the rule
+  of a malformed result. A reconciliation result of the real ledger, with a new
+  reserved result ID and the same `decidedAt`, was accepted without a conflict.
+- The validation also ran the lab's Flyway path in a disposable container: the
+  pinned PostgreSQL image, the lab roles and the `shardshop-flyway` image, with the
+  lab's applied streams first. Catalog V4, ordering V4 and V5 and both grant files
+  applied, a second migrate did nothing, and validate passed. The runtime
+  statements of the consumer and the worker ran as `order_app`, and 13 forbidden
+  statements failed. On the lab, `shardshop-order` can read
+  `order.ledger-results`, whose policy has delivery limit 5 and a dead-letter
+  queue. The lab did not change; its next `up.sh` applies the new migrations.
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl :shardshop-common,:shardshop-ledger,:shardshop-order -am clean test
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  -Dtest=None -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false \
+  '-Dit.test=CucumberIT,ShardRoutingStartupIT#startsWithAnExternalRoutingSnapshot' \
+  -Dfailsafe.failIfNoSpecifiedTests=false -Djacoco.skip=true \
+  '-Dcucumber.features=classpath:features/OrderApi.feature,classpath:features/ProductReader.feature'
+```
+
+The pre-fix runs used a scratch copy of the step 4.7 code with the new tests. In
+that copy, the consumer log test used the old order consumer class, and the lock
+unit test calculated the creation key itself. `QueueConsumer` and
+`OrderService.orderLock` did not exist there.

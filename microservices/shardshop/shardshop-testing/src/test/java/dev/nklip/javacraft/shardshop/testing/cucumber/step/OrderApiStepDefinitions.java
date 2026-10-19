@@ -408,6 +408,8 @@ public final class OrderApiStepDefinitions {
                 statement.execute("INSERT INTO ordering.order_allocations (order_id,buyer_id,run_name,request_ordinal) VALUES (2,1,'historical',0)");
                 statement.execute("INSERT INTO ordering.orders (order_id,buyer_id,request_fingerprint,currency,total_amount) VALUES (2,1,'historical','USD',19.95)");
                 statement.execute("INSERT INTO ordering.order_items (order_id,item_position,seller_id,product_id,quantity,product_name,unit_price,currency) VALUES (2,0,3,4,1,'Historical product',19.95,'USD')");
+                statement.execute("INSERT INTO ordering.order_sagas (saga_id,order_id,command_id) VALUES (5,2,6)");
+                statement.execute("INSERT INTO ordering.order_result_ids (result_message_id,message_id,saga_id) VALUES (7,8,5)");
             }
             database.migrate(name, full, values, "ordering");
             assertEquals(0, database.migrate(name, full, values, "ordering").migrationsExecuted);
@@ -422,6 +424,19 @@ public final class OrderApiStepDefinitions {
                     assertTrue(rows.next());
                     assertEquals(new BigDecimal("19.95"), rows.getBigDecimal(1));
                     assertNull(rows.getBigDecimal(2), "Unknown historical cost must not be invented");
+                }
+                try (var rows = statement.executeQuery("SELECT status,ledger_result FROM ordering.order_sagas WHERE saga_id=5")) {
+                    assertTrue(rows.next());
+                    assertEquals("PENDING_STOCK", rows.getString(1));
+                    assertNull(rows.getString(2), "Migration must not invent a ledger decision");
+                }
+                try (var rows = statement.executeQuery("SELECT received_envelope FROM ordering.order_result_ids WHERE result_message_id=7")) {
+                    assertTrue(rows.next());
+                    assertNull(rows.getString(1), "Migration must not claim a historical result was received");
+                }
+                try (var rows = statement.executeQuery("SELECT count(*) FROM ordering.profit_intents")) {
+                    assertTrue(rows.next());
+                    assertEquals(0, rows.getInt(1), "Migration must not credit a historical unknown cost");
                 }
                 assertThrows(SQLException.class, () -> statement.execute("INSERT INTO ordering.buyers (buyer_id,name,creation_key) VALUES (5,'Incomplete','new-key')"));
             }

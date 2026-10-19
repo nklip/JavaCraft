@@ -23,6 +23,18 @@ public interface OrderConfiguration {
     Duration catalogDeadline();
 
     Stock stock();
+    Results results();
+    Profit profit();
+
+    interface Results {
+        @WithDefault("true") boolean enabled();
+    }
+
+    interface Profit {
+        @WithDefault("true") boolean enabled();
+        @WithDefault("250ms") Duration pollInterval();
+        @WithDefault("8") int batchSize();
+    }
 
     interface Stock {
         @WithDefault("true")

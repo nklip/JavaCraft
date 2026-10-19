@@ -14,7 +14,7 @@ Feature: Catalog migrations with the Flyway Java API
           VALUES (11, 1, 'Legacy item', 19.95, 'USD', 10, 8)
       """
     When Flyway migrates the catalog stream
-    Then Flyway applies the migrations "2 catalog creation, 3 stock coordination, catalog grants"
+    Then Flyway applies the migrations "2 catalog creation, 3 stock coordination, 4 profit posting, catalog grants"
     And catalog_reader reads these rows:
       | query                                                                                                     | rows                    |
       | SELECT company_name, creation_key IS NULL FROM catalog.sellers WHERE seller_id = 1                         | Legacy company,t        |
@@ -68,7 +68,7 @@ Feature: Catalog migrations with the Flyway Java API
       | INSERT INTO catalog.products(product_id, seller_id, name, price, currency, initial_stock, stock, creation_key) VALUES (50, 2, 'Boundary item', 1.00, 'USD', 1, 1, '{repeat:K:128}'); SELECT length(creation_key) FROM catalog.products WHERE product_id = 50 | 128 |
       | INSERT INTO catalog.sellers(seller_id, name) VALUES (4, 'Legacy second company'); INSERT INTO catalog.products(product_id, seller_id, name, price, currency, initial_stock, stock) VALUES (14, 4, 'Legacy second item', 1.00, 'USD', 1, 1); SELECT description, unit_cost FROM catalog.products WHERE product_id = 14 | Legacy product,0.00 |
 
-  Scenario: Profit credits keep one identity for each order item, and only the owner changes profits
+  Scenario: Profit credits keep one identity per order item and seller balances allow signed amounts
     Given a new shard database that Flyway migrated
     And catalog_writer adds these rows:
       """
@@ -126,23 +126,16 @@ Feature: Catalog migrations with the Flyway Java API
       | catalog_writer   | UPDATE catalog.sellers SET creation_key = 'changed' WHERE seller_id = 2                         | 42501    |
       | catalog_writer   | SELECT * FROM catalog.profit_credits                                                            | 42501    |
       | catalog_writer   | SELECT * FROM catalog.stock_reservations                                                        | 42501    |
-      | catalog_reserver | SELECT * FROM catalog.seller_profits                                                            | 42501    |
-      | catalog_reserver | UPDATE catalog.seller_profits SET amount = 0 WHERE seller_id = 2                                | 42501    |
-      | catalog_reserver | INSERT INTO catalog.seller_profits(seller_id, currency) VALUES (2, 'GBP')                       | 42501    |
-      | catalog_reserver | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount) VALUES (102, 12, 2, 'USD', 1.00) | 42501 |
-      | catalog_reserver | SELECT * FROM catalog.profit_credits                                                            | 42501    |
+      | catalog_reserver | INSERT INTO catalog.seller_profits(seller_id, currency, amount) VALUES (2, 'GBP', 1.00)         | 42501    |
+      | catalog_reserver | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount, credited_at) VALUES (102, 12, 2, 'USD', 1.00, CURRENT_TIMESTAMP) | 42501 |
       | catalog_reserver | UPDATE catalog.profit_credits SET amount = 100 WHERE order_id = 101                             | 42501    |
       | catalog_reserver | DELETE FROM catalog.profit_credits WHERE order_id = 101                                         | 42501    |
       | catalog_reserver | TRUNCATE catalog.profit_credits                                                                 | 42501    |
       | catalog_reserver | TRUNCATE catalog.stock_reservations                                                             | 42501    |
-      | order_app        | UPDATE catalog.seller_profits SET amount = 0 WHERE seller_id = 2                                | 42501    |
-      | order_app        | INSERT INTO catalog.seller_profits(seller_id, currency) VALUES (2, 'GBP')                       | 42501    |
       | order_app        | INSERT INTO catalog.seller_profits(seller_id, currency, amount) VALUES (2, 'GBP', 100)          | 42501    |
       | order_app        | DELETE FROM catalog.seller_profits WHERE seller_id = 2                                          | 42501    |
       | order_app        | UPDATE catalog.seller_profits SET currency = 'GBP' WHERE seller_id = 2                          | 42501    |
-      | order_app        | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount) VALUES (102, 12, 2, 'USD', 1.00) | 42501 |
       | order_app        | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount, credited_at) VALUES (102, 12, 2, 'USD', 1.00, CURRENT_TIMESTAMP) | 42501 |
-      | order_app        | SELECT * FROM catalog.profit_credits                                                            | 42501    |
       | order_app        | UPDATE catalog.profit_credits SET amount = 100 WHERE order_id = 101                             | 42501    |
       | order_app        | DELETE FROM catalog.profit_credits WHERE order_id = 101                                         | 42501    |
       | order_app        | TRUNCATE catalog.profit_credits                                                                 | 42501    |
@@ -159,6 +152,7 @@ Feature: Catalog migrations with the Flyway Java API
       | UPDATE catalog.products SET stock = stock - 1 WHERE product_id = 12; INSERT INTO catalog.stock_reservations(order_id, product_id, quantity) VALUES (201, 12, 1); SELECT stock FROM catalog.products WHERE product_id = 12 | 2 |
       | INSERT INTO catalog.stock_reservations(order_id, product_id, quantity) VALUES (201, 12, 1); UPDATE catalog.stock_reservations SET released_at = CURRENT_TIMESTAMP WHERE order_id = 201 AND product_id = 12 AND released_at IS NULL; SELECT released_at IS NOT NULL FROM catalog.stock_reservations WHERE order_id = 201 | t |
       | INSERT INTO catalog.stock_reservations(order_id, product_id, quantity) VALUES (201, 12, 1); DELETE FROM catalog.stock_reservations WHERE order_id = 201; SELECT count(*) FROM catalog.stock_reservations | 0 |
+      | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount) VALUES (102, 12, 2, 'USD', 1.00); UPDATE catalog.seller_profits SET amount = amount + 1.00 WHERE seller_id = 2 AND currency = 'USD'; SELECT amount FROM catalog.seller_profits WHERE seller_id = 2 AND currency = 'USD' | 1.00 |
     And the login roles have these catalog privileges:
       | role        | table                      | column   | privilege | granted |
       | product_app | catalog.sellers            |          | SELECT    | yes     |
@@ -175,12 +169,15 @@ Feature: Catalog migrations with the Flyway Java API
       | order_app   | catalog.sellers            |          | SELECT    | yes     |
       | order_app   | catalog.products           |          | SELECT    | yes     |
       | order_app   | catalog.seller_profits     |          | SELECT    | yes     |
-      | order_app   | catalog.seller_profits     | any      | INSERT    | no      |
-      | order_app   | catalog.seller_profits     | any      | UPDATE    | no      |
+      | order_app   | catalog.seller_profits     | any      | INSERT    | yes     |
+      | order_app   | catalog.seller_profits     | amount   | INSERT    | no      |
+      | order_app   | catalog.seller_profits     | amount   | UPDATE    | yes     |
+      | order_app   | catalog.seller_profits     | currency | UPDATE    | no      |
       | order_app   | catalog.seller_profits     |          | DELETE    | no      |
       | order_app   | catalog.seller_profits     |          | TRUNCATE  | no      |
-      | order_app   | catalog.profit_credits     | any      | SELECT    | no      |
-      | order_app   | catalog.profit_credits     | any      | INSERT    | no      |
+      | order_app   | catalog.profit_credits     | any      | SELECT    | yes     |
+      | order_app   | catalog.profit_credits     | any      | INSERT    | yes     |
+      | order_app   | catalog.profit_credits     | credited_at | INSERT | no      |
       | order_app   | catalog.profit_credits     | any      | UPDATE    | no      |
       | order_app   | catalog.profit_credits     |          | DELETE    | no      |
       | order_app   | catalog.profit_credits     |          | TRUNCATE  | no      |
@@ -228,8 +225,11 @@ Feature: Catalog migrations with the Flyway Java API
       | role        | table                  | column | privilege | granted |
       | product_app | catalog.seller_profits | amount | INSERT    | no      |
       | product_app | catalog.seller_profits | any    | UPDATE    | no      |
-      | order_app   | catalog.seller_profits | any    | INSERT    | no      |
-      | order_app   | catalog.seller_profits | any    | UPDATE    | no      |
-      | order_app   | catalog.profit_credits | any    | SELECT    | no      |
-      | order_app   | catalog.profit_credits | any    | INSERT    | no      |
+      | order_app   | catalog.seller_profits | any    | INSERT    | yes     |
+      | order_app   | catalog.seller_profits | amount | INSERT    | no      |
+      | order_app   | catalog.seller_profits | amount | UPDATE    | yes     |
+      | order_app   | catalog.seller_profits | currency | UPDATE  | no      |
+      | order_app   | catalog.profit_credits | any    | SELECT    | yes     |
+      | order_app   | catalog.profit_credits | any    | INSERT    | yes     |
+      | order_app   | catalog.profit_credits | credited_at | INSERT | no      |
       | order_app   | catalog.profit_credits | any    | UPDATE    | no      |

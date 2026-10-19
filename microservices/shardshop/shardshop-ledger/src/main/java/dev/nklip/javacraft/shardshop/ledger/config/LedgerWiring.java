@@ -1,5 +1,6 @@
 package dev.nklip.javacraft.shardshop.ledger.config;
 
+import dev.nklip.javacraft.shardshop.common.amqp.BrokerSettings;
 import dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher;
 import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import dev.nklip.javacraft.shardshop.common.jdbc.JdbcUrls;
@@ -46,10 +47,8 @@ public class LedgerWiring {
     @Singleton
     @Startup
     LedgerCommandConsumer consumer(LedgerService service, LedgerConfiguration config) {
-        var broker = config.broker();
-        return new LedgerCommandConsumer(new LedgerCommandConsumer.Settings(config.enabled(), broker.host(),
-                broker.port(), broker.virtualHost(), broker.username(), broker.password().orElse(""),
-                broker.timeout()), service::handle);
+        return new LedgerCommandConsumer(new LedgerCommandConsumer.Settings(config.enabled(), broker(config)),
+                service::handle);
     }
 
     void closeConsumer(@Disposes LedgerCommandConsumer consumer) {
@@ -60,10 +59,8 @@ public class LedgerWiring {
     @Singleton
     @Startup
     LedgerResultRelay relay(JdbcLedgerStore store, LedgerConfiguration config) {
-        var broker = config.broker();
         var publisher = config.publisher();
-        var connection = new ConfirmedPublisher.Settings(broker.host(), broker.port(), broker.virtualHost(),
-                broker.username(), broker.password().orElse(""), broker.timeout());
+        var connection = broker(config);
         return new LedgerResultRelay(store, () -> new ConfirmedPublisher(connection, RESULTS),
                 new LedgerResultRelay.Settings(config.enabled() && publisher.enabled(), publisher.batchSize(),
                         publisher.pollInterval()));
@@ -75,5 +72,12 @@ public class LedgerWiring {
 
     void closeStore(@Disposes JdbcLedgerStore store) {
         store.close();
+    }
+
+    /** The consumer and the result publisher use the same broker connection settings. */
+    private static BrokerSettings broker(LedgerConfiguration config) {
+        var broker = config.broker();
+        return new BrokerSettings(broker.host(), broker.port(), broker.virtualHost(), broker.username(),
+                broker.password().orElse(""), broker.timeout());
     }
 }

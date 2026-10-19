@@ -1,6 +1,6 @@
 package dev.nklip.javacraft.shardshop.order.config;
 
-import dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher;
+import dev.nklip.javacraft.shardshop.common.amqp.BrokerSettings;
 import dev.nklip.javacraft.shardshop.order.cdc.OrderCdcRelay;
 import dev.nklip.javacraft.shardshop.sharding.ShardTopology;
 import org.junit.jupiter.api.BeforeEach;
@@ -58,7 +58,7 @@ class CdcWiringTest {
             assertEquals("cdc-test-secret", first.replication().password());
             assertEquals("ordering_cdc", shards.get(1).replication().username());
             assertEquals("cdc-test-secret-b", shards.get(1).replication().password());
-            assertEquals(new ConfirmedPublisher.Settings("broker", 5672, "shardshop", "shardshop-order",
+            assertEquals(new BrokerSettings("broker", 5672, "shardshop", "shardshop-order",
                     "broker-test-secret", Duration.ofSeconds(5)), context.arguments().get(1));
         })) {
             wiring.relay(config, order, topology);

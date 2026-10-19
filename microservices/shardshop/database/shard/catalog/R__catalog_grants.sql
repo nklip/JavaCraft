@@ -4,8 +4,7 @@ REVOKE ALL ON SCHEMA catalog FROM PUBLIC, catalog_reader, catalog_writer, catalo
 REVOKE ALL ON ALL TABLES IN SCHEMA catalog FROM PUBLIC, catalog_reader, catalog_writer, catalog_reserver;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA catalog FROM PUBLIC, catalog_reader, catalog_writer, catalog_reserver;
 -- Table-level REVOKE does not remove column grants from earlier repeatable runs.
--- Remove the earlier reserver profit grants too; only product's zero initialization
--- is enabled until the confirmation protocol in PLAN step 4.7 is implemented.
+-- Remove column privileges from earlier repeatable runs before rebuilding the matrix.
 REVOKE ALL (seller_id, currency, amount) ON catalog.seller_profits
     FROM PUBLIC, catalog_reader, catalog_writer, catalog_reserver;
 REVOKE ALL (order_id, product_id, seller_id, currency, amount, credited_at) ON catalog.profit_credits
@@ -26,3 +25,9 @@ REVOKE ALL (closed) ON catalog.stock_reservation_guards
     FROM PUBLIC, catalog_reader, catalog_writer, catalog_reserver;
 GRANT SELECT, INSERT ON catalog.stock_reservation_guards TO catalog_reserver;
 GRANT UPDATE (closed) ON catalog.stock_reservation_guards TO catalog_reserver;
+-- Credit identity is immutable. The same transaction inserts it and updates the balance.
+GRANT SELECT ON catalog.profit_credits, catalog.seller_profits TO catalog_reserver;
+GRANT INSERT (order_id, product_id, seller_id, currency, amount)
+    ON catalog.profit_credits TO catalog_reserver;
+GRANT INSERT (seller_id, currency) ON catalog.seller_profits TO catalog_reserver;
+GRANT UPDATE (amount) ON catalog.seller_profits TO catalog_reserver;

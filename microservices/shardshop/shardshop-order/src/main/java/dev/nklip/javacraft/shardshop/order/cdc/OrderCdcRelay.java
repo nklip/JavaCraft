@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.order.cdc;
 
 import dev.nklip.javacraft.shardshop.common.Failures;
+import dev.nklip.javacraft.shardshop.common.amqp.BrokerSettings;
 import dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher;
 import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import io.debezium.engine.ChangeEvent;
@@ -36,7 +37,7 @@ public final class OrderCdcRelay implements AutoCloseable {
     private final AtomicBoolean started = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
 
-    public OrderCdcRelay(List<ShardSettings> shards, ConfirmedPublisher.Settings rabbit) {
+    public OrderCdcRelay(List<ShardSettings> shards, BrokerSettings rabbit) {
         Objects.requireNonNull(shards, "shards");
         Objects.requireNonNull(rabbit, "rabbit");
         Set<String> seen = new HashSet<>();
@@ -70,14 +71,14 @@ public final class OrderCdcRelay implements AutoCloseable {
 
     private final class Reader implements Runnable {
         private final ShardSettings settings;
-        private final ConfirmedPublisher.Settings rabbit;
+        private final BrokerSettings rabbit;
         private final CdcStore store;
         private final Thread supervisor;
         private volatile DebeziumEngine<ChangeEvent<String, String>> engine;
         private volatile Thread engineThread;
         private volatile boolean recoveryRequired;
 
-        Reader(ShardSettings settings, ConfirmedPublisher.Settings rabbit) {
+        Reader(ShardSettings settings, BrokerSettings rabbit) {
             this.settings = settings;
             this.rabbit = rabbit;
             this.store = new CdcStore(settings.application(), settings.replication());

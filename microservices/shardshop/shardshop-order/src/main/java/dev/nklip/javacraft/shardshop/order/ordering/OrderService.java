@@ -145,7 +145,7 @@ public final class OrderService {
     }
 
     private Optional<Order> checkedOrder(OrderStore.Session session, long buyerId, long orderId, String fingerprint) {
-        session.lock(lockKey("order", "", Long.toString(orderId)));
+        session.lock(orderLock(orderId));
         if (session.quarantined(orderId)) {
             throw new OrderFailure(ORDER_RECONCILIATION_REQUIRED);
         }
@@ -274,6 +274,11 @@ public final class OrderService {
         } catch (IdGenerationUnavailableException failure) {
             throw new OrderFailure(ID_GENERATION_UNAVAILABLE);
         }
+    }
+
+    /** The transaction lock that serializes creation, result application and orphan quarantine of one order ID. */
+    public static long orderLock(long orderId) {
+        return lockKey("order", "", Long.toString(orderId));
     }
 
     private static long lockKey(String collection, String scope, String key) {

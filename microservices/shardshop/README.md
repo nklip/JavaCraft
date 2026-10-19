@@ -14,7 +14,9 @@ orders and writes the ledger command outbox. Step 4.4 embeds one Debezium reader
 per shard to deliver those envelopes to RabbitMQ with durable JDBC checkpoints.
 Ledger consumes those commands in step 4.5, committing immutable decisions and
 pending result outboxes. Its step 4.6 publisher delivers the saved results to
-RabbitMQ with confirms and publication-attempt checks. The order producer
+RabbitMQ with confirms and publication-attempt checks.
+Order's step 4.7 consumer applies those results and records durable seller-profit
+intents, which a separate worker posts on each seller's shard. The order producer
 still starts CDI and exits. Step 3.5
 provides workload-owned dataset definitions and HTTP clients; the order workload
 loop remains step 4.8. Maven module tests need no Docker or
@@ -126,8 +128,8 @@ products remain grouped by their returned seller ID. Buyer requests include
 
 Existing catalog/ordering V1 migrations remain immutable. Step 3.6 adds catalog
 creation fields, durable keys and profit storage through V2. Step 4.1 adds ordering
-fields and unit-cost snapshots through its own V2; confirmed-item profit crediting remains step
-4.7. Pending, reserved, cancelled or rejected orders earn no profit.
+fields and unit-cost snapshots through its own V2; step 4.7 implements confirmed-item
+profit crediting. Pending, reserved, cancelled or rejected orders earn no profit.
 
 The seeder retains returned seller IDs while creating products. Reader and order
 producer resolve catalog IDs through ordinary read-only resource lookups:
@@ -219,8 +221,8 @@ Run the normal external migration workflow before starting the API. The additive
 `V2__catalog_creation.sql` preserves V1, exposes `company_name` from the existing
 stored `name`, backfills descriptions/costs and profit rows, and adds key lookup
 indexes and the per-order/product profit-credit identity. Product can initialize
-zero balances but cannot update or reset them. Applying confirmed margin remains
-step 4.7; step 4.2 implements stock mutation. No SQL functions or triggers are added.
+zero balances but cannot update or reset them. Step 4.7 applies confirmed margin;
+step 4.2 implements stock mutation. No SQL functions or triggers are added.
 
 Connection configuration is deployment-only. Defaults target each inventory
 cluster's `-rw` and `-ro` Services in database `shardshop`, using `product_app` and
@@ -784,7 +786,7 @@ objects.
 
 | Feature | Replaces | Cases |
 |---|---|---|
-| `CatalogMigration.feature` | `verify-catalog-migration.py`, `verify-catalog-lab.sh` | V1 to V2 upgrade of legacy rows and backfill, history validation of a rerun, object owners, no functions or triggers, creation-key and product constraints, profit-credit identities, the privileges of each role and login, and a changed grants file that Flyway reapplies and that removes stale privileges |
+| `CatalogMigration.feature` | `verify-catalog-migration.py`, `verify-catalog-lab.sh` | V1 through V4 upgrade of legacy rows and backfill, history validation of a rerun, object owners, no functions or triggers, creation-key and product constraints, profit-credit identities, the privileges of each role and login, and a changed grants file that Flyway reapplies and that removes stale privileges |
 | `ProductApi.feature` | `verify-product-provider.py` | Seller and product creation, retries and conflicts on the shard of the key or seller, current stock and profits, integer forms, concurrent creation, lost responses, invalid input over the real HTTP stack, 32 KiB bodies, an incomplete body, a held lock with a full pool, restarts, and unavailable primaries or replicas |
 | `ProductTransport.feature` | `verify-product-transport.py` | TLS sessions, an untrusted CA, a host name that the certificate does not name, and pool recovery after a PostgreSQL restart without a product restart |
 | `ProductSeeder.feature` | `verify-product-seeder.py` | The [seeder runbook](#product-seeder-step-37) cases |
@@ -1090,7 +1092,9 @@ configuration file. Normal starts enable the consumer and result publisher;
 or connecting to external services.
 An enabled consumer requires both passwords. `shardshop.ledger.enabled=false`
 disables both workers. Database phases have a three-second deadline; broker
-connections use the configured timeout and reconnect with capped backoff.
+connections use the configured timeout and reconnect with capped exponential
+backoff and 25% jitter. Since step 4.7, the ledger and order consumers share this
+loop (`QueueConsumer` in `shardshop-common`).
 The default database URL names `ledger-db-rw`, the read-write Service of the
 `ledger-db` cluster.
 
@@ -1171,8 +1175,106 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pinteg
 No migration is needed. The only new dependencies are the optional RabbitMQ client
 of common and the platform-managed JBoss Log Manager and its SLF4J provider in the
 tests of common. This step leaves confirmed outbox rows for the later retention
-worker. Order result consumption remains step 4.7 and application deployment to
+worker. Step 4.7 implements order result consumption; application deployment to
 kind remains step 4.9.
+
+## Order result consumer and seller profit (step 4.7)
+
+Order consumes `order.ledger-results` with manual acknowledgements and prefetch
+one. It validates the ledger-owned result contract and routes by `buyerId`. Then
+it takes the transaction advisory lock that order creation takes for the same
+order ID (`OrderService.orderLock`). Thus an orphan quarantine cannot pass a
+creation in progress, and a creation cannot pass an orphan quarantine.
+It checks the reserved result ID, command/saga/buyer identity, fingerprint, amount,
+currency and saved outcome before changing the order and saga together. A recorded
+result confirms the order; a rejection cancels it and makes its existing stock
+release worker eligible. The acknowledgement follows the buyer-shard commit.
+
+Missing orders on reachable primaries go to `ordering.orphan_results`; unresolved
+orphans block creation with that order ID. Conflicting identities, payloads and
+outcomes go to `ordering.conflicting_results`, preserving saved business state.
+Repeated incidents increment their delivery count. Invalid envelopes and IDs are
+rejected directly to the result DLQ. Database failures use `basic.reject` with
+requeue, so the broker's existing delayed retry and delivery limit apply. An
+unavailable primary is never treated as proof that an order is absent.
+
+Order and ledger use the same consumer class,
+`dev.nklip.javacraft.shardshop.common.amqp.QueueConsumer` in `shardshop-common`.
+It reconnects with capped exponential backoff and 25% jitter. Its log tells an
+operator why a delivery did not complete. Log lines can contain validated IDs and
+fixed rule texts, but never the result body or a password:
+
+- `Order result consumer stopped; retrying in <delay> ms: <cause>` follows a
+  broker connection failure, a closed channel or a cancelled consumer.
+- `Order result transaction failed; requested broker retry: <cause>` names the
+  database error, without the row values.
+- `Malformed ledger result rejected to its dead-letter queue: <rule>` names the
+  rule that the result does not obey.
+- `Ledger result <messageId> for order <orderId> committed to <ORPHANED|CONFLICT> quarantine: <reason>`
+  names the reason that the quarantine table stores.
+
+Ordering migration V5 retains the first accepted envelope in
+`order_sagas.ledger_result` and each accepted result envelope in
+`order_result_ids.received_envelope`. Matching terminal deliveries are harmless,
+including a new reserved reconciliation result ID. A changed same-ID payload or
+timestamp remains detectable after inbox/outbox cleanup. This step consumes
+reconciliation results; their automatic command enqueuer remains step 5.1.
+
+Confirmation also inserts one durable `ordering.profit_intents` row per item in
+the same transaction, using `(unit_price - unit_cost) * quantity` from immutable
+order snapshots. Missing legacy costs or unrepresentable item margins are
+quarantined for investigation. No partial confirmation or profit intent survives
+a failed transaction. `CONFIRMED` can be visible before seller balances catch up.
+
+The profit worker reads bounded batches from each buyer shard, releases the
+connection, and posts each intent on its seller's shard. The seller transaction
+inserts immutable `catalog.profit_credits` keyed by `(order_id, product_id)` and
+increments the matching currency balance only for a new credit. A matching
+existing credit is a no-op. Only after that commit does a separate home-shard
+transaction mark the intent applied. Restarts, competing workers and unknown
+commit responses can repeat the work without double crediting. Losses remain
+negative and currencies are never combined.
+
+Transient profit failures persist a retry time with one-to-thirty-second backoff
+and jitter. A conflicting credit, missing catalog reference or balance overflow
+sets `blocked_reason` and logs the blocked intent; the intent remains for
+operator investigation. Runtime cannot edit credit/intent amounts or delete
+them. Catalog V4 and the repeatable grants allow order to initialize a currency
+at zero and update only its balance, while product's permissions stay unchanged.
+
+The profit worker logs one warning for each shard that fails, with the cause:
+`Profit posting unavailable for <shard>; durable intents will retry: <cause>`, or
+`Profit polling unavailable for <shard>; ...` when a poll of a home shard fails.
+A posting line names the shard that failed: the seller shard for a credit, or the
+home shard for a mark or a retry time. The next completed intent on that shard
+logs `Profit posting resumed for <shard>`. A blocked intent logs
+`Profit intent blocked for order <orderId>, item <position> on <home shard>: <reason>; investigate the durable intent`.
+Order IDs appear without digit grouping, thus a search for an ID finds the line.
+
+Normal startup enables both workers. `--check-startup` validates their settings
+without consuming or posting. Configure them independently:
+
+```properties
+shardshop.order.results.enabled=true
+shardshop.order.profit.enabled=true
+shardshop.order.profit.poll-interval=250ms
+shardshop.order.profit.batch-size=8
+```
+
+The consumer shares the `shardshop.order.cdc.broker.*` connection settings and
+credentials with CDC; it can run when CDC is disabled. Profit polling allows
+100 ms–30 seconds and batches of 1–100 items. All database phases keep the existing
+three-second deadline. Apply the catalog and ordering migrations before starting
+the updated order application. Existing versioned migrations remain unchanged;
+no new dependency, SQL function or trigger is added.
+
+Build and run the disposable PostgreSQL/RabbitMQ acceptance from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order,shardshop-ledger -am -Pintegration,audit install
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@order-results or @order-api or @stock-reservation or @catalog-migration'
+```
 
 ## RabbitMQ topology and delivery policies (step 4.3)
 
@@ -2498,12 +2600,11 @@ region's shard. Runtime roles cannot change a seller's region.
 Step 3.6 adds company-name, product-description, unit-cost and creation-key
 storage through `V2__catalog_creation.sql`, plus service-owned `seller_profits`
 and immutable `profit_credits` identities. Legacy descriptions backfill from the
-product name; legacy unit cost and initial USD/EUR balances are zero. Profit
-posting and the order role's profit-write privileges remain step 4.7. Neither
-`catalog_reserver` nor `order_app` can initialize profit currencies, change
-balances, or access profit credits. The repeatable grants revoke obsolete table
-and column permissions before reapplying the current privilege matrix, including
-premature profit permissions from earlier development revisions.
+product name; legacy unit cost and initial USD/EUR balances are zero. Step 4.7
+adds profit posting: `catalog_reserver` (and therefore `order_app`) may read and
+insert immutable credit identities, initialize currencies at zero and update
+only balance amounts. It cannot update or delete credits. The repeatable grants
+revoke obsolete table and column permissions before reapplying the current matrix.
 
 The stock-column grant permits direct updates without allowing changes to product
 names, prices or other columns. There is no stock trigger: reservation writes by

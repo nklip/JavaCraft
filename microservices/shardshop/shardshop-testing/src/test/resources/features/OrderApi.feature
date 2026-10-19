@@ -35,5 +35,5 @@ Feature: Order validation and atomic acceptance on PostgreSQL primaries
       | creation   |
       | quarantine |
 
-  Scenario: V2 upgrades legacy ordering data without rewriting its historical snapshots
+  Scenario: Ordering migrations preserve legacy snapshots without inventing results or profit
     Then the ordering migration preserves legacy data and enforces complete new profiles

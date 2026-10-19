@@ -27,6 +27,7 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -98,8 +99,13 @@ public final class LedgerConsumerStepDefinitions {
         assertResult(first, result(first), "RECORDED");
         assertResult(second, result(second), "RECORDED");
         awaitQueueEmpty();
-        List<String> restarts = warnings("Ledger command consumer stopped; retrying in 500 ms: ");
+        List<String> restarts = warnings("Ledger command consumer stopped; retrying in ");
         assertEquals(1, restarts.size(), runtime.tail());
+        // The first retry after a working connection waits 500 ms with 25% jitter.
+        var delay = Pattern.compile("retrying in (\\d+) ms: ").matcher(restarts.getFirst());
+        assertTrue(delay.find(), restarts.getFirst());
+        long millis = Long.parseLong(delay.group(1));
+        assertTrue(millis >= 375 && millis <= 625, restarts.getFirst());
         assertTrue(restarts.getFirst().contains("CONNECTION_FORCED"), "The restart names the broker's reason");
     }
 

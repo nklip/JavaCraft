@@ -73,7 +73,8 @@ public class CatalogMigrationStepDefinitions {
     @When("Flyway migrates the catalog stream with a changed grants file")
     public void migrateChangedGrants() throws IOException {
         Path location = CatalogShards.streamWith(ShardShopFiles.newWorkDirectory("migration-"),
-                "V1__catalog.sql", "V2__catalog_creation.sql", "V3__stock_coordination.sql", "R__catalog_grants.sql");
+                "V1__catalog.sql", "V2__catalog_creation.sql", "V3__stock_coordination.sql",
+                "V4__profit_posting.sql", "R__catalog_grants.sql");
         Files.writeString(location.resolve("R__catalog_grants.sql"), "\n-- A later review changed this file.\n",
                 StandardCharsets.UTF_8, StandardOpenOption.APPEND);
         migration = shards.migrate(shards.only(), location);

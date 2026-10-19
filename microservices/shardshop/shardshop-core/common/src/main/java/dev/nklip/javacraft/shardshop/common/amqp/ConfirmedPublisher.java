@@ -7,7 +7,6 @@ import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.impl.DefaultExceptionHandler;
 
 import java.io.IOException;
-import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -39,30 +38,18 @@ public final class ConfirmedPublisher implements AutoCloseable {
     private volatile boolean closed;
     private Channel channel;
 
-    public ConfirmedPublisher(Settings settings, Destination destination) {
+    public ConfirmedPublisher(BrokerSettings settings, Destination destination) {
         this(settings, destination, new ConnectionFactory());
     }
 
-    ConfirmedPublisher(Settings settings, Destination destination, ConnectionFactory factory) {
+    ConfirmedPublisher(BrokerSettings settings, Destination destination, ConnectionFactory factory) {
         Objects.requireNonNull(settings, "settings");
         this.destination = Objects.requireNonNull(destination, "destination");
         this.factory = Objects.requireNonNull(factory, "factory");
-        this.timeoutMillis = Math.toIntExact(settings.timeout().toMillis());
+        this.timeoutMillis = settings.timeoutMillis();
         this.worker = Executors.newSingleThreadExecutor(task ->
                 Thread.ofPlatform().daemon().name(destination.threadName()).unstarted(task));
-        factory.setHost(settings.host());
-        factory.setPort(settings.port());
-        factory.setVirtualHost(settings.virtualHost());
-        factory.setUsername(settings.username());
-        factory.setPassword(settings.password());
-        factory.setConnectionTimeout(timeoutMillis);
-        factory.setHandshakeTimeout(timeoutMillis);
-        factory.setChannelRpcTimeout(timeoutMillis);
-        factory.setShutdownTimeout(timeoutMillis);
-        factory.setAutomaticRecoveryEnabled(false);
-        factory.setTopologyRecoveryEnabled(false);
-        factory.setRequestedHeartbeat(10);
-        factory.setThreadFactory(Thread.ofPlatform().daemon().name(destination.threadName() + "-amqp-", 0).factory());
+        settings.configure(factory, destination.threadName() + "-amqp-");
         factory.setExceptionHandler(new DriverFailures());
     }
 
@@ -250,28 +237,6 @@ public final class ConfirmedPublisher implements AutoCloseable {
                     || kind == null || kind.isBlank() || threadName == null || threadName.isBlank()) {
                 throw new IllegalArgumentException("RabbitMQ publisher destination is incomplete");
             }
-        }
-    }
-
-    public record Settings(String host, int port, String virtualHost, String username,
-                           String password, Duration timeout) {
-        public Settings {
-            if (host == null || host.isBlank() || virtualHost == null || virtualHost.isBlank()
-                    || username == null || username.isBlank() || password == null) {
-                throw new IllegalArgumentException("RabbitMQ connection settings are incomplete");
-            }
-            if (port < 1 || port > 65535) {
-                throw new IllegalArgumentException("RabbitMQ port is out of range");
-            }
-            if (timeout == null || timeout.toMillis() < 1 || timeout.toMillis() > Integer.MAX_VALUE) {
-                throw new IllegalArgumentException("RabbitMQ timeout is out of range");
-            }
-        }
-
-        @Override
-        public String toString() {
-            return "Settings[host=" + host + ", port=" + port + ", virtualHost=" + virtualHost
-                    + ", username=" + username + ", password=<redacted>, timeout=" + timeout + "]";
         }
     }
 }

@@ -328,8 +328,11 @@ product and order code here: `JsonRequests` and
 `DatabasePhases`, `Endpoint` and the TLS and driver defaults of `JdbcUrls`. The
 step 4.6 validation moved the copied RabbitMQ publishers of order and ledger to
 `dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher`: one ordered stream
-with persistent mandatory messages, publisher confirms and finite timeouts. Their
-unit tests and boundary vectors live in common. Add reusable
+with persistent mandatory messages, publisher confirms and finite timeouts. The
+step 4.7 validation moved the copied queue consumers of ledger and order to
+`QueueConsumer` in the same package: manual acknowledgements after the local
+commit, one prefetched delivery and reconnects with backoff and jitter. Both
+classes use `BrokerSettings`. Their unit tests and boundary vectors live in common. Add reusable
 validation and utilities here when multiple modules need them. Common declares the
 RabbitMQ client as an optional dependency, thus only order and ledger, which
 declare the client themselves, contain it. Common has no
@@ -877,6 +880,7 @@ are independent of database shard IDs.
 | `ordering.orders`, `ordering.order_items` | the order's `buyer_id` | Order service |
 | `ordering.order_sagas`, `ordering.order_outbox`, `ordering.order_inbox` | the order's `buyer_id` | Order service; colocated with the order |
 | `ordering.order_result_ids` | the saga's order's `buyer_id` | Order service; permanent command/result message bindings survive transport cleanup |
+| `ordering.profit_intents` | the order's `buyer_id` | Order service; confirmed item margins await idempotent application on seller shards |
 | `ordering.orphan_results` | the order's `buyer_id` | Order service; quarantine for a result whose order is missing |
 | `ordering.conflicting_results` | the order's `buyer_id` | Order service; quarantine for a result that conflicts with saved identity or outcome |
 | `ledger.ledger_entries`, `ledger.ledger_operations`, `ledger.ledger_result_ids`, `ledger.ledger_inbox`, `ledger.ledger_outbox` | No sharding initially | Ledger service, in its separate database |
@@ -1416,17 +1420,22 @@ at `0.00`; other uppercase three-letter currency balances are allowed. A loss is
 negative; no exchange conversion or cross-currency netting occurs. Workloads
 only read these balances. They never seed a balance or infer profit from stock.
 
-Step 3.6 added the profit storage. Profit posting belongs to the future saga
-steps. Order
-acceptance must save immutable unit-cost snapshots in ordering before a sale can
-be credited. Confirmation must create a durable credit intent; application to the
-seller's shard needs a durable per-order/item identity so retries and replay
-cannot double-credit. Pending, reserved, cancelled and rejected orders earn no
-profit. This cross-shard work requires explicit recovery and least-privilege
-storage/grant migrations; the existing order role cannot update seller balances,
-initialize profit currencies, or access profit credits. Step 3.6 permits product
-to initialize zero balances; profit-write grants remain part of step 4.7
-alongside its transaction protocol.
+Step 3.6 added the profit storage; step 4.7 implements posting. Confirmation
+atomically inserts `ordering.profit_intents` from immutable item price/cost
+snapshots on the buyer's shard. A separate worker inserts the permanent
+`catalog.profit_credits` identity `(order_id, product_id)` and increments the
+seller's currency balance in one seller-shard transaction. Only a new credit
+changes the balance; a retry verifies the existing identity and amount. A separate
+buyer-shard transaction marks the intent applied. No transaction or connection
+spans shards, and `CONFIRMED` can precede eventual balance application.
+Pending, reserved, cancelled and rejected orders earn no profit. Unknown legacy
+costs prevent confirmation and require investigation instead of fabricated zero
+margin. Retries use durable scheduling and bounded phases; permanent credit
+conflicts, missing catalog references or balance overflow block the intent and
+alert for investigation. Ordering V5 and catalog V4 preserve earlier migrations.
+Column grants permit order to initialize zero currency balances and update their
+amounts, but not mutate or delete immutable credit/intent payloads. Product can
+still only initialize zero balances.
 No profit engine or changed message snapshot is introduced by the dataset step.
 
 ### HTTP connection policy
@@ -1848,6 +1857,17 @@ fingerprint; matching terminal outcomes are harmless. Persist conflicting
 identities or outcomes in `ordering.conflicting_results` on the expected order shard, commit, then
 acknowledge and alert while preserving the order and saga's saved state.
 
+Step 4.7 retains the first accepted decision envelope in
+`order_sagas.ledger_result` and the accepted payload for each reserved message in
+`order_result_ids.received_envelope`. These permanent records survive inbox/outbox
+cleanup. A same-ID delivery must match its entire saved envelope, including
+timestamps; a newly reserved reconciliation result must match the original
+decision, including `decidedAt`. Inbox hits never bypass correlation or outcome
+checks. The consumer and stock coordinator serialize updates on the saga row.
+The consumer also takes the advisory lock of order creation for the same order
+ID. Thus, when that row is missing, creation and orphan quarantine cannot pass
+each other. Rejected results enable the existing durable stock-release work.
+
 Both conflict tables store the received envelope, transport/logical IDs,
 fingerprint, expected and received identities/outcomes, reason, and audit
 timestamps. Deduplicate repeated quarantine deliveries by message identity and
@@ -2062,7 +2082,8 @@ are also permanent: retain every command/result message binding, exact result
 envelope, original timestamp, and publication-attempt counter after transport
 cleanup. Retain order
 and saga terminal identities/states, durable order-allocation mappings, reserved
-result identities, and unresolved quarantine records; never
+result identities with their accepted envelopes, profit intents and immutable
+catalog profit credits, and unresolved quarantine records; never
 recycle order IDs. An old rejected operation cannot become recorded merely because
 the ledger's currency allowlist changed.
 

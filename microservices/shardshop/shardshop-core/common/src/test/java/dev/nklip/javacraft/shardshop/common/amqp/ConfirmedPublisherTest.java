@@ -77,7 +77,7 @@ class ConfirmedPublisherTest {
         when(connection.createChannel()).thenReturn(channel);
         when(channel.isOpen()).thenReturn(true);
         when(channel.waitForConfirms(anyLong())).thenReturn(true);
-        return new ConfirmedPublisher(new ConfirmedPublisher.Settings(
+        return new ConfirmedPublisher(new BrokerSettings(
                 "rabbit", 5672, "/", "order", "secret", timeout), COMMANDS, factory);
     }
 
@@ -262,11 +262,11 @@ class ConfirmedPublisherTest {
 
     @Test
     void settingsHideThePasswordAndRejectIncompleteValues() {
-        var settings = new ConfirmedPublisher.Settings("rabbit", 5672, "/", "order", "secret", Duration.ofSeconds(1));
+        var settings = new BrokerSettings("rabbit", 5672, "/", "order", "secret", Duration.ofSeconds(1));
         assertFalse(settings.toString().contains("secret"));
-        assertThrows(IllegalArgumentException.class, () -> new ConfirmedPublisher.Settings(
+        assertThrows(IllegalArgumentException.class, () -> new BrokerSettings(
                 "rabbit", 5672, "/", "order", "secret", Duration.ZERO));
-        assertThrows(IllegalArgumentException.class, () -> new ConfirmedPublisher.Settings(
+        assertThrows(IllegalArgumentException.class, () -> new BrokerSettings(
                 "rabbit", 0, "/", "order", "secret", Duration.ofSeconds(1)));
         assertThrows(IllegalArgumentException.class, () -> new ConfirmedPublisher.Destination(
                 "ledger.commands", " ", "command", "test-command-publisher"));

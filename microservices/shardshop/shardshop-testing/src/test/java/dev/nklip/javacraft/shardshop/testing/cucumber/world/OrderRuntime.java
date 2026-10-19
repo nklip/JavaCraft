@@ -31,6 +31,8 @@ public final class OrderRuntime implements Disposable {
     private PackagedApplication application;
     private boolean stockEnabled;
     private RabbitMqBroker cdcBroker;
+    private RabbitMqBroker resultsBroker;
+    private boolean profitEnabled;
 
     public OrderRuntime(CatalogShards shards) throws IOException {
         this.shards = shards;
@@ -49,12 +51,17 @@ public final class OrderRuntime implements Disposable {
         // The step 4.1 scenarios inspect atomic acceptance before any saga worker runs.
         values.add("shardshop.order.stock.enabled=" + stockEnabled);
         values.add("shardshop.order.cdc.enabled=" + (cdcBroker != null));
-        if (cdcBroker != null) {
+        values.add("shardshop.order.results.enabled=" + (resultsBroker != null));
+        values.add("shardshop.order.profit.enabled=" + profitEnabled);
+        values.add("shardshop.order.profit.poll-interval=PT0.25S");
+        values.add("shardshop.order.profit.batch-size=8");
+        RabbitMqBroker configuredBroker = cdcBroker != null ? cdcBroker : resultsBroker;
+        if (configuredBroker != null) {
             values.add("shardshop.order.cdc.broker.host=127.0.0.1");
-            values.add("shardshop.order.cdc.broker.port=" + cdcBroker.port());
+            values.add("shardshop.order.cdc.broker.port=" + configuredBroker.port());
             values.add("shardshop.order.cdc.broker.virtual-host=shardshop");
             values.add("shardshop.order.cdc.broker.username=shardshop-order");
-            values.add("shardshop.order.cdc.broker.password=" + cdcBroker.orderPassword());
+            values.add("shardshop.order.cdc.broker.password=" + configuredBroker.orderPassword());
         }
         for (var shard : shards.all()) {
             String prefix = "shardshop.order.connections." + shard.name() + ".";
@@ -105,6 +112,16 @@ public final class OrderRuntime implements Disposable {
     /** Enables the production WAL relay on subsequent starts, including restarts. */
     public void enableCdc(RabbitMqBroker broker) {
         cdcBroker = broker;
+    }
+
+    /** Enables result consumption independently of the WAL relay. */
+    public void enableResults(RabbitMqBroker broker) {
+        resultsBroker = broker;
+    }
+
+    /** Enables asynchronous confirmed-profit crediting on subsequent starts. */
+    public void enableProfit() {
+        profitEnabled = true;
     }
 
     public int port() {

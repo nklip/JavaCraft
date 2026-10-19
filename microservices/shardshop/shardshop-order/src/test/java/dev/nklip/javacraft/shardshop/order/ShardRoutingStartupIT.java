@@ -158,7 +158,9 @@ class ShardRoutingStartupIT {
             "shardshop.order.catalog-deadline=5s|Order catalog deadline must be between 2s and 3s",
             "shardshop.order.stock.poll-interval=1ms|Stock poll interval must be between 100ms and 30s",
             "shardshop.order.stock.lease=1s|Stock lease must be between 10s and 5m",
-            "shardshop.order.stock.batch-size=0|Stock batch size must be between 1 and 100"
+            "shardshop.order.stock.batch-size=0|Stock batch size must be between 1 and 100",
+            "shardshop.order.profit.poll-interval=1ms|Profit poll interval must be between 100ms and 30s",
+            "shardshop.order.profit.batch-size=0|Profit batch size must be between 1 and 100"
     })
     void checksTheOrderConfigurationBeforeTheGeneratorReservation(String property, String message) throws Exception {
         assertNotEquals(0, launch(VALID + property + "\n", null, null, reservationWithoutCaFile()));
@@ -182,8 +184,19 @@ class ShardRoutingStartupIT {
     }
 
     @Test
-    void startsWithoutCdcCredentialsWhenCdcIsDisabled() throws Exception {
-        assertEquals(0, launch(VALID_ROUTING + "shardshop.order.cdc.enabled=false\n"), output());
+    void startsWithoutBrokerCredentialsWhenBothBrokerWorkersAreDisabled() throws Exception {
+        assertEquals(0, launch(VALID_ROUTING + "shardshop.order.cdc.enabled=false\n"
+                + "shardshop.order.results.enabled=false\n"), output());
+    }
+
+    @Test
+    void resultsAloneRequireTheSharedBrokerCredentialBeforeGeneratorReservation() throws Exception {
+        String properties = VALID_ROUTING + "shardshop.order.cdc.enabled=false\n";
+        assertNotEquals(0, launch(properties, null, null, reservationWithoutCaFile()));
+        assertTrue(output().contains("Result consumption is enabled but shardshop.order.cdc.broker.password is not set"),
+                output());
+        assertFalse(output().contains("Kubernetes API access is not configured correctly"), output());
+        assertEquals(0, launch(properties + "shardshop.order.cdc.broker.password=broker-secret\n"), output());
     }
 
     /** A reservation stops at its missing CA file, before any request; an earlier failure never reaches it. */

@@ -9,6 +9,10 @@ import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.Product;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.ItemSnapshot;
 import dev.nklip.javacraft.shardshop.order.stock.StockFailure;
 import dev.nklip.javacraft.shardshop.order.stock.StockStore;
+import dev.nklip.javacraft.shardshop.order.result.ResultStore;
+import dev.nklip.javacraft.shardshop.order.result.ResultFailure;
+import dev.nklip.javacraft.shardshop.order.profit.ProfitStore;
+import dev.nklip.javacraft.shardshop.order.profit.ProfitFailure;
 import dev.nklip.javacraft.shardshop.sharding.Shard;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.configuration.supplier.AgroalDataSourceConfigurationSupplier;
@@ -29,7 +33,7 @@ import java.util.function.Function;
 import java.util.function.LongSupplier;
 
 /** Bounded per-endpoint pools and a hard deadline for the entire database phase. */
-public final class JdbcOrderStore implements OrderStore, StockStore, AutoCloseable {
+public final class JdbcOrderStore implements OrderStore, StockStore, ResultStore, ProfitStore, AutoCloseable {
     private final Map<String, AgroalDataSource> pools;
     private final DatabasePhases phases;
 
@@ -68,7 +72,7 @@ public final class JdbcOrderStore implements OrderStore, StockStore, AutoCloseab
                         .establishmentRetryAttempts(0)
                         .connectionFactoryConfiguration(factory -> factory
                                 .connectionProviderClass(Driver.class)
-                                .jdbcUrl(JdbcUrls.withDriverLimits(endpoint.jdbcUrl()))
+                                .jdbcUrl(JdbcUrls.withDriverLimits(endpoint.jdbcUrl()) + "&logServerErrorDetail=false")
                                 .principal(new NamePrincipal(endpoint.username()))
                                 .credential(new SimplePassword(endpoint.password()))
                                 .loginTimeout(Duration.ofSeconds(1))
@@ -79,13 +83,13 @@ public final class JdbcOrderStore implements OrderStore, StockStore, AutoCloseab
     }
 
     @Override
-    public <T> T read(Shard shard, Function<Session, T> work) {
+    public <T> T read(Shard shard, Function<OrderStore.Session, T> work) {
         return execute(shard, true, DatabasePhases.PHASE_BUDGET, OrderFailure.Reason.ORDER_STORE_UNAVAILABLE,
                 session -> work.apply(session));
     }
 
     @Override
-    public <T> T write(Shard shard, Function<Session, T> work) {
+    public <T> T write(Shard shard, Function<OrderStore.Session, T> work) {
         return execute(shard, false, DatabasePhases.PHASE_BUDGET, OrderFailure.Reason.ORDER_STORE_UNAVAILABLE,
                 session -> work.apply(session));
     }
@@ -166,6 +170,61 @@ public final class JdbcOrderStore implements OrderStore, StockStore, AutoCloseab
                     connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
                     return work.apply(new JdbcStockSession(connection, deadline, Clock.systemUTC()));
                 }, StockFailure.class, () -> new StockFailure(StockFailure.Reason.UNAVAILABLE));
+    }
+
+    @Override
+    public <T> T result(Shard shard, Function<ResultStore.Session, T> work) {
+        AgroalDataSource pool = pools.get(shard.clusterName());
+        if (pool == null) {
+            throw new ResultFailure(null);
+        }
+        return phases.run(DatabasePhases.Pool.of(pool, () -> pool.flush(AgroalDataSource.FlushMode.ALL)), false,
+                DatabasePhases.PHASE_BUDGET, (connection, deadline) -> {
+                    connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+                    return work.apply(new JdbcResultSession(connection, deadline));
+                }, ResultFailure.class, ResultFailure::new);
+    }
+
+    @Override
+    public List<PendingCredit> pendingProfit(Shard shard, int limit) {
+        return profit(shard, session -> session.pendingProfit(limit));
+    }
+
+    @Override
+    public void creditProfit(Shard shard, PendingCredit credit) {
+        profit(shard, session -> { session.creditProfit(credit); return null; });
+    }
+
+    @Override
+    public void markProfitApplied(Shard shard, PendingCredit credit) {
+        profit(shard, session -> { session.markProfitApplied(credit); return null; });
+    }
+
+    @Override
+    public void retryProfit(Shard shard, PendingCredit credit, Duration delay) {
+        profit(shard, session -> { session.retryProfit(credit, delay); return null; });
+    }
+
+    @Override
+    public void blockProfit(Shard shard, PendingCredit credit, ProfitFailure.Reason reason) {
+        profit(shard, session -> { session.blockProfit(credit, reason); return null; });
+    }
+
+    @FunctionalInterface
+    private interface ProfitWork<T> {
+        T apply(JdbcProfitSession session) throws SQLException;
+    }
+
+    private <T> T profit(Shard shard, ProfitWork<T> work) {
+        AgroalDataSource pool = pools.get(shard.clusterName());
+        if (pool == null) {
+            throw new ProfitFailure(ProfitFailure.Reason.UNAVAILABLE);
+        }
+        return phases.run(DatabasePhases.Pool.of(pool, () -> pool.flush(AgroalDataSource.FlushMode.ALL)), false,
+                DatabasePhases.PHASE_BUDGET, (connection, deadline) -> {
+                    connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+                    return work.apply(new JdbcProfitSession(connection, deadline));
+                }, ProfitFailure.class, ProfitFailure::from);
     }
 
     @Override
