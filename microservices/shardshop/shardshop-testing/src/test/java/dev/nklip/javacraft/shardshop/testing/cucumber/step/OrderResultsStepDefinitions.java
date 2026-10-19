@@ -1,0 +1,632 @@
+package dev.nklip.javacraft.shardshop.testing.cucumber.step;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.rabbitmq.client.AMQP;
+import com.rabbitmq.client.Channel;
+import dev.nklip.javacraft.shardshop.testing.cucumber.config.CatalogDatabase;
+import dev.nklip.javacraft.shardshop.testing.cucumber.config.CatalogRouting;
+import dev.nklip.javacraft.shardshop.testing.cucumber.config.Json;
+import dev.nklip.javacraft.shardshop.testing.cucumber.config.RabbitMqBroker;
+import dev.nklip.javacraft.shardshop.testing.cucumber.config.RawHttp;
+import dev.nklip.javacraft.shardshop.testing.cucumber.config.ShardShopFiles;
+import dev.nklip.javacraft.shardshop.testing.cucumber.world.CatalogApi;
+import dev.nklip.javacraft.shardshop.testing.cucumber.world.CatalogShards;
+import dev.nklip.javacraft.shardshop.testing.cucumber.world.Contracts;
+import dev.nklip.javacraft.shardshop.testing.cucumber.world.LedgerRuntime;
+import dev.nklip.javacraft.shardshop.testing.cucumber.world.OrderRuntime;
+import dev.nklip.javacraft.shardshop.testing.cucumber.world.ProductRuntime;
+import io.cucumber.java.After;
+import io.cucumber.java.en.Given;
+import io.cucumber.java.en.Then;
+
+import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/** The packaged result consumer and profit worker with real broker and regional PostgreSQL primaries. */
+public final class OrderResultsStepDefinitions {
+    private static final String RESULT_QUEUE = "order.ledger-results";
+    private static final String PARKING_QUEUE = "order.ledger-results.dlq";
+    private final CatalogDatabase postgres = CatalogDatabase.instance();
+    private final CatalogShards shards;
+    private final ProductRuntime product;
+    private final CatalogApi catalog;
+    private final OrderRuntime order;
+    private final LedgerRuntime ledger;
+    private final RabbitMqBroker broker;
+    private CatalogApi.Product us;
+    private CatalogApi.Product asia;
+    private String buyer;
+    private String ledgerDatabase;
+    private int ordinal;
+    private OrderRuntime competitor;
+    private OrderRuntime secondCompetitor;
+
+    public OrderResultsStepDefinitions(CatalogShards shards, ProductRuntime product, CatalogApi catalog,
+                                       OrderRuntime order, LedgerRuntime ledger, RabbitMqBroker broker) {
+        this.shards = shards;
+        this.product = product;
+        this.catalog = catalog;
+        this.order = order;
+        this.ledger = ledger;
+        this.broker = broker;
+    }
+
+    @Given("order results use migrated regional primaries and a broker")
+    public void setup() throws Exception {
+        shards.create("shard-a=US, shard-b=EU, shard-c=ASIA, shard-d=US");
+        for (var shard : shards.all()) {
+            postgres.migrate(shard.database(), ShardShopFiles.resolve("database/shard/ordering"),
+                    Map.of("shardRegion", shard.region(), "shardIndex", Integer.toString(shards.all().indexOf(shard)),
+                            "shardCount", Integer.toString(shards.all().size())), "ordering");
+        }
+        broker.start();
+        product.start(ProductRuntime.Endpoints.PRIMARIES);
+        order.start(Set.of());
+        us = createProduct("us", "US", "shard-a", "19.95", "12.50");
+        asia = createProduct("asia", "ASIA", "shard-c", "4.00", "6.00");
+        ObjectNode profile = Json.object("{\"firstName\":\"Alex\",\"surname\":\"Example\","
+                + "\"email\":\"alex@example.com\",\"phone\":\"+12025550123\",\"region\":\"EU\","
+                + "\"address\":{\"line1\":\"1 Example Road\",\"city\":\"Example City\","
+                + "\"postalCode\":\"00001\",\"countryCode\":\"US\"}}");
+        buyer = body(http("POST", "/api/v1/buyers", "order-results-buyer", profile), 201)
+                .path("buyerId").asText();
+        assertEquals("shard-b", home().name());
+    }
+
+    @After("@order-results")
+    public void cleanup() throws Exception {
+        if (secondCompetitor != null) secondCompetitor.stop();
+        if (competitor != null) competitor.stop();
+        ledger.stop();
+        order.stop();
+        product.stop();
+        if (ledgerDatabase != null) postgres.dropDatabase(ledgerDatabase);
+    }
+
+    @Then("a packaged ledger recording confirms a cross-shard order and credits its items once")
+    public void recordedProfit() throws Exception {
+        profitGrants();
+        String id = accept(2, us, asia);
+        startWorkers(true);
+        awaitStatus(id, "PENDING_LEDGER");
+        ObjectNode command = command(id);
+        startLedger("USD");
+        publishCommand(command);
+        awaitStatus(id, "CONFIRMED");
+        await("both catalog credits", () -> credits(us, id) == 1 && credits(asia, id) == 1);
+        assertEquals(new BigDecimal("14.90"), credit(us, id));
+        assertEquals(new BigDecimal("-4.00"), credit(asia, id));
+        assertEquals(new BigDecimal("14.90"), balance(us));
+        assertEquals(new BigDecimal("-4.00"), balance(asia));
+        assertEquals(2, scalar(home(), "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id));
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.orphan_results"));
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.conflicting_results"));
+        publishCommand(command);
+        await("ledger duplicate result settled", () -> scalar(ledgerDatabase,
+                "SELECT count(*) FROM ledger.ledger_outbox WHERE message_id="
+                        + command.path("resultMessageId").asText()
+                        + " AND publication_attempt>=2 AND published_at IS NOT NULL") == 1
+                && broker.queue(RESULT_QUEUE).path("messages").asInt() == 0);
+        assertEquals(1, credits(us, id));
+        assertEquals(1, credits(asia, id));
+        assertEquals(new BigDecimal("14.90"), balance(us));
+        assertEquals(new BigDecimal("-4.00"), balance(asia));
+        assertEquals("CONFIRMED", status(id));
+    }
+
+    @Then("a packaged ledger rejection cancels the order and releases reservations without profit")
+    public void rejectedRelease() throws Exception {
+        String id = accept(1, us, asia);
+        startWorkers(true);
+        awaitStatus(id, "PENDING_LEDGER");
+        startLedger("EUR");
+        publishCommand(command(id));
+        awaitStatus(id, "CANCELLED");
+        await("stock release", () -> scalar(home(), "SELECT count(*) FROM ordering.order_sagas WHERE order_id=" + id
+                + " AND stock_released_at IS NOT NULL") == 1);
+        for (var fixture : List.of(us, asia)) {
+            assertEquals(0, credits(fixture, id));
+            assertEquals(BigDecimal.ZERO.setScale(2), balance(fixture));
+            assertEquals(1, scalar(shards.ofSeller(fixture.seller().id()).database(),
+                    "SELECT count(*) FROM catalog.stock_reservations WHERE order_id=" + id
+                            + " AND product_id=" + fixture.id() + " AND released_at IS NOT NULL"));
+        }
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id));
+    }
+
+    @Then("result replay and reconciliation are idempotent while changed identities and envelopes are quarantined")
+    public void replayAndConflicts() throws Exception {
+        String id = accept(1, us);
+        startWorkers(false);
+        awaitStatus(id, "PENDING_LEDGER");
+        ObjectNode originalCommand = command(id);
+        ObjectNode recorded = result(originalCommand, "RECORDED");
+        publishResult(recorded);
+        awaitStatus(id, "CONFIRMED");
+        publishResult(recorded);
+        await("duplicate remains one inbox decision", () -> scalar(home(),
+                "SELECT count(*) FROM ordering.order_inbox WHERE saga_id=" + recorded.path("sagaId").asText()) == 1);
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.conflicting_results"));
+        try (Connection connection = shards.superuser(home()); var statement = connection.createStatement()) {
+            statement.execute("DELETE FROM ordering.order_inbox");
+            statement.execute("DELETE FROM ordering.order_outbox");
+        }
+        publishResult(recorded);
+        await("same result restored after transport cleanup", () -> scalar(home(),
+                "SELECT count(*) FROM ordering.order_inbox WHERE saga_id=" + recorded.path("sagaId").asText()) == 1);
+        String resultId = reserveResult(recorded.path("sagaId").asLong());
+        ObjectNode reconciliation = recorded.deepCopy().put("messageId", resultId)
+                .put("occurredAt", later(recorded, 1));
+        publishResult(reconciliation);
+        await("new reserved result accepted for terminal decision", () -> scalar(home(),
+                "SELECT count(*) FROM ordering.order_inbox WHERE message_id=" + resultId) == 1);
+        ObjectNode changedTimestamp = recorded.deepCopy().put("occurredAt", later(recorded, 2));
+        publishResult(changedTimestamp);
+        await("same result ID with changed timestamp quarantined", () -> conflicts(id) == 1);
+        publishResult(changedTimestamp);
+        await("repeated conflict increments its audit count", () -> scalar(home(),
+                "SELECT COALESCE(MAX(delivery_count),0) FROM ordering.conflicting_results WHERE order_id=" + id
+                        + " AND reason='RESULT_ENVELOPE_MISMATCH'") == 2);
+        ObjectNode changedCommand = recorded.deepCopy().put("commandId", recorded.path("orderId").asText());
+        publishResult(changedCommand);
+        await("wrong command quarantined", () -> conflicts(id) == 2);
+        ObjectNode changedOutcome = result(originalCommand, "REJECTED")
+                .put("messageId", reserveResult(recorded.path("sagaId").asLong()))
+                .put("occurredAt", later(recorded, 3));
+        publishResult(changedOutcome);
+        await("opposite terminal outcome quarantined", () -> conflicts(id) == 3);
+        ObjectNode unreserved = recorded.deepCopy().put("messageId", allocate())
+                .put("occurredAt", later(recorded, 4));
+        publishResult(unreserved);
+        await("unreserved result ID quarantined", () -> conflicts(id) == 4);
+        assertEquals("CONFIRMED", status(id));
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.orphan_results"));
+        assertEquals(1, scalar(home(), "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id));
+    }
+
+    @Then("an orphan result blocks creation and an unavailable home does not create an orphan")
+    public void orphanAndUnavailable() throws Exception {
+        String id = allocate();
+        startWorkers(false);
+        // A valid result may arrive for a lost order while its allocation survives.
+        ObjectNode ghost = resultForMissingOrder(id);
+        publishResult(ghost);
+        await("reachable-primary orphan committed", () -> scalar(home(),
+                "SELECT count(*) FROM ordering.orphan_results WHERE order_id=" + id) == 1);
+        assertEquals(409, http("PUT", path(id), null, request(1, us)).status());
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.orders WHERE order_id=" + id));
+
+        String second = allocate();
+        order.restart(Set.of("shard-b"));
+        publishResult(resultForMissingOrder(second));
+        await("broker parks after bounded unavailable-home retries", () -> queueCount(PARKING_QUEUE) == 1);
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.orphan_results WHERE order_id=" + second));
+        order.restart(Set.of());
+    }
+
+    /** Creation checks quarantine under this lock, thus an orphan that ignored it could coexist with a new order. */
+    @Then("an orphan result waits while order creation holds the lock of its order ID")
+    public void orphanWaitsForCreationLock() throws Exception {
+        String id = allocate();
+        startWorkers(false);
+        try (Connection creation = shards.superuser(home()); PreparedStatement lock = creation.prepareStatement(
+                "SELECT pg_advisory_xact_lock(?)")) {
+            creation.setAutoCommit(false);
+            lock.setLong(1, CatalogRouting.creationLock("order", "", id));
+            lock.execute();
+            publishResult(resultForMissingOrder(id));
+            await("result transaction waits for the creation lock", () -> {
+                assertEquals(0, orphans(id), "Orphan quarantine must not pass a held creation lock");
+                return scalar(home(), "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() "
+                        + "AND usename='order_app' AND wait_event_type='Lock' AND wait_event='advisory'") > 0;
+            });
+            assertEquals(0, orphans(id));
+            creation.rollback();
+        }
+        await("orphan committed after creation released its lock", () -> orphans(id) == 1);
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.orders WHERE order_id=" + id));
+    }
+
+    @Then("a malformed result is parked without a database side effect")
+    public void malformedParking() throws Exception {
+        String id = accept(1, us);
+        startWorkers(false);
+        awaitStatus(id, "PENDING_LEDGER");
+        ObjectNode malformed = result(command(id), "RECORDED").put("messageId", "00");
+        assertFalse(Contracts.LEDGER_RESULT.errors("#", malformed).isEmpty());
+        publishResult(malformed);
+        await("malformed result parked", () -> queueCount(PARKING_QUEUE) == 1);
+        assertEquals("PENDING_LEDGER", status(id));
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.order_inbox"));
+        assertEquals(0, conflicts(id));
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.orphan_results"));
+    }
+
+    @Then("confirmed profit intents survive a catalog outage and order restart")
+    public void profitRestart() throws Exception {
+        String id = accept(1, us, asia);
+        startWorkers(false);
+        awaitStatus(id, "PENDING_LEDGER");
+        publishResult(result(command(id), "RECORDED"));
+        awaitStatus(id, "CONFIRMED");
+        assertEquals(2, scalar(home(), "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id));
+        order.enableProfit();
+        order.restart(Set.of("shard-c"));
+        await("reachable seller credited", () -> credits(us, id) == 1);
+        assertEquals(0, credits(asia, id));
+        order.restart(Set.of());
+        await("deferred seller credited", () -> credits(asia, id) == 1);
+        assertEquals(new BigDecimal("7.45"), balance(us));
+        assertEquals(new BigDecimal("-2.00"), balance(asia));
+        assertEquals("CONFIRMED", status(id));
+    }
+
+    @Then("a failed profit intent insert leaves the result unacknowledged until retry succeeds")
+    public void transitionRollback() throws Exception {
+        String id = accept(1, us);
+        startWorkers(false);
+        awaitStatus(id, "PENDING_LEDGER");
+        ObjectNode recorded = result(command(id), "RECORDED");
+        try (Connection connection = shards.superuser(home()); var statement = connection.createStatement()) {
+            statement.execute("ALTER TABLE ordering.profit_intents ADD CONSTRAINT injected_intent_failure "
+                    + "CHECK (amount <> 7.45) NOT VALID");
+        }
+        publishResult(recorded);
+        await("failed transaction reaches broker parking", () -> queueCount(PARKING_QUEUE) == 1);
+        assertEquals("PENDING_LEDGER", status(id));
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id));
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.order_inbox WHERE message_id="
+                + recorded.path("messageId").asText()));
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.order_result_ids WHERE result_message_id="
+                + recorded.path("messageId").asText() + " AND received_envelope IS NOT NULL"));
+        try (Connection connection = shards.superuser(home()); var statement = connection.createStatement()) {
+            statement.execute("ALTER TABLE ordering.profit_intents DROP CONSTRAINT injected_intent_failure");
+        }
+        publishResult(recorded);
+        awaitStatus(id, "CONFIRMED");
+        assertEquals(1, scalar(home(), "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id));
+    }
+
+    @Then("a recorded result with an unknown item cost is quarantined before confirmation")
+    public void unknownHistoricalCost() throws Exception {
+        String id = accept(1, us);
+        startWorkers(true);
+        awaitStatus(id, "PENDING_LEDGER");
+        try (Connection connection = shards.superuser(home()); PreparedStatement change = connection.prepareStatement(
+                "UPDATE ordering.order_items SET unit_cost=NULL WHERE order_id=? AND product_id=?")) {
+            change.setLong(1, Long.parseLong(id));
+            change.setLong(2, Long.parseLong(us.id()));
+            assertEquals(1, change.executeUpdate());
+        }
+        ObjectNode recorded = result(command(id), "RECORDED");
+        publishResult(recorded);
+        await("unknown historical cost quarantined", () -> scalar(home(),
+                "SELECT count(*) FROM ordering.conflicting_results WHERE order_id=" + id
+                        + " AND reason='ITEM_COST_UNKNOWN'") == 1);
+        assertEquals("PENDING_LEDGER", status(id));
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id));
+        assertEquals(0, credits(us, id));
+        assertEquals(BigDecimal.ZERO.setScale(2), balance(us));
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.order_inbox WHERE message_id="
+                + recorded.path("messageId").asText()));
+    }
+
+    @Then("a committed seller credit is reused after an interrupted home mark by two workers")
+    public void interruptedProfitMark() throws Exception {
+        String id = accept(1, us);
+        startWorkers(false);
+        awaitStatus(id, "PENDING_LEDGER");
+        publishResult(result(command(id), "RECORDED"));
+        awaitStatus(id, "CONFIRMED");
+        try (Connection holder = shards.superuser(home()); PreparedStatement lock = holder.prepareStatement(
+                "SELECT item_position FROM ordering.profit_intents WHERE order_id=? FOR UPDATE")) {
+            holder.setAutoCommit(false);
+            lock.setLong(1, Long.parseLong(id));
+            try (ResultSet rows = lock.executeQuery()) {
+                assertTrue(rows.next());
+            }
+            order.enableProfit();
+            order.restart(Set.of());
+            await("seller transaction commits before home mark", () -> credits(us, id) == 1
+                    && scalar(home(), "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() "
+                            + "AND usename='order_app' AND wait_event_type='Lock' "
+                            + "AND query ILIKE 'UPDATE ordering.profit_intents%'") > 0);
+            order.stop();
+            holder.rollback();
+        }
+        assertEquals(1, credits(us, id));
+        assertEquals(new BigDecimal("7.45"), balance(us));
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id
+                + " AND applied_at IS NOT NULL"));
+        competitor = new OrderRuntime(shards);
+        competitor.enableProfit();
+        secondCompetitor = new OrderRuntime(shards);
+        secondCompetitor.enableProfit();
+        competitor.start(Set.of());
+        secondCompetitor.start(Set.of());
+        await("one durable intent marked after both workers retry", () -> scalar(home(),
+                "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id + " AND applied_at IS NOT NULL") == 1);
+        assertEquals(1, credits(us, id));
+        assertEquals(new BigDecimal("7.45"), balance(us));
+    }
+
+    private void profitGrants() throws Exception {
+        String database = shards.ofSeller(us.seller().id()).database();
+        assertTrue(columnPrivilege(database, "order_app", "catalog.profit_credits", "amount", "INSERT"));
+        assertTrue(columnPrivilege(database, "order_app", "catalog.seller_profits", "amount", "UPDATE"));
+        assertTrue(columnPrivilege(database, "order_app", "catalog.products", "stock", "UPDATE"));
+        assertFalse(columnPrivilege(database, "order_app", "catalog.profit_credits", "amount", "UPDATE"));
+        assertFalse(columnPrivilege(database, "order_app", "catalog.products", "unit_cost", "UPDATE"));
+        assertFalse(tablePrivilege(database, "order_app", "catalog.profit_credits", "DELETE"));
+        assertFalse(columnPrivilege(database, "product_app", "catalog.seller_profits", "amount", "UPDATE"));
+        assertFalse(columnPrivilege(database, "product_app", "catalog.profit_credits", "amount", "INSERT"));
+    }
+
+    private boolean columnPrivilege(String database, String role, String table, String column, String action)
+            throws SQLException {
+        try (Connection connection = postgres.superuser(database); PreparedStatement query = connection.prepareStatement(
+                "SELECT has_column_privilege(?, ?, ?, ?)")) {
+            query.setString(1, role);
+            query.setString(2, table);
+            query.setString(3, column);
+            query.setString(4, action);
+            try (ResultSet rows = query.executeQuery()) {
+                assertTrue(rows.next());
+                return rows.getBoolean(1);
+            }
+        }
+    }
+
+    private boolean tablePrivilege(String database, String role, String table, String action) throws SQLException {
+        try (Connection connection = postgres.superuser(database); PreparedStatement query = connection.prepareStatement(
+                "SELECT has_table_privilege(?, ?, ?)")) {
+            query.setString(1, role);
+            query.setString(2, table);
+            query.setString(3, action);
+            try (ResultSet rows = query.executeQuery()) {
+                assertTrue(rows.next());
+                return rows.getBoolean(1);
+            }
+        }
+    }
+
+    private CatalogApi.Product createProduct(String alias, String region, String shardName,
+                                             String price, String cost) throws Exception {
+        String key = alias;
+        for (int candidate = 0; !shards.ofKey(region, key).name().equals(shardName); candidate++) key = alias + candidate;
+        ObjectNode sellerRequest = CatalogApi.sellerRequest(alias + " company", region);
+        var sellerResponse = catalog.createSeller(key, sellerRequest);
+        body(sellerResponse, 201);
+        var seller = catalog.remember(alias, key, sellerRequest, sellerResponse);
+        assertEquals(shardName, shards.ofSeller(seller.id()).name());
+        ObjectNode payload = CatalogApi.itemRequest().put("price", price).put("unitCost", cost).put("initialStock", 10);
+        var productResponse = catalog.post(seller.path() + "/products", alias, Json.bytes(payload));
+        body(productResponse, 201);
+        return catalog.remember(alias, seller, alias, payload, productResponse);
+    }
+
+    private String accept(int quantity, CatalogApi.Product... fixtures) throws Exception {
+        String id = allocate();
+        assertEquals("PENDING_STOCK", body(http("PUT", path(id), null, request(quantity, fixtures)), 202)
+                .path("status").asText());
+        return id;
+    }
+
+    private String allocate() throws Exception {
+        return body(http("POST", "/api/v1/buyers/" + buyer + "/order-allocations", null,
+                Json.newObject().put("runName", "order-results").put("requestOrdinal", Integer.toString(ordinal++))),
+                201).path("orderId").asText();
+    }
+
+    private String reserveResult(long sagaId) throws Exception {
+        String commandId = allocate();
+        String resultId = allocate();
+        try (Connection connection = shards.superuser(home()); PreparedStatement binding = connection.prepareStatement(
+                "INSERT INTO ordering.order_result_ids(message_id, result_message_id, saga_id) VALUES (?, ?, ?)")) {
+            binding.setLong(1, Long.parseLong(commandId));
+            binding.setLong(2, Long.parseLong(resultId));
+            binding.setLong(3, sagaId);
+            assertEquals(1, binding.executeUpdate());
+        }
+        return resultId;
+    }
+
+    private void startWorkers(boolean profit) throws Exception {
+        order.enableStock();
+        order.enableResults(broker);
+        if (profit) order.enableProfit();
+        order.restart(Set.of());
+    }
+
+    private void startLedger(String allowedCurrencies) throws Exception {
+        ledgerDatabase = postgres.createLedgerDatabase();
+        postgres.migrateLedger(ledgerDatabase, ShardShopFiles.resolve("database/ledger/ledger"));
+        ledger.startWithPublisher(ledgerDatabase, broker, allowedCurrencies);
+    }
+
+    private ObjectNode command(String id) throws Exception {
+        try (Connection connection = shards.superuser(home()); PreparedStatement query = connection.prepareStatement(
+                "SELECT envelope::text FROM ordering.order_outbox o JOIN ordering.order_sagas s USING (saga_id) "
+                        + "WHERE s.order_id=?")) {
+            query.setLong(1, Long.parseLong(id));
+            try (ResultSet rows = query.executeQuery()) {
+                assertTrue(rows.next(), "Reserved order has a command envelope");
+                ObjectNode envelope = Json.object(rows.getString(1));
+                assertEquals(List.of(), Contracts.RECORD_ORDER.errors("#", envelope));
+                assertFalse(rows.next());
+                return envelope;
+            }
+        }
+    }
+
+    private static ObjectNode result(ObjectNode command, String outcome) {
+        ObjectNode result = Json.newObject();
+        result.put("type", outcome.equals("RECORDED") ? "LedgerRecorded" : "LedgerRejected");
+        result.put("schemaVersion", 1);
+        result.set("messageId", command.path("resultMessageId"));
+        for (String field : List.of("commandId", "sagaId", "orderId", "buyerId", "requestFingerprint")) {
+            result.set(field, command.path(field));
+        }
+        result.set("occurredAt", command.path("occurredAt"));
+        result.set("amount", command.at("/snapshot/amount"));
+        result.set("currency", command.at("/snapshot/currency"));
+        result.put("outcome", outcome);
+        if (outcome.equals("REJECTED")) result.put("rejectionReason", "UNSUPPORTED_CURRENCY");
+        result.set("decidedAt", command.path("occurredAt"));
+        assertEquals(List.of(), Contracts.LEDGER_RESULT.errors("#", result));
+        return result;
+    }
+
+    private static String later(ObjectNode result, long seconds) {
+        return Instant.parse(result.path("occurredAt").asText()).plusSeconds(seconds).toString();
+    }
+
+    private ObjectNode resultForMissingOrder(String id) {
+        ObjectNode command = Json.newObject();
+        command.put("resultMessageId", id);
+        command.put("commandId", id);
+        command.put("sagaId", id);
+        command.put("orderId", id);
+        command.put("buyerId", buyer);
+        command.put("requestFingerprint", "a".repeat(64));
+        command.put("occurredAt", "2026-10-06T12:00:00Z");
+        command.putObject("snapshot").put("amount", "19.95").put("currency", "USD");
+        return result(command, "RECORDED");
+    }
+
+    private void publishCommand(ObjectNode envelope) throws Exception {
+        publish("ledger.commands", "ledger.record-order", envelope);
+    }
+
+    private void publishResult(ObjectNode envelope) throws Exception {
+        publish("order.saga-results", RESULT_QUEUE, envelope);
+    }
+
+    private void publish(String exchange, String route, ObjectNode envelope) throws Exception {
+        try (com.rabbitmq.client.Connection connection = broker.connect(exchange.equals("ledger.commands") ? "order" : "ledger");
+             Channel channel = connection.createChannel()) {
+            channel.confirmSelect();
+            channel.basicPublish(exchange, route, true,
+                    new AMQP.BasicProperties.Builder().contentType("application/json").deliveryMode(2)
+                            .messageId(envelope.path("messageId").asText()).build(), Json.bytes(envelope));
+            channel.waitForConfirmsOrDie(5_000);
+        }
+    }
+
+    private static ObjectNode request(int quantity, CatalogApi.Product... fixtures) {
+        ObjectNode request = Json.newObject().put("currency", "USD");
+        var items = request.putArray("items");
+        for (var fixture : fixtures) items.addObject().put("sellerId", fixture.seller().id())
+                .put("productId", fixture.id()).put("quantity", quantity);
+        return request;
+    }
+
+    private String status(String id) throws Exception {
+        return body(http("GET", path(id), null, null), 200).path("status").asText();
+    }
+
+    private void awaitStatus(String id, String expected) throws Exception {
+        await("order " + id + " reaches " + expected, () -> expected.equals(status(id)));
+    }
+
+    private int queueCount(String queue) throws Exception {
+        try (com.rabbitmq.client.Connection connection = broker.connect("admin"); Channel channel = connection.createChannel()) {
+            return channel.queueDeclarePassive(queue).getMessageCount();
+        }
+    }
+
+    private long credits(CatalogApi.Product fixture, String id) throws Exception {
+        return scalar(shards.ofSeller(fixture.seller().id()).database(),
+                "SELECT count(*) FROM catalog.profit_credits WHERE order_id=" + id + " AND product_id=" + fixture.id());
+    }
+
+    private BigDecimal credit(CatalogApi.Product fixture, String id) throws Exception {
+        return decimal(shards.ofSeller(fixture.seller().id()).database(),
+                "SELECT amount FROM catalog.profit_credits WHERE order_id=" + id + " AND product_id=" + fixture.id());
+    }
+
+    private BigDecimal balance(CatalogApi.Product fixture) throws Exception {
+        return decimal(shards.ofSeller(fixture.seller().id()).database(),
+                "SELECT amount FROM catalog.seller_profits WHERE seller_id=" + fixture.seller().id()
+                        + " AND currency='USD'");
+    }
+
+    private BigDecimal decimal(String database, String query) throws SQLException {
+        try (Connection connection = postgres.superuser(database); var statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery(query)) {
+            assertTrue(rows.next());
+            return rows.getBigDecimal(1);
+        }
+    }
+
+    private long conflicts(String id) throws SQLException {
+        return scalar(home(), "SELECT count(*) FROM ordering.conflicting_results WHERE order_id=" + id);
+    }
+
+    private long orphans(String id) throws SQLException {
+        return scalar(home(), "SELECT count(*) FROM ordering.orphan_results WHERE order_id=" + id);
+    }
+
+    private long scalar(CatalogShards.Shard shard, String query) throws SQLException {
+        return scalar(shard.database(), query);
+    }
+
+    private long scalar(String database, String query) throws SQLException {
+        try (Connection connection = postgres.superuser(database); var statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery(query)) {
+            assertTrue(rows.next());
+            return rows.getLong(1);
+        }
+    }
+
+    private CatalogShards.Shard home() {
+        return shards.ofSeller(buyer);
+    }
+
+    private String path(String id) {
+        return "/api/v1/buyers/" + buyer + "/orders/" + id;
+    }
+
+    private RawHttp.Response http(String method, String target, String key, JsonNode payload) throws Exception {
+        var headers = new ArrayList<RawHttp.Header>();
+        if (key != null) headers.add(new RawHttp.Header("Idempotency-Key", key));
+        if (payload != null) headers.add(new RawHttp.Header("Content-Type", "application/json"));
+        RawHttp.Response response = RawHttp.exchange(order.port(), method, target, headers,
+                payload == null ? new byte[0] : Json.bytes(payload),
+                payload == null ? RawHttp.Framing.NONE : RawHttp.Framing.CONTENT_LENGTH);
+        Contracts.ORDER_API.responseSchema(method, target, response.status()).ifPresent(pointer ->
+                assertEquals(List.of(), Contracts.ORDER_API.errors(pointer, Json.parse(response.body()))));
+        return response;
+    }
+
+    private static JsonNode body(RawHttp.Response response, int expected) {
+        assertEquals(expected, response.status(), response::text);
+        return Json.parse(response.body());
+    }
+
+    @FunctionalInterface
+    private interface Condition {
+        boolean met() throws Exception;
+    }
+
+    private static void await(String description, Condition condition) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(45).toNanos();
+        do {
+            if (condition.met()) return;
+            Thread.sleep(50);
+        } while (System.nanoTime() < deadline);
+        fail(description + " within 45 seconds");
+    }
+}
