@@ -75,6 +75,48 @@ class JsonHttpClientTest {
         assertThrows(NullPointerException.class, () -> client.get("/lookup", null));
     }
 
+    @Test
+    void postsAllocationCoordinatesWithoutCreationKey() throws Exception {
+        reply(200, "{\"orderId\":\"9007199254740993\"}");
+        assertEquals("9007199254740993", client.post("/allocation", payload,
+                node -> JsonFields.id(node, "orderId")));
+        ArgumentCaptor<HttpRequest> request = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http).sendAsync(request.capture(), any());
+        assertEquals("POST", request.getValue().method());
+        assertFalse(request.getValue().headers().firstValue("Idempotency-Key").isPresent());
+        assertEquals("application/json", request.getValue().headers().firstValue("Content-Type").orElseThrow());
+        reply(202, "{}");
+        assertThrows(IOException.class, () -> client.post("/allocation", payload, JsonNode::toString));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {200, 202})
+    void putsAnOrderAndAcceptsPendingOrSavedTerminalStatus(int status) throws Exception {
+        reply(status, "{\"orderId\":\"9007199254740993\"}");
+        assertEquals("9007199254740993", client.put("/order", payload,
+                node -> JsonFields.id(node, "orderId")));
+        ArgumentCaptor<HttpRequest> request = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http).sendAsync(request.capture(), any());
+        assertEquals("PUT", request.getValue().method());
+        assertFalse(request.getValue().headers().firstValue("Idempotency-Key").isPresent());
+        assertEquals("application/json", request.getValue().headers().firstValue("Content-Type").orElseThrow());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {200, 202})
+    void exposesTheAcceptedPutStatusToAStatusAwareDecoder(int status) throws Exception {
+        reply(status, "{\"orderId\":\"9007199254740993\"}");
+        assertEquals(status + ":9007199254740993", client.put("/order", payload,
+                (code, node) -> code + ":" + JsonFields.id(node, "orderId")));
+    }
+
+    @Test
+    void rejectsUnexpectedStatusBeforeInvokingStatusAwarePutDecoder() {
+        reply(201, "{\"orderId\":\"9007199254740993\"}");
+        assertThrows(IOException.class, () -> client.put("/order", payload,
+                (status, node) -> { throw new AssertionError("Decoder must not run"); }));
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"{", "{\"id\":\"1\",\"id\":\"1\"}", "{\"id\":\"1\"} {}"})
     void rejectsInvalidDuplicateAndTrailingJson(String body) {

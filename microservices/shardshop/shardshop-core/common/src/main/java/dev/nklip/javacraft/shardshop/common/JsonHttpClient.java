@@ -14,6 +14,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /** Bounded JSON HTTP transport with caller-owned request payloads and response decoding. */
@@ -47,6 +48,34 @@ public final class JsonHttpClient {
                 .header("Idempotency-Key", idempotencyKey)
                 .POST(HttpRequest.BodyPublishers.ofString(creationPayload.toString())).build();
         return decode(receive(request), 201, decoder);
+    }
+
+    /** POST for an endpoint whose retry coordinates are in its JSON body. */
+    public <T> T post(String path, JsonNode payload, Function<JsonNode, T> decoder)
+            throws IOException, InterruptedException {
+        Objects.requireNonNull(payload);
+        Objects.requireNonNull(decoder);
+        HttpRequest request = request(path).header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(payload.toString())).build();
+        return decode(receive(request), 201, decoder);
+    }
+
+    /** Idempotent order PUT accepts a new pending response (202) or saved terminal response (200). */
+    public <T> T put(String path, JsonNode payload, Function<JsonNode, T> decoder)
+            throws IOException, InterruptedException {
+        Objects.requireNonNull(decoder);
+        return put(path, payload, (status, body) -> decoder.apply(body));
+    }
+
+    /** PUT with access to the accepted HTTP status for validating the response body's state. */
+    public <T> T put(String path, JsonNode payload, BiFunction<Integer, JsonNode, T> decoder)
+            throws IOException, InterruptedException {
+        Objects.requireNonNull(payload);
+        Objects.requireNonNull(decoder);
+        HttpRequest request = request(path).header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(payload.toString())).build();
+        HttpResponse<byte[]> response = receive(request);
+        return decode(response, 202, body -> decoder.apply(response.statusCode(), body));
     }
 
     public <T> T get(String path, Function<JsonNode, T> decoder) throws IOException, InterruptedException {

@@ -195,6 +195,19 @@
                 -->
                 <dependency>
                     <groupId>dev.nklip.javacraft</groupId>
+                    <artifactId>shardshop-order-producer</artifactId>
+                    <version>${project.version}</version>
+                    <type>pom</type>
+                    <scope>test</scope>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>*</groupId>
+                            <artifactId>*</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>dev.nklip.javacraft</groupId>
                     <artifactId>shardshop-product</artifactId>
                     <version>${project.version}</version>
                     <type>pom</type>

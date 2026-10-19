@@ -309,6 +309,25 @@ boundaries with IDs `880803840000004605` (bucket 0), `880803840000004432` (9),
 of the implementation. A retry preserves its items and currency. This
 exercises a ledger business rejection rather than an HTTP validation failure.
 
+Step 4.8 implements a single in-flight order stream. It resolves the full catalog,
+creates or recovers all buyers, then starts at ordinal zero for its required
+configured run name. Selection hashes the unchanged run name, decimal ordinal
+and role, separated by NULs; returned descriptors are sorted by definition key.
+Each order contains one product from each seller region in the selected currency,
+with deterministic quantities from one to three. Current stock/profits are never
+selection inputs. A restart reconstructs and replays earlier ordinals through
+the same allocation and PUT APIs before advancing. This deliberately trades
+restart catch-up time for no workload-owned progress store. An ordinal that was
+terminal before its PUT gets no order interval; only the orders that the process
+submits or observes as pending are paced.
+
+One complete deadline bounds allocation, submission, retries and terminal polling
+for each ordinal (60 seconds by default). Transport failures and HTTP 503 use
+bounded attempts and jittered backoff; validation errors fail immediately. A
+failed phase stops the producer for restart without advancing its ordinal.
+Only terminal status permits the next order. Configuration and operational
+commands are in the [producer runbook](README.md#order-producer-step-48).
+
 Module 2 also handles seller and product creation so the product seeder can populate the
 shared database through an application API. Module 4 includes a consumer process:
 the ledger database itself does not consume RabbitMQ messages.

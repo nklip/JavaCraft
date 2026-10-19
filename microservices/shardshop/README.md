@@ -16,10 +16,10 @@ Ledger consumes those commands in step 4.5, committing immutable decisions and
 pending result outboxes. Its step 4.6 publisher delivers the saved results to
 RabbitMQ with confirms and publication-attempt checks.
 Order's step 4.7 consumer applies those results and records durable seller-profit
-intents, which a separate worker posts on each seller's shard. The order producer
-still starts CDI and exits. Step 3.5
-provides workload-owned dataset definitions and HTTP clients; the order workload
-loop remains step 4.8. Maven module tests need no Docker or
+intents, which a separate worker posts on each seller's shard. The step 4.8 order
+producer verifies the catalog, creates buyers, and continuously allocates, submits
+and observes deterministic orders through HTTP. Step 3.5 provides the workload-owned
+dataset definitions. Maven module tests need no Docker or
 Kubernetes; chart rendering and release orchestration tests require `helm` and
 `helmfile` on `PATH`. The Cucumber scenarios of `shardshop-testing` run product, the seeder
 and the reader against a PostgreSQL container in the `integration` profile
@@ -151,8 +151,8 @@ optional validated `errorCode()`. Malformed error bodies preserve the status;
 exception messages contain no response payload. Callers can distinguish a missing
 resource, a rejected request and a retryable service failure; retry policy stays
 with the workload.
-Steps 3.7 and 3.8 added the seeder and reader loops. The order-producer loop and
-the buyer/order providers remain later plan steps.
+Steps 3.7, 3.8 and 4.8 implement the seeder, reader and order-producer loops;
+step 4.1 implements the buyer/order provider.
 
 After a change to common, run the
 [six-application audit](#dependency-and-test-validation).
@@ -807,8 +807,8 @@ history under the [migration rules](#database-schemas-and-migrations-step-23).
 
 Order is now a long-running HTTP/1.1 provider. `--check-startup` validates its
 routing, generator and pool configuration and exits without opening a database
-connection. Its Kubernetes deployment and producer workload remain steps 4.9 and
-4.8. Apply the external catalog and ordering migrations before serving requests;
+connection. Step 4.8 implements its producer; Kubernetes deployment remains step
+4.9. Apply the external catalog and ordering migrations before serving requests;
 the application never runs Flyway.
 
 `POST /api/v1/buyers` persists the person profile and region-scoped
@@ -1276,6 +1276,89 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pinteg
   '-Dcucumber.filter.tags=@order-results or @order-api or @stock-reservation or @catalog-migration'
 ```
 
+## Order producer (step 4.8)
+
+The producer is a continuous HTTP/1.1 workload with one order in flight. It first
+resolves every catalog seller and product by creation key and verifies the returned
+definitions. Missing entities, transport failures and HTTP 503 repeat the complete
+lookup with one-to-fifteen-second exponential backoff and jitter, for at most five
+minutes. Invalid JSON or mismatching definitions fail immediately. Only after the
+catalog is complete does it create or recover all 3,000 buyers through order's
+idempotent API. Buyer creation has its own complete startup deadline. The workload
+has no database credentials, Kubernetes token, shard router or ID generator.
+
+Configure a required `run-name`; keep it and the dataset versions and rejection
+percentage unchanged across restarts. Each run starts at ordinal `0`. The producer
+selects a buyer deterministically, calls the durable order-allocation API, and uses
+the returned order ID unchanged. Its SHA-256 currency bucket selects EUR when below
+`rejected-order-percent`, otherwise USD. The planner selects three products in that
+currency, one per US/EU/ASIA seller region, with quantities from one through three.
+It hashes `runName`, the decimal ordinal and a selection role separated by NULs,
+over descriptors sorted by definition key. Mutable stock and profits never affect
+selection. Every order therefore exercises a purchase across regions without
+mixing currencies. With a USD-only ledger, EUR orders exercise business rejection.
+
+Buyer POST, allocation POST, order PUT and status GET retry transport failures and
+HTTP 503 with capped backoff and jitter. Other HTTP errors, invalid JSON and
+inconsistent response identities fail the run. Retries preserve the same keys,
+allocated IDs and exact item payload. HTTP 202 must carry a pending order status;
+HTTP 200 from PUT must carry a terminal status. The producer polls pending orders
+until `CONFIRMED` or `CANCELLED`, then waits before advancing to the next ordinal.
+The complete allocation/submission/polling phase has one deadline, including all
+attempts and waits. Exhaustion exits with code 1; shutdown interrupts outstanding
+HTTP work. `--check-startup` validates configuration without HTTP requests, and an
+invalid setting logs one error. A failed order phase names the stuck order, for
+example `Order producer failed: Order completion deadline exceeded (ordinal 3,
+buyer <buyerId>, order <orderId>, last status PENDING_LEDGER)`.
+
+A restart replays earlier ordinals with the same coordinates and recovers their
+saved orders before reaching new work. This needs no local progress database. An
+order that was already terminal before its PUT gets no order interval, thus the
+catch-up costs one allocation and one PUT for each finished order. In a probe, 15
+finished orders took less than one second. The log reports
+`Order producer recovered <count> finished orders before ordinal <ordinal>`, and the
+progress lines count recovered orders separately. A new independent
+run requires a new explicitly configured name. Do not change selection settings
+under an existing name. The loop does not replenish stock; eventual out-of-stock
+cancellations are expected in a sustained run.
+
+| `shardshop.producer` setting | Default | Meaning |
+|---|---|---|
+| `product-url`, `order-url`, `run-name` | Required | Service base URLs and durable run identity |
+| `catalog-version`, `buyer-version` | `catalog-v1`, `buyers-v1` | Immutable workload definitions |
+| `rejected-order-percent` | `10` | Integer 0–100; selects EUR by the issued order ID |
+| `connect-timeout`, `request-timeout` | `2s`, `5s` | Connection and complete HTTP-attempt limits |
+| `startup-deadline` | `5m` | Complete budget for each of catalog and buyer setup; maximum 5m |
+| `order-deadline` | `60s` | Allocation through terminal status; maximum 10m |
+| `order-interval`, `poll-interval` | `1s`, `250ms` | Delay after a terminal order of this process and between pending status reads |
+| `max-attempts` | `5` | At most 1–10 attempts per ordinary HTTP operation |
+| `retry-backoff`, `max-retry-backoff` | `100ms`, `2s` | Exponential base/cap, with 50–100% jitter; cap at most 30s |
+
+All durations must be positive. Connection timeout is at most 30s, request timeout
+and order interval at most 1m, and poll interval at most 30s. The producer logs
+startup counts and periodic outcome counts without buyer profiles or HTTP bodies.
+
+With product and order reachable at the configured URLs, launch the packaged
+producer from the repository root:
+
+```bash
+java -Dshardshop.producer.product-url=http://localhost:8080 \
+  -Dshardshop.producer.order-url=http://localhost:8081 \
+  -Dshardshop.producer.run-name=local-run-1 \
+  -jar microservices/shardshop/shardshop-workload/shardshop-order-producer/target/quarkus-app/quarkus-run.jar
+```
+
+The packaged `OrderProducer.feature` uses real product/order APIs and PostgreSQL.
+It hides committed buyer, allocation and PUT responses behind a test proxy, then
+checks identical retries, restart recovery, all buyer regions, USD/EUR selection
+and terminal polling. The test controls terminal database transitions to isolate
+the producer's HTTP behavior; the complete deployed saga remains step 4.9. Run:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@order-producer'
+```
+
 ## RabbitMQ topology and delivery policies (step 4.3)
 
 `cluster-create.sh` provisions one persistent RabbitMQ 4.3.6 broker through the
@@ -1459,7 +1542,7 @@ uses the shared `Sha256.unsignedDigest` to hash its unchanged UTF-8 text, and ta
 modulo 100. It returns EUR for buckets below the rejection percentage and USD
 otherwise. The default is 10; the integer constructor accepts 0 through 100.
 Tests pin the architecture's buckets 0, 9, 10 and 99, plus exact large-ID values.
-The future producer loop supplies its configured percentage and retains the
+The producer loop supplies its configured percentage and retains the
 chosen payload across retries. The routing library uses the same digest helper;
 the order producer has no shard-routing dependency.
 
@@ -1683,8 +1766,9 @@ export SHARDSHOP_ID_REGISTRY_UID=$(kubectl --context kind-shardshop \
 ```
 
 Verify all six one at a time, without installing anything. Product/order run their
-packaged startup tests during `verify`; the loop also launches the four packages
-that do not generate IDs:
+packaged startup tests during `verify`. Command-mode tests use `--check-startup`
+and test configuration; launch the continuous workloads separately with the
+service URLs and settings in their runbooks:
 
 ```bash
 for module in \
@@ -1696,12 +1780,6 @@ for module in \
   shardshop-workload/shardshop-order-producer
 do
   mvn -B -ntp -f microservices/shardshop/pom.xml -pl "$module" -am clean verify || exit 1
-  case "$module" in
-    shardshop-ledger|shardshop-workload/*)
-      "$JAVA_HOME/bin/java" -jar \
-        "microservices/shardshop/$module/target/quarkus-app/quarkus-run.jar" || exit 1
-      ;;
-  esac
 done
 ```
 

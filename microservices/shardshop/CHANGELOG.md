@@ -2899,3 +2899,136 @@ The pre-fix runs used a scratch copy of the step 4.7 code with the new tests. In
 that copy, the consumer log test used the old order consumer class, and the lock
 unit test calculated the creation key itself. `QueueConsumer` and
 `OrderService.orderLock` did not exist there.
+
+## Step 4.8
+
+**2026-10-19:** The order producer now runs continuously over HTTP. It verifies
+the complete catalog before creating or recovering all 3,000 buyers. Catalog
+resolution retries missing/unavailable data with one-to-fifteen-second backoff
+and jitter within a five-minute budget. Invalid responses fail immediately.
+
+Each configured run starts at ordinal zero, selects a buyer deterministically,
+recovers its durable order allocation and sends the unchanged service-issued ID.
+The existing currency hash chooses USD/EUR. Each order has three items, one from
+each seller region, with deterministic quantities from one to three. Selection
+uses definition keys and fixed run coordinates, never mutable stock/profits.
+Retries and process restarts preserve allocation coordinates and item payloads.
+Terminal polling, allocation and PUT share one complete deadline; the producer
+advances only after confirmation or cancellation. Shutdown cancels outstanding
+work, and `--check-startup` performs no HTTP calls.
+
+The shared bounded JSON client adds allocation POST and status-aware PUT without
+changing existing callers. Successful PUTs validate both HTTP status and order
+state. No dependency, compiler target, database migration, SQL function or trigger
+was added. All six runtime SBOM component counts remain unchanged: product 258,
+order 304, ledger 193, seeder 147, reader 165 and producer 147. Testing registers
+the producer's POM as a reactor-order dependency without importing application
+classes. Deployment remains step 4.9.
+
+The explicit tradeoff is restart catch-up: earlier ordinals are replayed before
+new work, without a workload-owned progress store. Keep the run name, dataset
+versions and selection settings fixed; use a new configured name for independent
+work. Sustained runs do not replenish stock.
+
+Validation:
+
+- The six-application audit/install passes **1,313 unit/provider tests**, including
+  **113 producer** and **285 common** tests, plus **71 packaged startup checks**
+  (30 product and 41 order). Tests cover deterministic selection and the fixed
+  currency vectors, exact IDs/payloads through lost responses, invalid response
+  correlation, retry bounds, whole-phase timeouts, shutdown and startup gating.
+- Initial new-test compilation/setup failures (exception construction, import
+  placement, the test configuration's duration converter and mock restubbing)
+  were corrected before the complete passing audit. Review also added strict
+  pending/terminal HTTP status matching and verified the fix.
+- The packaged producer scenario passes against PostgreSQL and the real product
+  and order APIs. A test proxy hides the first committed buyer, allocation and PUT
+  responses; retries recover the same IDs and send identical keys/payload bytes.
+  The scenario verifies all 3,000 buyers, three-region USD/EUR orders, pending
+  replay after a JVM restart, and advancement only after terminal status. It
+  controls terminal database transitions to isolate producer behavior from the
+  already-tested ledger/result workers. **167 testing-module unit tests** also
+  pass. A sandboxed attempt could not inspect macOS processes; rerunning with
+  local process and Docker access resolved that environment restriction.
+- All **three existing seeder/reader integration scenarios** pass after extending
+  their shared workload fixture. The final producer unit rerun passes all 113
+  tests. Normal producer logs have no warnings or errors, owned test containers
+  and packaged JVMs were cleaned up, and `git diff --check` passes.
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-workload/shardshop-order-producer -am test
+mvn -B -ntp -f microservices/shardshop/pom.xml \
+  -pl shardshop-product,shardshop-order,shardshop-ledger,shardshop-workload/shardshop-product-seeder,shardshop-workload/shardshop-product-reader,shardshop-workload/shardshop-order-producer \
+  -am -Pintegration,audit install
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify \
+  '-Dcucumber.filter.tags=@order-producer'
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify \
+  '-Dcucumber.features=classpath:features/ProductSeeder.feature,classpath:features/ProductReader.feature'
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-workload/shardshop-order-producer test
+```
+
+### Step 4.8 validation fixes
+
+**2026-10-19:** A validation of the step found three problems, and the user asked
+to fix all of them.
+
+1. After a restart, the producer waited the complete order interval after each
+   replayed ordinal. In a probe with the default interval of 1 second, a restart
+   replayed 15 finished orders in 15.6 seconds before its first new order. Thus a
+   restart after hours of load sent no new orders for most of the earlier run
+   time. An order that was terminal before its PUT now gets no order interval.
+   The same probe recovered 15 finished orders in less than one second. The log
+   reports `Order producer recovered 15 finished orders before ordinal 15`, and
+   the progress lines count recovered orders separately.
+2. The failure line did not identify the stuck order, and an invalid setting
+   logged its error twice. The line now names the ordinal, buyer, order and last
+   status, for example `Order completion deadline exceeded (ordinal 0, buyer
+   105685002747863041, order 105685037959045120, last status PENDING_STOCK)`. The
+   `ShutdownEvent` observer moved from the application bean to the wiring, which
+   stops only a producer that it created. Before, the observer created the failed
+   beans again during shutdown and logged the second error.
+3. The planner checked returned descriptors against the default dataset versions,
+   not against the configured versions. It now uses the datasets that resolved the
+   descriptors. Only `catalog-v1` and `buyers-v1` exist, thus this could not fail
+   yet.
+
+Validation:
+
+- Before the fixes, the new tests ran against a copy of the step 4.8 code. The
+  deadline log test got `Order completion deadline exceeded` without an ordinal,
+  and the new scenario "An invalid setting stops the producer at startup with one
+  error line" found two errors. The pacing and dataset tests need the new API, thus
+  they ran against copies of the fixed code with one fix removed: an unconditional
+  pause failed the pacing test, and default dataset versions failed the dataset
+  test.
+- After the fixes, the producer passes **116 unit tests**, and common passes
+  **285**. Both producer scenarios pass.
+- The full `-pl shardshop-testing -am -Pintegration clean verify` ran **112
+  scenarios** in 2,423 seconds, while the kind lab and a VPN process loaded the
+  machine (load average up to 17). Four scenarios failed for environment reasons:
+  three got HTTP 503 from the three-second database deadline of product or order,
+  and one order start found its HTTP port in use. A rerun of the
+  `@order-producer`, `@order-results` and `@order-api` features passed all 21
+  scenarios. The only other WARN line is the accepted Ryuk line.
+- The validation ran the packaged producer against the lab through a port-forward
+  to the product Service. It resolved the seeded catalog, 150 sellers and 300
+  products, without a wait. Then it stopped at buyer creation, because order is
+  not deployed before step 4.9. The lab did not change.
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-workload/shardshop-order-producer -am clean test
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  -Dtest=None -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false \
+  '-Dit.test=CucumberIT,ShardRoutingStartupIT#startsWithAnExternalRoutingSnapshot' \
+  -Dfailsafe.failIfNoSpecifiedTests=false -Djacoco.skip=true \
+  '-Dcucumber.filter.tags=@order-producer or @order-results or @order-api'
+```
+
+The pre-fix runs used a scratch copy of the step 4.8 code with the new tests. In
+that copy, the deadline log test used the old workload API and required only the
+ordinal, because the old API could not report the order.

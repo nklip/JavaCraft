@@ -12,20 +12,25 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The packaged seeder and reader of one scenario. They get only the product URL, as their pods on the lab do. Each
+ * The packaged workload applications of one scenario. They get only the provider URLs, as their pods on the lab do. Each
  * seeder run is a new JVM, like a new pod of the seeder Job.
  */
 public final class WorkloadRuntime implements Disposable {
     private final ProductRuntime product;
+    private final OrderRuntime order;
     private final Path directory;
     private PackagedApplication seeder;
     private int seederExitCode;
     private PackagedApplication reader;
+    private PackagedApplication producer;
+    private final List<PackagedApplication> producers = new ArrayList<>();
+    private String producerOrderUrl;
     private String seededDigest;
     private Map<String, StoredCatalog.Row> seededCatalog;
 
-    public WorkloadRuntime(ProductRuntime product) throws IOException {
+    public WorkloadRuntime(ProductRuntime product, OrderRuntime order) throws IOException {
         this.product = product;
+        this.order = order;
         this.directory = ShardShopFiles.newWorkDirectory("workloads-");
     }
 
@@ -41,6 +46,55 @@ public final class WorkloadRuntime implements Disposable {
                 "-Dshardshop.reader.report-interval=5s"));
         command.addAll(options);
         reader = PackagedApplication.start("shardshop-workload/shardshop-product-reader", directory, command);
+    }
+
+    public void startProducer(String runName, int rejectedPercent) throws IOException {
+        if (producer != null && producer.isAlive()) {
+            throw new IllegalStateException("The order producer runs already");
+        }
+        producer = PackagedApplication.start("shardshop-workload/shardshop-order-producer", directory, List.of(
+                "-Dshardshop.producer.product-url=" + productUrl(),
+                "-Dshardshop.producer.order-url=" + (producerOrderUrl == null
+                        ? "http://127.0.0.1:" + order.port() : producerOrderUrl),
+                "-Dshardshop.producer.run-name=" + runName,
+                "-Dshardshop.producer.rejected-order-percent=" + rejectedPercent,
+                "-Dshardshop.producer.startup-deadline=5m",
+                "-Dshardshop.producer.order-deadline=30s",
+                "-Dshardshop.producer.order-interval=100ms",
+                "-Dshardshop.producer.poll-interval=100ms"));
+        producers.add(producer);
+    }
+
+    /** Runs {@code --check-startup} of the packaged producer, which sends no HTTP request. */
+    public PackagedApplication checkProducer(List<String> options) throws IOException {
+        List<String> command = new ArrayList<>(List.of("-Dshardshop.producer.product-url=http://127.0.0.1:1",
+                "-Dshardshop.producer.order-url=http://127.0.0.1:1"));
+        command.addAll(options);
+        return PackagedApplication.start("shardshop-workload/shardshop-order-producer", directory, command,
+                List.of("--check-startup"));
+    }
+
+    public void producerOrderUrl(String url) {
+        this.producerOrderUrl = url;
+    }
+
+    public PackagedApplication producer() {
+        if (producer == null) {
+            throw new IllegalStateException("The order producer did not start in this scenario");
+        }
+        return producer;
+    }
+
+    public boolean producerStarted() {
+        return producer != null;
+    }
+
+    public int stopProducer() throws InterruptedException {
+        return producer().stop();
+    }
+
+    public List<String> producerProblems() {
+        return producers.stream().flatMap(application -> application.problems().stream()).toList();
     }
 
     private String productUrl() {
@@ -88,6 +142,9 @@ public final class WorkloadRuntime implements Disposable {
     @Override
     public void dispose() {
         try {
+            if (producer != null && producer.isAlive()) {
+                producer.stop();
+            }
             if (reader != null && reader.isAlive()) {
                 reader.stop();
             }

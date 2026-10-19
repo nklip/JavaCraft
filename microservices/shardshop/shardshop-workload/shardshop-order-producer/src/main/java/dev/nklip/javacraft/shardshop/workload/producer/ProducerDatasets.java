@@ -32,6 +32,16 @@ public final class ProducerDatasets {
         this.buyers = new BuyerDataset(buyerVersion);
     }
 
+    /** The configured catalog version; the planner validates descriptors against the same definitions. */
+    public CatalogDataset catalog() {
+        return catalog;
+    }
+
+    /** The configured buyer version. */
+    public BuyerDataset buyerDataset() {
+        return buyers;
+    }
+
     public List<SellerDefinition> sellers() {
         return catalog.sellers();
     }
