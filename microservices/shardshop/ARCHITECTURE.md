@@ -1134,12 +1134,15 @@ committed SQL; there is no automatic SQL rollback, history repair or database re
 Use the same `TMPDIR` for lifecycle calls. Ordinary failure and INT/TERM release
 the lock after the active command ends. Inspect retained Jobs and confirm no
 invocation remains active before removing a stale lock after SIGKILL or host failure.
-`down.sh` stops all nodes with one `docker stop --time 10` call and retains every
-node container, volume, Secret and allocator identity. Docker does not change a node
-that is already stopped. The explicit destroy command runs `kind delete cluster`,
-which deletes that retained state, including databases, Kubernetes/Helm configuration
-and allocator history. Docker keeps a volume that another container uses. Repository
-configuration and shared Docker networks/images are outside cluster ownership.
+`down.sh` turns off kind's `on-failure:1` restart policy with `docker update`, then
+stops all nodes with one `docker stop --timeout 10` call and retains every node
+container, volume, Secret and allocator identity. Without the policy change, the next
+Docker daemon start restarts nodes that a SIGKILL stopped. Docker does not change a
+node that is already stopped. Resuming sets `on-failure:1` again. The explicit
+destroy command runs `kind delete cluster`, which deletes that retained state,
+including databases, Kubernetes/Helm configuration and allocator history. Docker
+keeps a volume that another container uses. Repository configuration and shared
+Docker networks/images are outside cluster ownership.
 
 ```text
 database/

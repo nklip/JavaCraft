@@ -125,6 +125,8 @@ verify_kind() {
 resume_cluster() {
     local node running attempt started_nodes=false
     verify_kind kind-nodes
+    # down.sh turns the restart policy off. A running cluster gets kind's default again.
+    docker update --restart=on-failure:1 $nodes >/dev/null
     for node in $nodes; do
         running=$(docker inspect --format '{{.State.Running}}' "$node")
         if [[ "$running" != true ]]; then

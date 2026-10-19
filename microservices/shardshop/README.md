@@ -2127,14 +2127,21 @@ bash microservices/shardshop/scripts/down.sh
 bash microservices/shardshop/scripts/up.sh
 ```
 
-`down.sh` stops every ShardShop kind node, including the control plane and all
-workers, with one `docker stop --time 10` call. Docker stops the nodes in parallel.
+`down.sh` first turns off the restart policy of every ShardShop kind node with one
+`docker update --restart=no` call. kind creates its nodes with `on-failure:1`, and a
+node that Docker kills at the stop timeout exits with a failure code. Without this
+step, the next Docker daemon start restarts the stopped nodes, for example when Docker
+Desktop's Resource Saver starts its VM again for a later Docker command.
+Then `down.sh` stops every node, including the control plane and all workers, with
+one `docker stop --timeout 10` call. Docker stops the nodes in parallel.
 It sends SIGKILL to a node process that did not stop after ten seconds. It returns
 an error if a node does not stop. Docker does not change a node that is already
 stopped, and a missing cluster needs no Docker call. A failed stop returns nonzero
 and releases the lifecycle lock. Inspect the nodes and run `down.sh` again. If
-Docker Desktop does not respond, `down.sh` waits until you stop it with Ctrl+C. `up.sh` resumes the same containers, checks the prepared infrastructure and
-redeploys applications, preserving databases, PVCs, Secrets and allocator identity/history.
+Docker Desktop does not respond, `down.sh` waits until you stop it with Ctrl+C. `up.sh` sets kind's `on-failure:1` policy again, resumes the same containers, checks
+the prepared infrastructure and redeploys applications, preserving databases, PVCs,
+Secrets and allocator identity/history. `cluster-create.sh` also sets the policy again
+when it resumes an existing cluster.
 Each restarted product JVM still reserves a new generator ID.
 
 ### Permanently destroy the cluster

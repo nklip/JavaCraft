@@ -66,6 +66,7 @@ class KindLifecycleLockTest {
                     fi
                     exit 0;;
                   scout) exit 0;;
+                  update) [[ "$mode" != fail-update ]] || exit 21;;
                   stop) [[ "$mode" != fail-stop ]] || exit 20;;
                   *) exit 99;;
                 esac
@@ -88,13 +89,38 @@ class KindLifecycleLockTest {
         }
     }
 
+    /**
+     * kind starts its nodes with restart policy on-failure:1, and a SIGKILL at the stop timeout exits with a failure
+     * code. Thus the Docker daemon restarts stopped nodes at its next start, for example when Docker Desktop's Resource
+     * Saver starts the VM again. The policy must be off before the stop.
+     */
+    @Test
+    void downTurnsOffTheRestartPolicyBeforeItStopsTheNodes() throws Exception {
+        Result result = run("down.sh");
+        assertEquals(0, result.exit(), result.output());
+        assertEquals(List.of("kind get nodes --name shardshop", "docker update --restart=no " + String.join(" ", NODES),
+                "docker stop --timeout 10 " + String.join(" ", NODES)), events());
+        assertTrue(result.output().contains("Stopped the shardshop kind cluster."), result.output());
+        assertFalse(Files.exists(lock()));
+    }
+
+    @Test
+    void failedPolicyUpdateStopsNoNodeAndReleasesTheLock() throws Exception {
+        mode("fail-update");
+        Result result = run("down.sh");
+        assertEquals(21, result.exit(), result.output());
+        assertEquals(List.of("kind get nodes --name shardshop", "docker update --restart=no " + String.join(" ", NODES)),
+                events());
+        assertFalse(Files.exists(lock()));
+    }
+
     @Test
     void failedDockerStopFailsShutdownAndReleasesTheLock() throws Exception {
         mode("fail-stop");
         Result result = run("down.sh");
         assertEquals(20, result.exit(), result.output());
-        assertEquals(List.of("kind get nodes --name shardshop", "docker stop --time 10 " + String.join(" ", NODES)),
-                events());
+        assertEquals(List.of("kind get nodes --name shardshop", "docker update --restart=no " + String.join(" ", NODES),
+                "docker stop --timeout 10 " + String.join(" ", NODES)), events());
         assertFalse(result.output().contains("Stopped the shardshop"));
         assertFalse(Files.exists(lock()));
     }

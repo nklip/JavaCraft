@@ -75,6 +75,7 @@ class KindStartupScriptTest {
                   scout)
                     [[ "$(cat "$FIXTURE/failure")" != scan || "$*" != *--exit-code* ]] || exit 73;;
                   inspect) cat "$FIXTURE/running";;
+                  update) ;;
                   start) echo true > "$FIXTURE/running";;
                   image) printf 'sha256:%064d\n' 0;;
                   exec)
@@ -192,7 +193,8 @@ class KindStartupScriptTest {
         Result result = run("cluster-create.sh");
         assertEquals(0, result.exit(), result.output());
         assertEquals("true\n", Files.readString(temporary.resolve("running")));
-        assertTrue(events().stream().anyMatch(line -> line.startsWith("docker start ")));
+        // down.sh turned the policy off; a resumed cluster gets kind's default back before its nodes start.
+        assertBefore("docker update --restart=on-failure:1 " + String.join(" ", NODES.strip().split("\n")), "docker start ");
         assertTrue(events().stream().anyMatch(line -> line.contains("rollout restart daemonset/kindnet")));
         assertBefore("mvn kind-retention ", "kubectl --context kind-shardshop --request-timeout=30s apply -f ");
         assertBefore("mvn kind-allocator ", "kubectl --context kind-shardshop --request-timeout=30s apply -f ");
@@ -318,7 +320,7 @@ class KindStartupScriptTest {
         state("running", "false");
         Result result = run("up.sh");
         assertEquals(0, result.exit(), result.output());
-        assertTrue(events().stream().anyMatch(line -> line.startsWith("docker start ")));
+        assertBefore("docker update --restart=on-failure:1 " + String.join(" ", NODES.strip().split("\n")), "docker start ");
         assertTrue(events().stream().anyMatch(line -> line.contains("rollout restart daemonset/kindnet")));
         assertTrue(events().stream().anyMatch(line -> line.startsWith("mvn build ")
                 && line.contains(" clean install -DinstallAtEnd=true")
