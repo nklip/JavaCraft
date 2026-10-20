@@ -13,6 +13,7 @@ using a BMI calculator domain.
 - [IDEA troubleshooting](#idea-troubleshooting)
 
 ## What this module covers
+<sub>[Back to top](#bdd-module)</sub>
 
 `BMI.feature` currently verifies four business scenarios:
 
@@ -28,12 +29,14 @@ In addition to Cucumber scenarios, unit tests cover:
   normalized before category lookup
 
 ## Test architecture
+<sub>[Back to top](#bdd-module)</sub>
 
 - `CucumberIT` runs feature tests on JUnit Platform with Cucumber.
 - `CucumberSpringConfiguration` boots a minimal Spring context for Cucumber steps.
 - `BMIStepDefinition` maps Gherkin steps to `BMIService` calls.
 
 ## How to run tests
+<sub>[Back to top](#bdd-module)</sub>
 
 Run all tests (Surefire unit tests + Failsafe Cucumber scenarios):
 
@@ -54,6 +57,7 @@ mvn -pl bdd -Dit.test=CucumberIT verify
 ```
 
 ## Expected output
+<sub>[Back to top](#bdd-module)</sub>
 
 When tests pass, Maven prints a summary similar to:
 
@@ -73,6 +77,7 @@ Maven test reports are generated at:
 - `bdd/target/failsafe-reports/`
 
 ## IDEA troubleshooting
+<sub>[Back to top](#bdd-module)</sub>
 
 If a feature file is not linked to step definitions in IntelliJ:  https://youtrack.jetbrains.com/projects/IDEA/issues/IDEA-362929/Cucumber-feature-file-step-appears-as-undefined-in-IntelliJ-despite-the-test-running-successfully.
 

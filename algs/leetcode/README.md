@@ -3,6 +3,7 @@
 This module should contain leetcode problems, solutions, and tests.
 
 ## Solutions
+<sub>[Back to Algorithms](../README.md#algorithms)</sub>
 
 Solutions are sorted by complexity and then by usefulness.
 

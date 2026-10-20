@@ -19,6 +19,7 @@ and customisable player symbols.
 ---
 
 ## 1. Quick Start
+<sub>[Back to top](#tic-tac-toe)</sub>
 
 ### Build and run
 

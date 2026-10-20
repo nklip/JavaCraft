@@ -1,5 +1,9 @@
 # COS226
 
+<sub>[Back to Algorithms](../README.md#algorithms)</sub>
+
+## Course
+
 https://www.cs.princeton.edu/courses/archive/fall24/cos226/
 
 ## Syllabus

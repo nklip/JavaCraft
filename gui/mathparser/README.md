@@ -23,6 +23,7 @@ Supports arithmetic, trig, logarithms, variables, and implicit multiplication ou
 ---
 
 ## 1. Quick Start
+<sub>[Back to top](#mathparser)</sub>
 
 **Prerequisites:** Java installed, Maven installed
 

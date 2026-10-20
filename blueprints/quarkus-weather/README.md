@@ -23,6 +23,7 @@ graph at **build time** and bakes it into bytecode, which is why this module nee
 ---
 
 ## 1. Quick Start
+<sub>[Back to top](#quarkus-weather)</sub>
 
 **Prerequisites:** Java 25, Maven, outbound HTTPS to `api.open-meteo.com`. Open-Meteo is free and
 unauthenticated, so the weather dashboard needs no key.
