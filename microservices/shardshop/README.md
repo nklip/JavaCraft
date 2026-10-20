@@ -2,7 +2,7 @@
 
 [Architecture](ARCHITECTURE.md) · [Implementation plan](PLAN.md) ·
 [Version policy](VERSIONS.md) · [Artifact lock](versions.lock.yaml) ·
-[Changelog](CHANGELOG.md)
+[Changelog](CHANGELOG.md) · [Product service](shardshop-product/README.md)
 
 All six applications use **Quarkus 3.40.1** in JVM mode on Java 25.
 Product now runs the seller/product HTTP API from step 3.6. The product seeder
@@ -18,14 +18,16 @@ RabbitMQ with confirms and publication-attempt checks.
 Order's step 4.7 consumer applies those results and records durable seller-profit
 intents, which a separate worker posts on each seller's shard. The step 4.8 order
 producer verifies the catalog, creates buyers, and continuously allocates, submits
-and observes deterministic orders through HTTP. Step 3.5 provides the workload-owned
+and observes deterministic orders through HTTP. The [regional product page](shardshop-product/README.md#regional-product-page-step-410)
+from step 4.10 displays created products, stock, prices and confirmed earnings.
+Step 3.5 provides the workload-owned
 dataset definitions. Maven module tests need no Docker or
 Kubernetes; chart rendering and release orchestration tests require `helm` and
 `helmfile` on `PATH`. The Cucumber scenarios of `shardshop-testing` run product, the seeder
 and the reader against a PostgreSQL container in the `integration` profile
 ([step 3.10](#integration-tests-with-testcontainers-step-310)). Step 3.9 deploys product, the seeder Job and
 the reader on the kind lab. The reader starts its load only after product serves
-the complete dataset ([seeding gate](#product-deployment-and-seeding-gate-step-39)).
+the complete dataset ([seeding gate](#seeding-gate)).
 Product/order production
 starts still require the routing snapshot and a live generator ID, which the JVM
 reserves through the Kubernetes API at each start; tests use a fixed test ID or a
@@ -33,7 +35,7 @@ k3s API server.
 
 | Maven module | Quarkus application class |
 |---|---|
-| `shardshop-product` | `dev.nklip.javacraft.shardshop.product.ProductApplication` |
+| [shardshop-product](shardshop-product/README.md) | `dev.nklip.javacraft.shardshop.product.ProductApplication` |
 | `shardshop-order` | `dev.nklip.javacraft.shardshop.order.OrderApplication` |
 | `shardshop-ledger` | `dev.nklip.javacraft.shardshop.ledger.LedgerApplication` |
 | `shardshop-workload/shardshop-product-seeder` | `dev.nklip.javacraft.shardshop.workload.seeder.ProductSeederApplication` |
@@ -194,103 +196,9 @@ comparison commands. The former Python generator has been removed.
 
 ## Seller and product provider (step 3.6)
 
-Product serves the six seller/product POST and GET routes in its
-[OpenAPI contract](shardshop-product/src/main/resources/contracts/openapi.yaml).
-Creation returns 201; an identical retry returns 200 with the same ID and current
-profits or stock. Conflicting payloads return 409. Missing product parents return
-422; missing GET resources return 404. Invalid wire input returns 400 before any
-database access, including POST bodies exceeding the 32 KiB limit, which return the
-JSON error `400 INVALID_REQUEST`. SQL failures, deadline exhaustion and uncertain commits return
-503: retry creation with the original key, path and payload.
-
-Seller keys choose a fixed shard among the inventory's ordered shards in the
-requested region: unsigned SHA-256 of UTF-8 `seller\0region\0key`, modulo the
-regional shard count (`\0` denotes one NUL byte). The service generates at most
-1024 ID candidates until the existing version-2 ID router chooses that shard.
-This works when several shards share a region. Keep inventory membership, order
-and region assignments immutable while retaining data. Product IDs are generated
-once, after parent validation, and stored on the parent's shard.
-
-Each creation transaction takes a PostgreSQL transaction advisory lock derived
-from the collection, scope and key before checking the persisted mapping. The
-database uniqueness constraint and transaction retain the entity/key together;
-retries and process restarts do not depend on in-memory state. The first seller
-transaction also creates USD/EUR profit rows at the database's zero default.
-
-Run the normal external migration workflow before starting the API. The additive
-`V2__catalog_creation.sql` preserves V1, exposes `company_name` from the existing
-stored `name`, backfills descriptions/costs and profit rows, and adds key lookup
-indexes and the per-order/product profit-credit identity. Product can initialize
-zero balances but cannot update or reset them. Step 4.7 applies confirmed margin;
-step 4.2 implements stock mutation. No SQL functions or triggers are added.
-
-Connection configuration is deployment-only. Defaults target each inventory
-cluster's `-rw` and `-ro` Services in database `shardshop`, using `product_app` and
-`sslmode=verify-full`. Mount each `<shard>-ca` Secret's `ca.crt` at
-`/etc/shardshop/catalog/<shard>/ca.crt`; `root-certificate` can override that path.
-Certificate trust and the Service hostname must both verify.
-Supply passwords through an uncommitted external configuration/Secret; no
-credentials belong in the repository. Per-shard overrides can be included beside
-the routing snapshot loaded by `shardshop.routing.config`:
-
-```properties
-shardshop.catalog.connections.shard-a.primary-url=jdbc:postgresql://shard-a-rw:5432/shardshop
-shardshop.catalog.connections.shard-a.replica-url=jdbc:postgresql://shard-a-ro:5432/shardshop
-shardshop.catalog.connections.shard-a.root-certificate=/etc/shardshop/catalog/shard-a/ca.crt
-shardshop.catalog.connections.shard-a.username=product_app
-shardshop.catalog.connections.shard-a.password=${SHARD_A_PRODUCT_PASSWORD}
-shardshop.catalog.max-pool-size=4
-shardshop.catalog.max-id-candidates=1024
-shardshop.catalog.read-profile=primary
-```
-
-Bare URL overrides also receive the secure TLS defaults. An explicit URL
-`sslmode` overrides the default; use `sslmode=disable` only for a deliberate local
-plaintext test. The step 3.10 scenarios keep `verify-full` with a test CA.
-Repeat credentials/overrides for every shard. Unknown connection names fail
-startup. `max-pool-size` is bounded to 1..32 per shard/endpoint, with no initial
-connections; the default is four. Writes always use primaries. The optional
-`replica` read profile uses only replica endpoints and returns
-`READ_REPLICA_UNAVAILABLE` on failure, without primary fallback. Every read issues
-SQL; there is no product cache. The complete database phase has a three-second
-deadline, including pool acquisition, connection setup, locks and commit. HTTP
-requests have a four-second deadline: before response serialization it returns
-503; if output has already started, it closes the connection. Each phase runs on
-its own virtual thread and waits at most one second for a pooled connection, thus
-a burst queues; a pool that stays full gives 503 within the budget. Uncertain
-writes are recovered through their durable key, without an internal write retry.
-The phase engine, TLS defaults and strict request decoding are shared with order in
-`shardshop-common`. `--check-startup` validates configuration and exits for packaged
-startup checks; ordinary product startup waits for shutdown and serves HTTP.
-
-Build product and run its scenarios of step 3.10:
-
-```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
-```
-
-`CatalogMigration.feature`, `ProductApi.feature` and `ProductTransport.feature`
-apply the catalog stream with Flyway, run the packaged product against four shard
-databases (two US) over `verify-full` TLS, and check the stored rows. The
-[integration tests](#integration-tests-with-testcontainers-step-310) section lists
-their cases. HTTPS and CNPG primary promotion remain deployment/recovery milestones.
-
-The scenarios do not apply migrations to the retained kind lab. Apply them there
-with `up.sh` and its Helm migration hooks. Every invocation runs Flyway against
-the actual history, including unchanged inputs; no pending versioned migrations
-means a validated no-op. See the [migration runbook](#database-schemas-and-migrations-step-23).
-For the Maven command, prepare `$snapshot` with the
-[kind snapshot runbook](#kind-verification-snapshot-step-315) after migration:
-
-```bash
-bash microservices/shardshop/scripts/up.sh
-bash microservices/shardshop/scripts/up.sh # Flyway validates again; application pods restart with fresh generator IDs
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
-    -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-topology
-```
-
-The [changelog](CHANGELOG.md#step-36) records whether the lab qualification has
-actually passed; isolated checks alone do not complete it.
+The [product module README](shardshop-product/README.md#seller-and-product-provider-step-36)
+documents the API, durable creation keys, database configuration, deadlines and
+verification commands.
 
 ## Product seeder (step 3.7)
 
@@ -502,6 +410,14 @@ sources, migrate and deploy with one `up.sh` invocation:
 bash microservices/shardshop/scripts/up.sh
 ```
 
+After successful deployment and acceptance, `up.sh` starts the product port-forward
+in the foreground. Wait for `Forwarding from`, then open
+[the product page](http://127.0.0.1:18080/products/). Keep the terminal open;
+Ctrl+C stops only the tunnel and leaves the workloads running. The deployment
+lock is released before forwarding, so `down.sh` can run from another terminal.
+See the [product page guide](shardshop-product/README.md#regional-product-page-step-410)
+for the standalone reconnect command and port-conflict handling.
+
 `up.sh` resolves the ShardShop POM from its own location and runs the full
 `mvn -B -ntp -f microservices/shardshop/pom.xml clean install -DinstallAtEnd=true` build,
 which includes verification and caches the verified artifacts for later kind checks. The commands
@@ -654,32 +570,9 @@ kubectl --context kind-shardshop -n shardshop logs deployment/shardshop-product-
 
 ### Product pods
 
-| Item | Value |
-|---|---|
-| Pods | Two replicas behind the Service `shardshop-product:8080` with `sessionAffinity: None` |
-| Start | The product JVM reserves a generator ID at startup with the projected token of the `shardshop-product` ServiceAccount, before it opens its port. `SHARDSHOP_ID_REGISTRY_UID` comes from the `shardshop-generator-identity` ConfigMap |
-| Routing | The `application.properties` key of the `shardshop-routing` ConfigMap at `/etc/shardshop/routing` |
-| Database TLS | Only the `ca.crt` key of each `<shard>-ca` Secret, at `/etc/shardshop/catalog/<shard>/ca.crt`. The CA Secrets also hold `ca.key` |
-| Password | `PRODUCT_APP_PASSWORD` from the `product-app` Secret. The `shardshop-product-config` ConfigMap, at `/app/config`, sets each shard's password to `${PRODUCT_APP_PASSWORD}`. Quarkus reads `config/application.properties` in the working directory of the JVM |
-| Readiness | A TCP probe on port 8080 every 2 s. Quarkus opens the port only after the routing, generator and catalog checks |
-| Security | Restricted Pod Security without fixed user IDs in the pod, a read-only root file system and an `emptyDir` at `/tmp` |
-
-Each product pod start reserves one generator slot: a rollout, a replacement or a
-container restart. `up.sh` changes product pod templates when the product image,
-configuration or relevant topology changes; a mounted configuration change also
-changes the template's configuration hash.
-
-Product counts its HTTP requests with the Quarkus Micrometer Prometheus extension.
-`/q/metrics` on port 8080 shows the counter
-`http_server_requests_seconds_count{method,outcome,status,uri}`, with the route
-template as `uri`. Each pod has its own counters. Read them through the API server
-pod proxy:
-
-```bash
-kubectl --context kind-shardshop get --raw \
-  "/api/v1/namespaces/shardshop/pods/<product-pod>:8080/proxy/q/metrics" |
-  grep '^http_server_requests_seconds_count.*products/{productId}'
-```
+The [product deployment and metrics guide](shardshop-product/README.md#deployment-and-metrics)
+documents replicas, routing and credential mounts, generator allocation,
+readiness, pod security and request counters.
 
 ### Workload pods
 
@@ -789,9 +682,10 @@ objects.
 
 | Feature | Replaces | Cases |
 |---|---|---|
-| `CatalogMigration.feature` | `verify-catalog-migration.py`, `verify-catalog-lab.sh` | V1 through V4 upgrade of legacy rows and backfill, history validation of a rerun, object owners, no functions or triggers, creation-key and product constraints, profit-credit identities, the privileges of each role and login, and a changed grants file that Flyway reapplies and that removes stale privileges |
+| `CatalogMigration.feature` | `verify-catalog-migration.py`, `verify-catalog-lab.sh` | V1 through V5 upgrade of legacy rows and backfill, history validation of a rerun, object owners, no functions or triggers, creation-key and product constraints, profit-credit identities and lookup index, the privileges of each role and login, and a changed grants file that Flyway reapplies and that removes stale privileges |
 | `ProductApi.feature` | `verify-product-provider.py` | Seller and product creation, retries and conflicts on the shard of the key or seller, current stock and profits, integer forms, concurrent creation, lost responses, invalid input over the real HTTP stack, 32 KiB bodies, an incomplete body, a held lock with a full pool, restarts, and unavailable primaries or replicas |
 | `ProductTransport.feature` | `verify-product-transport.py` | TLS sessions, an untrusted CA, a host name that the certificate does not name, and pool recovery after a PostgreSQL restart without a product restart |
+| `ProductBrowser.feature` | Step 4.10 acceptance | Arbitrary products across regional shards, keyset pagination, exact signed per-product earnings, invalid queries, unavailable shards and replicas, and packaged browser assets; tagged `OrderResults.feature` scenarios verify reservation, cancellation and confirmed-credit updates |
 | `ProductSeeder.feature` | `verify-product-seeder.py` | The [seeder runbook](#product-seeder-step-37) cases |
 | `ProductReader.feature` | `verify-product-reader.py` | The [reader runbook](#product-reader-step-38) cases |
 | `Contracts.feature` | `verify-contracts.py` and `verify-datasets.py` (step 3.12), for what connects the contracts of different modules | The RecordOrder example buys the product of the product creation example; both ledger result examples answer the RecordOrder example with its reserved result message ID, amount and currency, after its time; the illustrative IDs of all examples follow the service-issued ID rules; each row of catalog-v1 and buyers-v1 is a valid creation request of product or order |
@@ -1277,6 +1171,12 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order,shardshop-led
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
   '-Dcucumber.filter.tags=@order-results or @order-api or @stock-reservation or @catalog-migration'
 ```
+
+## Regional product page (step 4.10)
+
+See the [product page guide](shardshop-product/README.md#regional-product-page-step-410)
+for browser access, region selection, stock and earnings semantics, and the
+paginated read API.
 
 ## Order producer (step 4.8)
 
@@ -1809,28 +1709,8 @@ builds it. These rules are inherited only by ShardShop's children.
 Run from the repository root with `JAVA_HOME` already set. Always select a
 ShardShop POM; do not invoke the repository root reactor. Build one application
 with `-pl`; `-am` also builds the common, idgen and sharding libraries for product
-and order:
-
-```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product -am clean verify
-# After cluster-create.sh and up.sh have prepared and deployed the lab:
-kubectl --context kind-shardshop -n shardshop get configmap shardshop-routing \
-    -o jsonpath='{.data.application\.properties}' > /tmp/shardshop-routing.properties
-kubectl --context kind-shardshop -n shardshop create token shardshop-product \
-    --duration=10m > /tmp/shardshop-product.token
-kubectl --context kind-shardshop config view --raw --minify \
-    -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' | base64 -d > /tmp/kind-shardshop-ca.crt
-export SHARDSHOP_ROUTING_CONFIG=file:/tmp/shardshop-routing.properties
-export SHARDSHOP_ID_REGISTRY_URL=$(kubectl --context kind-shardshop config view --minify \
-  -o jsonpath='{.clusters[0].cluster.server}')
-export SHARDSHOP_ID_REGISTRY_TOKEN_FILE=/tmp/shardshop-product.token
-export SHARDSHOP_ID_REGISTRY_CA_FILE=/tmp/kind-shardshop-ca.crt
-export SHARDSHOP_ID_REGISTRY_UID=$(kubectl --context kind-shardshop \
-  -n shardshop get configmap shardshop-generator-identity -o jsonpath='{.data.registryUid}')
-# Every successful reservation in this host example permanently consumes one real slot,
-# even if the application subsequently fails or exits immediately.
-"$JAVA_HOME/bin/java" -jar microservices/shardshop/shardshop-product/target/quarkus-app/quarkus-run.jar
-```
+and order. The [product build and host launch guide](shardshop-product/README.md#build-and-run)
+provides a single-application example with routing and generator configuration.
 
 Verify all six one at a time, without installing anything. Product/order run their
 packaged startup tests during `verify`. Command-mode tests use `--check-startup`
@@ -1856,7 +1736,8 @@ singleton ID generator. Each library owns its test configuration, and
 product/order each verify packaged startup. JaCoCo reports go to each Java module's
 `target/site/jacoco/`. JVM packages live in `target/quarkus-app/`;
 deploy that entire directory. All six applications start with `quarkus-run.jar`.
-Product and order then reserve their generator ID, as in the host example above.
+Product and order then reserve their generator ID, as in the
+[product host example](shardshop-product/README.md#build-and-run).
 
 Product/order load the external routing file through `quarkus.config.locations`,
 retaining the `SHARDSHOP_ROUTING_CONFIG` override and default path
@@ -2702,6 +2583,8 @@ Run migrations and application deployment through `up.sh` so the Helmfile gates 
 `cluster-create.sh`, `up.sh`, `down.sh` and `cluster-destroy.sh` share the local exclusive directory
 lock `${TMPDIR:-/tmp}/shardshop-up.lock`. Use the same `TMPDIR` for all four. A
 concurrent call fails before changing the lab; retry it after the first finishes.
+After successful deployment, `up.sh` releases this lock and its temporary snapshot
+before starting the foreground product port-forward.
 Ordinary failure and INT/TERM release the lock after the active command ends.
 After SIGKILL or a machine failure, verify that no invocation remains active and
 inspect retained Jobs before removing a stale lock directory.
@@ -2765,6 +2648,10 @@ adds profit posting: `catalog_reserver` (and therefore `order_app`) may read and
 insert immutable credit identities, initialize currencies at zero and update
 only balance amounts. It cannot update or delete credits. The repeatable grants
 revoke obsolete table and column permissions before reapplying the current matrix.
+Step 4.10 adds a product/currency credit index in catalog V5 and grants
+`catalog_writer` column-level `SELECT (product_id, currency, amount)` on credits
+for the regional product page. Product can aggregate applied earnings without
+reading order identities or changing credits.
 
 The stock-column grant permits direct updates without allowing changes to product
 names, prices or other columns. There is no stock trigger: reservation writes by

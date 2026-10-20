@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Products · ShardShop</title>
+  <link rel="stylesheet" href="/products/products.css?v=2">
+  <script src="/products/products.js?v=2" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to products</a>
+  <header class="site-header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">s</span> ShardShop</div>
+    <span class="workspace-label">CATALOG WORKSPACE</span>
+    <span class="read-only"><span aria-hidden="true"></span> Read only</span>
+  </header>
+  <main id="main">
+    <div class="page-heading">
+      <p class="eyebrow">REGIONAL CATALOG</p>
+      <h1>Products</h1>
+      <p class="intro">Inventory and confirmed-sale earnings, by seller home region.</p>
+    </div>
+    <section class="catalog" aria-label="Regional products">
+      <div class="toolbar">
+        <div class="region-control">
+          <label for="region">Seller home region</label>
+          <select id="region" name="region">
+            <option value="US">US · United States</option>
+            <option value="EU">EU · European Union</option>
+            <option value="ASIA">ASIA · Asia</option>
+          </select>
+        </div>
+        <div class="refresh-control">
+          <span id="updated">Not yet loaded</span>
+          <button id="refresh" type="button"><span aria-hidden="true">↻</span> Refresh</button>
+        </div>
+      </div>
+      <div class="catalog-heading">
+        <h2>Product inventory <span id="region-badge" class="region-badge">US</span></h2>
+        <span id="item-count">Up to 25 products per page</span>
+      </div>
+      <div id="announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+      <div id="results" aria-busy="true">
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Product inventory table, scroll horizontally for more columns">
+          <table>
+            <caption class="sr-only">Products in the selected seller home region. Earnings are applied profit from confirmed sales, separately by currency.</caption>
+            <thead><tr>
+              <th scope="col">Product</th>
+              <th scope="col">Seller</th>
+              <th scope="col" class="numeric">Initial stock</th>
+              <th scope="col" class="numeric">Current stock</th>
+              <th scope="col" class="numeric">Price / item</th>
+              <th scope="col" class="numeric">Product earnings</th>
+            </tr></thead>
+            <tbody id="products"></tbody>
+          </table>
+        </div>
+        <div id="state" class="state">
+          <span id="state-icon" class="state-icon" aria-hidden="true">↻</span>
+          <h3 id="state-title">Loading products</h3>
+          <p id="state-description">Getting the latest inventory for US.</p>
+        </div>
+      </div>
+      <nav class="pagination" aria-label="Product pages">
+        <div class="pagination-actions pagination-start">
+          <button id="first" type="button" disabled>First</button>
+          <button id="previous" type="button" disabled><span aria-hidden="true">←</span> Previous</button>
+        </div>
+        <p id="page-label" aria-current="page">Page 1</p>
+        <div class="pagination-actions pagination-end">
+          <button id="next" type="button" disabled>Next <span aria-hidden="true">→</span></button>
+          <button id="last" type="button" disabled>Last</button>
+        </div>
+      </nav>
+    </section>
+    <aside class="data-note" aria-label="About these figures">
+      <span class="info-icon" aria-hidden="true">i</span>
+      <div>
+        <h2>Understanding these figures</h2>
+        <ul>
+          <li><strong>Current stock</strong> accounts for active reservations.</li>
+          <li><strong>Earnings</strong> show applied profit from confirmed sales and may lag order confirmation.</li>
+          <li><strong>Currencies</strong> are shown separately. Losses appear as negative amounts.</li>
+        </ul>
+      </div>
+    </aside>
+    <footer>ShardShop <span aria-hidden="true">/</span> Regional product catalog</footer>
+    <noscript><p class="noscript">Enable JavaScript to load the product catalog.</p></noscript>
+  </main>
+</body>
+</html>

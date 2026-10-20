@@ -15,6 +15,7 @@ import dev.nklip.javacraft.shardshop.testing.cucumber.world.CatalogShards;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.Contracts;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.LedgerRuntime;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.OrderRuntime;
+import dev.nklip.javacraft.shardshop.testing.cucumber.world.ProductBrowser;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.ProductRuntime;
 import io.cucumber.java.After;
 import io.cucumber.java.en.Given;
@@ -42,6 +43,7 @@ public final class OrderResultsStepDefinitions {
     private final CatalogShards shards;
     private final ProductRuntime product;
     private final CatalogApi catalog;
+    private final ProductBrowser browser;
     private final OrderRuntime order;
     private final LedgerRuntime ledger;
     private final RabbitMqBroker broker;
@@ -54,13 +56,15 @@ public final class OrderResultsStepDefinitions {
     private OrderRuntime secondCompetitor;
 
     public OrderResultsStepDefinitions(CatalogShards shards, ProductRuntime product, CatalogApi catalog,
-                                       OrderRuntime order, LedgerRuntime ledger, RabbitMqBroker broker) {
+                                       OrderRuntime order, LedgerRuntime ledger, RabbitMqBroker broker,
+                                       ProductBrowser browser) {
         this.shards = shards;
         this.product = product;
         this.catalog = catalog;
         this.order = order;
         this.ledger = ledger;
         this.broker = broker;
+        this.browser = browser;
     }
 
     @Given("order results use migrated regional primaries and a broker")
@@ -98,14 +102,20 @@ public final class OrderResultsStepDefinitions {
     @Then("a packaged ledger recording confirms a cross-shard order and credits its items once")
     public void recordedProfit() throws Exception {
         profitGrants();
+        browser.assertProduct(us, 10, Map.of("USD", "0.00"));
+        browser.assertProduct(asia, 10, Map.of("USD", "0.00"));
         String id = accept(2, us, asia);
         startWorkers(true);
         awaitStatus(id, "PENDING_LEDGER");
+        browser.assertProduct(us, 8, Map.of("USD", "0.00"));
+        browser.assertProduct(asia, 8, Map.of("USD", "0.00"));
         ObjectNode command = command(id);
         startLedger("USD");
         publishCommand(command);
         awaitStatus(id, "CONFIRMED");
         await("both catalog credits", () -> credits(us, id) == 1 && credits(asia, id) == 1);
+        browser.assertProduct(us, 8, Map.of("USD", "14.90"));
+        browser.assertProduct(asia, 8, Map.of("USD", "-4.00"));
         assertEquals(new BigDecimal("14.90"), credit(us, id));
         assertEquals(new BigDecimal("-4.00"), credit(asia, id));
         assertEquals(new BigDecimal("14.90"), balance(us));
@@ -124,6 +134,8 @@ public final class OrderResultsStepDefinitions {
         assertEquals(new BigDecimal("14.90"), balance(us));
         assertEquals(new BigDecimal("-4.00"), balance(asia));
         assertEquals("CONFIRMED", status(id));
+        browser.assertProduct(us, 8, Map.of("USD", "14.90"));
+        browser.assertProduct(asia, 8, Map.of("USD", "-4.00"));
     }
 
     @Then("a packaged ledger rejection cancels the order and releases reservations without profit")
@@ -131,12 +143,15 @@ public final class OrderResultsStepDefinitions {
         String id = accept(1, us, asia);
         startWorkers(true);
         awaitStatus(id, "PENDING_LEDGER");
+        browser.assertProduct(us, 9, Map.of("USD", "0.00"));
+        browser.assertProduct(asia, 9, Map.of("USD", "0.00"));
         startLedger("EUR");
         publishCommand(command(id));
         awaitStatus(id, "CANCELLED");
         await("stock release", () -> scalar(home(), "SELECT count(*) FROM ordering.order_sagas WHERE order_id=" + id
                 + " AND stock_released_at IS NOT NULL") == 1);
         for (var fixture : List.of(us, asia)) {
+            browser.assertProduct(fixture, 10, Map.of("USD", "0.00"));
             assertEquals(0, credits(fixture, id));
             assertEquals(BigDecimal.ZERO.setScale(2), balance(fixture));
             assertEquals(1, scalar(shards.ofSeller(fixture.seller().id()).database(),

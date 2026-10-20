@@ -42,6 +42,8 @@ public final class ProductRuntime implements Disposable {
         PRIMARIES,
         /** Primary endpoints that refuse connections. */
         REFUSED_PRIMARIES,
+        /** Only the second US primary refuses connections; the first US shard remains readable. */
+        REFUSED_SECOND_US_PRIMARY,
         /** The replica read profile with replica endpoints that refuse connections; there is no primary fallback. */
         REFUSED_REPLICAS,
         /** The root certificate of an unrelated CA. */
@@ -99,8 +101,10 @@ public final class ProductRuntime implements Disposable {
         Path certificate = endpoints == Endpoints.UNRELATED_CA ? database.unrelatedCa() : database.trustedCa();
         for (CatalogShards.Shard shard : shards.all()) {
             String prefix = "shardshop.catalog.connections." + shard.name() + ".";
+            int shardPrimaryPort = endpoints == Endpoints.REFUSED_SECOND_US_PRIMARY
+                    && shard.name().equals("shard-d") ? refusedPort : primaryPort;
             // Bare URLs: product adds sslmode=verify-full and the root certificate, as with the lab defaults.
-            properties.add(prefix + "primary-url=jdbc:postgresql://" + host + ":" + primaryPort + "/" + shard.database());
+            properties.add(prefix + "primary-url=jdbc:postgresql://" + host + ":" + shardPrimaryPort + "/" + shard.database());
             properties.add(prefix + "replica-url=jdbc:postgresql://localhost:" + refusedPort + "/" + shard.database());
             properties.add(prefix + "root-certificate=" + certificate);
             properties.add(prefix + "username=product_app");

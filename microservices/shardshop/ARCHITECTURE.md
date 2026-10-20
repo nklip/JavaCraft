@@ -1195,7 +1195,7 @@ role and its memberships, with no SQL. For the catalog:
 | `catalog_owner` | no | none | Owns schema `catalog`, its objects, and its Flyway history |
 | `catalog_migrator` | yes | `catalog_owner`, without inheriting it | Runs Flyway; `flyway.toml` starts each connection with the `role` option set to `catalog_owner`, so no object belongs to a login |
 | `catalog_reader` | no | none | `SELECT` on sellers, products and seller profits |
-| `catalog_writer` | no | none | `SELECT` and `INSERT` on sellers/products; reads profits and inserts only seller/currency keys at the zero default |
+| `catalog_writer` | no | none | `SELECT` and `INSERT` on sellers/products; reads profits and inserts only seller/currency keys at the zero default; `SELECT (product_id, currency, amount)` on profit credits for the regional product page |
 | `catalog_reserver` | no | none | Reservation CRUD and product stock updates; no profit mutation or credit access; no `TRUNCATE` |
 | `product_app` | yes | `catalog_writer` | Product service |
 | `order_app` | yes | `catalog_reader`, `catalog_reserver`, `ordering_writer` | Order service |
@@ -1446,6 +1446,35 @@ ID. Product payloads expose no independent region or shard selector:
   current stock, or `404`.
 - `GET /api/v1/sellers/{sellerId}/products/by-key/{creationKey}` recovers that
   same stored product and generated ID without creating anything.
+- `GET /api/v1/products?region=US&limit=25&after=<productId>` lists created
+  products from every shard in the selected seller home region (step 4.10).
+  Region is required; the page limit defaults to 25 and is bounded to 1–100.
+  The optional `after` is a canonical positive product ID. Results are ordered
+  by numeric product ID, with a nullable `nextAfter` for continuation. Each item
+  includes seller identity, product identity/name, initial/current stock, price
+  and currency, and per-product `profitsEarned` from applied profit credits.
+  A product with no credits reports zero in its own currency.
+
+The read-only `/products/` page ships inside the product application and uses
+this listing API. Its region selector offers US, EU and ASIA; pagination and
+refresh only perform reads. Centered pagination shows First, Previous, Page N,
+Next and Last. First returns to page 1; Last follows the remaining API cursors to
+the final page within the same bounded loading deadline. First shares Previous's
+disabled state, and Last shares Next's, including while loading or after errors.
+The browser URL stores `region` and `page` so copied links, reloads and browser
+history restore the selected view. Opening a numbered page resolves preceding
+API cursors under one bounded loading deadline; navigation reuses known cursors.
+The HTML, stylesheet and script are served with `Cache-Control: no-store` to
+prevent a deployment from mixing new markup with an older cached asset. Versioned
+asset links also bypass the URLs cached before that policy was introduced.
+Refresh reloads the current page, and changing region starts at page 1.
+It lists arbitrary created products without
+depending on workload datasets. Each regional request shares one bounded
+database phase budget across shard reads and obeys the existing read profile.
+A shard failure fails the complete page; there is no partial-success response.
+Pagination does not promise a snapshot across shards or separate requests.
+Product receives column-level read access to the credit fields needed for
+earnings; it gains no credit mutation privileges.
 
 All endpoints validate the canonical positive decimal ID contract before IO;
 invalid path/body IDs return `400 INVALID_REQUEST`. Product JSON uses string IDs

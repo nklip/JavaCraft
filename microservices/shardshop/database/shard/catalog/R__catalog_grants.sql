@@ -14,6 +14,8 @@ GRANT USAGE ON SCHEMA catalog TO catalog_reader, catalog_writer, catalog_reserve
 GRANT SELECT ON catalog.sellers, catalog.products, catalog.seller_profits TO catalog_reader;
 GRANT SELECT, INSERT ON catalog.sellers, catalog.products TO catalog_writer;
 GRANT SELECT ON catalog.seller_profits TO catalog_writer;
+-- Product browsing sums applied credits without exposing order identities or credit timestamps.
+GRANT SELECT (product_id, currency, amount) ON catalog.profit_credits TO catalog_writer;
 -- Creation initializes currencies at the database default; product cannot set/reset profits.
 GRANT INSERT (seller_id, currency) ON catalog.seller_profits TO catalog_writer;
 -- Reservation history must remain available for idempotent reserve and release.

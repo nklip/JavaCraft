@@ -267,7 +267,8 @@ public final class KindSaga {
         /** Send the JSON media type only with a body, and an Idempotency-Key only for a creation. */
         JsonNode call(String method, String path, String key, JsonNode body, Set<Integer> expected)
                 throws IOException, InterruptedException {
-            try (HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build()) {
+            try (HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+                    .connectTimeout(Duration.ofSeconds(3)).build()) {
                 HttpRequest.Builder request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
                         .timeout(Duration.ofSeconds(10)).method(method, body == null ? HttpRequest.BodyPublishers.noBody()
                                 : HttpRequest.BodyPublishers.ofByteArray(Json.bytes(body)));

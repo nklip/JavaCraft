@@ -132,6 +132,31 @@ class ProductApiContractTest {
     }
 
     @Test
+    void regionalProductPagesPreserveExactCursorAndUnboundedSignedCreditSums() {
+        JsonObject product = new JsonObject().put("sellerId", "9007199254740993").put("productId", LONG_MAX)
+                .put("sellerName", "Company").put("name", "Mug").put("region", "EU")
+                .put("initialStock", 10).put("stock", 7).put("price", "19.95").put("currency", "JPY")
+                .put("profitsEarned", new JsonObject().put("JPY", "-100000000000000000.01"));
+        JsonObject page = new JsonObject().put("region", "EU").put("items", new JsonArray().add(product))
+                .put("nextAfter", LONG_MAX);
+        assertEquals(List.of(), API.unexpected(SCHEMAS + "ProductPage",
+                List.of(page, page.copy().put("nextAfter", null),
+                        new JsonObject().put("region", "US").put("items", new JsonArray()).put("nextAfter", null)),
+                List.of(without(page, "nextAfter"), page.copy().put("nextAfter", 1),
+                        page.copy().put("nextAfter", "01"), page.copy().put("region", "AU"))));
+        assertEquals(List.of(), API.unexpected(SCHEMAS + "ProductSummary", List.of(product),
+                List.of(without(product, "sellerName"), without(product, "profitsEarned"),
+                        product.copy().put("productId", Long.MAX_VALUE),
+                        product.copy().put("profitsEarned", new JsonObject()),
+                        product.copy().put("profitsEarned", new JsonObject().put("JPY", "-0.00")),
+                        product.copy().put("profitsEarned", new JsonObject().put("JPY", 1.25)),
+                        product.copy().put("profitsEarned", new JsonObject().put("JPY", "1.001")),
+                        product.copy().put("profitsEarned", new JsonObject().put("JPY", "1.00\n")))));
+        JsonObject operation = (JsonObject) API.node("#/paths/~1api~1v1~1products/get");
+        assertEquals(Set.of("200", "400", "503"), operation.getJsonObject("responses").fieldNames());
+    }
+
+    @Test
     void idempotencyKeysAreOpaqueAsciiText() {
         assertEquals(List.of(), API.unexpected(SCHEMAS + "IdempotencyKey",
                 List.of("a", "dataset-v1.entity.1", "scope:value_1-2.3", "A".repeat(128)),

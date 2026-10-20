@@ -1411,6 +1411,62 @@ bash -n microservices/shardshop/scripts/up.sh
 git diff --check
 ```
 
+First/Last product-page navigation follow-up:
+
+- The centered controls now read First, Previous, Page N, Next, Last. First
+  returns to the selected region's first page; Last follows the remaining
+  cursors to its current final page. Their disabled states match Previous/Next.
+  Last resolves a concrete, shareable page URL within the existing eight-second
+  deadline, and Refresh retries a failed jump.
+- All 35 JavaScript tests pass, including appended pages, empty continuations,
+  loading/error states, regional isolation, copied URLs and browser history.
+  Scoped Maven verification now passes, including 269 product tests and 30
+  packaged product startup checks, completing the earlier blocked check.
+- Browser checks against a temporary loopback fixture confirm the centered
+  layout, First/Last navigation in two regions, Back restoring the final page,
+  and all four buttons disabled for an empty region. The lab was not redeployed.
+
+```bash
+node --test microservices/shardshop/shardshop-product/src/test/js/products.test.cjs
+node --check microservices/shardshop/shardshop-product/src/main/resources/META-INF/resources/products/products.js
+node --check microservices/shardshop/shardshop-product/src/test/js/products.test.cjs
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product -am verify
+git diff --check
+```
+
+**2026-10-21 — product-page deployment cache repair:** The live HTML, CSS and
+JavaScript matched the source, but each response advertised
+`public, immutable, max-age=86400`. A browser reproduced new HTML using an older
+cached script/style: First/Last stayed disabled, the left controls were misplaced,
+and a copied page number was ignored. The page and assets now return `no-store`;
+versioned script/style URLs also bypass assets cached under the old URLs.
+README documents the one-time hard refresh needed for previously cached HTML.
+
+The explanation below the table now has three labeled lines for stock, earnings
+and currencies, without the fixed text-width limit that wrapped the old paragraph.
+Browser checks with controlled data confirm First, Last, intermediate-page button
+states, centered pagination and the revised text layout.
+
+The two new HTTP regression cases failed on the original cache headers and pass
+after the fix. All 35 JavaScript tests pass. Scoped Maven verification also passes
+the packaged browser/assets scenario; the other 117 scenarios and unrelated unit
+tests are intentionally filtered out. The running lab was inspected but not
+redeployed by this repair.
+
+```bash
+# Regression baseline: two expected cache-policy failures before the fix.
+mvn -f microservices/shardshop/pom.xml -pl shardshop-product -am \
+  -Dtest=ProductPageTest -Dsurefire.failIfNoSpecifiedTests=false \
+  -Dshardshop.failIfNoTests=false test
+# Passing checks after the fix:
+node --test microservices/shardshop/shardshop-product/src/test/js/products.test.cjs
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Pintegration verify -Dtest=ProductPageTest \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false \
+  '-Dcucumber.filter.name=^The browser and its assets are included in the packaged provider$'
+git diff --check
+```
+
 ## Step 3.17
 
 **2026-10-14:** the application release now invokes `kind-release | kind-deployment`
@@ -3233,3 +3289,133 @@ git diff --check
 ```
 
 `$images` is a values file with digest-pinned `images` for the six applications.
+
+## Step 4.10
+
+**2026-10-20:** product serves the read-only `/products/` page in its existing
+application image. The US/EU/ASIA selector uses the seller's home region. Each
+row shows product and seller identities, initial and current stock, unit price
+with currency, and exact signed earnings from applied confirmed-sale credits.
+Previous/Next browse 25 products at a time; region changes reload the first page
+and Refresh reloads the current page. Loading, empty and error states clear stale
+results.
+
+`GET /api/v1/products` lists arbitrary created products across every shard of
+the selected region. Numeric-ID keyset pagination limits each shard read to
+the requested page plus one row, shares one database deadline, and rejects
+partial regional results or fallback from strict replica reads. IDs and money
+remain strings, including earnings larger than one stored credit's precision.
+Catalog V5 adds the product/currency credit index; the repeatable grants give
+`product_app`, through `catalog_writer`, read access only to the three credit
+columns needed for aggregation. Existing stock and credits survive migration.
+README documents access, semantics and the focused acceptance command.
+
+Validation:
+
+- The scoped reactor passes 1,536 unit/provider tests, including 269 product
+  tests, and 71 packaged startup checks. The focused integration run passes
+  all 15 selected scenarios: six catalog migrations, five product-browser
+  scenarios, two order-result flows and two producer scenarios. It verifies
+  both US shards, other-region isolation, all pagination limits, large and
+  negative earnings, empty pages, invalid queries, unavailable shards/replicas,
+  packaged assets, reservations, cancellation and duplicate confirmed credits.
+- The initial complete run passed 109 of 118 integration scenarios. Eight
+  failures identified the credit grant's wrong recipient or its fixture; one
+  exposed an existing producer assertion racing the retry after a hidden
+  committed response. The grant now targets the product login's group role,
+  and the producer assertion waits within its existing deadline for observed
+  retries. All nine failures pass in the focused rerun; its other 103 scenarios
+  are intentionally filtered out.
+- The nullable cursor exposed a null traversal bug in the shared contract test
+  helper. The added regression failed with the original NPE before the fix and
+  passed afterward. The product contract example also uses the home region
+  encoded by its seller ID.
+- JavaScript syntax and temporary DOM checks pass for stale-response rejection,
+  exact decimal/ID rendering, safe text, pagination, refresh, empty and malformed
+  responses. Browser checks with a controlled fixture also verify large and
+  negative amounts, literal HTML-like names, empty/error states and recovery.
+  The deployed lab page passes US/EU/ASIA selection, Previous/Next and Refresh;
+  it displays live stock reductions and confirmed earnings.
+- The first `up.sh` run built and qualified the images, applied migrations and
+  deployed the page. Four of five final acceptance scenarios passed; the saga
+  gate's seller POST failed in Quarkus's HTTP/2 body handling. Its client now
+  explicitly uses HTTP/1.1, matching the workload clients, without changing
+  the assertions or provider behavior.
+- The second `up.sh` run passes the source build, existing image security gates,
+  migrations, release prechecks and all five final live acceptance scenarios.
+  The product image digest matches the browser-verified image. The same saga
+  scenario that failed before the client fix now confirms its own USD order and
+  cancels its own EUR order with the expected ledger, stock and profit effects.
+  The lab was restored to its original stopped state with `down.sh`; no data
+  was removed. `git diff --check` passes.
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -pl microservices/shardshop/shardshop-core/common -am test \
+  -Dtest=ContractDocumentTest -Dsurefire.failIfNoSpecifiedTests=false
+mvn -B -ntp -f microservices/shardshop/pom.xml \
+  -pl shardshop-testing -am -Pintegration,audit verify
+mvn -B -ntp -f microservices/shardshop/pom.xml \
+  -pl shardshop-testing -am -Pintegration,audit verify \
+  '-Dcucumber.filter.tags=@catalog-migration or @product-browser or @order-producer'
+node --check microservices/shardshop/shardshop-product/src/main/resources/META-INF/resources/products/products.js
+node /tmp/shardshop-products-ui-check.cjs
+bash microservices/shardshop/scripts/up.sh
+kubectl --context kind-shardshop -n shardshop port-forward service/shardshop-product 18080:8080
+bash microservices/shardshop/scripts/down.sh
+git diff --check
+```
+
+The `/tmp` script is a temporary DOM verification harness. Browser acceptance
+used the documented page URL through the loopback-only port-forward.
+
+Product-page pagination follow-up:
+
+- The controls are centered below the products in the order Previous, Page N,
+  Next. URLs now include region and page, for example
+  `/products/?region=EU&page=3`, and restore that selection on reload, a copied
+  link, or browser Back/Forward. A fresh link reconstructs preceding cursors
+  within one eight-second deadline; navigation reuses known cursors. Pages past
+  the end normalize to the last available page.
+- All 26 dependency-free JavaScript tests pass, covering URL restoration,
+  navigation, refresh, invalid queries, catalog changes, timeout handling,
+  stale responses and exact text rendering. The copied-page regression fails
+  against the original script and passes with the change. JavaScript syntax
+  and whitespace checks also pass.
+- The follow-up's scoped Maven verification could not start because automatic
+  approval review timed out twice. A new visual browser check was also blocked
+  before execution by the approval service returning HTTP 403. The earlier
+  deployed-page checks above predate this follow-up.
+
+```bash
+node --test microservices/shardshop/shardshop-product/src/test/js/products.test.cjs
+node --check microservices/shardshop/shardshop-product/src/main/resources/META-INF/resources/products/products.js
+git diff --check
+# Requested but blocked before execution:
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product -am verify
+```
+
+Local product access follow-up:
+
+After successful deployment and acceptance, `up.sh` releases its temporary
+snapshot and lifecycle lock, resets its signal handlers, and replaces itself
+with the foreground product Service port-forward on localhost port 18080.
+Ctrl+C stops forwarding while workloads remain running. A forwarding failure
+returns kubectl's exit status without undoing deployment. Both READMEs explain
+access, shutdown and reconnecting without another build.
+
+Validation passes all 190 testing-module tests, including 18 startup-script
+tests, and 286 common tests. The new cases verify successful acceptance before
+forwarding, cleanup before the tunnel starts, deployment and forwarding failures,
+INT/TERM handling, and `down.sh` while forwarding is active. These use the actual
+lifecycle scripts with isolated command fixtures; a full live deployment was
+not rerun. The initial sandboxed run denied child-process inspection; the same
+suite passes with that permission, and no fixture processes remain.
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true test
+bash -n microservices/shardshop/scripts/up.sh
+git diff --check
+```

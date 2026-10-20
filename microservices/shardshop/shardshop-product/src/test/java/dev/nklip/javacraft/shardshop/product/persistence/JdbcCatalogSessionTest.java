@@ -133,6 +133,32 @@ class JdbcCatalogSessionTest {
     }
 
     @Test
+    void listingReadsSellerStockAndExactSignedAppliedCreditSumsForBoundedProducts() throws SQLException {
+        when(rows.next()).thenReturn(true, true, false);
+        when(rows.getLong("seller_id")).thenReturn(9007199254740993L);
+        when(rows.getLong("product_id")).thenReturn(9007199254740994L, Long.MAX_VALUE);
+        when(rows.getString("company_name")).thenReturn("Company");
+        when(rows.getString("name")).thenReturn("Mug");
+        when(rows.getString("region")).thenReturn("ASIA");
+        when(rows.getString("currency")).thenReturn("JPY");
+        when(rows.getInt("initial_stock")).thenReturn(100);
+        when(rows.getInt("stock")).thenReturn(72);
+        when(rows.getBigDecimal("price")).thenReturn(new BigDecimal("19.95"));
+        when(rows.getBigDecimal("profit")).thenReturn(new BigDecimal("-100000000000000000.01"), BigDecimal.ZERO);
+
+        List<ListedProduct> products = session.products("ASIA", 2, 9007199254740993L);
+
+        assertEquals(List.of(new ListedProduct(9007199254740993L, 9007199254740994L, "Company", "Mug", "ASIA",
+                        100, 72, "19.95", "JPY", Map.of("JPY", "-100000000000000000.01")),
+                new ListedProduct(9007199254740993L, Long.MAX_VALUE, "Company", "Mug", "ASIA", 100, 72,
+                        "19.95", "JPY", Map.of("JPY", "0.00"))), products);
+        verify(statement).setString(1, "ASIA");
+        verify(statement).setLong(2, 9007199254740993L);
+        verify(statement).setInt(3, 2);
+        verify(rows).close();
+    }
+
+    @Test
     void creationRejectsIncompleteWrites() throws SQLException {
         CatalogFailure sellerFailure = assertThrows(CatalogFailure.class,
                 () -> session.insertSeller(42, "key", new SellerCreation("Company", "EU")));
@@ -163,6 +189,7 @@ class JdbcCatalogSessionTest {
         List<Consumer<JdbcCatalogSession>> operations = List.of(value -> value.lock(1),
                 value -> value.seller(1), value -> value.sellerByKey("EU", "key"),
                 value -> value.product(1, 2), value -> value.productByKey(1, "key"),
+                value -> value.products("US", 26, 0),
                 value -> value.insertSeller(1, "key", new SellerCreation("Company", "EU")),
                 value -> value.insertProduct(2, 1, "key", creation()));
         for (Consumer<JdbcCatalogSession> operation : operations) {

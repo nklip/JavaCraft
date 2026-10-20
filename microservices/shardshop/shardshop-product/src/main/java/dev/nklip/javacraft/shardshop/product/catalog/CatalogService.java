@@ -8,6 +8,7 @@ import dev.nklip.javacraft.shardshop.sharding.ShardRouter;
 import dev.nklip.javacraft.shardshop.sharding.ShardTopology;
 
 import java.math.BigInteger;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -105,11 +106,27 @@ public final class CatalogService {
                 session.product(sellerId, productId).orElseThrow(() -> new CatalogFailure(PRODUCT_NOT_FOUND)));
     }
 
-    private Shard sellerKeyShard(String region, String key) {
+    public ProductPage products(String region, int limit, long after) {
+        if (limit < 1 || limit > 100 || after < 0) {
+            throw new CatalogFailure(INVALID_REQUEST);
+        }
+        List<ListedProduct> candidates = store.products(regionalShards(region), replicaReads, region, limit + 1, after)
+                .stream().sorted(Comparator.comparingLong(ListedProduct::productId)).limit(limit + 1L).toList();
+        boolean more = candidates.size() > limit;
+        List<ListedProduct> items = more ? candidates.subList(0, limit) : candidates;
+        return new ProductPage(region, items, more ? items.getLast().productId() : null);
+    }
+
+    private List<Shard> regionalShards(String region) {
         List<Shard> eligible = topology.shards().stream().filter(shard -> shard.region().equals(region)).toList();
         if (eligible.isEmpty()) {
             throw new CatalogFailure(INVALID_REQUEST);
         }
+        return eligible;
+    }
+
+    private Shard sellerKeyShard(String region, String key) {
+        List<Shard> eligible = regionalShards(region);
         // A fixed key home makes the transaction lock and uniqueness constraint global within a region.
         int index = Sha256.unsignedDigest("seller\0" + region + "\0" + key)
                 .mod(BigInteger.valueOf(eligible.size())).intValue();

@@ -474,6 +474,9 @@ public final class ContractDocument {
 
     /** Visits every JSON object with its JSON pointer, the document first. */
     private static void walk(Object node, String pointer, BiConsumer<String, JsonObject> visitor) {
+        if (node == null) {
+            return;
+        }
         switch (node) {
             case JsonObject object -> {
                 visitor.accept(pointer, object);

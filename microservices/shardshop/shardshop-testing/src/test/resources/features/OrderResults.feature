@@ -6,9 +6,11 @@ Feature: Order applies ledger results and credits confirmed seller profit
   Background:
     Given order results use migrated regional primaries and a broker
 
+  @product-browser
   Scenario: A recorded cross-shard order credits each signed item margin once
     Then a packaged ledger recording confirms a cross-shard order and credits its items once
 
+  @product-browser
   Scenario: A definitive ledger rejection cancels and releases stock without profit
     Then a packaged ledger rejection cancels the order and releases reservations without profit
 

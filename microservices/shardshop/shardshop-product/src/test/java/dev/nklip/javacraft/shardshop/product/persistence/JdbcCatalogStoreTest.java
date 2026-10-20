@@ -16,6 +16,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Map;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -104,6 +105,51 @@ class JdbcCatalogStoreTest {
         assertEquals(CatalogFailure.Reason.UNAVAILABLE, primaryFailure.reason());
         assertEquals(CatalogFailure.Reason.REPLICA_UNAVAILABLE, replicaFailure.reason());
         verifyNoInteractions(workers);
+    }
+
+    @Test
+    void listingSharesOneShrinkingDatabaseBudgetAcrossAllRegionalShards() throws SQLException {
+        AtomicLong time = new AtomicLong();
+        store = regionalStore(time);
+        doAnswer(invocation -> { time.compareAndSet(0, 1_200_000_000L); return null; }).when(connection).commit();
+
+        assertEquals(List.of(), store.products(List.of(SHARD, new Shard("shard-d", "US")), true, "US", 26, 0));
+
+        verify(replica, times(2)).getConnection();
+        verifyNoInteractions(primary);
+        verify(connection, atLeastOnce()).setNetworkTimeout(any(), eq(1800));
+    }
+
+    @Test
+    void listingCannotSpendAnotherFullBudgetOnLaterShardsOrReturnPartialResults() throws SQLException {
+        AtomicLong time = new AtomicLong();
+        store = regionalStore(time);
+        doAnswer(invocation -> { time.set(2_100_000_000L); return null; }).when(connection).commit();
+
+        CatalogFailure failure = assertThrows(CatalogFailure.class,
+                () -> store.products(List.of(SHARD, new Shard("shard-d", "US")), true, "US", 26, 0));
+
+        assertEquals(CatalogFailure.Reason.REPLICA_UNAVAILABLE, failure.reason());
+        verify(replica).getConnection();
+        verifyNoInteractions(primary);
+    }
+
+    @Test
+    void listingNeverFallsBackWhenAnyRegionalReplicaEndpointIsMissing() {
+        CatalogFailure failure = assertThrows(CatalogFailure.class,
+                () -> store.products(List.of(new Shard("shard-d", "US"), SHARD), true, "US", 26, 0));
+        assertEquals(CatalogFailure.Reason.REPLICA_UNAVAILABLE, failure.reason());
+        verifyNoInteractions(primary, replica, workers);
+    }
+
+    private JdbcCatalogStore regionalStore(AtomicLong time) throws SQLException {
+        PreparedStatement products = mock();
+        ResultSet rows = mock();
+        when(connection.prepareStatement(startsWith("WITH page"))).thenReturn(products);
+        when(products.executeQuery()).thenReturn(rows);
+        return new JdbcCatalogStore(Map.of(new JdbcCatalogStore.PoolKey("shard-a", true), replica,
+                new JdbcCatalogStore.PoolKey("shard-d", true), replica),
+                new DatabasePhases(workers, cleanup, time::get), time::get);
     }
 
     @Test

@@ -45,6 +45,15 @@ public class CatalogMigrationStepDefinitions {
         assertEquals(List.of("1 catalog"), applied(shards.migrate(shard, v1)));
     }
 
+    @Given("a new shard database with only V1 through V4 of the catalog stream")
+    public void databaseWithV4() throws SQLException, IOException {
+        CatalogShards.Shard shard = shards.createSingle();
+        Path v4 = CatalogShards.streamWith(ShardShopFiles.newWorkDirectory("migration-"),
+                "V1__catalog.sql", "V2__catalog_creation.sql", "V3__stock_coordination.sql", "V4__profit_posting.sql");
+        assertEquals(List.of("1 catalog", "2 catalog creation", "3 stock coordination", "4 profit posting"),
+                applied(shards.migrate(shard, v4)));
+    }
+
     @Given("a new shard database that Flyway migrated")
     public void migratedDatabase() throws SQLException {
         shards.migrate(shards.createSingle(), CatalogShards.CATALOG_STREAM);
@@ -74,7 +83,7 @@ public class CatalogMigrationStepDefinitions {
     public void migrateChangedGrants() throws IOException {
         Path location = CatalogShards.streamWith(ShardShopFiles.newWorkDirectory("migration-"),
                 "V1__catalog.sql", "V2__catalog_creation.sql", "V3__stock_coordination.sql",
-                "V4__profit_posting.sql", "R__catalog_grants.sql");
+                "V4__profit_posting.sql", "V5__product_browser.sql", "R__catalog_grants.sql");
         Files.writeString(location.resolve("R__catalog_grants.sql"), "\n-- A later review changed this file.\n",
                 StandardCharsets.UTF_8, StandardOpenOption.APPEND);
         migration = shards.migrate(shards.only(), location);

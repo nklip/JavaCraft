@@ -14,6 +14,7 @@ import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.UriInfo;
 
 import java.util.List;
+import java.util.Set;
 
 /** Strict wire validation performed before calling the catalog service. */
 final class CatalogInput {
@@ -81,6 +82,41 @@ final class CatalogInput {
             throw invalid();
         }
         return region(regions.getFirst());
+    }
+
+    ListingQuery listingQuery(UriInfo uri) {
+        MultivaluedMap<String, String> query = uri.getQueryParameters();
+        if (!Set.of("region", "limit", "after").containsAll(query.keySet())) {
+            throw invalid();
+        }
+        String requestedRegion = region(singleQuery(query, "region", true));
+        String limitText = singleQuery(query, "limit", false);
+        int limit = 25;
+        if (limitText != null) {
+            if (!limitText.matches("[1-9][0-9]{0,2}")) {
+                throw invalid();
+            }
+            limit = Integer.parseInt(limitText);
+            if (limit > 100) {
+                throw invalid();
+            }
+        }
+        String afterText = singleQuery(query, "after", false);
+        return new ListingQuery(requestedRegion, limit, afterText == null ? 0 : id(afterText));
+    }
+
+    private String singleQuery(MultivaluedMap<String, String> query, String name, boolean required) {
+        List<String> values = query.get(name);
+        if (values == null && !required) {
+            return null;
+        }
+        if (values == null || values.size() != 1 || values.getFirst() == null) {
+            throw invalid();
+        }
+        return values.getFirst();
+    }
+
+    record ListingQuery(String region, int limit, long after) {
     }
 
     private String region(String value) {

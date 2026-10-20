@@ -10,6 +10,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static dev.nklip.javacraft.shardshop.product.catalog.CatalogModel.*;
@@ -118,6 +121,38 @@ final class JdbcCatalogSession implements CatalogStore.Session {
             statement.setLong(1, sellerId);
             statement.setLong(2, productId);
             return productResult(statement);
+        } catch (SQLException failure) {
+            throw new CatalogFailure(unavailable);
+        }
+    }
+
+    @Override
+    public List<ListedProduct> products(String region, int limit, long after) {
+        // Bound the page before aggregating immutable credits; stock reservations are not sales.
+        String sql = "WITH page AS (SELECT p.seller_id, p.product_id, s.company_name, p.name, s.region, "
+                + "p.initial_stock, p.stock, p.price, p.currency FROM catalog.products p "
+                + "JOIN catalog.sellers s ON s.seller_id = p.seller_id "
+                + "WHERE s.region = ? AND p.product_id > ? ORDER BY p.product_id LIMIT ?) "
+                + "SELECT page.*, COALESCE(credits.amount, 0.00) AS profit FROM page "
+                + "LEFT JOIN LATERAL (SELECT SUM(c.amount) AS amount FROM catalog.profit_credits c "
+                + "WHERE c.product_id = page.product_id AND c.currency = page.currency) credits ON true "
+                + "ORDER BY page.product_id";
+        try (PreparedStatement statement = prepare(sql)) {
+            statement.setString(1, region);
+            statement.setLong(2, after);
+            statement.setInt(3, limit);
+            List<ListedProduct> products = new ArrayList<>();
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    String currency = rows.getString("currency");
+                    products.add(new ListedProduct(rows.getLong("seller_id"), rows.getLong("product_id"),
+                            rows.getString("company_name"), rows.getString("name"), rows.getString("region"),
+                            rows.getInt("initial_stock"), rows.getInt("stock"),
+                            rows.getBigDecimal("price").toPlainString(), currency,
+                            Map.of(currency, rows.getBigDecimal("profit").setScale(2).toPlainString())));
+                }
+            }
+            return List.copyOf(products);
         } catch (SQLException failure) {
             throw new CatalogFailure(unavailable);
         }

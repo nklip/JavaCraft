@@ -165,6 +165,15 @@ public final class OrderResponseProxy implements AutoCloseable {
         }
     }
 
+    /** Provider commits become visible before the producer receives the injected 503 and retries each phase. */
+    public boolean committedResponseRetriesObserved() {
+        assertNull(failure, "Reverse proxy failed");
+        synchronized (attempts) {
+            return Arrays.stream(Phase.values())
+                    .allMatch(phase -> attempts.getOrDefault(phase, List.of()).size() == 2);
+        }
+    }
+
     public void assertCommittedResponseRecovery() {
         assertNull(failure, "Reverse proxy failed");
         assertRetry(Phase.BUYER, 201, 200, "buyerId");

@@ -2,6 +2,7 @@ package dev.nklip.javacraft.shardshop.product.catalog;
 
 import dev.nklip.javacraft.shardshop.sharding.Shard;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -13,6 +14,9 @@ public interface CatalogStore {
 
     <T> T write(Shard shard, Function<Session, T> work);
 
+    /** Bounded candidates from every selected shard, sharing one database deadline. */
+    List<ListedProduct> products(List<Shard> shards, boolean replica, String region, int limit, long after);
+
     interface Session {
         void lock(long key);
 
@@ -23,6 +27,8 @@ public interface CatalogStore {
         Optional<Product> productByKey(long sellerId, String key);
 
         Optional<Product> product(long sellerId, long productId);
+
+        List<ListedProduct> products(String region, int limit, long after);
 
         void insertSeller(long id, String key, SellerCreation creation);
 

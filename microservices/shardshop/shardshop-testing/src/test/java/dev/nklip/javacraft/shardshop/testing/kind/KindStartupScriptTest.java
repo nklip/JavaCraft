@@ -28,7 +28,7 @@ class KindStartupScriptTest {
         Path source = Path.of(System.getProperty("shardshop.directory", "..")).toAbsolutePath().normalize();
         helm = commandPath("helm");
         for (String directory : List.of("scripts", "bin", "tmp")) Files.createDirectories(temporary.resolve(directory));
-        for (String script : List.of("cluster-create.sh", "up.sh")) {
+        for (String script : List.of("cluster-create.sh", "up.sh", "down.sh")) {
             Files.copy(source.resolve("scripts").resolve(script), temporary.resolve("scripts").resolve(script));
         }
         if (Files.isDirectory(source.resolve("scripts/lib"))) {
@@ -81,6 +81,7 @@ class KindStartupScriptTest {
                   inspect) cat "$FIXTURE/running";;
                   update) ;;
                   start) echo true > "$FIXTURE/running";;
+                  stop) echo false > "$FIXTURE/running";;
                   image) printf 'sha256:%064d\n' 0;;
                   exec)
                     case "$*" in
@@ -100,6 +101,13 @@ class KindStartupScriptTest {
                 set -eu
                 printf 'kubectl %s\n' "$*" >> "$FIXTURE/events"
                 case "$*" in
+                  *'port-forward '*)
+                    [[ ! -e "$TMPDIR/shardshop-up.lock" && ! -e "$(cat "$FIXTURE/snapshot")" ]] || exit 76
+                    [[ "$(cat "$FIXTURE/failure")" != port-forward ]] || exit 77
+                    if [[ -f "$FIXTURE/block-forward" ]]; then
+                      echo $$ > "$FIXTURE/forward-pid"
+                      exec sleep 60
+                    fi;;
                   *'create configmap shardshop-snowflake-generators '*) echo 12345678-1234-4234-8234-123456789abc;;
                   *'get secret '*)
                     arguments="$*"
@@ -138,6 +146,9 @@ class KindStartupScriptTest {
                 printf 'helmfile fresh=%s %s\n' "$SHARDSHOP_FRESH" "$*" >> "$FIXTURE/events"
                 if [[ "$*" == *stage=application* ]]; then
                   cp "$SHARDSHOP_SNAPSHOT/images.json" "$FIXTURE/application-values.json"
+                  printf '%s' "$SHARDSHOP_SNAPSHOT" > "$FIXTURE/snapshot"
+                  [[ "$(cat "$FIXTURE/failure")" != deployment ]] || exit 78
+                  echo application-acceptance-complete >> "$FIXTURE/events"
                 fi
                 """);
         executable("skaffold", """
@@ -352,6 +363,91 @@ class KindStartupScriptTest {
     }
 
     @Test
+    void upForwardsProductOnlyAfterSuccessfulApplicationAcceptance() throws Exception {
+        state("nodes", NODES);
+        Result result = run("up.sh");
+        assertEquals(0, result.exit(), result.output());
+        assertEquals(List.of("kubectl --context kind-shardshop -n shardshop port-forward service/shardshop-product 18080:8080"),
+                events().stream().filter(line -> line.contains(" port-forward ")).toList());
+        assertBefore("application-acceptance-complete", "kubectl --context kind-shardshop -n shardshop port-forward ");
+        assertInvocationCleaned();
+    }
+
+    @Test
+    void failedDeploymentDoesNotStartForwarding() throws Exception {
+        state("nodes", NODES);
+        state("failure", "deployment");
+        Result result = run("up.sh");
+        assertEquals(78, result.exit(), result.output());
+        assertTrue(events().stream().noneMatch(line -> line.contains(" port-forward ")), events().toString());
+        assertInvocationCleaned();
+    }
+
+    @Test
+    void forwardingStartupFailureIsPropagatedAfterCleanup() throws Exception {
+        state("nodes", NODES);
+        state("failure", "port-forward");
+        Result result = run("up.sh");
+        assertEquals(77, result.exit(), result.output());
+        assertEquals("true", Files.readString(temporary.resolve("running")));
+        assertInvocationCleaned();
+    }
+
+    @Test
+    void forwardingOwnsTheForegroundAndCanBeInterruptedWithoutStoppingTheCluster() throws Exception {
+        for (String signal : List.of("INT", "TERM")) {
+            state("nodes", NODES);
+            state("running", "true");
+            state("block-forward", "");
+            Files.deleteIfExists(temporary.resolve("forward-pid"));
+            try (Running up = start("up.sh")) {
+                awaitForwarding(up);
+                assertTrue(up.process().isAlive());
+                assertEquals(up.process().pid(), Long.parseLong(Files.readString(temporary.resolve("forward-pid")).trim()),
+                        "The foreground shell must be replaced by kubectl");
+                assertInvocationCleaned();
+                Process kill = new ProcessBuilder("/bin/kill", "-" + signal, Long.toString(up.process().pid())).start();
+                try {
+                    assertTrue(kill.waitFor(5, TimeUnit.SECONDS));
+                    assertEquals(0, kill.exitValue());
+                } finally {
+                    kill.destroyForcibly();
+                }
+                assertTrue(up.process().waitFor(5, TimeUnit.SECONDS), signal + " must stop forwarding promptly");
+                assertEquals(signal.equals("INT") ? 130 : 143, up.process().exitValue());
+                assertEquals("true", Files.readString(temporary.resolve("running")), "Interrupting forwarding must leave the cluster running");
+            }
+        }
+    }
+
+    @Test
+    void downCanStopTheClusterWhileForwardingIsRunning() throws Exception {
+        state("nodes", NODES);
+        state("block-forward", "");
+        try (Running up = start("up.sh")) {
+            awaitForwarding(up);
+            assertInvocationCleaned();
+            Result down = run("down.sh");
+            assertEquals(0, down.exit(), down.output());
+            assertEquals("false\n", Files.readString(temporary.resolve("running")));
+            assertTrue(up.process().isAlive(), "Forwarding must remain in the foreground until it exits");
+        }
+    }
+
+    private void awaitForwarding(Running up) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (!Files.exists(temporary.resolve("forward-pid")) && up.process().isAlive()
+                && System.nanoTime() < deadline) Thread.sleep(20);
+        assertTrue(Files.exists(temporary.resolve("forward-pid")), Files.readString(up.output()));
+    }
+
+    private void assertInvocationCleaned() throws IOException {
+        assertFalse(Files.exists(lock()), "Forwarding must not retain the lifecycle lock");
+        Path snapshot = Path.of(Files.readString(temporary.resolve("snapshot")));
+        assertFalse(Files.exists(snapshot), "The invocation snapshot must be removed before forwarding");
+    }
+
+    @Test
     void everyUpRotatesTheRestartToken() throws Exception {
         state("nodes", NODES);
         Result first = run("up.sh");
@@ -429,7 +525,7 @@ class KindStartupScriptTest {
         return events().stream().filter(line -> line.startsWith("mvn kind-")).map(line -> line.split(" ")[1]).toList();
     }
 
-    private Result run(String script) throws Exception {
+    private Running start(String script) throws IOException {
         Path output = temporary.resolve("output-" + invocation++);
         ProcessBuilder builder = new ProcessBuilder("/bin/bash", temporary.resolve("scripts").resolve(script).toString())
                 .directory(temporary.toFile())
@@ -440,11 +536,19 @@ class KindStartupScriptTest {
         builder.environment().remove("SHARDSHOP_INVENTORY");
         Process process = builder.start();
         process.getOutputStream().close();
-        try {
-            assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Startup script exceeded its test deadline");
-            assertTrue(Files.size(output) <= 65_536, "Unexpectedly large lifecycle output");
-            return new Result(process.exitValue(), Files.readString(output));
-        } finally {
+        return new Running(process, output);
+    }
+
+    private Result run(String script) throws Exception {
+        try (Running running = start(script)) {
+            assertTrue(running.process().waitFor(30, TimeUnit.SECONDS), "Startup script exceeded its test deadline");
+            assertTrue(Files.size(running.output()) <= 65_536, "Unexpectedly large lifecycle output");
+            return new Result(running.process().exitValue(), Files.readString(running.output()));
+        }
+    }
+
+    private record Running(Process process, Path output) implements AutoCloseable {
+        @Override public void close() {
             process.descendants().forEach(ProcessHandle::destroyForcibly);
             process.destroyForcibly();
         }

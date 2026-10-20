@@ -8,6 +8,7 @@ import dev.nklip.javacraft.shardshop.sharding.ShardTopology;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.LongStream;
@@ -166,6 +167,45 @@ class CatalogServiceTest {
             assertThrows(IllegalArgumentException.class,
                     () -> new CatalogService.Settings(false, invalid));
         }
+    }
+
+    @Test
+    void regionalPageMergesEveryEligibleShardInNumericIdOrderAndUsesLookahead() {
+        List<Shard> usShards = List.of(topology.shards().get(0), topology.shards().get(3));
+        var first = listed(9007199254740993L);
+        var second = listed(9007199254740994L);
+        var third = listed(Long.MAX_VALUE);
+        when(store.products(usShards, false, "US", 3, 42)).thenReturn(List.of(third, first, second));
+
+        assertEquals(new ProductPage("US", List.of(first, second), second.productId()), service.products("US", 2, 42));
+        verifyNoInteractions(generator, session);
+        assertThrows(UnsupportedOperationException.class, () -> first.profitsEarned().put("EUR", "1.00"));
+    }
+
+    @Test
+    void finalAndEmptyPagesHaveNoCursorAndReplicaSelectionAppliesToTheWholeRegion() {
+        List<Shard> usShards = List.of(topology.shards().get(0), topology.shards().get(3));
+        CatalogService replica = new CatalogService(store, generator, router, topology, new CatalogService.Settings(true, 1));
+        when(store.products(usShards, true, "US", 3, 0)).thenReturn(List.of(listed(2), listed(3)));
+        assertEquals(new ProductPage("US", List.of(listed(2), listed(3)), null), replica.products("US", 2, 0));
+        when(store.products(usShards, true, "US", 3, 3)).thenReturn(List.of());
+        assertEquals(new ProductPage("US", List.of(), null), replica.products("US", 2, 3));
+        when(store.products(usShards, true, "US", 3, 4)).thenThrow(new CatalogFailure(REPLICA_UNAVAILABLE));
+        fails(REPLICA_UNAVAILABLE, () -> replica.products("US", 2, 4));
+        verifyNoInteractions(generator);
+    }
+
+    @Test
+    void listingRejectsInvalidRegionAndPageBoundsBeforeIo() {
+        fails(INVALID_REQUEST, () -> service.products("AU", 25, 0));
+        fails(INVALID_REQUEST, () -> service.products("US", 0, 0));
+        fails(INVALID_REQUEST, () -> service.products("US", 101, 0));
+        fails(INVALID_REQUEST, () -> service.products("US", 25, -1));
+        verifyNoInteractions(store, generator);
+    }
+
+    private ListedProduct listed(long id) {
+        return new ListedProduct(1, id, "Company", "Mug", "US", 10, 7, "19.95", "EUR", Map.of("EUR", "-1.50"));
     }
 
     private void writes() {

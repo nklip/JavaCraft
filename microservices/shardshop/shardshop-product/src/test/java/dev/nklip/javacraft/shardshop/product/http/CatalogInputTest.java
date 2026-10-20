@@ -261,6 +261,54 @@ class CatalogInputTest {
         assertInvalid(() -> input.regionQuery(uri));
     }
 
+    @Test
+    void listingDefaultsAndCanonicalBoundsPreserveLargeCursorIds() {
+        var query = new MultivaluedHashMap<String, String>();
+        query.putSingle("region", "ASIA");
+        assertEquals(new CatalogInput.ListingQuery("ASIA", 25, 0), input.listingQuery(uri(query)));
+        query.putSingle("limit", "100");
+        query.putSingle("after", "9223372036854775807");
+        assertEquals(new CatalogInput.ListingQuery("ASIA", 100, Long.MAX_VALUE), input.listingQuery(uri(query)));
+        query.putSingle("limit", "1");
+        query.putSingle("after", "9007199254740993");
+        assertEquals(new CatalogInput.ListingQuery("ASIA", 1, 9007199254740993L), input.listingQuery(uri(query)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "0", "01", "101", "9999999999999999999", "-1", "+1", "1.0", "1e0", "1\n", " 1", "１"})
+    void listingRejectsInvalidLimits(String limit) {
+        var query = new MultivaluedHashMap<String, String>();
+        query.putSingle("region", "US");
+        query.putSingle("limit", limit);
+        assertInvalid(() -> input.listingQuery(uri(query)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "0", "01", "-1", "+1", "1.0", "1e0", "1\n", "9223372036854775808"})
+    void listingRejectsInvalidCursors(String after) {
+        var query = new MultivaluedHashMap<String, String>();
+        query.putSingle("region", "US");
+        query.putSingle("after", after);
+        assertInvalid(() -> input.listingQuery(uri(query)));
+    }
+
+    @Test
+    void listingRequiresOneRegionAndRejectsUnknownOrRepeatedQueries() {
+        var query = new MultivaluedHashMap<String, String>();
+        assertInvalid(() -> input.listingQuery(uri(query)));
+        query.putSingle("region", "us");
+        assertInvalid(() -> input.listingQuery(uri(query)));
+        query.putSingle("region", "US");
+        query.putSingle("shard", "a");
+        assertInvalid(() -> input.listingQuery(uri(query)));
+        query.remove("shard");
+        for (String name : List.of("region", "limit", "after")) {
+            var duplicate = new MultivaluedHashMap<>(query);
+            duplicate.put(name, List.of("1", "1"));
+            assertInvalid(() -> input.listingQuery(uri(duplicate)));
+        }
+    }
+
     private HttpHeaders jsonHeaders() {
         HttpHeaders headers = mock(HttpHeaders.class);
         when(headers.getRequestHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(List.of(MediaType.APPLICATION_JSON));

@@ -122,6 +122,8 @@ public final class OrderProducerStepDefinitions {
         assertBuyerDataset();
         assertOrder(usdFirst, "USD");
         assertEquals(1, count("ordering.order_allocations", USD_RUN));
+        await(ORDER_WAIT, "Producer did not retry the hidden committed responses",
+                proxy::committedResponseRetriesObserved);
         proxy.assertCommittedResponseRecovery();
         beforeReplay = proxy.replayCalls(USD_RUN, usdFirst.buyerId(), 0, usdFirst.id());
     }

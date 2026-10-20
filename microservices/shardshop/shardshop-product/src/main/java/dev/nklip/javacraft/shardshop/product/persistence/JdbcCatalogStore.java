@@ -15,9 +15,14 @@ import org.postgresql.Driver;
 
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.function.LongSupplier;
+
+import static dev.nklip.javacraft.shardshop.product.catalog.CatalogModel.ListedProduct;
 
 /** Bounded per-endpoint pools and a hard deadline for the entire database phase. */
 public final class JdbcCatalogStore implements CatalogStore, AutoCloseable {
@@ -26,15 +31,22 @@ public final class JdbcCatalogStore implements CatalogStore, AutoCloseable {
 
     private final Map<PoolKey, AgroalDataSource> pools;
     private final DatabasePhases phases;
+    private final LongSupplier nanoTime;
 
     public JdbcCatalogStore(Map<String, Endpoint> primary, Map<String, Endpoint> replicas, int maxPoolSize) {
         this.pools = pools(primary, replicas, maxPoolSize);
         this.phases = new DatabasePhases("catalog", Math.max(1, Math.multiplyExact(pools.size(), maxPoolSize)));
+        this.nanoTime = System::nanoTime;
     }
 
     JdbcCatalogStore(Map<PoolKey, AgroalDataSource> pools, DatabasePhases phases) {
+        this(pools, phases, System::nanoTime);
+    }
+
+    JdbcCatalogStore(Map<PoolKey, AgroalDataSource> pools, DatabasePhases phases, LongSupplier nanoTime) {
         this.pools = Map.copyOf(pools);
         this.phases = phases;
+        this.nanoTime = nanoTime;
     }
 
     private static Map<PoolKey, AgroalDataSource> pools(Map<String, Endpoint> primary,
@@ -86,7 +98,28 @@ public final class JdbcCatalogStore implements CatalogStore, AutoCloseable {
         return execute(shard, false, false, work);
     }
 
+    @Override
+    public List<ListedProduct> products(List<Shard> shards, boolean replica, String region, int limit, long after) {
+        DatabasePhases.Deadline deadline = new DatabasePhases.Deadline(nanoTime,
+                nanoTime.getAsLong() + DatabasePhases.PHASE_BUDGET.toNanos());
+        List<ListedProduct> products = new ArrayList<>();
+        try {
+            for (Shard shard : shards) {
+                products.addAll(execute(shard, replica, true, Duration.ofNanos(deadline.remainingNanos()),
+                        session -> session.products(region, limit, after)));
+            }
+            deadline.remainingNanos();
+            return List.copyOf(products);
+        } catch (SQLException failure) {
+            throw new CatalogFailure(replica ? CatalogFailure.Reason.REPLICA_UNAVAILABLE : CatalogFailure.Reason.UNAVAILABLE);
+        }
+    }
+
     private <T> T execute(Shard shard, boolean replica, boolean readOnly, Function<Session, T> work) {
+        return execute(shard, replica, readOnly, DatabasePhases.PHASE_BUDGET, work);
+    }
+
+    private <T> T execute(Shard shard, boolean replica, boolean readOnly, Duration budget, Function<Session, T> work) {
         CatalogFailure.Reason unavailable = replica
                 ? CatalogFailure.Reason.REPLICA_UNAVAILABLE
                 : CatalogFailure.Reason.UNAVAILABLE;
@@ -95,7 +128,7 @@ public final class JdbcCatalogStore implements CatalogStore, AutoCloseable {
             throw new CatalogFailure(unavailable);
         }
         return phases.run(DatabasePhases.Pool.of(pool, () -> pool.flush(AgroalDataSource.FlushMode.ALL)), readOnly,
-                DatabasePhases.PHASE_BUDGET,
+                budget,
                 (connection, deadline) -> work.apply(new JdbcCatalogSession(connection, deadline, unavailable)),
                 CatalogFailure.class, () -> new CatalogFailure(unavailable));
     }

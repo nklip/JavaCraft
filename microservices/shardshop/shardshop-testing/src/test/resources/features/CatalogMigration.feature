@@ -14,12 +14,41 @@ Feature: Catalog migrations with the Flyway Java API
           VALUES (11, 1, 'Legacy item', 19.95, 'USD', 10, 8)
       """
     When Flyway migrates the catalog stream
-    Then Flyway applies the migrations "2 catalog creation, 3 stock coordination, 4 profit posting, catalog grants"
+    Then Flyway applies the migrations "2 catalog creation, 3 stock coordination, 4 profit posting, 5 product browser, catalog grants"
     And catalog_reader reads these rows:
       | query                                                                                                     | rows                    |
       | SELECT company_name, creation_key IS NULL FROM catalog.sellers WHERE seller_id = 1                         | Legacy company,t        |
       | SELECT description, unit_cost, initial_stock, stock, creation_key IS NULL FROM catalog.products WHERE product_id = 11 | Legacy item,0.00,10,8,t |
       | SELECT currency, amount FROM catalog.seller_profits WHERE seller_id = 1 ORDER BY currency                  | EUR,0.00;USD,0.00       |
+    And a second Flyway migration validates the history and applies no migration
+    And catalog_owner owns the catalog schema and all its tables and indexes
+    And the catalog schema has no functions and no triggers
+
+  @product-browser
+  Scenario: The browser index upgrades V4 without changing stock or immutable earnings
+    Given a new shard database with only V1 through V4 of the catalog stream
+    And catalog_owner adds these rows:
+      """
+      INSERT INTO catalog.sellers(seller_id, name, creation_key) VALUES (1, 'Existing company', 'existing');
+      INSERT INTO catalog.products(product_id, seller_id, name, description, price, unit_cost, currency, initial_stock, stock)
+          VALUES (11, 1, 'Existing item', 'Existing description', 19.95, 12.50, 'USD', 10, 7);
+      INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount)
+          VALUES (101, 11, 1, 'USD', 0.10), (102, 11, 1, 'USD', -7.45)
+      """
+    When Flyway migrates the catalog stream
+    Then Flyway applies the migrations "5 product browser, catalog grants"
+    And product_app reads these rows:
+      | query | rows |
+      | SELECT initial_stock, stock FROM catalog.products WHERE product_id=11 | 10,7 |
+      | SELECT product_id, currency, sum(amount) FROM catalog.profit_credits GROUP BY product_id, currency | 11,USD,-7.35 |
+      | SELECT pg_get_indexdef(indexrelid, 1, true), pg_get_indexdef(indexrelid, 2, true), pg_get_indexdef(indexrelid, 3, true) FROM pg_index WHERE indexrelid='catalog.profit_credits_product_currency_idx'::regclass | product_id,currency,amount |
+    And these statements fail with their SQLSTATE:
+      | role | statement | sqlstate |
+      | product_app | SELECT order_id FROM catalog.profit_credits | 42501 |
+      | product_app | SELECT seller_id FROM catalog.profit_credits | 42501 |
+      | product_app | SELECT credited_at FROM catalog.profit_credits | 42501 |
+      | product_app | SELECT * FROM catalog.profit_credits | 42501 |
+      | product_app | UPDATE catalog.profit_credits SET amount=0.00 | 42501 |
     And a second Flyway migration validates the history and applies no migration
     And catalog_owner owns the catalog schema and all its tables and indexes
     And the catalog schema has no functions and no triggers
@@ -165,7 +194,14 @@ Feature: Catalog migrations with the Flyway Java API
       | product_app | catalog.sellers            | any      | UPDATE    | no      |
       | product_app | catalog.products           | any      | UPDATE    | no      |
       | product_app | catalog.stock_reservations | any      | SELECT    | no      |
-      | product_app | catalog.profit_credits     | any      | SELECT    | no      |
+      | product_app | catalog.profit_credits     | any      | SELECT    | yes     |
+      | product_app | catalog.profit_credits     |          | SELECT    | no      |
+      | product_app | catalog.profit_credits     | product_id | SELECT  | yes     |
+      | product_app | catalog.profit_credits     | currency | SELECT    | yes     |
+      | product_app | catalog.profit_credits     | amount   | SELECT    | yes     |
+      | product_app | catalog.profit_credits     | order_id | SELECT    | no      |
+      | product_app | catalog.profit_credits     | seller_id | SELECT   | no      |
+      | product_app | catalog.profit_credits     | credited_at | SELECT | no      |
       | order_app   | catalog.sellers            |          | SELECT    | yes     |
       | order_app   | catalog.products           |          | SELECT    | yes     |
       | order_app   | catalog.seller_profits     |          | SELECT    | yes     |
@@ -212,11 +248,13 @@ Feature: Catalog migrations with the Flyway Java API
       GRANT INSERT (seller_id, currency), UPDATE (amount) ON catalog.seller_profits TO catalog_reserver;
       GRANT INSERT ON catalog.profit_credits TO catalog_reserver;
       GRANT INSERT (order_id, product_id, seller_id, currency, amount) ON catalog.profit_credits TO catalog_reserver;
+      GRANT SELECT (order_id, seller_id, credited_at) ON catalog.profit_credits TO catalog_writer;
       GRANT UPDATE (amount), INSERT (credited_at) ON catalog.profit_credits TO catalog_reserver
       """
     And the login roles have these catalog privileges:
       | role        | table                  | column | privilege | granted |
       | product_app | catalog.seller_profits | amount | INSERT    | yes     |
+      | product_app | catalog.profit_credits | order_id | SELECT   | yes     |
       | order_app   | catalog.seller_profits | amount | UPDATE    | yes     |
       | order_app   | catalog.profit_credits | amount | INSERT    | yes     |
     When Flyway migrates the catalog stream with a changed grants file
@@ -224,6 +262,12 @@ Feature: Catalog migrations with the Flyway Java API
     And the login roles have these catalog privileges:
       | role        | table                  | column | privilege | granted |
       | product_app | catalog.seller_profits | amount | INSERT    | no      |
+      | product_app | catalog.profit_credits | product_id | SELECT | yes     |
+      | product_app | catalog.profit_credits | currency | SELECT   | yes     |
+      | product_app | catalog.profit_credits | amount | SELECT     | yes     |
+      | product_app | catalog.profit_credits | order_id | SELECT   | no      |
+      | product_app | catalog.profit_credits | seller_id | SELECT  | no      |
+      | product_app | catalog.profit_credits | credited_at | SELECT | no    |
       | product_app | catalog.seller_profits | any    | UPDATE    | no      |
       | order_app   | catalog.seller_profits | any    | INSERT    | yes     |
       | order_app   | catalog.seller_profits | amount | INSERT    | no      |
