@@ -1,0 +1,270 @@
+{{- if has .Values.render (list "applications" "application-release") }}
+{{- $order := required "render=applications requires images.order" .Values.images.order -}}
+{{- $ledger := required "render=applications requires images.ledger" .Values.images.ledger -}}
+{{- $producer := required "render=applications requires images.order-producer" (index .Values.images "order-producer") -}}
+{{- $runName := required "orderProducer.runName must identify the durable producer run" .Values.orderProducer.runName -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shardshop-order-config
+  namespace: {{ .Release.Namespace | quote }}
+data:
+  application.properties: |
+    {{- include "shardshop.orderConfiguration" . | nindent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shardshop-ledger-config
+  namespace: {{ .Release.Namespace | quote }}
+data:
+  application.properties: |
+    {{- include "shardshop.ledgerConfiguration" . | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shardshop-order
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/name: shardshop-order
+    app.kubernetes.io/part-of: shardshop
+spec:
+  selector:
+    app.kubernetes.io/name: shardshop-order
+  sessionAffinity: None
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shardshop-order
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/name: shardshop-order
+    app.kubernetes.io/part-of: shardshop
+spec:
+  # One JVM supervises one CDC reader per shard. Do not overlap readers during a rollout.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: shardshop-order
+  template:
+    metadata:
+      annotations:
+        shardshop.javacraft/configuration: {{ include "shardshop.orderConfiguration" . | sha256sum | quote }}
+        {{- if .Values.restartToken }}
+        shardshop.javacraft/restart: {{ .Values.restartToken | quote }}
+        {{- end }}
+      labels:
+        app.kubernetes.io/name: shardshop-order
+        app.kubernetes.io/part-of: shardshop
+    spec:
+      serviceAccountName: shardshop-order
+      enableServiceLinks: false
+      {{- include "shardshop.podSecurity" . | nindent 6 }}
+      containers:
+        - name: order
+          image: {{ $order }}
+          env:
+            - name: SHARDSHOP_ID_REGISTRY_UID
+              valueFrom:
+                configMapKeyRef:
+                  name: shardshop-generator-identity
+                  key: registryUid
+            - name: ORDER_APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: order-app
+                  key: password
+            - name: ORDERING_CDC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ordering-cdc
+                  key: password
+            - name: RABBITMQ_ORDER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shardshop-rabbitmq
+                  key: order-password
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 2
+          resources:
+            {{- toYaml .Values.order.resources | nindent 12 }}
+          {{- include "shardshop.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - name: routing
+              mountPath: /etc/shardshop/routing
+              readOnly: true
+            - name: order-ca
+              mountPath: /etc/shardshop/order
+              readOnly: true
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: routing
+          configMap:
+            name: shardshop-routing
+            items:
+              - key: application.properties
+                path: application.properties
+        - name: order-ca
+          projected:
+            sources:
+              {{- range .Values.shards }}
+              - secret:
+                  name: {{ .name }}-ca
+                  items:
+                    - key: ca.crt
+                      path: {{ .name }}/ca.crt
+              {{- end }}
+        - name: config
+          configMap:
+            name: shardshop-order-config
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shardshop-ledger
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/name: shardshop-ledger
+    app.kubernetes.io/part-of: shardshop
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: shardshop-ledger
+  template:
+    metadata:
+      annotations:
+        shardshop.javacraft/configuration: {{ include "shardshop.ledgerConfiguration" . | sha256sum | quote }}
+        {{- if .Values.restartToken }}
+        shardshop.javacraft/restart: {{ .Values.restartToken | quote }}
+        {{- end }}
+      labels:
+        app.kubernetes.io/name: shardshop-ledger
+        app.kubernetes.io/part-of: shardshop
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- include "shardshop.podSecurity" . | nindent 6 }}
+      containers:
+        - name: ledger
+          image: {{ $ledger }}
+          env:
+            - name: LEDGER_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ledger-app
+                  key: password
+            - name: RABBITMQ_LEDGER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shardshop-rabbitmq
+                  key: ledger-password
+          resources:
+            {{- toYaml .Values.ledgerApplication.resources | nindent 12 }}
+          {{- include "shardshop.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - name: ledger-ca
+              mountPath: /etc/shardshop/ledger
+              readOnly: true
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # The CA Secret also contains ca.key; expose only its public certificate.
+        - name: ledger-ca
+          secret:
+            secretName: ledger-db-ca
+            items:
+              - key: ca.crt
+                path: ca.crt
+        - name: config
+          configMap:
+            name: shardshop-ledger-config
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shardshop-order-producer
+  namespace: {{ .Release.Namespace | quote }}
+  {{- if eq .Values.render "application-release" }}
+  annotations:
+    shardshop.javacraft/seeder-job: {{ include "shardshop.seederJobName" . | quote }}
+  {{- end }}
+  labels:
+    app.kubernetes.io/name: shardshop-order-producer
+    app.kubernetes.io/part-of: shardshop
+spec:
+  # The producer verifies the complete catalog through product before creating buyers/orders.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: shardshop-order-producer
+  template:
+    metadata:
+      {{- if .Values.restartToken }}
+      annotations:
+        shardshop.javacraft/restart: {{ .Values.restartToken | quote }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: shardshop-order-producer
+        app.kubernetes.io/part-of: shardshop
+    spec:
+      {{- include "shardshop.workloadPod" . | nindent 6 }}
+      containers:
+        - name: producer
+          image: {{ $producer }}
+          env:
+            - name: SHARDSHOP_PRODUCER_PRODUCT_URL
+              value: {{ printf "http://shardshop-product.%s.svc:8080" .Release.Namespace | quote }}
+            - name: SHARDSHOP_PRODUCER_ORDER_URL
+              value: {{ printf "http://shardshop-order.%s.svc:8080" .Release.Namespace | quote }}
+            - name: SHARDSHOP_PRODUCER_RUN_NAME
+              value: {{ $runName | quote }}
+            - name: SHARDSHOP_PRODUCER_CATALOG_VERSION
+              value: {{ .Values.datasetVersion | quote }}
+            - name: SHARDSHOP_PRODUCER_BUYER_VERSION
+              value: buyers-v1
+            {{- range $name, $value := .Values.orderProducer.configuration }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.orderProducer.resources | nindent 12 }}
+          {{- include "shardshop.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+{{- end }}

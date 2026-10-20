@@ -71,14 +71,14 @@ public final class KindDatabaseDrill {
 
                 fence(shard, primary, List.of(standbys.getFirst()), fencing);
                 notReady(standbys.getFirst());
-                topology.awaitSql(primary, "SELECT count(*) FROM pg_stat_replication WHERE state='streaming'", "1");
+                topology.awaitSql(primary, "SELECT count(*)" + KindTopology.STANDBY_SENDERS_SQL + " AND state='streaming'", "1");
                 equal(topology.sql(primary, "UPDATE " + probe + ".rows SET phase='one-standby' WHERE id=1 RETURNING phase"),
                         "one-standby", "Commit with one standby fenced");
                 topology.awaitSql(standbys.getLast(), phase(probe), "one-standby");
 
                 fence(shard, primary, standbys, fencing);
                 notReady(standbys.getLast());
-                topology.awaitSql(primary, "SELECT count(*) FROM pg_stat_replication", "0");
+                topology.awaitSql(primary, "SELECT count(*)" + KindTopology.STANDBY_SENDERS_SQL, "0");
                 Writer pending = startWriter(primary, probe);
                 writer.set(pending);
                 topology.awaitSql(primary, "SELECT count(*) FROM pg_stat_activity WHERE application_name='" + probe

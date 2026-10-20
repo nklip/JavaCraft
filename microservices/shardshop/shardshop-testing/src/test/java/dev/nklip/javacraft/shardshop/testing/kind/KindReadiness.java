@@ -148,7 +148,7 @@ public final class KindReadiness {
             JsonNode cluster = KindLab.parse(current.stdout());
             String primary = cluster.path("status").path("currentPrimary").asText();
             if (primary.isEmpty()) throw new IOException("Streaming did not converge for " + shard + ": primary unavailable");
-            var result = sql(primary, "SELECT count(*) FROM pg_stat_replication; SELECT application_name FROM pg_stat_replication WHERE state='streaming' AND sync_state='quorum' ORDER BY application_name");
+            var result = sql(primary, KindTopology.STREAMING_QUORUM_SQL);
             if (result.exitCode() != 0) throw new IOException("Streaming did not converge for " + shard + ": replication unavailable");
             JsonNode podList = KindLab.parse(pods.stdout());
             JsonNode inventory = lab.inventory();
@@ -161,7 +161,7 @@ public final class KindReadiness {
                 List<String> actual = result.stdout().strip().lines().toList();
                 // The query returns only the connection count and application names, never SQL data or credentials.
                 throw new IOException("Streaming did not converge for " + shard + ": " + primary + " has "
-                        + (actual.isEmpty() ? "unknown" : actual.getFirst()) + " replication connections; streaming quorum standbys: "
+                        + (actual.isEmpty() ? "unknown" : actual.getFirst()) + " standby replication connections; streaming quorum standbys: "
                         + (actual.size() < 2 ? "none" : String.join(", ", actual.subList(1, actual.size())))
                         + "; expected " + (instances - 1) + " standbys: " + String.join(", ", expected));
             }

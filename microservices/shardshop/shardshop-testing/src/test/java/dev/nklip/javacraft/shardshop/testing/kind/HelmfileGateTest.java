@@ -56,6 +56,7 @@ class HelmfileGateTest {
                       tags="${argument#-Dshardshop.kind.tags=}"
                       printf 'verify %s\n' "$tags" >> "$FIXTURE_LOG"
                       case "$tags" in *kind-release*) exit "$FAIL_GATE";; esac
+                      case "$tags" in *kind-drills-idle*) exit "$FAIL_DRILL_GATE";; esac
                       ;;
                   esac
                 done
@@ -78,8 +79,18 @@ class HelmfileGateTest {
                 "sync-start shardshop-infrastructure", "sync-complete shardshop-infrastructure",
                 "verify kind-allocator | kind-infrastructure | kind-migration-reservation | kind-migrations-idle",
                 "sync-start shardshop-migrations", "sync-complete shardshop-migrations",
-                "verify kind-publications | kind-migration-reservation",
+                "verify kind-publications | kind-migration-reservation | kind-drills-idle",
                 "sync-start shardshop-application", "sync-complete shardshop-application", FINAL_GATE), result.events());
+    }
+
+    @Test
+    void retainedDrillLockStopsTheApplicationReleaseBeforeHelmChangesIt() throws Exception {
+        Sync result = sync("", 0, 1);
+        assertNotEquals(0, result.exit(), result.output());
+        assertTrue(result.events().contains("sync-complete shardshop-migrations"));
+        assertEquals("verify kind-publications | kind-migration-reservation | kind-drills-idle", result.events().getLast());
+        assertFalse(result.events().contains("sync-start shardshop-application"), result.output());
+        assertFalse(result.events().contains(FINAL_GATE), result.output());
     }
 
     @Test
@@ -110,6 +121,10 @@ class HelmfileGateTest {
     }
 
     private Sync sync(String failedRelease, int failedGate) throws Exception {
+        return sync(failedRelease, failedGate, 0);
+    }
+
+    private Sync sync(String failedRelease, int failedGate, int failedDrillGate) throws Exception {
         Path output = temporary.resolve("output.log");
         Path events = temporary.resolve("events.log");
         ProcessBuilder builder = new ProcessBuilder(helmfile().toString(), "--file",
@@ -119,7 +134,8 @@ class HelmfileGateTest {
                 "PATH", temporary.resolve("bin") + ":/usr/bin:/bin",
                 "SHARDSHOP_ROOT", temporary.toString(), "SHARDSHOP_SNAPSHOT", temporary.toString(),
                 "SHARDSHOP_FRESH", "false", "FIXTURE_LOG", events.toString(),
-                "FAIL_RELEASE", failedRelease, "FAIL_GATE", Integer.toString(failedGate)));
+                "FAIL_RELEASE", failedRelease, "FAIL_GATE", Integer.toString(failedGate),
+                "FAIL_DRILL_GATE", Integer.toString(failedDrillGate)));
         Process process = builder.start();
         process.getOutputStream().close();
         try {

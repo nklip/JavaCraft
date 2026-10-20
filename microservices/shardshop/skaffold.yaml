@@ -41,3 +41,24 @@ build:
         buildArgs:
           SOURCE_DATE_EPOCH: "0"
         cliFlags: [--provenance=false, --sbom=false]
+    - image: docker.io/library/shardshop-order
+      context: shardshop-order/target/quarkus-app
+      docker:
+        dockerfile: ../../../infra/images/application/Dockerfile
+        buildArgs:
+          SOURCE_DATE_EPOCH: "0"
+        cliFlags: [--provenance=false, --sbom=false]
+    - image: docker.io/library/shardshop-ledger
+      context: shardshop-ledger/target/quarkus-app
+      docker:
+        dockerfile: ../../../infra/images/application/Dockerfile
+        buildArgs:
+          SOURCE_DATE_EPOCH: "0"
+        cliFlags: [--provenance=false, --sbom=false]
+    - image: docker.io/library/shardshop-order-producer
+      context: shardshop-workload/shardshop-order-producer/target/quarkus-app
+      docker:
+        dockerfile: ../../../../infra/images/application/Dockerfile
+        buildArgs:
+          SOURCE_DATE_EPOCH: "0"
+        cliFlags: [--provenance=false, --sbom=false]

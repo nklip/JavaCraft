@@ -21,6 +21,13 @@ import java.util.regex.Pattern;
 /** Deployment observations only: CNPG remains responsible for reconciliation. */
 public final class KindTopology {
     static final Duration CONVERGENCE = Duration.ofSeconds(180);
+    // Embedded CDC adds logical WAL senders. Exclude only logical-slot-backed senders,
+    // so exact standby counts still detect unexpected physical or unslotted connections.
+    static final String STANDBY_SENDERS_SQL = " FROM pg_stat_replication r WHERE NOT EXISTS (SELECT 1 FROM pg_replication_slots s "
+            + "WHERE s.slot_type='logical' AND s.active_pid=r.pid)";
+    static final String STREAMING_QUORUM_SQL = "SELECT count(*)" + STANDBY_SENDERS_SQL
+            + "; SELECT application_name" + STANDBY_SENDERS_SQL
+            + " AND state='streaming' AND sync_state='quorum' ORDER BY application_name";
     private static final List<String> GOLDEN_SHARDS = List.of("shard-a", "shard-b", "shard-c");
     private static final Pattern IDENTIFIER = Pattern.compile("[a-z][a-z0-9-]*");
     private final KindLab lab;
@@ -211,8 +218,7 @@ public final class KindTopology {
     }
 
     void streaming(String primary, List<String> standbys) throws IOException, InterruptedException {
-        awaitSql(primary, "SELECT count(*) FROM pg_stat_replication; SELECT application_name FROM pg_stat_replication "
-                + "WHERE state='streaming' AND sync_state='quorum' ORDER BY application_name", "2\n" + String.join("\n", standbys));
+        awaitSql(primary, STREAMING_QUORUM_SQL, "2\n" + String.join("\n", standbys));
     }
 
     void endpoints(String service, List<String> expected) throws IOException, InterruptedException {

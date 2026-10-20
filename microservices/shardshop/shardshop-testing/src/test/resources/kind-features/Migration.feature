@@ -1,5 +1,5 @@
-Feature: Kind migration safety observations
-  Helm runs and waits for migration Jobs; these gates protect topology and routing publication.
+Feature: Kind migration and release safety observations
+  Helm runs and waits for migration Jobs; these gates protect topology, routing publication and drill recovery.
 
   @kind-migration-reservation
   Scenario: SQL uses the retained immutable topology reservation
@@ -12,3 +12,7 @@ Feature: Kind migration safety observations
   @kind-publications
   Scenario: Current CNPG publications permit routing publication
     Then every inventory publication has applied its current generation
+
+  @kind-drills-idle
+  Scenario: An application release cannot overlap a drill or its unrecovered changes
+    Then no explicit drill holds or retains the shared drill lock

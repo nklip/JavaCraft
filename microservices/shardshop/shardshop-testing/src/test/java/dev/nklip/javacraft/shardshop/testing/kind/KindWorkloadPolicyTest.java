@@ -51,6 +51,21 @@ final class KindWorkloadPolicyTest {
     }
 
     @Test
+    void producerRunNameRejectsEveryDollarFormThatSmallRyeConfigRewrites() {
+        assertDoesNotThrow(() -> KindDeployment.httpOnly(producer("kind-saga-v1")));
+        for (String runName : new String[]{"kind-${x}", "kind-${x:y}", "kind-$${x}", "kind-$$x", "kind-\\$x"}) {
+            assertThrows(IOException.class, () -> KindDeployment.httpOnly(producer(runName)), runName);
+        }
+    }
+
+    private static ObjectNode producer(String runName) {
+        ObjectNode workload = spec();
+        ((ObjectNode) workload.path("containers").get(0).path("env").get(0))
+                .put("name", "SHARDSHOP_PRODUCER_RUN_NAME").put("value", runName);
+        return workload;
+    }
+
+    @Test
     void rejectsCommandAndArgumentConfigurationOverridesInEveryContainerGroup() {
         for (String group : new String[]{"containers", "initContainers", "ephemeralContainers"}) {
             for (String field : new String[]{"command", "args"}) {

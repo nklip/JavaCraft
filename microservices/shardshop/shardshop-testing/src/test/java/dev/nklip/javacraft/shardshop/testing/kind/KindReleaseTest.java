@@ -6,6 +6,10 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -22,27 +26,34 @@ class KindReleaseTest {
         void verify() throws IOException { KindRelease.verifyDeployment(desired, live, List.of(replicaSet), pods); }
     }
 
-    private static Deployment deployment() {
+    private static Deployment deployment() { return deployment("product", 2); }
+
+    private static Deployment deployment(String application, int count) {
         ObjectNode desired = json("""
                 {"kind":"Deployment","metadata":{"name":"shardshop-product"},"spec":{"replicas":2,
                 "selector":{"matchLabels":{"app.kubernetes.io/name":"shardshop-product"}},
                 "template":{"metadata":{"labels":{"app.kubernetes.io/name":"shardshop-product"},
-                "annotations":{"shardshop.javacraft/configuration":"desired-config"}},
+                "annotations":{"shardshop.javacraft/configuration":"desired-config","shardshop.javacraft/restart":"restart-current"}},
                 "spec":{"containers":[{"name":"product","image":"IMAGE",
                 "env":[{"name":"SETTING","value":"desired"}],"resources":{"limits":{"cpu":"2","memory":"1024Mi"}},
                 "volumeMounts":[{"name":"config","mountPath":"/app/config","readOnly":true}]}],
                 "volumes":[{"name":"config","configMap":{"name":"shardshop-product-config"}}]}}}}
-                """.replace("IMAGE", IMAGE));
+                """.replace("IMAGE", IMAGE).replace("shardshop-product", "shardshop-" + application));
+        object(desired.path("spec")).put("replicas", count);
+        object(desired.path("spec").path("template").path("spec").path("containers").get(0))
+                .put("name", application).put("image", IMAGE.replace("shardshop-product", "shardshop-" + application));
         ObjectNode live = desired.deepCopy();
         object(live.path("metadata")).put("uid", "deployment-uid").put("generation", 3)
                 .putObject("annotations").put("deployment.kubernetes.io/revision", "2");
-        live.putObject("status").put("observedGeneration", 3).put("replicas", 2).put("updatedReplicas", 2)
-                .put("readyReplicas", 2).put("availableReplicas", 2);
+        live.putObject("status").put("observedGeneration", 3).put("replicas", count).put("updatedReplicas", count)
+                .put("readyReplicas", count).put("availableReplicas", count);
         ObjectNode rs = json("{\"metadata\":{\"name\":\"product-rs\",\"uid\":\"rs-uid\",\"annotations\":{\"deployment.kubernetes.io/revision\":\"2\"}},\"spec\":{}}");
         object(rs.path("spec")).set("template", desired.path("spec").path("template").deepCopy());
         owner(rs, live, "Deployment");
-        return new Deployment(desired, live, rs, List.of(pod(desired, rs, "product-1", "10.0.0.1"),
-                pod(desired, rs, "product-2", "10.0.0.2")));
+        List<JsonNode> pods = new ArrayList<>();
+        for (int number = 1; number <= count; number++)
+            pods.add(pod(desired, rs, application + "-" + number, "10.0.0." + number));
+        return new Deployment(desired, live, rs, List.copyOf(pods));
     }
 
     private static ObjectNode pod(JsonNode desired, JsonNode owner, String name, String ip) {
@@ -51,7 +62,9 @@ class KindReleaseTest {
         owner(pod, owner, "ReplicaSet");
         ObjectNode status = pod.putObject("status").put("phase", "Running").put("podIP", ip);
         status.putArray("conditions").addObject().put("type", "Ready").put("status", "True");
-        status.putArray("containerStatuses").addObject().put("name", "product").put("imageID", IMAGE);
+        JsonNode container = desired.path("spec").path("template").path("spec").path("containers").get(0);
+        status.putArray("containerStatuses").addObject().put("name", container.path("name").asText())
+                .put("imageID", container.path("image").asText());
         return pod;
     }
 
@@ -63,15 +76,24 @@ class KindReleaseTest {
     @Test
     void qualifiedImagesAreRequiredForEveryApplication() throws IOException {
         ObjectNode images = json("{\"images\":{}}");
-        for (String name : List.of("product", "product-reader", "product-seeder")) object(images.path("images")).put(name, IMAGE);
+        images.put("restartToken", "restart-" + "c".repeat(24));
+        for (String name : List.of("product", "product-reader", "product-seeder", "order", "ledger", "order-producer"))
+            object(images.path("images")).put(name, IMAGE.replace("shardshop-product", "shardshop-" + name));
         KindRelease.qualifiedImages(images);
-        for (String name : List.of("product", "product-reader", "product-seeder")) {
+        for (String name : List.of("product", "product-reader", "product-seeder", "order", "ledger", "order-producer")) {
             ObjectNode invalid = images.deepCopy();
             object(invalid.path("images")).remove(name);
             assertThrows(IOException.class, () -> KindRelease.qualifiedImages(invalid));
             object(invalid.path("images")).put(name, "shardshop-product:latest");
             assertThrows(IOException.class, () -> KindRelease.qualifiedImages(invalid));
         }
+        for (String token : List.of("", "restart-old", "restart-" + "c".repeat(23))) {
+            ObjectNode invalid = images.deepCopy();
+            invalid.put("restartToken", token);
+            assertThrows(IOException.class, () -> KindRelease.qualifiedImages(invalid));
+        }
+        images.remove("restartToken");
+        assertThrows(IOException.class, () -> KindRelease.qualifiedImages(images));
     }
 
     @Test
@@ -295,11 +317,13 @@ class KindReleaseTest {
         assertThrows(IOException.class, () -> KindRelease.currentSeeder(reader, job, fixture.desired(), 5, List.of(pod)));
     }
 
-    private static ObjectNode service() {
+    private static ObjectNode service() { return service("product"); }
+
+    private static ObjectNode service(String application) {
         return json("""
-                {"spec":{"selector":{"app.kubernetes.io/name":"shardshop-product"},"sessionAffinity":"None",
+                {"kind":"Service","metadata":{"name":"shardshop-product"},"spec":{"selector":{"app.kubernetes.io/name":"shardshop-product"},"sessionAffinity":"None",
                 "clusterIP":"10.96.0.1","ports":[{"name":"http","port":8080,"targetPort":"http","protocol":"TCP"}]}}
-                """);
+                """.replace("shardshop-product", "shardshop-" + application));
     }
 
     private static ObjectNode slice() {
@@ -336,4 +360,118 @@ class KindReleaseTest {
         object(publishUnready.path("spec")).put("publishNotReadyAddresses", true);
         assertThrows(IOException.class, () -> KindRelease.service(service(), publishUnready, List.of(slice()), fixture.pods()));
     }
+
+    private record ReleaseFixture(KindRelease observer, List<JsonNode> desired, Map<String, JsonNode> live) {
+        void verify() throws IOException, InterruptedException { observer.observe(desired, 5); }
+        JsonNode resource(String kind, String name) { return live.get("get " + kind + " " + name + " -o json"); }
+    }
+
+    private static ReleaseFixture release() throws IOException, InterruptedException {
+        Map<String, JsonNode> live = new HashMap<>();
+        List<JsonNode> desired = new ArrayList<>();
+        for (String application : List.of("product", "product-reader", "order", "ledger", "order-producer")) {
+            Deployment deployment = deployment(application, application.equals("product") ? 2 : 1);
+            desired.add(deployment.desired());
+            live.put("get deployment shardshop-" + application + " -o json", deployment.live());
+            live.put("get pods -l app.kubernetes.io/name=shardshop-" + application + " -o json",
+                    json("{\"items\":" + deployment.pods() + "}"));
+            live.put("get replicasets -l app.kubernetes.io/name=shardshop-" + application + " -o json",
+                    json("{\"items\":[" + deployment.replicaSet() + "]}"));
+            if (List.of("product-reader", "order-producer").contains(application)) {
+                object(deployment.live().path("metadata").path("annotations"))
+                        .put("shardshop.javacraft/seeder-job", "shardshop-application-seeder-5");
+            }
+            if (List.of("product", "order", "ledger").contains(application)) {
+                ObjectNode config = json("{\"kind\":\"ConfigMap\",\"metadata\":{},\"data\":{\"application.properties\":\"expected-setting=value\"}}");
+                object(config.path("metadata")).put("name", "shardshop-" + application + "-config");
+                desired.add(config);
+                live.put("get configmap shardshop-" + application + "-config -o json", config.deepCopy());
+            }
+            if (List.of("product", "order").contains(application)) {
+                ObjectNode service = service(application);
+                desired.add(service);
+                live.put("get service shardshop-" + application + " -o json", service.deepCopy());
+                ObjectNode endpoints = slice();
+                var entries = (com.fasterxml.jackson.databind.node.ArrayNode) endpoints.path("endpoints");
+                entries.removeAll();
+                for (JsonNode pod : deployment.pods()) {
+                    ObjectNode endpoint = entries.addObject();
+                    endpoint.putObject("conditions").put("ready", true);
+                    endpoint.putArray("addresses").add(pod.path("status").path("podIP").asText());
+                    endpoint.putObject("targetRef").put("kind", "Pod").put("namespace", "shardshop")
+                            .put("name", KindDeployment.name(pod)).put("uid", pod.path("metadata").path("uid").asText());
+                }
+                live.put("get endpointslices -l kubernetes.io/service-name=shardshop-" + application + " -o json",
+                        json("{\"items\":[" + endpoints + "]}"));
+            }
+        }
+        Deployment seeder = deployment("product-seeder", 1);
+        object(seeder.desired().path("metadata")).put("name", "shardshop-application-seeder-1");
+        seeder.desired().put("kind", "Job");
+        desired.add(seeder.desired());
+        ObjectNode job = seeder.desired().deepCopy();
+        object(job.path("metadata")).put("name", "shardshop-application-seeder-5").put("uid", "current-job");
+        job.putObject("status").putArray("conditions").addObject().put("type", "Complete").put("status", "True");
+        ObjectNode pod = pod(job, job, "seeder-5", "10.0.0.5");
+        owner(pod, job, "Job");
+        object(pod.path("status")).put("phase", "Succeeded");
+        object(pod.path("status").path("containerStatuses").get(0)).putObject("state").putObject("terminated").put("exitCode", 0);
+        live.put("get job shardshop-application-seeder-5 -o json", job);
+        live.put("get pods -l job-name=shardshop-application-seeder-5 -o json", json("{\"items\":[" + pod + "]}"));
+        KindLab lab = mock(KindLab.class);
+        when(lab.kubectl(any(String[].class))).thenAnswer(invocation -> {
+            String command = Arrays.stream(invocation.getArguments()).map(String.class::cast).collect(Collectors.joining(" "));
+            JsonNode response = live.get(command);
+            if (response == null) throw new IOException("Unexpected release observation command");
+            return response.toString();
+        });
+        return new ReleaseFixture(new KindRelease(lab), List.copyOf(desired), live);
+    }
+
+    @Test
+    void releaseRequiresCurrentSagaDeploymentsAndRuntimeDigests() throws Exception {
+        release().verify();
+        for (String application : List.of("order", "ledger", "order-producer")) {
+            ReleaseFixture oldGeneration = release();
+            object(oldGeneration.resource("deployment", "shardshop-" + application).path("status")).put("observedGeneration", 2);
+            assertThrows(IOException.class, oldGeneration::verify, application);
+            ReleaseFixture wrongDigest = release();
+            JsonNode pods = wrongDigest.live().get("get pods -l app.kubernetes.io/name=shardshop-" + application + " -o json");
+            object(pods.path("items").get(0).path("status").path("containerStatuses").get(0)).remove("imageID");
+            assertThrows(IOException.class, wrongDigest::verify, application);
+            ReleaseFixture oldRestart = release();
+            JsonNode deployment = oldRestart.resource("deployment", "shardshop-" + application);
+            object(deployment.path("spec").path("template").path("metadata").path("annotations"))
+                    .put("shardshop.javacraft/restart", "restart-previous");
+            assertThrows(IOException.class, oldRestart::verify, application);
+        }
+    }
+
+    @Test
+    void releaseRejectsStaleServiceConfigurationWithoutExposingIt() throws Exception {
+        for (String application : List.of("product", "order", "ledger")) {
+            ReleaseFixture fixture = release();
+            String name = "shardshop-" + application + "-config";
+            object(fixture.resource("configmap", name).path("data")).put("application.properties", "private-setting");
+            IOException failure = assertThrows(IOException.class, fixture::verify);
+            assertTrue(failure.getMessage().contains(name));
+            assertFalse(failure.getMessage().contains("private-setting"));
+        }
+    }
+
+    @Test
+    void releaseRequiresProducerToIdentifyTheCurrentSeederAndOrderEndpoint() throws Exception {
+        ReleaseFixture oldSeeder = release();
+        object(oldSeeder.resource("deployment", "shardshop-order-producer").path("metadata").path("annotations"))
+                .put("shardshop.javacraft/seeder-job", "shardshop-application-seeder-4");
+        assertThrows(IOException.class, oldSeeder::verify);
+        ReleaseFixture missingOrderEndpoint = release();
+        missingOrderEndpoint.live().put("get endpointslices -l kubernetes.io/service-name=shardshop-order -o json", json("{\"items\":[]}"));
+        assertThrows(IOException.class, missingOrderEndpoint::verify);
+        ReleaseFixture wrongOrderSelector = release();
+        object(wrongOrderSelector.resource("service", "shardshop-order").path("spec").path("selector"))
+                .put("app.kubernetes.io/name", "shardshop-product");
+        assertThrows(IOException.class, wrongOrderSelector::verify);
+    }
+
 }

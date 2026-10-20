@@ -68,10 +68,24 @@ final class KindWorkloadPolicy {
     }
 
     private static void validateSetting(String name, String value) throws IOException {
-        if (name.equals("SHARDSHOP_READER_PRODUCT_URL") || name.equals("SHARDSHOP_SEEDER_PRODUCT_URL")) {
+        if (name.equals("SHARDSHOP_READER_PRODUCT_URL") || name.equals("SHARDSHOP_SEEDER_PRODUCT_URL")
+                || name.equals("SHARDSHOP_PRODUCER_PRODUCT_URL") || name.equals("SHARDSHOP_PRODUCER_ORDER_URL")) {
             validateUrl(value);
         } else if (name.equals("SHARDSHOP_READER_CATALOG_VERSION") || name.equals("SHARDSHOP_SEEDER_CATALOG_VERSION")) {
             require(value.equals("catalog-v1"), "HTTP-only workload has an unsupported catalog version");
+        } else if (name.equals("SHARDSHOP_PRODUCER_CATALOG_VERSION")) {
+            require(value.equals("catalog-v1"), "HTTP-only producer has unsupported catalog version");
+        } else if (name.equals("SHARDSHOP_PRODUCER_BUYER_VERSION")) {
+            require(value.equals("buyers-v1"), "HTTP-only producer has unsupported buyer version");
+        } else if (name.equals("SHARDSHOP_PRODUCER_RUN_NAME")) {
+            // SmallRye Config expands ${...} and rewrites the escapes $$ and \$, thus no form of $ is literal.
+            require(!value.isBlank() && value.length() <= 200 && value.strip().equals(value)
+                            && !value.contains("\r") && !value.contains("\n") && !value.contains("$"),
+                    "HTTP-only producer requires a literal durable run identity");
+        } else if (name.equals("SHARDSHOP_PRODUCER_REJECTED_ORDER_PERCENT") || name.equals("SHARDSHOP_PRODUCER_MAX_ATTEMPTS")) {
+            require(value.matches("[0-9]+"), "HTTP-only producer has a nonnumeric selection/retry setting");
+        } else if (name.matches("SHARDSHOP_PRODUCER_(CONNECT_TIMEOUT|REQUEST_TIMEOUT|ORDER_INTERVAL|POLL_INTERVAL|ORDER_DEADLINE|STARTUP_DEADLINE|RETRY_BACKOFF|MAX_RETRY_BACKOFF)")) {
+            require(durationValue(value), "HTTP-only producer has invalid HTTP duration setting");
         } else if (INTEGER_SETTINGS.contains(name)) {
             require(value.matches("[+-]?[0-9]+"), "HTTP-only workload has a nonnumeric HTTP setting");
         } else if (DURATION_SETTINGS.contains(name)) {

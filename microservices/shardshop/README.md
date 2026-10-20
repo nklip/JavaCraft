@@ -495,7 +495,7 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pinteg
 
 ## Product deployment and seeding gate (step 3.9)
 
-Product, the seeder Job and the reader run on the lab. Build and qualify the current
+Product, order, ledger, the seeder Job, the reader and the order producer run on the lab. Build and qualify the current
 sources, migrate and deploy with one `up.sh` invocation:
 
 ```bash
@@ -506,7 +506,7 @@ bash microservices/shardshop/scripts/up.sh
 `mvn -B -ntp -f microservices/shardshop/pom.xml clean install -DinstallAtEnd=true` build,
 which includes verification and caches the verified artifacts for later kind checks. The commands
 above use repository-relative paths; invoking `up.sh` by its absolute path works
-from any directory. The Maven build is the source for the four freshly built
+from any directory. The Maven build is the source for the seven freshly built
 images; no separate Maven or image-build command is required. Audit builds remain
 optional. The POM sets `project.build.outputTimestamp`, thus the same sources give
 the same packages. Docker then uses its cached image layers again, and an unchanged
@@ -525,11 +525,11 @@ generations, pod ownership and runtime digests, the current successful seeder, a
 ready product EndpointSlices. When kind reports an archive-index runtime digest,
 the observer reads its single platform descriptor through containerd and requires
 the qualified manifest; `kind-deployment` retains the traffic through both
-product pods and the accepted reader load. A failed acceptance hook fails Helmfile
+product pods, the accepted reader load and the deployed saga outcomes. A failed acceptance hook fails Helmfile
 and `up.sh`; Helm may still show the release as deployed. Acceptance failure does
 not roll back the release: correct the cause and rerun startup. The observer never
 repairs resources. Diagnostics are bounded and contain no secrets.
-The reader remains running and disruptive drills remain opt-in. A new
+The reader and order producer remain running and disruptive drills remain opt-in. A new
 `kind-release` run requires `images.json` in the snapshot, including the deployed
 `restartToken` alongside `images`; standalone legacy
 `kind-deployment` runs do not. The four maintained lifecycle entry points are
@@ -551,10 +551,10 @@ directory `/app`, user `10001:10001` and `HOME=/tmp`, and their entrypoint start
 `quarkus-run.jar`. The images contain no kubectl: since step 3.11, product and order
 reserve their generator IDs with Java code in their own JVM.
 
-`up.sh` currently builds and qualifies `flyway`, `product`, `product-seeder` and
-`product-reader`. Step 4.9 adds the order, ledger and order producer images. It:
+`up.sh` builds and qualifies `flyway`, `product`, `product-seeder`, `product-reader`,
+`order`, `ledger` and `order-producer`. It:
 
-1. Uses [`skaffold.yaml`](skaffold.yaml) to build the four ARM64 artifacts from
+1. Uses [`skaffold.yaml`](skaffold.yaml) to build the seven ARM64 artifacts from
    current packaged Maven outputs and the reviewed Dockerfiles. Skaffold owns the
    artifact list, Docker recipes and SHA-256 tag policy. Its local build uses Docker
    BuildKit, disables provenance/SBOM output for reproducible manifests, and writes
@@ -572,7 +572,7 @@ reserve their generator IDs with Java code in their own JVM.
    statement in `infra/images/application/vex/`. Statements identify the named
    image recipes and exact package versions independently of Skaffold's content tags.
    A failed gate prevents loading the image.
-   All four enabled images are built and scanned before any image is loaded into
+   All seven enabled images are built and scanned before any image is loaded into
    kind.
 4. After provisioning, loads each qualified image into the kind nodes, one node at a
    time, and requires the same
@@ -620,21 +620,23 @@ The MicroProfile Fault Tolerance keys
 `.../Retry/delay` and `.../ExponentialBackoff/maxDelay` change these bounds, in
 milliseconds.
 
-`shardshop-application` owns routing, the product ConfigMap, Service and
-Deployment, and the reader Deployment with one replica. Each Helm revision runs a
+`shardshop-application` owns routing, the product/order ConfigMaps and Services,
+the ledger ConfigMap, and all five application Deployments. Each Helm revision runs a
 new `post-install`/`post-upgrade` seeder Job named
-`shardshop-application-seeder-<revision>`. No user run name is required. The Job has
+`shardshop-application-seeder-<revision>`. The seeder needs no user run name; the
+order producer uses the separate durable `orderProducer.runName` setting. The Job has
 `restartPolicy: Never`, `backoffLimit: 3` and `activeDeadlineSeconds: 300`; Helmfile
 uses a bounded 600-second release timeout and Helm waits for the hook result.
 
 An unchanged invocation still validates migrations and seeds idempotently, while
-each startup rolls the product and reader pods. Product also rolls when its image,
+each startup rolls all application Deployment pods. Product also rolls when its image,
 resources or configuration change. Its pod checksum is SHA-256 of the complete
 rendered `application.properties`, using the same named template as the mounted
 file, including static defaults. Reader image, HTTP settings, resources and
 dataset version are direct template inputs. Helm revision numbers stay outside
-both application pod templates; the startup restart token controls the rollout. The reader Deployment's `shardshop.javacraft/seeder-job` annotation names
-the latest seeder Job without replacing the reader pod. Standalone verification
+application pod templates; the startup restart token controls the rollout. The reader
+and order-producer Deployments' `shardshop.javacraft/seeder-job` annotations name
+the latest seeder Job without replacing their pods. Standalone reader verification
 prefers that annotation and retains the old pod run-label fallback for manual
 legacy deployments.
 
@@ -722,7 +724,8 @@ The lab must already be running, migrated and deployed through `up.sh`, with two
 Ready product pods and one running reader. The scenarios
 observe this deployment and preserve reader replicas. They check the deployed
 routing and database topology, workload credential restrictions, the saved IDs and
-rows for all 150 sellers and 300 products, and the reader's resolution digest.
+rows for all 150 `catalog-v1` sellers and 300 products, and the reader's resolution
+digest. Only the saga gate's own seller and two products can also exist.
 Within 120 seconds, the read counters of both Ready product pods must increase;
 a fresh reader report interval must contain only `OK` reads at 180/s or more.
 Use `-Dshardshop.kind.tags=kind-workload` for the workload checks alone.
@@ -807,8 +810,7 @@ history under the [migration rules](#database-schemas-and-migrations-step-23).
 
 Order is now a long-running HTTP/1.1 provider. `--check-startup` validates its
 routing, generator and pool configuration and exits without opening a database
-connection. Step 4.8 implements its producer; Kubernetes deployment remains step
-4.9. Apply the external catalog and ordering migrations before serving requests;
+connection. Step 4.8 implements its producer; step 4.9 deploys both to Kubernetes. Apply the external catalog and ordering migrations before serving requests;
 the application never runs Flyway.
 
 `POST /api/v1/buyers` persists the person profile and region-scoped
@@ -1025,7 +1027,8 @@ do not clear the marker or choose `trust_slot` to bypass recovery.
 
 CDC is enabled by default on normal order starts. `--check-startup` starts no
 workers, but it checks the CDC credentials. Tests can set
-`shardshop.order.cdc.enabled=false` to isolate HTTP or stock behavior. Kind deployment of order and its Secret mounts remains step 4.9.
+`shardshop.order.cdc.enabled=false` to isolate HTTP or stock behavior. The step 4.9 application release gives order
+these passwords as `secretKeyRef` environment variables.
 Crash injection and synchronized-standby failover drills remain steps 5.5 and 6.2.
 Run the relay acceptance against disposable PostgreSQL and RabbitMQ containers:
 
@@ -1175,8 +1178,7 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pinteg
 No migration is needed. The only new dependencies are the optional RabbitMQ client
 of common and the platform-managed JBoss Log Manager and its SLF4J provider in the
 tests of common. This step leaves confirmed outbox rows for the later retention
-worker. Step 4.7 implements order result consumption; application deployment to
-kind remains step 4.9.
+worker. Step 4.7 implements order result consumption; step 4.9 deploys the saga to kind.
 
 ## Order result consumer and seller profit (step 4.7)
 
@@ -1352,12 +1354,77 @@ The packaged `OrderProducer.feature` uses real product/order APIs and PostgreSQL
 It hides committed buyer, allocation and PUT responses behind a test proxy, then
 checks identical retries, restart recovery, all buyer regions, USD/EUR selection
 and terminal polling. The test controls terminal database transitions to isolate
-the producer's HTTP behavior; the complete deployed saga remains step 4.9. Run:
+the producer's HTTP behavior; the step 4.9 kind suites verify the complete deployed saga. Run:
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
   '-Dcucumber.filter.tags=@order-producer'
 ```
+
+## Saga deployment and end-to-end verification (step 4.9)
+
+The application Helm release deploys two product pods and one pod each for order,
+ledger, the reader and the order producer, plus its seeder Job. Order uses
+`Recreate` so its three embedded CDC readers never overlap during a rollout.
+Its offsets and reader history remain in the shard databases; no pod-local volume
+holds CDC progress. Ledger consumes commands and publishes saved results against
+its separate database. Its command-mode JVM needs no HTTP Service.
+
+Order mounts the routing snapshot and the shard CA certificates. It gets the
+`order-app` and `ordering-cdc` passwords and its RabbitMQ credential from
+`secretKeyRef` environment variables, not from mounted files. It uses the existing
+`shardshop-order` service account to reserve a generator ID. Ledger mounts only its
+database CA certificate and gets its database and RabbitMQ passwords from
+`secretKeyRef` environment variables. Both load generated configuration from
+`/app/config/application.properties`. CA projections expose `ca.crt`, never
+`ca.key`. The producer receives only HTTP settings and has no service-account
+token, database credential or persistent volume.
+
+The kind values set `orderProducer.runName: kind-saga-v1`. Keep that name and
+selection settings stable when resuming this retained run. Use a new run name only
+for an intentional new workload. The values schema rejects `$` in the run name,
+because SmallRye Config expands `${...}` and removes the escapes `$$` and `\$`. The
+default producer rejection share is 10 percent. `ledgerApplication.configuration`
+sets `shardshop.ledger.allowed-currencies: USD`. The schema accepts only lists that
+contain USD and not EUR, because the saga gate and the saga drill need a confirmed
+USD order and a rejected EUR order. The normal startup command builds all seven
+images, migrates all streams, deploys the six applications and runs the release
+and saga acceptance gates:
+
+```bash
+bash microservices/shardshop/scripts/up.sh
+```
+
+The producer owns catalog gating and buyer creation in Java. Helm deploys it with
+the reader and seeder; startup does not implement its HTTP loops. The default
+`kind-deployment` selection includes `kind-saga`. This gate does not examine
+producer orders, thus the producer rejection share, stock use and restart replay
+do not change its result. Through local port forwards to the product and order
+Services, it creates its own US seller with one USD and one EUR product and its own
+EU buyer. Thus the order shard is not the product shard. Each product starts with
+1,000,000 units. The fixed `kind-saga-gate.*` creation keys make later runs recover
+the same IDs. Each run then submits one USD order, which must become `CONFIRMED`,
+and one EUR order, which the ledger must reject with `UNSUPPORTED_CURRENCY`. The gate
+checks the ledger decisions, the stock reservations and their release, the seller
+profit, the HTTP status and the stock and profit invariants. Each run uses one unit
+of the gate's USD stock and keeps its two orders as evidence.
+
+Prepare the [verification snapshot](#kind-verification-snapshot-step-315) and run
+the explicit saga drill for duplicate delivery, permanent rejection replay after
+transport cleanup and a temporary EUR allowlist, two orders for the same stock,
+and CDC resumption after moving order to another worker:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
+    -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-saga-drill
+```
+
+The drill pauses the producer while exercising its own orders and restores the
+temporary deployment settings afterward. The lab runs one order replica with one
+stock worker thread, thus the two orders reserve stock in sequence, not in a race.
+The step 4.2 PostgreSQL scenarios cover competing stock coordinators. The drill keeps business and allocator history;
+new order JVM starts permanently consume generator IDs. Do not run the kind suite
+and the disposable Testcontainers suite against shared build outputs concurrently.
 
 ## RabbitMQ topology and delivery policies (step 4.3)
 
@@ -2049,12 +2116,12 @@ an existing cluster as fresh to bypass this guard.
 missing. It resumes stopped nodes, builds current sources, validates/scans images,
 checks the prepared infrastructure, migrates and deploys the applications. It never
 creates namespaces or credentials or syncs infrastructure releases.
-Every invocation replaces the product and reader pods, even when code and
-configuration are unchanged. Helm applies a fresh shared restart annotation to
-both Deployment templates; its seeder hook and final acceptance gate verify the
+Every invocation replaces product, order, ledger, reader and order producer pods,
+even when code and configuration are unchanged. Helm applies a fresh shared restart
+annotation to all five Deployment templates; its seeder hook and final acceptance gate verify the
 new workload.
-Each restarted product JVM consumes a fresh generator ID; the retained lab has
-1,023 non-reusable slots, so an ordinary two-replica rollout uses at least two.
+Each restarted product or order JVM consumes a fresh generator ID; the retained
+lab has 1,023 non-reusable slots, so an ordinary rollout uses at least three.
 Changed code is rebuilt and deployed through this same command.
 
 Both creation and startup snapshot the shared chart, database migration files, inventory, environment
@@ -2272,10 +2339,12 @@ The required snapshot files are `chart/`, `environment.yaml`, `inventory.yaml`,
 needed for `kind-dns`. The inventory is read from the snapshot. Keep `-Dshardshop.kind.snapshot="$snapshot"` on every standalone
 invocation; the suite does not create or reconcile the lab.
 
-The `kind` profile defaults to `kind-deployment`, which combines `kind-topology`
-and `kind-workload`. It observes an already-migrated and deployed lab with two
-Ready product pods and one running reader. With the snapshot above, run the default
-suite separately from the Testcontainers `integration` profile:
+The `kind` profile defaults to `kind-deployment`, which combines `kind-topology`,
+`kind-workload` and `kind-saga`. It needs an already-migrated and deployed lab
+with all six running application pods. The saga scenario creates two scoped orders
+for the gate's own buyer; the other scenarios only observe. With the snapshot
+above, run the default suite separately from the Testcontainers `integration`
+profile:
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
@@ -2283,7 +2352,7 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind 
 ```
 
 Disruptive scenarios require explicit selection; `kind-drill` combines
-`kind-database-drill` and `kind-workload-drill`:
+`kind-database-drill`, `kind-workload-drill` and `kind-saga-drill`:
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
@@ -2298,23 +2367,24 @@ snapshot's `dns-probes.yaml`, with cleanup on failure. Each probe has a 120-seco
 DNS execution limit and a 17-minute overall Pod deadline to accommodate cold image startup.
 Every node must resolve cluster DNS successfully before provisioning continues.
 `kind-admission-bootstrap` is for fresh initialization only and requires
-`-Dshardshop.kind.fresh=true`; do not use it on a retained lab. Migration safety
-checks are also selectable: `kind-migration-reservation`, `kind-migrations-idle`
-and `kind-publications`. Helmfile runs them before migrations or routing/application
-publication. The idle guard rejects active, pending or terminating Flyway Jobs,
+`-Dshardshop.kind.fresh=true`; do not use it on a retained lab. Migration and
+release safety checks are also selectable: `kind-migration-reservation`,
+`kind-migrations-idle`, `kind-publications` and `kind-drills-idle`. Helmfile runs
+them before migrations or routing/application publication. `kind-drills-idle`
+stops the application release while the `shardshop-kind-drill` lock exists. The idle guard rejects active, pending or terminating Flyway Jobs,
 including legacy Jobs. Publication observation waits up to 180 seconds for every
 inventory Publication to be applied at its current generation. The basic standalone
 snapshot above is sufficient for these observations and `kind-deployment`. Normal builds and `-Pintegration` do not access the kind lab. Cucumber reports are under
 `shardshop-testing/target/kind-reports/`.
 
-The workload credential gate accepts only the documented reader/seeder HTTP
+The workload credential gate accepts only the documented reader/seeder/producer HTTP
 settings with literal typed values. It rejects unknown environment variables,
 JVM configuration overrides, command/argument overrides and executable hooks or
 probes. Product URLs must contain no user information, query or fragment.
 Reader images built before periodic digest reporting need a rebuild and deployment
 for verification to survive startup-log rotation.
 
-Both drill families share the `shardshop-kind-drill` ConfigMap lock. Recovery
+All drill families share the `shardshop-kind-drill` ConfigMap lock. Recovery
 registers before each temporary mutation and runs in reverse order on failure or
 normal completion, with a JVM termination hook for ordinary shutdown. Fence updates
 atomically test the observed Cluster UID and resource version; concurrent changes
@@ -2323,7 +2393,12 @@ fails, the lock stays and the report identifies the remaining temporary changes.
 After an unclean process termination, ensure no drill is running, inspect the
 report and lock, restore fenced instances and wait for database/product readiness,
 then remove only the drill's temporary Jobs, SQL objects and slots before releasing
-the lock. Never restore an older generator registry or lower `highWaterMark`.
+the lock. After a saga drill, also restore one replica each of the order and order
+producer Deployments. Remove the drill's `SHARDSHOP_LEDGER_ALLOWED_CURRENCIES` variable
+from the ledger Deployment and the drill's `nodeSelector` from the order Deployment.
+Helm does not remove these out-of-band additions, thus `up.sh` stops at
+`kind-drills-idle` until you release the lock. Never restore an older generator
+registry or lower `highWaterMark`.
 
 After the last check, remove the local snapshot:
 

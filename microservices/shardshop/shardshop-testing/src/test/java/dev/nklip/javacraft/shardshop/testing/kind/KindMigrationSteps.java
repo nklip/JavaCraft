@@ -15,4 +15,7 @@ public final class KindMigrationSteps {
 
     @Then("no schema migration Job is active pending or terminating")
     public void migrationsIdle() throws IOException, InterruptedException { migration.idle(); }
+
+    @Then("no explicit drill holds or retains the shared drill lock")
+    public void drillsIdle() throws IOException, InterruptedException { KindDrillGuard.requireIdle(new KindLab()); }
 }

@@ -55,7 +55,8 @@ reconciled in place; failures stop with recovery guidance and retained data.
 The step 3.15 `kind` profile defaults to `kind-deployment` through
 `shardshop.kind.tags`. It observes deployed routing, independent replication and
 persistent-volume identity (`kind-topology`) and the existing product workload
-(`kind-workload`): credential restrictions, the saved 150 seller/300 product IDs,
+(`kind-workload`): credential restrictions, the saved 150 seller/300 product IDs
+of `catalog-v1` (only the saga gate's own seller and two products can also exist),
 matching seeder/reader digests, traffic through both Ready product pods within
 120 seconds, and a fresh all-OK reader interval at 180 requests/s or more. These
 checks require an already-migrated, deployed lab with two Ready product pods and
@@ -64,25 +65,27 @@ the resolved catalog digest so bounded recent logs retain verification evidence
 after startup-log rotation. Workload settings are restricted to documented literal
 HTTP configuration; generic JVM and command overrides are rejected.
 
-Explicit `kind-drill` selection runs `kind-database-drill` and
-`kind-workload-drill`. Database drills exercise standby replacement, quorum
+Explicit `kind-drill` selection runs `kind-database-drill`, `kind-workload-drill`
+and `kind-saga-drill`. Database drills exercise standby replacement, quorum
 availability/blocking and WAL retention on the first inventory shard, or
 `shardshop.kind.drillShard`. Workload drills run repeated temporary seeder Jobs,
 verify identical saved IDs, and replace one product pod. Its fresh generator ID
 must exceed the pre-replacement registry `highWaterMark`; traffic and an all-OK
-reader interval are checked again after recovery. Both drill families share the
+reader interval are checked again after recovery. All drill families share the
 `shardshop-kind-drill` ConfigMap lock, register recovery before mutation, and
 restore temporary changes in reverse order on completion, failure or ordinary
 JVM termination. Failed recovery retains the lock and reports required operator
-action. Fence mutations atomically test Cluster identity and resource version to
+action. While the lock exists, the `kind-drills-idle` gate stops the application
+release before Helm changes it. Fence mutations atomically test Cluster identity and resource version to
 preserve concurrent operator changes. Allocator state is never rewound.
 
 Every standalone suite consumes an explicit `shardshop.kind.snapshot` containing
 `chart/`, `environment.yaml`, `inventory.yaml`, `inventory.json`, `kind.json` and
 `infrastructure.yaml`; DNS gates additionally use `dns-probes.yaml`. Existing
 infrastructure safety gates remain individually selectable. Tests observe native
-reconciliation or make only the explicitly selected temporary drill changes;
-production migration and deployment run through `up.sh`. The four maintained
+reconciliation, create the scoped orders of the saga gate, or make only the
+explicitly selected temporary drill changes; production migration and deployment
+run through `up.sh`. The four maintained
 entry points are `cluster-create.sh`, `up.sh`, `down.sh` and `cluster-destroy.sh`;
 manifest previews use native `helm template` with the shared chart and values.
 `cluster-create.sh` first caches repository and microservices parent POM metadata
@@ -134,14 +137,14 @@ After readiness/image delivery, Helmfile syncs `shardshop-migrations` and
 `shardshop-application` in dependency order. Each revision runs ordered Flyway
 hooks and idempotent seeding. Flyway's actual history is authoritative; no completed
 Job cache suppresses validation. Every `up.sh` invocation changes a shared restart
-annotation on the product/reader templates through Helm, triggering replacement
+annotation on all five application Deployment templates through Helm, triggering replacement
 followed by the seeding and acceptance gates even for unchanged code. Each new
-product JVM consumes a fresh, non-reusable generator slot; a normal two-replica
-rollout uses at least two slots.
+product or order JVM consumes a fresh, non-reusable generator slot; a normal
+rollout of two product replicas and one order replica uses at least three slots.
 Product's pod checksum is SHA-256 of
 the full rendered `application.properties`, sharing the mounted file's named
 template and static defaults. Image/resource/workload settings are direct template
-inputs. Seeder revision identity is recorded on reader Deployment metadata,
+inputs. Seeder revision identity is recorded on reader and order-producer Deployment metadata,
 outside its pod template. Successful seeder Jobs retain 24-hour verification
 logs; after TTL cleanup, standalone workload checks require a fresh `up.sh` run.
 
@@ -154,16 +157,19 @@ state are excluded from transfer. ShardShop releases use Helm's three-way merge
 for previously apply-managed resources; `cnpg` retains server-side updates.
 Helm owns hook completion and bounded rollout
 waits; Maven retains topology/allocator/readiness and current-generation Publication
-checks. The application release's native Helmfile `postsync` hook invokes the final
+checks. The application release's `presync` hook also runs `kind-drills-idle`: a
+retained drill lock stops the release. Helm's client-side three-way merge keeps an
+environment variable or a node selector that a drill added out of band, thus an
+unrecovered drill change would otherwise stay in the new release. The application release's native Helmfile `postsync` hook invokes the final
 Maven acceptance with `kind-release | kind-deployment` after the application resources
 and seeder hook Job succeed. `kind-release` checks the snapshot images, rendered desired
 configuration, current deployed Helm revision and Deployment generations, pod ownership
-and runtime digests, the current successful seeder, and ready product EndpointSlices;
-`kind-deployment` retains the traffic and reader-load assertions. The release hook
+and runtime digests, the current successful seeder, and ready product and order EndpointSlices;
+`kind-deployment` checks product traffic, reader load and the saga effects of the gate's own orders. The release hook
 failure is fatal to Helmfile and `up.sh`, although Helm may still report the release as
 deployed. The observer does not repair resources, retry the release or roll it back;
 Kubernetes continues its normal reconciliation. Diagnostics remain bounded and
-contain no secrets. The reader remains running and disruptive drills are still
+contain no secrets. The reader and order producer remain running and disruptive drills are still
 explicitly selected. A new `kind-release` run requires `images.json` in the
 snapshot; standalone legacy `kind-deployment` runs do not. The final normal lifecycle
 and separate destructive reset command remain subject to step 3.20 qualification,
@@ -523,6 +529,19 @@ order CDC relay runs inside the order service process; the ledger's result-outbo
 relay continues to poll its own database. The order pod stays stateless: each
 shard's CDC offsets live in that shard's database.
 
+Step 4.9 adds the three saga application images to the existing Skaffold build
+and Helm application release. The single order Deployment uses `Recreate` to
+avoid overlapping CDC owners. The producer's configured run name stays independent
+of Helm revisions and startup restart tokens. Normal deployment acceptance does not
+examine producer orders. It creates one USD and one EUR order for its own buyer,
+seller and products, and checks their durable saga effects. These gate entities
+use fixed `kind-saga-gate.*` creation keys, thus later runs recover the same IDs.
+The opt-in `kind-saga-drill` owns duplicate delivery, policy-change replay, two
+orders for the same stock and cross-worker order replacement. It restores temporary
+deployment settings through the shared drill guard. The lab has one order replica
+with one stock worker thread, thus it reserves stock in sequence; step 4.2 tests
+competing stock coordinators.
+
 Both product pods are stateless and interchangeable. They use the same shard
 mapping and database constraints; pod-local state must not determine correctness.
 Clients connect through Kubernetes Services, and applications connect through
@@ -699,7 +718,7 @@ is performed by `cluster-create.sh` only for a cluster created during that invoc
 guard is effective; normal startup of an existing cluster only checks it.
 The [startup runbook](README.md#generator-allocation-at-jvm-startup-steps-34-and-311)
 defines the configuration, initialization and verification. Step 3.9 wires the
-product image and Deployment; step 4.9 wires order.
+product and order images and Deployments (steps 3.9 and 4.9).
 
 Never reuse a slot while any data from that lab can be restored/replayed. This
 allows at most 1,023 ID-producing process starts, including burned reservations,

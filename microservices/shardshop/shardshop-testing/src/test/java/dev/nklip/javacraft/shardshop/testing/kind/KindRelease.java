@@ -22,6 +22,9 @@ public final class KindRelease {
     private static final String RELEASE = "shardshop-application";
     private static final String PRODUCT = "shardshop-product";
     private static final String READER = "shardshop-product-reader";
+    private static final String ORDER = "shardshop-order";
+    private static final String PRODUCER = "shardshop-order-producer";
+    private static final List<String> DEPLOYMENTS = List.of(PRODUCT, READER, ORDER, "shardshop-ledger", PRODUCER);
     private static final String SEEDER_ANNOTATION = "shardshop.javacraft/seeder-job";
     private static final ObjectMapper JSON = new ObjectMapper();
     private final KindLab lab;
@@ -33,7 +36,7 @@ public final class KindRelease {
         qualifiedImages(lab.json("images.json"));
         long revision = revision();
         List<JsonNode> desired = render();
-        lab.await("the qualified application release, current pods and product Service", Duration.ofSeconds(180), () -> {
+        lab.await("the qualified application release, current pods and API Services", Duration.ofSeconds(180), () -> {
             observe(desired, revision);
             require(revision() == revision, "Application release revision changed during acceptance");
             return true;
@@ -71,22 +74,30 @@ public final class KindRelease {
         return List.copyOf(desired);
     }
 
-    private void observe(List<JsonNode> desired, long revision) throws IOException, InterruptedException {
-        JsonNode product = resource("deployment", PRODUCT);
-        JsonNode reader = resource("deployment", READER);
-        List<JsonNode> products = deployment(named(desired, "Deployment", PRODUCT), product);
-        deployment(named(desired, "Deployment", READER), reader);
-        JsonNode configuration = resource("configmap", "shardshop-product-config");
-        require(named(desired, "ConfigMap", "shardshop-product-config").path("data").equals(configuration.path("data")),
-                "Product configuration differs from this invocation's desired configuration");
+    void observe(List<JsonNode> desired, long revision) throws IOException, InterruptedException {
+        Map<String, JsonNode> deployments = new HashMap<>();
+        Map<String, List<JsonNode>> activePods = new HashMap<>();
+        for (String name : DEPLOYMENTS) {
+            JsonNode live = resource("deployment", name);
+            deployments.put(name, live);
+            activePods.put(name, deployment(named(desired, "Deployment", name), live));
+        }
+        for (String name : List.of("shardshop-product-config", "shardshop-order-config", "shardshop-ledger-config")) {
+            require(named(desired, "ConfigMap", name).path("data").equals(resource("configmap", name).path("data")),
+                    name + " differs from this invocation's desired configuration");
+        }
         String jobName = RELEASE + "-seeder-" + revision;
         JsonNode desiredSeeder = named(desired, "Job", RELEASE + "-seeder-1");
         List<JsonNode> seeders = KindLab.items(resourceList("pods", "job-name=" + jobName));
         JsonNode job = resource("job", jobName);
+        JsonNode reader = deployments.get(READER);
         JsonNode successful = currentSeederPod(reader, job, desiredSeeder, revision, seeders);
         currentSeeder(reader, job, desiredSeeder, revision, seeders, runtimeIndexes(List.of(successful), desiredSeeder));
-        service(named(desired, "Service", PRODUCT), resource("service", PRODUCT),
-                KindLab.items(resourceList("endpointslices", "kubernetes.io/service-name=" + PRODUCT)), products);
+        seederReference(deployments.get(PRODUCER), revision);
+        for (String name : List.of(PRODUCT, ORDER)) {
+            service(named(desired, "Service", name), resource("service", name),
+                    KindLab.items(resourceList("endpointslices", "kubernetes.io/service-name=" + name)), activePods.get(name));
+        }
     }
 
     private List<JsonNode> deployment(JsonNode desired, JsonNode live) throws IOException, InterruptedException {
@@ -99,7 +110,10 @@ public final class KindRelease {
     }
 
     static void qualifiedImages(JsonNode snapshot) throws IOException {
-        for (String application : List.of("product", "product-reader", "product-seeder")) {
+        require(snapshot.path("restartToken").isTextual()
+                        && snapshot.path("restartToken").textValue().matches("restart-[0-9a-f]{24}"),
+                "Invocation images.json requires its application restart token");
+        for (String application : List.of("product", "product-reader", "product-seeder", "order", "ledger", "order-producer")) {
             JsonNode image = snapshot.path("images").path(application);
             require(image.isTextual() && image.textValue().matches("[^\\s@]+@sha256:[0-9a-f]{64}"),
                     "Invocation images.json requires a qualified digest-pinned " + application + " image");
@@ -168,8 +182,8 @@ public final class KindRelease {
     private static JsonNode currentSeederPod(JsonNode reader, JsonNode job, JsonNode desired, long revision, List<JsonNode> pods)
             throws IOException {
         String name = RELEASE + "-seeder-" + revision;
-        require(reader.path("metadata").path("annotations").path(SEEDER_ANNOTATION).asText().equals(name)
-                && KindDeployment.name(job).equals(name), "Reader and seeder do not identify the current Helm revision");
+        seederReference(reader, revision);
+        require(KindDeployment.name(job).equals(name), "Seeder does not identify the current Helm revision");
         require(KindDeployment.completed(job) && templateMatches(desired.path("spec").path("template"), job.path("spec").path("template")),
                 "Current revision seeder is incomplete or differs from the desired template: " + name);
         List<JsonNode> successful = pods.stream().filter(pod -> pod.path("status").path("phase").asText().equals("Succeeded")).toList();
@@ -182,48 +196,55 @@ public final class KindRelease {
         return pod;
     }
 
-    static void service(JsonNode desired, JsonNode live, List<JsonNode> slices, List<JsonNode> products) throws IOException {
+    private static void seederReference(JsonNode workload, long revision) throws IOException {
+        require(workload.path("metadata").path("annotations").path(SEEDER_ANNOTATION).asText()
+                        .equals(RELEASE + "-seeder-" + revision),
+                KindDeployment.name(workload) + " does not identify the current Helm revision seeder");
+    }
+
+    static void service(JsonNode desired, JsonNode live, List<JsonNode> slices, List<JsonNode> pods) throws IOException {
+        String name = KindDeployment.name(desired);
         JsonNode spec = live.path("spec");
         require(spec.path("selector").equals(desired.path("spec").path("selector"))
                 && spec.path("sessionAffinity").asText().equals("None") && !spec.path("publishNotReadyAddresses").asBoolean(false)
                 && !spec.path("clusterIP").asText().isBlank() && !spec.path("clusterIP").asText().equals("None"),
-                "Product Service does not select the intended ready product pods");
+                name + " Service does not select the intended ready pods");
         JsonNode port = spec.path("ports").path(0);
         require(spec.path("ports").size() == 1 && port.path("name").asText().equals("http")
                 && port.path("port").asInt() == 8080 && port.path("targetPort").asText().equals("http")
-                && port.path("protocol").asText("TCP").equals("TCP"), "Product Service HTTP port differs from the desired port");
+                && port.path("protocol").asText("TCP").equals("TCP"), name + " Service HTTP port differs from the desired port");
         Set<String> expected = new HashSet<>();
-        for (JsonNode pod : products) {
-            require(KindDeployment.ready(pod), "Product Service has an unready intended pod");
+        for (JsonNode pod : pods) {
+            require(KindDeployment.ready(pod), name + " Service has an unready intended pod");
             expected.add(pod.path("metadata").path("uid").asText());
         }
-        require(expected.size() == 2 && !expected.contains(""), "Product Service requires two distinct intended pod identities");
+        require(!pods.isEmpty() && expected.size() == pods.size() && !expected.contains(""), name + " Service requires distinct intended pod identities");
         Set<String> actual = new HashSet<>();
         for (JsonNode slice : slices) {
-            require(!slice.path("metadata").hasNonNull("deletionTimestamp"), "Product EndpointSlice is terminating");
+            require(!slice.path("metadata").hasNonNull("deletionTimestamp"), name + " EndpointSlice is terminating");
             JsonNode http = slice.path("ports").path(0);
             require(slice.path("ports").size() == 1 && http.path("name").asText().equals("http")
                     && http.path("port").asInt() == 8080 && http.path("protocol").asText("TCP").equals("TCP"),
-                    "Product EndpointSlice does not expose the intended HTTP port");
+                    name + " EndpointSlice does not expose the intended HTTP port");
             for (JsonNode endpoint : slice.path("endpoints")) {
                 JsonNode target = endpoint.path("targetRef");
                 String uid = target.path("uid").asText();
                 require(endpoint.path("conditions").path("ready").asBoolean(false)
                         && !endpoint.path("conditions").path("terminating").asBoolean(false)
                         && target.path("kind").asText().equals("Pod") && target.path("namespace").asText().equals("shardshop")
-                        && expected.contains(uid), "Product Service has an unready, terminating or foreign endpoint");
-                JsonNode pod = products.stream().filter(p -> p.path("metadata").path("uid").asText().equals(uid)).findFirst().orElseThrow();
+                        && expected.contains(uid), name + " Service has an unready, terminating or foreign endpoint");
+                JsonNode pod = pods.stream().filter(p -> p.path("metadata").path("uid").asText().equals(uid)).findFirst().orElseThrow();
                 require(target.path("name").asText().equals(KindDeployment.name(pod)) && !endpoint.path("addresses").isEmpty(),
-                        "Product Service endpoint does not identify its intended pod");
+                        name + " Service endpoint does not identify its intended pod");
                 Set<String> addresses = new HashSet<>();
                 for (JsonNode address : pod.path("status").path("podIPs")) addresses.add(address.path("ip").asText());
                 addresses.add(pod.path("status").path("podIP").asText());
                 for (JsonNode address : endpoint.path("addresses"))
-                    require(addresses.contains(address.asText()) && !address.asText().isBlank(), "Product Service endpoint address differs from its intended pod");
+                    require(addresses.contains(address.asText()) && !address.asText().isBlank(), name + " Service endpoint address differs from its intended pod");
                 actual.add(uid);
             }
         }
-        require(actual.equals(expected), "Product Service does not expose both intended ready pod identities");
+        require(actual.equals(expected), name + " Service does not expose all intended ready pod identities");
     }
 
     static boolean templateMatches(JsonNode desired, JsonNode live) {

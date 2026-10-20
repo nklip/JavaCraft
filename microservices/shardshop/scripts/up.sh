@@ -90,7 +90,7 @@ verify_kind kind-allocator
 export SHARDSHOP_FRESH=false
 # Skaffold's standalone build does not load kind images. This adapter keeps the
 # existing qualification-to-manifest check; Helmfile is the only deployment owner.
-# Every startup rolls product and reader, including an unchanged build. Keep the
+# Every startup rolls all application Deployments, including an unchanged build. Keep the
 # token in the invocation values so Helm and the acceptance gate use the same value.
 restart_token="restart-$(openssl rand -hex 12)"
 jq -n --arg token "$restart_token" '{images: {}, restartToken: $token}' >"$work/images.json"
@@ -98,4 +98,4 @@ while IFS=$'\t' read -r image tag; do
     load_image "$image" "$tag"
 done <"$work/builds.tsv"
 helmfile -f "$work/helmfile.yaml.gotmpl" -l stage=application sync --skip-deps --skip-needs
-echo 'ShardShop deployment verified: current images, seeded catalog, routing and reader traffic; reader remains running.'
+echo 'ShardShop deployment verified: current images, seeded catalog, routing, reader traffic and order saga outcomes; workloads remain running.'

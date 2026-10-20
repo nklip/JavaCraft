@@ -33,6 +33,10 @@ class KindDrillGuardTest {
         when(lab.snapshot()).thenReturn(snapshot);
         when(lab.kubectl(any(String[].class))).thenAnswer(invocation -> {
             String[] args = (String[]) invocation.getRawArguments()[0];
+            if (args[0].equals("get")) {
+                assertEquals(List.of("get", "configmap", KindDrillGuard.LOCK, "--ignore-not-found", "-o", "json"), List.of(args));
+                return lockOwner == null ? "" : "{\"metadata\":{\"name\":\"" + KindDrillGuard.LOCK + "\"}}";
+            }
             assertEquals(List.of("create", "-f"), List.of(args[0], args[1]));
             if (lockOwner != null) throw new IOException("AlreadyExists");
             lockOwner = KindLab.parse(Files.readString(Path.of(args[2])))
@@ -75,6 +79,20 @@ class KindDrillGuardTest {
         assertTrue(failure.getMessage().contains(KindDrillGuard.LOCK));
         assertEquals(List.of("drop"), restored);
         assertNotNull(lockOwner);
+    }
+
+    @Test
+    void runningDrillOrRetainedLockStopsReleasesUntilTheLockIsDeleted() throws Exception {
+        KindDrillGuard.requireIdle(lab);
+        var guard = new KindDrillGuard(lab).acquire();
+        guard.onClose("restore ledger allowlist environment", () -> false);
+        assertThrows(IOException.class, () -> KindDrillGuard.requireIdle(lab), "A running drill must stop a release");
+        assertThrows(IOException.class, guard::close);
+        IOException retained = assertThrows(IOException.class, () -> KindDrillGuard.requireIdle(lab),
+                "Helm would keep the unrecovered environment change");
+        assertTrue(retained.getMessage().contains(KindDrillGuard.LOCK));
+        lockOwner = null; // The operator recovered the reported changes and deleted the lock.
+        KindDrillGuard.requireIdle(lab);
     }
 
     @Test

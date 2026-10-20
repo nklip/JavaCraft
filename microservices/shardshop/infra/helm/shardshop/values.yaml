@@ -4,13 +4,16 @@ migrationShard: ""
 migrationStream: catalog
 # Explicit run for standalone render=seeding and workload drills; Helm hooks use the release revision.
 run: ""
-# up.sh replaces this value on every deployment to restart product and reader.
+# up.sh replaces this value on every deployment to restart application Deployments.
 restartToken: ""
 datasetVersion: catalog-v1
 images:
   product: ""
   product-seeder: ""
   product-reader: ""
+  order: ""
+  ledger: ""
+  order-producer: ""
 shards: []
 
 postgresql:
@@ -91,6 +94,45 @@ productSeeder:
 
 productReader:
   configuration: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      cpu: "2"
+      memory: 384Mi
+
+# Initial saga budgets include three embedded Debezium readers in the order JVM.
+# Step 4.9 lab peaks: order 358 MiB, ledger 158 MiB, producer 139 MiB.
+order:
+  configuration: {}
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+
+ledgerApplication:
+  configuration:
+    # The schema requires USD and rejects EUR: the kind saga gate and drill need both outcomes.
+    shardshop.ledger.allowed-currencies: USD
+  resources:
+    requests:
+      cpu: 100m
+      memory: 384Mi
+    limits:
+      cpu: "2"
+      memory: 512Mi
+
+orderProducer:
+  # Required durable retry identity, independent of the Helm revision/restart token.
+  # Keep this and the selection settings unchanged while replaying a retained run.
+  # No $: SmallRye Config expands ${...} and rewrites the escapes $$ and \$.
+  runName: ""
+  configuration:
+    SHARDSHOP_PRODUCER_REJECTED_ORDER_PERCENT: "10"
   resources:
     requests:
       cpu: 100m

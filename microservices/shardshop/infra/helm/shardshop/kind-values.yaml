@@ -1,4 +1,7 @@
 # Local storage and placement constraints for the three-worker kind lab.
+orderProducer:
+  runName: kind-saga-v1
+
 postgresql:
   storage:
     storageClass: standard

@@ -43,6 +43,10 @@ class KindStartupScriptTest {
         state("failure", "none");
         state("running", "true");
         state("random-digit", "a");
+        var flywayDigest = java.util.regex.Pattern.compile("shardshop-flyway[^@\\s]*@sha256:([0-9a-f]{64})")
+                .matcher(Files.readString(source.resolve("infra/helm/shardshop/values.yaml")));
+        assertTrue(flywayDigest.find());
+        state("flyway-digest", flywayDigest.group(1));
         executable("kind", """
                 #!/bin/bash
                 set -eu
@@ -80,7 +84,10 @@ class KindStartupScriptTest {
                   image) printf 'sha256:%064d\n' 0;;
                   exec)
                     case "$*" in
-                      *'images ls '*) printf 'REF TYPE DIGEST\nfixture manifest sha256:%064d\n' 1;;
+                      *'images ls '*)
+                        if [[ "$*" == *shardshop-flyway* ]]; then
+                          printf 'REF TYPE DIGEST\nfixture manifest sha256:%s\n' "$(cat "$FIXTURE/flyway-digest")"
+                        else printf 'REF TYPE DIGEST\nfixture manifest sha256:%064d\n' 1; fi;;
                       *'content get '*) printf '{"config":{"digest":"sha256:%064d"}}\n' 0;;
                       *'images tag '*) ;;
                       *) exit 99;;
@@ -145,7 +152,13 @@ class KindStartupScriptTest {
                       [[ "${cache%/*}" == "$SHARDSHOP_SNAPSHOT" ]] || { echo 'Cache is outside the invocation snapshot' >&2; exit 75; }
                       [[ ! -e "$cache" ]] || { echo 'Reused artifact cache' >&2; exit 74; }
                       printf '{}' > "$cache";;
-                    --file-output=*) printf '{"builds":[{"imageName":"docker.io/library/shardshop-product","tag":"docker.io/library/shardshop-product:fixture"}]}' > "${argument#*=}";;
+                    --file-output=*) printf '{"builds":[' > "${argument#*=}"
+                      separator=
+                      for image in product product-seeder product-reader order ledger order-producer flyway; do
+                        printf '%s{"imageName":"docker.io/library/shardshop-%s","tag":"docker.io/library/shardshop-%s:fixture"}' "$separator" "$image" "$image" >> "${argument#*=}"
+                        separator=,
+                      done
+                      printf ']}' >> "${argument#*=}";;
                   esac
                 done
                 """);

@@ -3032,3 +3032,204 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pinteg
 The pre-fix runs used a scratch copy of the step 4.8 code with the new tests. In
 that copy, the deadline log test used the old workload API and required only the
 ordinal, because the old API could not report the order.
+
+## Step 4.9
+
+2026-10-20: added the order, ledger and order-producer artifacts to Skaffold and
+mounted their runtime configuration and public CA certificates in the existing Helm
+application release. Their passwords are `secretKeyRef` environment variables. Order uses one `Recreate` replica with the
+existing allocator service account; ledger and producer have no Kubernetes token.
+The kind producer uses the stable `kind-saga-v1` run identity, 10% EUR selection and
+the ledger's USD allowlist. Startup extends the existing build/scan/load pipeline to seven images and preserves
+Helmfile ordering; no lifecycle entry point was added.
+
+The release observer now verifies all six application images, all five Deployment
+revisions and runtime digests, all three service configuration ConfigMaps, both API
+Services and the current seeder references. The default saga gate observes current
+producer startup and fresh confirmed/rejected orders, permanent ledger decisions,
+per-item stock/profit effects, and durable CDC offsets. Explicit `kind-saga-drill`
+scenarios exercise HTTP retries/conflicts, duplicate commands/results, permanent
+rejection after a temporary EUR policy and scoped transport cleanup, two orders for
+the same stock, partial release, and order replacement on another worker. Recovery restores producer
+replicas, ledger environment and order placement. Shared `ConfirmedPublisher` is a
+test-scope dependency; no external library version or application Java code changed.
+
+Validation:
+
+- The six-application build passed 1,316 unit tests and 71 packaged startup tests.
+- The focused deployment suite passed 66 tests. The full ShardShop build inside
+  `up.sh` passed 1,495 unit tests and the same 71 packaged startup tests.
+- Strict application Helm lint, infrastructure/application rendering and Skaffold
+  diagnosis passed. Shell syntax and `git diff --check` passed.
+- The first sandboxed Maven attempt could not bind local HTTP test servers
+  (`Operation not permitted`); the host-access rerun passed. The fixture tests also
+  need host process inspection. Docker Desktop was initially stopped; after starting
+  it, all four retained ShardShop nodes were confirmed stopped before deployment.
+- The first startup and a direct Scout retry stopped before cluster mutation when
+  GHCR truncated the Java database download (`unexpected EOF`). The same current
+  schema-1 OCI layer was downloaded in bounded byte ranges, verified against
+  `sha256:9d9bcc8c3932f3133aabd61991d231571c5887b932951e1bf387d4197474d3d8`,
+  and passed SQLite `quick_check`. Its unchanged metadata is dated October 20
+  with the next update October 23. The verified files populated Scout's Java cache
+  using the [documented manual-cache layout](https://trivy.dev/docs/dev/advanced/self-hosting/#java-db-adaptations);
+  scanner versions, VEX policy and the startup scan gate were unchanged.
+- The first live release exposed two observer assumptions. The order status
+  proxy forwarded kubectl's `timeout` query parameter to the API, which correctly
+  rejects unexpected query parameters. The status check now disables that client
+  query parameter while retaining the outer 30-second command bound; its new
+  regression failed without the fix and all eight saga observer tests passed
+  afterward. The topology observer also counted the newly active Debezium logical
+  sender as a third physical standby, despite both physical replicas streaming
+  with quorum. The live failure was reproduced against the exact observation query.
+  The corrected query excludes only senders backed by logical slots and still
+  rejects unexpected physical or unslotted senders. Readiness, topology and database
+  fencing checks share that predicate; their 27 focused tests passed.
+- The corrected live topology scenario passed on all three shards. The combined
+  `kind-release | kind-deployment` gate then passed all five scenarios in 80.52
+  seconds, including fresh producer confirmations/rejections and exact stock/profit
+  effects. The explicit `kind-saga-drill` passed both scenarios in 93.02 seconds:
+  replay and two orders for the same stock, followed by CDC resumption on a different worker.
+  Each drill restored its temporary deployment settings.
+- After updating all physical-connection observations, the combined
+  `kind-infrastructure | kind-drill` selection passed all six scenarios in 5:06:
+  database and RabbitMQ readiness, both saga drills, database quorum disruption,
+  and repeated seeding/product JVM replacement. The initial standalone snapshot
+  had lost YAML document separators; regenerating it with native Helm rendering
+  fixed that test-input error before this complete run.
+- The final `up.sh` completed successfully on the retained lab: 1,496 unit tests
+  and 71 packaged startup tests passed without failures or skips, all seven images
+  passed the unchanged high/critical scan gate, and application release 23 passed
+  all five final acceptance scenarios in 87.89 seconds. The restarted producer
+  recovered 913 completed orders from the stable run before creating fresh orders.
+- `down.sh` succeeded after validation; Docker inspection confirmed all four
+  retained nodes stopped, restoring the original lab running state. Final
+  `git diff --check` passed. No dependency versions or application Java sources changed.
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml \
+  -pl shardshop-product,shardshop-order,shardshop-ledger,shardshop-workload/shardshop-product-seeder,shardshop-workload/shardshop-product-reader,shardshop-workload/shardshop-order-producer \
+  -am clean verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing test \
+  -Dtest=KindSagaTest,KindWorkloadPolicyTest,KindStartupScriptTest,HelmReleaseTest,KindReleaseTest
+bash -n microservices/shardshop/scripts/up.sh
+git diff --check
+bash microservices/shardshop/scripts/up.sh
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing test \
+  -Dtest=KindSagaTest#orderProxyDoesNotForwardKubectlTimeoutAsAnApplicationQueryParameter
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing test -Dtest=KindSagaTest
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing test -Dtest=KindTopologyTest
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing test \
+  -Dtest=KindTopologyTest,KindReadinessTest,KindDatabaseDrillTest
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  failsafe:integration-test failsafe:verify -Dit.test=KindIT \
+  -Dshardshop.kind.snapshot=/tmp/shardshop-49-snapshot.IuG16g \
+  -Dshardshop.kind.tags=kind-topology
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  failsafe:integration-test failsafe:verify -Dit.test=KindIT \
+  -Dshardshop.kind.snapshot=/tmp/shardshop-49-snapshot.IuG16g \
+  '-Dshardshop.kind.tags=kind-release | kind-deployment'
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  failsafe:integration-test failsafe:verify -Dit.test=KindIT \
+  -Dshardshop.kind.snapshot=/tmp/shardshop-49-snapshot.IuG16g \
+  -Dshardshop.kind.tags=kind-saga-drill
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  failsafe:integration-test failsafe:verify -Dit.test=KindIT \
+  -Dshardshop.kind.snapshot=/tmp/shardshop-49-snapshot.IuG16g \
+  '-Dshardshop.kind.tags=kind-infrastructure | kind-drill'
+bash microservices/shardshop/scripts/down.sh
+docker ps -a --filter label=io.x-k8s.kind.cluster=shardshop --format '{{.Names}}: {{.Status}}'
+```
+
+### Step 4.9 validation fixes
+
+**2026-10-20:** A validation of the step found seven problems. The user selected the
+policy for problem 2; the other fixes follow the review.
+
+1. A saga drill that stops without recovery (SIGKILL, host crash or failed
+   recovery) keeps the `shardshop-kind-drill` lock and its temporary changes. A
+   Helm 4.3.0 client-side upgrade (`--server-side=false`, the Helmfile setting)
+   restores `replicas`, but it keeps an added environment variable and an added
+   `nodeSelector`. Thus the next `up.sh` restarted the producer while the ledger
+   still accepted EUR, and EUR orders became `RECORDED` permanently. The
+   application release `presync` hook now also runs the new `kind-drills-idle`
+   scenario. It stops the release while the lock exists, before Helm changes a
+   resource.
+2. The default `kind-saga` gate examined producer orders. Confirmed USD orders use
+   the seeded stock permanently: approximately 16 h of producer run time empties
+   the 50,000 USD units of a region. Each producer restart also replays the full
+   run at approximately 178 ordinals/s inside the 180-second gate window. The user
+   decided: "up.sh should not depend on the CONFIRMED status in testing of orders
+   it does not create - shardshop-testing should be independent from workload
+   scenarios". The user then selected a gate-owned buyer, seller and products.
+   Through local port forwards, the gate now creates a US seller with one USD and
+   one EUR product (1,000,000 units each) and an EU buyer under fixed
+   `kind-saga-gate.*` creation keys. Later runs recover the same IDs. Each run
+   submits one USD order, which must become `CONFIRMED`, and one EUR order, which
+   the ledger must reject with `UNSUPPORTED_CURRENCY`. The gate checks their
+   ledger, stock, profit and HTTP effects and the shard invariants. The step 3.9
+   catalog check counts the 150 sellers and 300 products of `catalog-v1` and
+   accepts only the gate seller and its two products in addition. The saga drill
+   selects only `catalog-v1` products, thus it does not use the gate stock. The
+   drill and the gate share one port-forward helper. The API-server proxy read of
+   the old gate and its regression test were removed, because no code uses them.
+3. The documents and the drill scenario said "stock races" and "competing stock
+   reservations". The kind lab has one order replica with one `StockWorker`
+   thread, and `StockCoordinator.processNext` handles one saga. Thus the two drill
+   orders reserve stock in sequence. PLAN, README, ARCHITECTURE, this entry and
+   `SagaDrills.feature` now say "two orders for the same stock" and refer to step
+   4.2 for competing coordinators.
+4. The schema accepted `${` in `orderProducer.runName`, but SmallRye Config expands
+   it: `kind-${x}` fails with SRCFG00011 and `kind-${x:y}` silently becomes
+   `kind-y`. A probe with the producer classpath also showed that `$$` and `\$`
+   become `$`. Thus the schema and the workload policy now reject every `$` in the
+   run name.
+5. `KindSaga.terminalOrders` compared the Mac clock (`Instant.now()`) with
+   `order_allocations.created_at` from the PostgreSQL clock. The new gate (problem
+   2) identifies its orders by the IDs that the allocation API returns, thus it
+   compares no clocks.
+6. The schema accepted any producer rejection share and any ledger allowlist, but
+   the gate needed fresh USD and EUR producer orders. The gate now creates its own
+   orders, thus the rejection share does not change its result. The schema now
+   requires an allowlist that contains USD and does not contain EUR, because the
+   gate and the drill need a confirmed USD order and a rejected EUR order.
+7. README and this entry said that the passwords are mounted; they are
+   `secretKeyRef` environment variables. The note "Recheck these budgets ..." in
+   `values.yaml` had no reference. It now records the measured lab peaks: order
+   358 MiB of 1 GiB, ledger 158 MiB of 512 MiB and producer 139 MiB of 384 MiB.
+
+Validation:
+
+- With the fixes temporarily reverted, the six new or changed tests failed for the
+  expected reasons: the application release synced with a retained lock (two
+  `HelmfileGateTest` cases), `requireIdle` accepted a running drill, the policy
+  accepted `kind-$$x`, and Helm accepted `kind-${x}` and the `USD,EUR` allowlist.
+  The restored files were byte-identical with their copies.
+- The focused suite (`HelmfileGateTest`, `KindDrillGuardTest`, `HelmReleaseTest`,
+  `KindWorkloadPolicyTest`, `KindDeploymentTest`, `KindSagaTest`) passed 66 tests.
+  The complete `shardshop-testing` unit run passed 185 tests with no WARN lines.
+- `helm lint --strict` passed for the default and the application render.
+  `helm template` accepted `USD`, `USD,GBP` and `GBP,USD` and rejected `USD,EUR`,
+  `EUR,USD`, `EUR`, `GBP`, `EURO,USD`, `USD,USDX`, `usd` and `USD,`.
+  `git diff --check` passed.
+- Not run, as instructed: `up.sh` and the live `kind-deployment` and
+  `kind-saga-drill` suites. Thus the new gate, the new `kind-drills-idle` scenario
+  and the changed catalog count have no live evidence yet.
+
+Commands from the repository root:
+
+```bash
+export JAVA_HOME=$HOME/.sdkman/candidates/java/25-open
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing test \
+  -Dtest=HelmfileGateTest,KindDrillGuardTest,HelmReleaseTest,KindWorkloadPolicyTest,KindDeploymentTest,KindSagaTest
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing test
+helm lint --strict microservices/shardshop/infra/helm/shardshop \
+  -f microservices/shardshop/infra/helm/shardshop/kind-values.yaml -f microservices/shardshop/infra/shards.yaml
+helm lint --strict microservices/shardshop/infra/helm/shardshop \
+  -f microservices/shardshop/infra/helm/shardshop/kind-values.yaml -f microservices/shardshop/infra/shards.yaml \
+  -f "$images" --set-string render=application-release
+git diff --check
+```
+
+`$images` is a values file with digest-pinned `images` for the six applications.

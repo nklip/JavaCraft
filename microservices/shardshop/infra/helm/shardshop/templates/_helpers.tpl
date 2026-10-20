@@ -101,6 +101,25 @@ shardshop.catalog.connections.{{ .name }}.password=${PRODUCT_APP_PASSWORD}
 {{- include "shardshop.productConfiguration" . | sha256sum -}}
 {{- end -}}
 
+{{- define "shardshop.orderConfiguration" -}}
+{{ range .Values.shards -}}
+shardshop.order.connections.{{ .name }}.password=${ORDER_APP_PASSWORD}
+shardshop.order.cdc.connections.{{ .name }}.password=${ORDERING_CDC_PASSWORD}
+{{ end -}}
+shardshop.order.cdc.broker.password=${RABBITMQ_ORDER_PASSWORD}
+{{ range $key, $value := .Values.order.configuration -}}
+{{ $key }}={{ $value }}
+{{ end -}}
+{{- end -}}
+
+{{- define "shardshop.ledgerConfiguration" -}}
+shardshop.ledger.database.password=${LEDGER_DATABASE_PASSWORD}
+shardshop.ledger.broker.password=${RABBITMQ_LEDGER_PASSWORD}
+{{ range $key, $value := .Values.ledgerApplication.configuration -}}
+{{ $key }}={{ $value }}
+{{ end -}}
+{{- end -}}
+
 {{- define "shardshop.seederJobName" -}}
 {{- if eq .Values.render "application-release" -}}
 {{- printf "%s-seeder-%d" (.Release.Name | trunc 40 | trimSuffix "-") .Release.Revision -}}

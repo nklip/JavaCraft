@@ -33,6 +33,17 @@ final class KindDeploymentTest {
     }
 
     @Test
+    void catalogCountsAcceptOnlyTheSagaGateFixtureBesideCatalogV1() throws IOException {
+        String seeded = "50 100 0 0 150";
+        KindDeployment.validateCatalogCounts(Map.of("shard-a", seeded, "shard-b", seeded, "shard-c", seeded));
+        for (String gate : List.of("50 100 1 0 151", "50 100 1 2 153"))
+            KindDeployment.validateCatalogCounts(Map.of("shard-a", gate, "shard-b", seeded, "shard-c", seeded));
+        for (String invalid : List.of("50 100 0 0 151", "50 100 2 2 154", "50 100 1 3 154", "50 101 0 0 151", "50 100 0 0"))
+            assertThrows(IOException.class, () -> KindDeployment.validateCatalogCounts(
+                    Map.of("shard-a", invalid, "shard-b", seeded, "shard-c", seeded)), invalid);
+    }
+
+    @Test
     void workloadAllowsOnlyLiteralHttpSettingsAndScratchStorage() throws IOException {
         KindDeployment.httpOnly(spec());
         for (String volume : new String[]{"secret", "projected", "hostPath", "persistentVolumeClaim", "configMap", "csi"}) {

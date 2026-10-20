@@ -37,8 +37,9 @@ class HelmReleaseTest {
         copy(source.resolve("infra/helm/shardshop"), chart);
         copy(source.resolve("database"), chart.resolve("migrations"));
         values = JSON.createObjectNode();
+        values.putObject("orderProducer").put("runName", "kind-saga-v1");
         ObjectNode images = values.putObject("images");
-        for (String application : List.of("product", "product-seeder", "product-reader")) {
+        for (String application : List.of("product", "product-seeder", "product-reader", "order", "ledger", "order-producer")) {
             images.put(application, image(application, 'a'));
         }
     }
@@ -418,6 +419,29 @@ class HelmReleaseTest {
         assertRejected("migrations");
         values.put("migrationShard", "shard-a").put("migrationStream", "ledger");
         assertRejected("migration");
+    }
+
+    @Test
+    void producerRunNamesThatSmallRyeConfigWouldExpandOrRewriteAreRejected() throws Exception {
+        // SmallRye Config fails on ${x} (SRCFG00011), silently uses y for ${x:y} and rewrites $$ and \$ to $.
+        for (String invalid : List.of("kind-${x}", "kind-${x:y}", "kind-$${x}", "kind-$$x", "kind-\\$x", "kind-$")) {
+            values.putObject("orderProducer").put("runName", invalid);
+            assertRejected("application-release");
+        }
+        values.putObject("orderProducer").put("runName", "kind saga {v1}");
+        assertEquals("kind saga {v1}", env(named(render("application-release"), "shardshop-order-producer"),
+                "SHARDSHOP_PRODUCER_RUN_NAME"));
+    }
+
+    @Test
+    void ledgerAllowlistMustConfirmUsdAndRejectEurForTheSagaGateAndDrill() throws Exception {
+        for (String invalid : List.of("USD,EUR", "EUR,USD", "EUR", "GBP", "USD,USDX", "usd")) {
+            values.putObject("ledgerApplication").putObject("configuration").put("shardshop.ledger.allowed-currencies", invalid);
+            assertRejected("application-release");
+        }
+        values.putObject("ledgerApplication").putObject("configuration").put("shardshop.ledger.allowed-currencies", "GBP,USD");
+        assertTrue(named(render("application-release"), "shardshop-ledger-config").path("data").path("application.properties")
+                .asText().contains("shardshop.ledger.allowed-currencies=GBP,USD\n"));
     }
 
     private void releaseRevision(int revision) throws IOException {

@@ -82,6 +82,8 @@ releases:
       - {{ printf "%s/inventory.yaml" $snapshot | quote }}
       - {{ printf "%s/images.json" $snapshot | quote }}
       - render: application-release
+    # A retained drill lock marks unrecovered out-of-band changes. Helm's three-way
+    # merge keeps an added environment variable or node selector, thus stop first.
     hooks:
-      {{- include "verify" (dict "event" "presync" "tags" "kind-publications | kind-migration-reservation") | nindent 6 }}
+      {{- include "verify" (dict "event" "presync" "tags" "kind-publications | kind-migration-reservation | kind-drills-idle") | nindent 6 }}
       {{- include "verify" (dict "event" "postsync" "tags" "kind-release | kind-deployment") | nindent 6 }}

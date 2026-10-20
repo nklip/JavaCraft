@@ -63,6 +63,15 @@
         },
         "product-reader": {
           "$ref": "#/definitions/image"
+        },
+        "order": {
+          "$ref": "#/definitions/image"
+        },
+        "ledger": {
+          "$ref": "#/definitions/image"
+        },
+        "order-producer": {
+          "$ref": "#/definitions/image"
         }
       }
     },
@@ -299,6 +308,128 @@
         },
         "affinity": {
           "type": "object"
+        }
+      }
+    },
+    "order": {
+      "type": "object",
+      "properties": {
+        "configuration": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "shardshop.order.max-pool-size": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "shardshop.order.max-id-candidates": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "shardshop.order.catalog-concurrency": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "shardshop.order.catalog-deadline": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            }
+          }
+        }
+      }
+    },
+    "ledgerApplication": {
+      "type": "object",
+      "properties": {
+        "configuration": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "shardshop.ledger.allowed-currencies": {
+              "type": "string",
+              "allOf": [
+                {
+                  "pattern": "^[A-Z]{3}(,[A-Z]{3})*$"
+                },
+                {
+                  "pattern": "(^|,)USD(,|$)"
+                },
+                {
+                  "not": {
+                    "pattern": "(^|,)EUR(,|$)"
+                  }
+                }
+              ]
+            },
+            "shardshop.ledger.max-pool-size": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "shardshop.ledger.publisher.batch-size": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "shardshop.ledger.publisher.poll-interval": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            }
+          }
+        }
+      }
+    },
+    "orderProducer": {
+      "type": "object",
+      "properties": {
+        "runName": {
+          "type": "string",
+          "maxLength": 200,
+          "pattern": "^$|^[^\\s$](?:[^\\r\\n$]*[^\\s$])?$"
+        },
+        "configuration": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "SHARDSHOP_PRODUCER_REJECTED_ORDER_PERCENT": {
+              "type": "string",
+              "pattern": "^(100|[0-9]{1,2})$"
+            },
+            "SHARDSHOP_PRODUCER_MAX_ATTEMPTS": {
+              "type": "string",
+              "pattern": "^([1-9]|10)$"
+            },
+            "SHARDSHOP_PRODUCER_CONNECT_TIMEOUT": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            },
+            "SHARDSHOP_PRODUCER_REQUEST_TIMEOUT": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            },
+            "SHARDSHOP_PRODUCER_ORDER_INTERVAL": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            },
+            "SHARDSHOP_PRODUCER_POLL_INTERVAL": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            },
+            "SHARDSHOP_PRODUCER_ORDER_DEADLINE": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            },
+            "SHARDSHOP_PRODUCER_STARTUP_DEADLINE": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            },
+            "SHARDSHOP_PRODUCER_RETRY_BACKOFF": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            },
+            "SHARDSHOP_PRODUCER_MAX_RETRY_BACKOFF": {
+              "type": "string",
+              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            }
+          }
         }
       }
     }

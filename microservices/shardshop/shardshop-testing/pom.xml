@@ -116,6 +116,12 @@
             <artifactId>snakeyaml</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <!-- Fault-injection drills use the same mandatory, confirmed publisher as the applications. -->
+            <groupId>dev.nklip.javacraft</groupId>
+            <artifactId>shardshop-common</artifactId>
+            <scope>test</scope>
+        </dependency>
         <!-- Contracts.feature and the product response checks use the contract test helper of common. -->
         <dependency>
             <groupId>dev.nklip.javacraft</groupId>

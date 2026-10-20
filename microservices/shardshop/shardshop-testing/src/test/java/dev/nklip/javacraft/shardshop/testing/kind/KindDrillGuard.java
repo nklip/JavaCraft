@@ -32,6 +32,13 @@ public final class KindDrillGuard implements AutoCloseable {
         }, "shardshop-drill-recovery");
     }
 
+    /** Release gate: Helm keeps environment variables and node selectors that a drill added out of band. */
+    public static void requireIdle(KindLab lab) throws IOException, InterruptedException {
+        if (KindLab.parse(lab.kubectl("get", "configmap", LOCK, "--ignore-not-found", "-o", "json")).isEmpty()) return;
+        throw new IOException("Drill lock " + LOCK + " exists: a drill is running or its recovery failed. "
+                + "Recover the temporary changes in the drill report, then delete the lock before this release.");
+    }
+
     public synchronized KindDrillGuard acquire() throws IOException, InterruptedException {
         if (attempted || closed) throw new IllegalStateException("Drill guard cannot be reused");
         Path manifest = Files.createTempFile(lab.snapshot(), "drill-lock-", ".json");

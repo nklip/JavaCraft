@@ -186,18 +186,30 @@ public final class KindDeployment {
     }
 
     void catalogCounts() throws IOException, InterruptedException {
-        long sellers = 0;
-        long products = 0;
         List<String> shards = lab.shards();
         require(!shards.isEmpty(), "The invocation inventory has no shards");
-        for (String shard : shards) {
-            String counts = sql(shard, "SELECT (SELECT count(*) FROM catalog.sellers) || ' ' || (SELECT count(*) FROM catalog.products)").strip();
-            require(counts.matches("[0-9]+ [0-9]+"), "Invalid catalog count result for " + shard);
-            String[] parts = counts.split(" ");
-            sellers += Long.parseLong(parts[0]);
-            products += Long.parseLong(parts[1]);
+        Map<String, String> counts = new LinkedHashMap<>();
+        for (String shard : shards) counts.put(shard, sql(shard, "SELECT concat_ws(' ', "
+                + "(SELECT count(*) FROM catalog.sellers WHERE starts_with(creation_key, 'catalog-v1.')), "
+                + "(SELECT count(*) FROM catalog.products WHERE starts_with(creation_key, 'catalog-v1.')), "
+                + "(SELECT count(*) FROM catalog.sellers WHERE starts_with(creation_key, '" + KindSaga.GATE + ".')), "
+                + "(SELECT count(*) FROM catalog.products WHERE starts_with(creation_key, '" + KindSaga.GATE + ".')), "
+                + "(SELECT count(*) FROM catalog.sellers) + (SELECT count(*) FROM catalog.products))").strip());
+        validateCatalogCounts(counts);
+    }
+
+    /** Per shard: catalog-v1 sellers and products, the saga gate's own seller and products, then all rows. */
+    static void validateCatalogCounts(Map<String, String> shards) throws IOException {
+        long[] total = new long[5];
+        for (var shard : shards.entrySet()) {
+            require(shard.getValue().matches("[0-9]+( [0-9]+){4}"), "Invalid catalog count result for " + shard.getKey());
+            String[] parts = shard.getValue().split(" ");
+            for (int index = 0; index < total.length; index++) total[index] += Long.parseLong(parts[index]);
         }
-        require(sellers == 150 && products == 300, "Expected exactly 150 sellers and 300 products; found " + sellers + " and " + products);
+        require(total[0] == 150 && total[1] == 300, "Expected exactly 150 catalog-v1 sellers and 300 products; found "
+                + total[0] + " and " + total[1]);
+        require(total[2] <= 1 && total[3] <= 2 && total[4] == total[0] + total[1] + total[2] + total[3],
+                "The catalog has sellers or products outside catalog-v1 and the saga gate's own seller and two products");
     }
 
     Map<String, String> catalogIds() throws IOException, InterruptedException {
