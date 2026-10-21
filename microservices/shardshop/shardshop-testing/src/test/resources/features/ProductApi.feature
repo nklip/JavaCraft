@@ -1,3 +1,4 @@
+@product-api
 Feature: Product seller and product API on PostgreSQL shards
   Product runs from its packaged quarkus-app folder against four shard databases that Flyway migrated. Two shards
   have the region US, thus a region can have more than one shard. Product connects with verify-full TLS, uses at most
@@ -15,7 +16,7 @@ Feature: Product seller and product API on PostgreSQL shards
       | us     | Synthetic US company   | US     |
       | eu     | Synthetic EU company   | EU     |
       | asia   | Synthetic ASIA company | ASIA   |
-    Then each creation returns 201 with the requested seller, a new seller ID and the profits USD "0.00" and EUR "0.00"
+    Then each creation returns 201 with the requested seller, a new seller ID and policy-appropriate zero profits
     And the sellers "us, eu, asia" have different IDs
     And each seller is stored only on the shard that its key selects, and its ID routes to that shard
     And an identical retry of each creation returns 200 with the same seller
@@ -42,7 +43,7 @@ Feature: Product seller and product API on PostgreSQL shards
     And the product "item" of the seller "owner" with the key "item"
     Then these requests return their error:
       | method | path                                                 | key            | body                         | status | code                         |
-      | POST   | /api/v1/sellers                                      | owner          | {"companyName":"Changed","region":"US"} | 409 | SELLER_IDEMPOTENCY_CONFLICT |
+      | POST   | /api/v1/sellers                                      | owner          | {"companyName":"Changed","region":"US","countryCode":"US"} | 409 | SELLER_IDEMPOTENCY_CONFLICT |
       | POST   | /api/v1/sellers/{seller:owner}/products              | item           | item+{"name":"Changed"}      | 409    | PRODUCT_IDEMPOTENCY_CONFLICT |
       | POST   | /api/v1/sellers/{seller:owner}/products              | item           | item+{"description":"Changed"} | 409  | PRODUCT_IDEMPOTENCY_CONFLICT |
       | POST   | /api/v1/sellers/{seller:owner}/products              | item           | item+{"price":"20.00"}       | 409    | PRODUCT_IDEMPOTENCY_CONFLICT |
@@ -175,11 +176,11 @@ Feature: Product seller and product API on PostgreSQL shards
       | initialStock | 2147483647           |
     Then the creation returns 201 with the requested product, a new product ID and the stock 2147483647
     When a client creates the seller "unicode" "{repeat:🛍:200}" in "US" with the key "unicode-scalars"
-    Then the creation returns 201 with the requested seller, a new seller ID and the profits USD "0.00" and EUR "0.00"
+    Then the creation returns 201 with the requested seller, a new seller ID and policy-appropriate zero profits
 
   Scenario: Product accepts a request body of 32 KiB and rejects a larger body
     When a client creates the seller "boundary" "Body boundary company" in "US" with the key "body-boundary" in a body of exactly 32768 bytes
-    Then the creation returns 201 with the requested seller, a new seller ID and the profits USD "0.00" and EUR "0.00"
+    Then the creation returns 201 with the requested seller, a new seller ID and policy-appropriate zero profits
     And these seller creations with a body of more than 32768 bytes return 400 INVALID_REQUEST and store nothing:
       | key                | framing                       |
       | oversized-fixed    | Content-Length                |
@@ -226,6 +227,6 @@ Feature: Product seller and product API on PostgreSQL shards
     When product restarts with the replica read profile and replica endpoints that refuse connections
     Then the reads of the seller "owner" and the product "item" return 503 READ_REPLICA_UNAVAILABLE in less than 4 seconds
     When a client creates the seller "written" "Replica profile write" in "EU" with the key "replica-profile-write"
-    Then the creation returns 201 with the requested seller, a new seller ID and the profits USD "0.00" and EUR "0.00"
+    Then the creation returns 201 with the requested seller, a new seller ID and policy-appropriate zero profits
     When product restarts against the shard primaries
     Then a GET by ID and a GET by creation key return the seller "written"

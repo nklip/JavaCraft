@@ -86,7 +86,7 @@ class SeederDatasetsTest {
     void readsAndLooksUpAcknowledgedEntitiesWithoutSendingBodies() throws Exception {
         assertEquals(CatalogDataset.VERSION, datasets.catalogVersion());
         assertEquals(catalog.productsBySeller().get(seller.key()), datasets.productsOf(seller));
-        assertEquals(List.of("USD", "EUR"), datasets.productsOf(seller).stream().map(ProductDefinition::currency).toList());
+        assertEquals(List.of("USD"), datasets.productsOf(seller).stream().map(ProductDefinition::currency).toList());
         SeederDatasets.CreatedSeller createdSeller = new SeederDatasets.CreatedSeller(seller, SELLER_ID, INITIAL_PROFITS);
         reply(sellerResponse());
         assertEquals(createdSeller, datasets.readSeller(createdSeller));
@@ -120,7 +120,7 @@ class SeederDatasetsTest {
 
     @Test
     void refusesForeignReadsAndInvalidIdsBeforeSending() {
-        SellerDefinition unknownSeller = new SellerDefinition("foreign", seller.companyName(), seller.region());
+        SellerDefinition unknownSeller = new SellerDefinition("foreign", seller.companyName(), seller.region(), seller.countryCode());
         ProductDefinition unknownProduct = new ProductDefinition("foreign", seller.key(), fixture.name(),
                 fixture.description(), fixture.price(), fixture.unitCost(), fixture.currency(), fixture.initialStock());
         assertThrows(IllegalArgumentException.class, () -> datasets.productsOf(unknownSeller));
@@ -163,7 +163,7 @@ class SeederDatasetsTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"{}", "{\"USD\":\"0.00\"}", "{\"USD\":\"-0.00\",\"EUR\":\"0.00\"}",
+    @ValueSource(strings = {"{}", "{\"EUR\":\"0.00\"}", "{\"USD\":\"-0.00\",\"EUR\":\"0.00\"}",
             "{\"USD\":\"0.00\",\"EUR\":\"0.00\",\"usd\":\"0.00\"}"})
     void rejectsInvalidProfitSnapshots(String profits) throws Exception {
         ObjectNode response = sellerResponse();
@@ -173,20 +173,26 @@ class SeederDatasetsTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"sellerId", "companyName", "region", "profitsEarned", "extra"})
+    @ValueSource(strings = {"sellerId", "companyName", "region", "countryCode", "profitsEarned", "extra"})
     void rejectsInvalidOrMismatchedSellerResponses(String field) {
         reply(sellerResponse().put(field, "invalid"));
         assertThrows(IllegalArgumentException.class, () -> datasets.createSeller(seller));
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"sellerId", "productId", "name", "description", "price", "unitCost", "currency", "initialStock", "stock", "extra"})
+    @ValueSource(strings = {"sellerId", "productId", "name", "description", "price", "unitCost", "currency", "initialStock", "stock", "countryCode", "newOrderEligible", "legacyReason", "extra"})
     void rejectsInvalidOrMismatchedProductResponses(String field) {
         ObjectNode response = productResponse();
         if (field.equals("sellerId")) {
             response.put(field, "1");
         } else if (field.equals("initialStock") || field.equals("stock")) {
             response.put(field, fixture.initialStock() + 1);
+        } else if (field.equals("countryCode")) {
+            response.put(field, "JP");
+        } else if (field.equals("newOrderEligible")) {
+            response.put(field, false);
+        } else if (field.equals("legacyReason")) {
+            response.put(field, "CURRENCY_NOT_ALLOWED_FOR_SELLER_COUNTRY");
         } else {
             response.put(field, "invalid");
         }
@@ -197,7 +203,7 @@ class SeederDatasetsTest {
 
     @Test
     void refusesForeignDefinitionsWrongParentsAndInvalidParentIdsBeforeSending() {
-        SellerDefinition unknownSeller = new SellerDefinition("foreign", seller.companyName(), seller.region());
+        SellerDefinition unknownSeller = new SellerDefinition("foreign", seller.companyName(), seller.region(), seller.countryCode());
         ProductDefinition unknownProduct = new ProductDefinition("foreign", seller.key(), fixture.name(),
                 fixture.description(), fixture.price(), fixture.unitCost(), fixture.currency(), fixture.initialStock());
         assertThrows(IllegalArgumentException.class, () -> datasets.createSeller(unknownSeller));
@@ -212,7 +218,7 @@ class SeederDatasetsTest {
         verifyNoInteractions(http);
     }
     private ObjectNode sellerPayload() {
-        return JsonNodeFactory.instance.objectNode().put("companyName", seller.companyName()).put("region", seller.region());
+        return JsonNodeFactory.instance.objectNode().put("companyName", seller.companyName()).put("region", seller.region()).put("countryCode", seller.countryCode());
     }
 
     private ObjectNode sellerResponse() {
@@ -228,7 +234,8 @@ class SeederDatasetsTest {
     }
 
     private ObjectNode productResponse() {
-        return productPayload().put("sellerId", SELLER_ID).put("productId", PRODUCT_ID).put("stock", 0);
+        return productPayload().put("sellerId", SELLER_ID).put("productId", PRODUCT_ID).put("stock", 0)
+                .put("countryCode", seller.countryCode()).put("newOrderEligible", true).putNull("legacyReason");
     }
 
     private void reply(ObjectNode body) {

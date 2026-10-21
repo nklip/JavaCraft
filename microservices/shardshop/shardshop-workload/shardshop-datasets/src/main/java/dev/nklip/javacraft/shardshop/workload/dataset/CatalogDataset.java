@@ -1,5 +1,7 @@
 package dev.nklip.javacraft.shardshop.workload.dataset;
 
+import dev.nklip.javacraft.shardshop.common.CurrencyPolicy;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -9,9 +11,8 @@ import java.util.Map;
 /** Immutable workload definitions; keys identify retries, while product creates entity IDs. */
 public final class CatalogDataset {
 
-    public static final String VERSION = "catalog-v1";
+    public static final String VERSION = "catalog-v2";
     private static final List<String> REGIONS = List.of("US", "EU", "ASIA");
-    private static final List<String> CURRENCIES = List.of("USD", "EUR");
     private static final int SELLERS_PER_REGION = 50;
     private static final String SELLER_HEADER = "companyName\tcountryCode\trank";
 
@@ -30,20 +31,22 @@ public final class CatalogDataset {
         Map<String, List<ProductDefinition>> sellerProducts = new LinkedHashMap<>();
         for (String region : REGIONS) {
             List<List<String>> rows = DatasetResources.load("/datasets/" + VERSION + "/" + region + ".tsv",
-                    SELLER_HEADER, SELLERS_PER_REGION);
+                    SELLER_HEADER, "ASIA".equals(region) ? SELLERS_PER_REGION + 1 : SELLERS_PER_REGION);
             List<SellerDefinition> regionSellers = new ArrayList<>();
             int productNumber = 1;
             for (int index = 0; index < rows.size(); index++) {
                 String companyName = rows.get(index).getFirst();
+                String countryCode = rows.get(index).get(1);
                 String sellerKey = VERSION + "." + region + ".seller." + (index + 1);
-                regionSellers.add(new SellerDefinition(sellerKey, companyName, region));
+                regionSellers.add(new SellerDefinition(sellerKey, companyName, region, countryCode));
                 List<ProductDefinition> ownedProducts = new ArrayList<>();
-                for (String currency : CURRENCIES) {
+                for (String currency : CurrencyPolicy.currencies(region, countryCode)) {
                     String productKey = VERSION + "." + region + ".product." + productNumber++;
                     ownedProducts.add(new ProductDefinition(productKey, sellerKey,
                             companyName + " Sample Product " + currency,
                             "Synthetic " + currency + " catalog item sold by " + companyName + ".",
-                            "19.95", "12.50", currency, 1000));
+                            CurrencyPolicy.fractionDigits(currency) == 0 ? "20.00" : "19.95",
+                            CurrencyPolicy.fractionDigits(currency) == 0 ? "12.00" : "12.50", currency, 1000));
                 }
                 sellerProducts.put(sellerKey, List.copyOf(ownedProducts));
                 productDefinitions.addAll(ownedProducts);
@@ -73,7 +76,7 @@ public final class CatalogDataset {
         return productsBySeller;
     }
 
-    public record SellerDefinition(String key, String companyName, String region) { }
+    public record SellerDefinition(String key, String companyName, String region, String countryCode) { }
 
     public record ProductDefinition(String key, String sellerKey, String name, String description,
                                     String price, String unitCost, String currency, int initialStock) { }

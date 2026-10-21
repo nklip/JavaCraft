@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import dev.nklip.javacraft.shardshop.common.CurrencyPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -77,8 +78,8 @@ class HelmReleaseTest {
         assertEquals(86400, job.path("spec").path("ttlSecondsAfterFinished").asInt());
         assertEquals(300, job.path("spec").path("activeDeadlineSeconds").asInt());
         assertEquals(job.path("metadata").path("name").asText(), annotation(reader, "shardshop.javacraft/seeder-job"));
-        assertEquals("catalog-v1", env(job, "SHARDSHOP_SEEDER_CATALOG_VERSION"));
-        assertEquals("catalog-v1", env(reader, "SHARDSHOP_READER_CATALOG_VERSION"));
+        assertEquals("catalog-v2", env(job, "SHARDSHOP_SEEDER_CATALOG_VERSION"));
+        assertEquals("catalog-v2", env(reader, "SHARDSHOP_READER_CATALOG_VERSION"));
         assertEquals("http", product.path("spec").path("template").path("spec").path("containers").get(0)
                 .path("readinessProbe").path("tcpSocket").path("port").asText());
         assertTrue(resources.stream().anyMatch(resource -> resource.path("metadata").path("name").asText().equals("shardshop-routing")));
@@ -409,9 +410,9 @@ class HelmReleaseTest {
             assertRejected("application-release");
         }
         values.remove("productReader");
-        values.put("datasetVersion", "catalog-v2");
-        assertRejected("application-release");
         values.put("datasetVersion", "catalog-v1");
+        assertRejected("application-release");
+        values.put("datasetVersion", "catalog-v2");
         ((ObjectNode) values.path("images")).put("product", "docker.io/library/shardshop-product:latest");
         assertRejected("application-release");
         ((ObjectNode) values.path("images")).put("product", image("product", 'a'));
@@ -434,14 +435,26 @@ class HelmReleaseTest {
     }
 
     @Test
-    void ledgerAllowlistMustConfirmUsdAndRejectEurForTheSagaGateAndDrill() throws Exception {
-        for (String invalid : List.of("USD,EUR", "EUR,USD", "EUR", "GBP", "USD,USDX", "usd")) {
+    void ledgerAllowlistAcceptsAllSupportedCurrenciesAndRejectsUnknownCodes() throws Exception {
+        // The chart repeats the shared policy: its default and its schema must name each supported currency.
+        String configured = named(render("application-release"), "shardshop-ledger-config").path("data")
+                .path("application.properties").asText().lines()
+                .filter(line -> line.startsWith("shardshop.ledger.allowed-currencies=")).findFirst().orElseThrow();
+        assertEquals(java.util.Set.copyOf(CurrencyPolicy.SUPPORTED_CURRENCIES),
+                java.util.Set.of(configured.substring(configured.indexOf('=') + 1).split(",")));
+        String pattern = JSON.readTree(chart.resolve("values.schema.json").toFile())
+                .at("/properties/ledgerApplication/properties/configuration/properties/shardshop.ledger.allowed-currencies/pattern").asText();
+        java.util.regex.Matcher alternatives = java.util.regex.Pattern.compile("^\\^\\(([A-Z|]+)\\)\\(,\\(\\1\\)\\)\\*\\$$").matcher(pattern);
+        assertTrue(alternatives.matches(), pattern);
+        assertEquals(java.util.Set.copyOf(CurrencyPolicy.SUPPORTED_CURRENCIES),
+                java.util.Set.of(alternatives.group(1).split("\\|")));
+        for (String invalid : List.of("USD,USDX", "usd", "", "USD,,EUR", "AUD")) {
             values.putObject("ledgerApplication").putObject("configuration").put("shardshop.ledger.allowed-currencies", invalid);
             assertRejected("application-release");
         }
-        values.putObject("ledgerApplication").putObject("configuration").put("shardshop.ledger.allowed-currencies", "GBP,USD");
+        values.putObject("ledgerApplication").putObject("configuration").put("shardshop.ledger.allowed-currencies", "USD,EUR,GBP,CNY,VND,KRW,JPY");
         assertTrue(named(render("application-release"), "shardshop-ledger-config").path("data").path("application.properties")
-                .asText().contains("shardshop.ledger.allowed-currencies=GBP,USD\n"));
+                .asText().contains("shardshop.ledger.allowed-currencies=USD,EUR,GBP,CNY,VND,KRW,JPY\n"));
     }
 
     private void releaseRevision(int revision) throws IOException {

@@ -267,7 +267,7 @@ final class JdbcOrderSession implements OrderStore.Session {
     public void insertOrder(Order order, List<ItemSnapshot> items, long sagaId, long commandId) {
         try {
             try (PreparedStatement statement = prepare("INSERT INTO ordering.orders(order_id, buyer_id, "
-                    + "request_fingerprint, currency, total_amount, status) VALUES (?, ?, ?, ?, ?, 'PENDING_STOCK')")) {
+                    + "request_fingerprint, currency, total_amount, status, currency_policy_version) VALUES (?, ?, ?, ?, ?, 'PENDING_STOCK', 2)")) {
                 statement.setLong(1, order.orderId());
                 statement.setLong(2, order.buyerId());
                 statement.setString(3, order.fingerprint());
@@ -304,13 +304,15 @@ final class JdbcOrderSession implements OrderStore.Session {
     }
 
     Optional<Product> product(long sellerId, long productId) {
-        try (PreparedStatement statement = prepare("SELECT name, price, unit_cost, currency "
-                + "FROM catalog.products WHERE seller_id = ? AND product_id = ?")) {
+        try (PreparedStatement statement = prepare("SELECT p.name, p.price, p.unit_cost, p.currency, s.region, s.country_code "
+                + "FROM catalog.products p JOIN catalog.sellers s ON s.seller_id = p.seller_id "
+                + "WHERE p.seller_id = ? AND p.product_id = ?")) {
             statement.setLong(1, sellerId);
             statement.setLong(2, productId);
             try (ResultSet rows = statement.executeQuery()) {
                 return rows.next() ? Optional.of(new Product(sellerId, productId, rows.getString("name"),
-                        rows.getBigDecimal("price"), rows.getBigDecimal("unit_cost"), rows.getString("currency")))
+                        rows.getBigDecimal("price"), rows.getBigDecimal("unit_cost"), rows.getString("currency"),
+                        rows.getString("region"), rows.getString("country_code")))
                         : Optional.empty();
             }
         } catch (SQLException failure) {

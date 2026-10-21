@@ -14,7 +14,7 @@ Feature: Catalog migrations with the Flyway Java API
           VALUES (11, 1, 'Legacy item', 19.95, 'USD', 10, 8)
       """
     When Flyway migrates the catalog stream
-    Then Flyway applies the migrations "2 catalog creation, 3 stock coordination, 4 profit posting, 5 product browser, catalog grants"
+    Then Flyway applies the migrations "2 catalog creation, 3 stock coordination, 4 profit posting, 5 product browser, 6 seller country currency policy, catalog grants"
     And catalog_reader reads these rows:
       | query                                                                                                     | rows                    |
       | SELECT company_name, creation_key IS NULL FROM catalog.sellers WHERE seller_id = 1                         | Legacy company,t        |
@@ -36,7 +36,7 @@ Feature: Catalog migrations with the Flyway Java API
           VALUES (101, 11, 1, 'USD', 0.10), (102, 11, 1, 'USD', -7.45)
       """
     When Flyway migrates the catalog stream
-    Then Flyway applies the migrations "5 product browser, catalog grants"
+    Then Flyway applies the migrations "5 product browser, 6 seller country currency policy, catalog grants"
     And product_app reads these rows:
       | query | rows |
       | SELECT initial_stock, stock FROM catalog.products WHERE product_id=11 | 10,7 |
@@ -277,3 +277,33 @@ Feature: Catalog migrations with the Flyway Java API
       | order_app   | catalog.profit_credits | any    | INSERT    | yes     |
       | order_app   | catalog.profit_credits | credited_at | INSERT | no      |
       | order_app   | catalog.profit_credits | any    | UPDATE    | no      |
+
+  Scenario: Retained catalog cutover backfills only verified country provenance and preserves historical money
+    Given a new shard database with only V1 through V5 of the catalog stream
+    And catalog_owner adds these rows:
+      """
+      INSERT INTO catalog.sellers(seller_id, name, creation_key) VALUES
+          (1, 'Apple', 'catalog-v1.US.seller.1'), (2, 'Wrong company', 'catalog-v1.US.seller.2'), (3, 'Arbitrary legacy', 'arbitrary');
+      INSERT INTO catalog.products(product_id, seller_id, name, description, price, unit_cost, currency, initial_stock, stock, creation_key)
+          VALUES (11,1,'Old USD','Saved',19.95,12.50,'USD',10,8,'old.usd'),
+                 (12,1,'Old EUR','Saved',19.95,12.50,'EUR',10,10,'old.eur'),
+                 (13,2,'Wrong provenance','Saved',19.95,12.50,'USD',10,10,'wrong'),
+                 (14,3,'Unknown country','Saved',19.95,12.50,'USD',10,10,'unknown');
+      INSERT INTO catalog.profit_credits(order_id,product_id,seller_id,currency,amount) VALUES (101,11,1,'USD',14.90)
+      """
+    When Flyway migrates the catalog stream
+    Then Flyway applies the migrations "6 seller country currency policy, catalog grants"
+    And catalog_owner reads these rows:
+      | query | rows |
+      | SELECT seller_id, coalesce(country_code,'UNRESOLVED') FROM catalog.sellers ORDER BY seller_id | 1,US;2,UNRESOLVED;3,UNRESOLVED |
+      | SELECT product_id, coalesce(legacy_reason,'ELIGIBLE') FROM catalog.currency_policy_legacy ORDER BY product_id | 11,ELIGIBLE;12,DISALLOWED_SELLER_CURRENCY;13,UNRESOLVED_SELLER_COUNTRY;14,UNRESOLVED_SELLER_COUNTRY |
+      | SELECT price,unit_cost,currency,initial_stock,stock FROM catalog.products WHERE product_id=11 | 19.95,12.50,USD,10,8 |
+      | SELECT order_id,product_id,seller_id,currency,amount FROM catalog.profit_credits | 101,11,1,USD,14.90 |
+    And a second Flyway migration validates the history and applies no migration
+    And the catalog schema has no functions and no triggers
+
+  # The report repeats the currency policy in SQL. This scenario fails when the two policies differ.
+  Scenario: The legacy report gives every seller country and product currency the reason of the shared policy
+    Given regional shard databases "shard-a=US, shard-b=EU, shard-c=ASIA" that Flyway migrated
+    When catalog_owner adds a seller for every ISO country and one without a country in each region, each with products in all supported currencies
+    Then the legacy report gives each product and each seller without a country the reason of the shared currency policy

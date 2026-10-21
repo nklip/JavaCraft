@@ -30,7 +30,7 @@ class OrderWorkloadTest {
         var planner = WorkloadFixtures.planner("stable", 10);
         String buyer = "9007199254740993";
         String order = "880803840000004254";
-        when(orders.allocate(buyer, "stable", 0)).thenThrow(new IOException()).thenReturn(order);
+        when(orders.allocate(buyer, planner.allocationRunName(), 0)).thenThrow(new IOException()).thenReturn(order);
         when(orders.submit(any())).thenThrow(WorkloadFixtures.httpFailure(503, "ORDER_STORE_UNAVAILABLE"))
                 .thenReturn(WorkloadFixtures.status("PENDING_STOCK"));
         when(orders.status(buyer, order)).thenReturn(WorkloadFixtures.status("PENDING_LEDGER"))
@@ -40,7 +40,7 @@ class OrderWorkloadTest {
         assertEquals("CANCELLED", completion.status().status());
         assertFalse(completion.recovered(), "A pending first answer is work of this process");
         assertEquals("ordinal 0, buyer " + buyer + ", order " + order + ", last status CANCELLED", progress.describe(0));
-        verify(orders, times(2)).allocate(buyer, "stable", 0);
+        verify(orders, times(2)).allocate(buyer, planner.allocationRunName(), 0);
         ArgumentCaptor<PlannedOrder> sent = ArgumentCaptor.forClass(PlannedOrder.class);
         verify(orders, times(2)).submit(sent.capture());
         assertSame(sent.getAllValues().getFirst(), sent.getAllValues().getLast());
@@ -53,7 +53,7 @@ class OrderWorkloadTest {
     @Test
     void aRecoveredTerminalPutNeedsNoPollingOrNewAllocation() throws Exception {
         var planner = WorkloadFixtures.planner("stable", 10);
-        when(orders.allocate(anyString(), eq("stable"), eq(0L))).thenReturn("880803840000004254");
+        when(orders.allocate(anyString(), eq(planner.allocationRunName()), eq(0L))).thenReturn("880803840000004254");
         when(orders.submit(any())).thenReturn(WorkloadFixtures.status("CONFIRMED"));
         var completion = workload.complete(planner, "stable", 0, new OrderWorkload.Progress());
         assertEquals("CONFIRMED", completion.status().status());

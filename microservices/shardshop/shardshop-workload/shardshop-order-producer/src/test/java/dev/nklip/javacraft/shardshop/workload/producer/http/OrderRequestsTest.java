@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import dev.nklip.javacraft.shardshop.common.JsonHttpClient;
 import dev.nklip.javacraft.shardshop.workload.producer.plan.PlannedOrder;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -66,6 +68,48 @@ class OrderRequestsTest {
         OrderStatus terminal = requests.status(BUYER, ORDER);
         assertEquals("UNSUPPORTED_CURRENCY", terminal.cancellationReason());
         assertEquals(true, terminal.terminal());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"CNY", "EUR", "GBP", "JPY", "KRW", "USD", "VND"})
+    void submitsEverySupportedCurrencyThroughTheHttpBoundary(String currency) throws Exception {
+        PlannedOrder planned = new PlannedOrder(BUYER, ORDER, currency, List.of(
+                new PlannedOrder.Item("9007199254740995", "9007199254740997", 2)));
+        reply(202, status("PENDING_STOCK", null));
+
+        assertEquals("PENDING_STOCK", requests.submit(planned).status());
+
+        HttpRequest put = captured();
+        assertEquals("PUT", put.method());
+        assertEquals(currency, json.readTree(body(put)).path("currency").textValue());
+    }
+
+    @Test
+    void submitsTheCurrencySelectedForTheRetainedOrdinalThatFailedInTheLab() throws Exception {
+        String buyer = "105960420535762945";
+        String order = "106367475197460480";
+        String path = "/api/v1/buyers/" + buyer + "/orders/" + order;
+        // The retained lab ordinal used CNY under the earlier seven-way choice; the HTTP guard must accept it.
+        String currency = "CNY";
+        reply(202, "{\"buyerId\":\"" + buyer + "\",\"orderId\":\"" + order
+                + "\",\"status\":\"PENDING_STOCK\",\"statusUrl\":\"" + path + "\"}");
+        var planned = new PlannedOrder(buyer, order, currency, List.of(
+                new PlannedOrder.Item("9007199254740995", "9007199254740997", 1)));
+
+        assertEquals(order, requests.submit(planned).orderId());
+
+        HttpRequest put = captured();
+        assertEquals(URI.create("http://order:8080" + path), put.uri());
+        assertEquals("CNY", json.readTree(body(put)).path("currency").textValue());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"AUD", "usd", "JPY ", ""})
+    void rejectsCurrenciesOutsideTheSupportedPolicyBeforeHttp(String currency) {
+        var planned = new PlannedOrder(BUYER, ORDER, currency, List.of(
+                new PlannedOrder.Item("9007199254740995", "9007199254740997", 1)));
+        assertThrows(IllegalArgumentException.class, () -> requests.submit(planned));
+        verifyNoInteractions(http);
     }
 
     @Test

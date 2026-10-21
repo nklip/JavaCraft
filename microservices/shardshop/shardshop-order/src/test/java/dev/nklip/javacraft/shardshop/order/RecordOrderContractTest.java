@@ -2,6 +2,7 @@ package dev.nklip.javacraft.shardshop.order;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.nklip.javacraft.shardshop.common.CurrencyPolicy;
 import dev.nklip.javacraft.shardshop.common.contract.ContractDocument;
 import dev.nklip.javacraft.shardshop.common.contract.ContractDocument.Example;
 import dev.nklip.javacraft.shardshop.common.contract.ExampleIds;
@@ -53,6 +54,40 @@ class RecordOrderContractTest {
     @Test
     void theExampleCommandMatchesTheSchema() {
         assertEquals(List.of(), SCHEMA.errors("#", COMMAND));
+    }
+
+    @Test
+    void versionTwoExampleAndMinorUnitConstraintsMatchTheWireContract() {
+        JsonObject current = (JsonObject) ContractDocument.read(CONTRACTS.resolve("examples/record-order-jpy.json"));
+        assertEquals(List.of(), SCHEMA.errors("#", current));
+        assertEquals(List.of(), ExampleIds.violations(List.of(current), Set.of("sellerId", "productId", "buyerId")));
+        assertEquals("US", ExampleIds.region(current.getString("buyerId")));
+        assertEquals("ASIA", ExampleIds.region(current.getJsonObject("snapshot").getJsonArray("items")
+                .getJsonObject(0).getString("sellerId")));
+        assertFalse(COMMAND.getString("orderId").equals(current.getString("orderId")), "The JPY example is a separate order");
+        assertEquals(fingerprint(current.getString("buyerId"), current.getString("orderId"),
+                creation(current.getJsonObject("snapshot"))), current.getString("requestFingerprint"));
+        current.getJsonObject("snapshot").put("amount", "3000.01");
+        assertFalse(SCHEMA.errors("#", current).isEmpty());
+        current.put("schemaVersion", 1);
+        assertEquals(List.of(), SCHEMA.errors("#", current), "Legacy money remains structurally readable");
+        current.put("schemaVersion", 2);
+        current.getJsonObject("snapshot").put("amount", "3000.00");
+        current.getJsonObject("snapshot").getJsonArray("items").getJsonObject(0).put("unitPrice", "1500.01");
+        assertFalse(SCHEMA.errors("#", current).isEmpty());
+    }
+
+    /** The version 2 schema repeats the shared currency policy; a policy change must change the schema. */
+    @Test
+    void versionTwoCurrencyListsMatchTheSharedCurrencyPolicy() {
+        JsonObject schema = (JsonObject) ContractDocument.read(CONTRACTS.resolve("record-order.schema.json"));
+        JsonObject snapshot = schema.getJsonArray("allOf").getJsonObject(0).getJsonObject("then")
+                .getJsonObject("properties").getJsonObject("snapshot");
+        assertEquals(CurrencyPolicy.SUPPORTED_CURRENCIES,
+                snapshot.getJsonObject("properties").getJsonObject("currency").getJsonArray("enum").getList());
+        assertEquals(CurrencyPolicy.SUPPORTED_CURRENCIES.stream().filter(code -> CurrencyPolicy.fractionDigits(code) == 0).toList(),
+                snapshot.getJsonArray("allOf").getJsonObject(0).getJsonObject("if").getJsonObject("properties")
+                        .getJsonObject("currency").getJsonArray("enum").getList());
     }
 
     @Test

@@ -65,10 +65,10 @@ public final class OrderApiStepDefinitions {
         }
         product.start(ProductRuntime.Endpoints.PRIMARIES);
         order.start(Set.of());
-        usd = product("usd", "EU", "USD");
-        eur = product("eur", "ASIA", "EUR");
-        asian = product("asian", "ASIA", "USD");
-        buyer = createdBuyer("buyer", "US");
+        usd = product("usd", "US", "USD");
+        eur = product("eur", "EU", "EUR");
+        asian = product("asian", "US", "USD");
+        buyer = createdBuyer("buyer", "EU");
         orderId = allocation("initial", 0, 201);
         path = path(buyer, orderId);
         request = orderRequest("USD", usd, asian);
@@ -180,7 +180,7 @@ public final class OrderApiStepDefinitions {
 
     @Then("pending and terminal retries return the saved status without catalog access")
     public void statusRetries() throws Exception {
-        order.restart(Set.of("shard-b", "shard-c"));
+        order.restart(Set.of(shards.ofSeller(usd.seller().id()).name(), shards.ofSeller(asian.seller().id()).name()));
         assertEquals("PENDING_STOCK", body(exchange("PUT", path, null, request), 202).get("status").asText());
         assertEquals("PENDING_STOCK", body(exchange("GET", path, null, null), 200).get("status").asText());
         error(exchange("PUT", path, null, orderRequest("EUR", usd)), 409, "ORDER_ID_CONFLICT");
@@ -220,7 +220,7 @@ public final class OrderApiStepDefinitions {
 
     @Then("catalog unavailability outranks missing products and existing retries bypass it")
     public void outagePrecedence() throws Exception {
-        order.restart(Set.of("shard-b"));
+        order.restart(Set.of(shards.ofSeller(usd.seller().id()).name()));
         var missingAndUnavailable = orderRequest("USD", usd, asian);
         ((ObjectNode) missingAndUnavailable.withArray("items").get(1)).put("productId", "1");
         error(exchange("PUT", path, null, missingAndUnavailable), 503, "CATALOG_UNAVAILABLE");
@@ -230,7 +230,7 @@ public final class OrderApiStepDefinitions {
         assertNoAcceptance();
         order.restart(Set.of());
         body(exchange("PUT", path, null, request), 202);
-        order.restart(Set.of("shard-b", "shard-c"));
+        order.restart(Set.of(shards.ofSeller(usd.seller().id()).name(), shards.ofSeller(asian.seller().id()).name()));
         body(exchange("PUT", path, null, request), 202);
         order.restart(Set.of(shards.ofSeller(buyer).name()));
         error(exchange("PUT", path, null, request), 503, "ORDER_STORE_UNAVAILABLE");
@@ -425,6 +425,12 @@ public final class OrderApiStepDefinitions {
                     assertEquals(new BigDecimal("19.95"), rows.getBigDecimal(1));
                     assertNull(rows.getBigDecimal(2), "Unknown historical cost must not be invented");
                 }
+                try (var rows = statement.executeQuery("SELECT currency_policy_version,currency,total_amount FROM ordering.orders WHERE order_id=2")) {
+                    assertTrue(rows.next());
+                    assertEquals(1, rows.getInt(1), "Retained orders keep legacy snapshot semantics");
+                    assertEquals("USD", rows.getString(2));
+                    assertEquals(new BigDecimal("19.95"), rows.getBigDecimal(3));
+                }
                 try (var rows = statement.executeQuery("SELECT status,ledger_result FROM ordering.order_sagas WHERE saga_id=5")) {
                     assertTrue(rows.next());
                     assertEquals("PENDING_STOCK", rows.getString(1));
@@ -447,9 +453,12 @@ public final class OrderApiStepDefinitions {
 
     private CatalogApi.Product product(String alias, String region, String currency) throws Exception {
         var sellerRequest = CatalogApi.sellerRequest(alias + " company", region);
-        var sellerResponse = catalog.createSeller(alias, sellerRequest);
+        String key = alias;
+        String target = alias.equals("asian") ? "shard-d" : alias.equals("usd") ? "shard-a" : "shard-b";
+        for (int attempt = 0; !shards.ofKey(region, key).name().equals(target); attempt++) key = alias + attempt;
+        var sellerResponse = catalog.createSeller(key, sellerRequest);
         body(sellerResponse, 201);
-        var seller = catalog.remember(alias, alias, sellerRequest, sellerResponse);
+        var seller = catalog.remember(alias, key, sellerRequest, sellerResponse);
         var item = CatalogApi.itemRequest().put("currency", currency);
         var response = catalog.post(seller.path() + "/products", alias, Json.bytes(item));
         body(response, 201);

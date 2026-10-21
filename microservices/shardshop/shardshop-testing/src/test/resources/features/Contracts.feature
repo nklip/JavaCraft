@@ -1,3 +1,4 @@
+@contracts
 Feature: Contract examples and workload datasets across modules
   Product, order and ledger each check their own contract, its examples and its boundaries in a unit test. These
   scenarios check what connects the contracts of different modules: the examples describe one EUR purchase, and each
@@ -17,6 +18,6 @@ Feature: Contract examples and workload datasets across modules
     Then the seller, product and buyer IDs of all contract examples follow the service-issued ID rules
 
   Scenario: Each workload dataset row is a valid creation request of its provider
-    Then the 150 sellers of catalog-v1 match the "CreateSeller" schema of the product contract
-    And the 300 products of catalog-v1 match the "CreateProduct" schema of the product contract
+    Then the 151 sellers of catalog-v2 match the "CreateSeller" schema of the product contract
+    And the 201 products of catalog-v2 match the "CreateProduct" schema of the product contract
     And the 3000 buyers of buyers-v1 match the "BuyerCreation" schema of the order contract

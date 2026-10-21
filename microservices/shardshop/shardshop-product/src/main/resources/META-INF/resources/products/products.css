@@ -92,3 +92,7 @@ footer span { margin: 0 9px; color: #bcc8c0; }
   .pagination button { padding-inline: 7px; }
   .pagination button span[aria-hidden] { display: none; }
 }
+
+.legacy-status, .seller-country { display: block; margin-top: .35rem; font-size: .75rem; }
+.legacy-status { color: #9a3412; }
+.seller-country { color: var(--muted, #64748b); }

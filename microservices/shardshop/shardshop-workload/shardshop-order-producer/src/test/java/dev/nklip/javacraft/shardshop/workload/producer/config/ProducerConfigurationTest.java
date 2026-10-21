@@ -17,7 +17,7 @@ class ProducerConfigurationTest {
     @Test
     void defaultsAreBoundedAndCanConstructWithoutExternalServices() {
         var config = config("shardshop.producer.run-name", "stable");
-        assertEquals(10, config.rejectedOrderPercent());
+        assertEquals(-1, config.rejectedOrderPercent());
         assertEquals(Duration.ofSeconds(60), config.orderDeadline());
         assertEquals(Duration.ofMinutes(5), config.startupDeadline());
         var producer = new ProducerWiring().producer(config, mock(HttpClient.class));

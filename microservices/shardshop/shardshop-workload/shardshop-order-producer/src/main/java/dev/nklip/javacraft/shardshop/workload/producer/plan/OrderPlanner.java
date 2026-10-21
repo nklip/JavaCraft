@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.workload.producer.plan;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import dev.nklip.javacraft.shardshop.common.CurrencyPolicy;
 import dev.nklip.javacraft.shardshop.common.IdParser;
 import dev.nklip.javacraft.shardshop.common.JsonFields;
 import dev.nklip.javacraft.shardshop.common.Sha256;
@@ -23,12 +24,14 @@ import java.util.Set;
 /** Rebuilds a run's order payload from fixed definitions and returned IDs, with no mutable state. */
 public final class OrderPlanner {
     private static final List<String> REGIONS = List.of("US", "EU", "ASIA");
-    private static final List<String> CURRENCIES = List.of("USD", "EUR");
+    private static final List<String> CURRENCIES = CurrencyPolicy.SUPPORTED_CURRENCIES;
 
     private final String runName;
     private final CurrencySelector currencies;
     private final List<CreatedBuyer> buyers;
+    private final Map<String, List<CreatedBuyer>> buyersByRegion;
     private final Map<String, List<ProductDescriptor>> products;
+    private final RegionalOrderMix regionalMix;
 
     /** The datasets must be the configured versions that resolved the buyer and product descriptors. */
     public OrderPlanner(String runName, int rejectedOrderPercent, List<CreatedBuyer> buyers,
@@ -36,7 +39,10 @@ public final class OrderPlanner {
         this.runName = validateRunName(runName);
         this.currencies = new CurrencySelector(rejectedOrderPercent);
         this.buyers = validateBuyers(buyers, Objects.requireNonNull(buyerDataset));
-        this.products = validateProducts(products, Objects.requireNonNull(catalog));
+        this.buyersByRegion = buyersByRegion(this.buyers);
+        Map<String, List<ProductDescriptor>> validated = validateProducts(products, Objects.requireNonNull(catalog));
+        this.products = currencies.normalTraffic() ? productOrder(this.runName, validated) : validated;
+        this.regionalMix = new RegionalOrderMix(REGIONS.stream().filter(buyersByRegion::containsKey).toList());
     }
 
     public static String validateRunName(String runName) {
@@ -51,23 +57,69 @@ public final class OrderPlanner {
         }
     }
 
-    public CreatedBuyer buyer(long ordinal) {
-        checkOrdinal(ordinal);
-        return buyers.get(index(ordinal, "buyer", buyers.size()));
+    /** Version normal selections separately from earlier planners and explicit drill settings. */
+    public String allocationRunName() {
+        String identity = runName + ":" + CatalogDataset.VERSION + ":" + currencies.mode();
+        return identity.codePointCount(0, identity.length()) <= 200 ? identity
+                : "catalog-v2:" + String.format("%064x", Sha256.unsignedDigest(identity));
     }
 
+    public CreatedBuyer buyer(long ordinal) {
+        checkOrdinal(ordinal);
+        List<CreatedBuyer> choices = currencies.normalTraffic()
+                ? buyersByRegion.get(regionalMix.select(ordinal).region()) : buyers;
+        return choices.get(index(ordinal, "buyer", choices.size()));
+    }
+
+    /**
+     * Normal traffic follows the buyer-region mix and rotates products within each currency, across regions
+     * and cycle boundaries. Up to two following products of that currency complete the order. The explicit
+     * USD/EUR test distribution keeps its original buyer, currency and product selections.
+     */
     public PlannedOrder plan(long ordinal, String orderId) {
         checkOrdinal(ordinal);
         new IdParser().parse(orderId);
-        String currency = currencies.select(orderId);
-        List<PlannedOrder.Item> items = new ArrayList<>(REGIONS.size());
-        for (String region : REGIONS) {
-            List<ProductDescriptor> choices = products.get(region + ":" + currency);
-            ProductDescriptor chosen = choices.get(index(ordinal, "product:" + region, choices.size()));
-            int quantity = 1 + index(ordinal, "quantity:" + region, 3);
+        final String currency;
+        final List<ProductDescriptor> choices;
+        final int first;
+        if (currencies.normalTraffic()) {
+            RegionalOrderMix.Selection selection = regionalMix.select(ordinal);
+            currency = selection.currency();
+            choices = products.get(currency);
+            first = (int) (selection.currencyOrdinal() % choices.size());
+        } else {
+            currency = currencies.select(orderId);
+            choices = products.get(currency);
+            first = index(ordinal, "product:" + currency, choices.size());
+        }
+        List<PlannedOrder.Item> items = new ArrayList<>(3);
+        for (int item = 0; item < Math.min(3, choices.size()); item++) {
+            ProductDescriptor chosen = choices.get((first + item) % choices.size());
+            int quantity = 1 + index(ordinal, "quantity:" + item, 3);
             items.add(new PlannedOrder.Item(chosen.sellerId(), chosen.productId(), quantity));
         }
         return new PlannedOrder(buyer(ordinal).buyerId(), orderId, currency, items);
+    }
+
+    private static Map<String, List<CreatedBuyer>> buyersByRegion(List<CreatedBuyer> buyers) {
+        Map<String, List<CreatedBuyer>> result = new HashMap<>();
+        for (String region : REGIONS) {
+            List<CreatedBuyer> group = buyers.stream().filter(buyer -> region.equals(buyer.definition().region())).toList();
+            if (!group.isEmpty()) {
+                result.put(region, group);
+            }
+        }
+        return Map.copyOf(result);
+    }
+
+    /** Run-specific product order, preserving a full rotation within each currency. */
+    private static Map<String, List<ProductDescriptor>> productOrder(
+            String runName, Map<String, List<ProductDescriptor>> products) {
+        Map<String, List<ProductDescriptor>> result = new HashMap<>();
+        products.forEach((currency, group) -> result.put(currency, group.stream().sorted(Comparator.comparing(
+                (ProductDescriptor product) -> Sha256.unsignedDigest(runName + "\0first-item\0" + product.definition().key()))
+                .thenComparing(product -> product.definition().key())).toList()));
+        return Map.copyOf(result);
     }
 
     private int index(long ordinal, String role, int size) {
@@ -148,18 +200,16 @@ public final class OrderPlanner {
             if (!CURRENCIES.contains(currency)) {
                 throw new IllegalArgumentException("Unsupported dataset currency");
             }
-            grouped.computeIfAbsent(region + ":" + currency, ignored -> new ArrayList<>()).add(product);
+            grouped.computeIfAbsent(currency, ignored -> new ArrayList<>()).add(product);
         }
         Map<String, List<ProductDescriptor>> result = new HashMap<>();
-        for (String region : REGIONS) {
-            for (String currency : CURRENCIES) {
-                List<ProductDescriptor> group = grouped.get(region + ":" + currency);
-                if (group == null || group.isEmpty()) {
-                    throw new IllegalArgumentException("Missing regional currency product");
-                }
-                group.sort(Comparator.comparing(p -> p.definition().key()));
-                result.put(region + ":" + currency, List.copyOf(group));
+        for (String currency : CURRENCIES) {
+            List<ProductDescriptor> group = grouped.get(currency);
+            if (group == null || group.isEmpty()) {
+                throw new IllegalArgumentException("Missing currency product");
             }
+            group.sort(Comparator.comparing(p -> p.definition().key()));
+            result.put(currency, List.copyOf(group));
         }
         return Map.copyOf(result);
     }

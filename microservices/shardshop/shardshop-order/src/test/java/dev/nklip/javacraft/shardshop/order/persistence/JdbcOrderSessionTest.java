@@ -246,17 +246,20 @@ class JdbcOrderSessionTest {
     }
 
     @Test
-    void catalogLookupReturnsImmutableNamePriceCostAndCurrencyOnly() throws SQLException {
+    void catalogLookupIncludesImmutableSellerCountryForNewOrderPolicy() throws SQLException {
         when(rows.next()).thenReturn(true);
         when(rows.getString("name")).thenReturn("Product");
         when(rows.getBigDecimal("price")).thenReturn(new BigDecimal("19.95"));
         when(rows.getBigDecimal("unit_cost")).thenReturn(new BigDecimal("12.50"));
         when(rows.getString("currency")).thenReturn("EUR");
-        assertEquals(new Product(51, 61, "Product", new BigDecimal("19.95"), new BigDecimal("12.50"), "EUR"),
+        when(rows.getString("region")).thenReturn("EU");
+        when(rows.getString("country_code")).thenReturn("DE");
+        assertEquals(new Product(51, 61, "Product", new BigDecimal("19.95"), new BigDecimal("12.50"), "EUR", "EU", "DE"),
                 session.product(51, 61).orElseThrow());
         verify(statement).setLong(1, 51);
         verify(statement).setLong(2, 61);
-        verify(connection).prepareStatement("SELECT name, price, unit_cost, currency "
-                + "FROM catalog.products WHERE seller_id = ? AND product_id = ?");
+        verify(connection).prepareStatement("SELECT p.name, p.price, p.unit_cost, p.currency, s.region, s.country_code "
+                + "FROM catalog.products p JOIN catalog.sellers s ON s.seller_id = p.seller_id "
+                + "WHERE p.seller_id = ? AND p.product_id = ?");
     }
 }

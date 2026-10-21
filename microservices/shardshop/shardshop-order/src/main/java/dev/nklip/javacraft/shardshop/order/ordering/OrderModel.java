@@ -38,7 +38,7 @@ public final class OrderModel {
     }
 
     public record Product(long sellerId, long productId, String name, BigDecimal price,
-                          BigDecimal unitCost, String currency) {
+                          BigDecimal unitCost, String currency, String sellerRegion, String sellerCountryCode) {
     }
 
     public record ItemSnapshot(int position, long sellerId, long productId, int quantity,

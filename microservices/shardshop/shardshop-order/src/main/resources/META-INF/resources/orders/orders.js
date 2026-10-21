@@ -27,11 +27,12 @@
   let lastRequested = false;
 
   // Format the decimal text itself: converting money to Number loses precision.
-  function money(value) {
+  function money(value, currency) {
     const negative = value.startsWith("-");
     const [whole, fraction] = (negative ? value.slice(1) : value).split(".");
     const prefix = negative ? "−" : "";
-    return prefix + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "." + fraction;
+    const decimals = ["JPY", "KRW", "VND"].includes(currency) && fraction === "00" ? "" : "." + fraction;
+    return prefix + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + decimals;
   }
 
   function canonicalId(value) {
@@ -201,7 +202,7 @@
         status.append(node("span", "cancellation-reason", item.cancellationReason));
       }
       const total = node("td", "numeric");
-      const amount = node("span", "amount", money(item.total));
+      const amount = node("span", "amount", money(item.total, item.currency));
       amount.append(node("span", "currency", item.currency));
       total.append(amount);
       const products = node("td");

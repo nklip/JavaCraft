@@ -11,7 +11,12 @@ import java.util.function.LongSupplier;
 /** Short, independent transactions for durable stock coordination. */
 public interface StockStore {
     record Saga(long sagaId, long commandId, OrderModel.Order order, List<OrderModel.ItemSnapshot> items,
-                long leaseVersion, int failures) {
+                long leaseVersion, int failures, int currencyPolicyVersion) {
+        public Saga(long sagaId, long commandId, OrderModel.Order order, List<OrderModel.ItemSnapshot> items,
+                    long leaseVersion, int failures) {
+            this(sagaId, commandId, order, items, leaseVersion, failures, 1);
+        }
+
         public Saga {
             items = List.copyOf(items);
         }

@@ -80,8 +80,8 @@ class CatalogSeederTest {
     @Test
     void seedsEveryRegionalEntityAndRecoversTheSameIdsOnARepeatedRun() throws Exception {
         SeedReport first = seeder.seed();
-        assertEquals("Seeded and verified catalog-v1 [US 50 sellers, 100 products {USD=50, EUR=50}; "
-                + "EU 50 sellers, 100 products {USD=50, EUR=50}; ASIA 50 sellers, 100 products {USD=50, EUR=50}], "
+        assertEquals("Seeded and verified catalog-v2 [US 50 sellers, 50 products {USD=50}; "
+                + "EU 50 sellers, 100 products {EUR=50, GBP=50}; ASIA 51 sellers, 51 products {CNY=32, KRW=4, JPY=14, VND=1}], "
                 + "key-to-ID SHA-256 " + first.mappingDigest(), first.summary());
         assertEquals(catalog.sellers(), first.sellers().stream().map(CreatedSeller::definition).toList());
         assertEquals(catalog.products(), first.products().stream().map(CreatedProduct::definition).toList());
@@ -89,9 +89,9 @@ class CatalogSeederTest {
                 .collect(Collectors.toMap(seller -> seller.definition().key(), CreatedSeller::sellerId));
         first.products().forEach(product -> assertEquals(sellerIds.get(product.definition().sellerKey()), product.sellerId()));
         assertEquals(issuedIds(), ids(first));
-        assertEquals(450, new HashSet<>(ids(first).values()).size());
-        assertEquals(450, requests.stream().filter(request -> request.startsWith("POST ")).count());
-        assertEquals(900, requests.stream().filter(request -> request.startsWith("GET ")).count());
+        assertEquals(352, new HashSet<>(ids(first).values()).size());
+        assertEquals(352, requests.stream().filter(request -> request.startsWith("POST ")).count());
+        assertEquals(704, requests.stream().filter(request -> request.startsWith("GET ")).count());
         List<String> firstRequests = List.copyOf(requests);
         requests.clear();
 
@@ -99,24 +99,24 @@ class CatalogSeederTest {
         assertEquals(first, second);
         assertEquals(first.mappingDigest(), second.mappingDigest());
         assertEquals(firstRequests, requests);
-        assertEquals(450, stored.size());
+        assertEquals(352, stored.size());
         verifyNoInteractions(pause);
     }
 
     @Test
     void retriesTransientFailuresAndLostResponsesWithTheSameKeyAndPayload() throws Exception {
-        fault("create catalog-v1.US.seller.1", Fault.UNAVAILABLE, Fault.DISCONNECT);
-        fault("create catalog-v1.EU.product.3", Fault.LOST_RESPONSE);
-        fault("read catalog-v1.ASIA.seller.2", Fault.UNAVAILABLE);
-        fault("lookup catalog-v1.US.product.2", Fault.DISCONNECT);
+        fault("create catalog-v2.US.seller.1", Fault.UNAVAILABLE, Fault.DISCONNECT);
+        fault("create catalog-v2.EU.product.3", Fault.LOST_RESPONSE);
+        fault("read catalog-v2.ASIA.seller.2", Fault.UNAVAILABLE);
+        fault("lookup catalog-v2.US.product.2", Fault.DISCONNECT);
         SeedReport report = seeder.seed();
-        assertEquals(450, stored.size());
+        assertEquals(352, stored.size());
         assertEquals(issuedIds(), ids(report));
-        assertEquals(1355, requests.size());
-        List<String> sellerPosts = posts("catalog-v1.US.seller.1");
+        assertEquals(1061, requests.size());
+        List<String> sellerPosts = posts("catalog-v2.US.seller.1");
         assertEquals(3, sellerPosts.size());
         assertEquals(1, new HashSet<>(sellerPosts).size());
-        List<String> productPosts = posts("catalog-v1.EU.product.3");
+        List<String> productPosts = posts("catalog-v2.EU.product.3");
         assertEquals(2, productPosts.size());
         assertEquals(1, new HashSet<>(productPosts).size());
         verify(pause, times(4)).sleep(Duration.ofMillis(100));
@@ -126,39 +126,40 @@ class CatalogSeederTest {
 
     @Test
     void partialRunKeepsIssuedIdsRegionsAndPayloadsForTheNextRun() throws Exception {
-        fault("create catalog-v1.EU.seller.10", Fault.UNAVAILABLE, Fault.UNAVAILABLE, Fault.UNAVAILABLE);
+        fault("create catalog-v2.EU.seller.10", Fault.UNAVAILABLE, Fault.UNAVAILABLE, Fault.UNAVAILABLE);
         SeedingException failure = assertThrows(SeedingException.class, seeder::seed);
-        assertEquals("Create seller catalog-v1.EU.seller.10 failed on attempt 3: HTTP 503 CATALOG_UNAVAILABLE",
+        assertEquals("Create seller catalog-v2.EU.seller.10 failed on attempt 3: HTTP 503 CATALOG_UNAVAILABLE",
                 failure.getMessage());
         assertTrue(requests.stream().allMatch(request -> request.startsWith("POST ")));
         Map<String, Stored> partial = Map.copyOf(stored);
         Map<String, String> partialIds = issuedIds();
-        assertEquals(59 + 118, partial.size());
+        // The first 50 US sellers own one product each; the first nine EU sellers own two each.
+        assertEquals(59 + 50 + 18, partial.size());
 
         SeedReport report = seeder.seed();
-        assertEquals(450, stored.size());
+        assertEquals(352, stored.size());
         partial.forEach((scope, entity) -> assertEquals(entity, stored.get(scope)));
         Map<String, String> ids = ids(report);
         partialIds.forEach((key, id) -> assertEquals(id, ids.get(key)));
-        assertEquals("US", stored.get("seller\0US\0catalog-v1.US.seller.50").entity().get("region").textValue());
-        assertEquals("EU", stored.get("seller\0EU\0catalog-v1.EU.seller.9").entity().get("region").textValue());
+        assertEquals("US", stored.get("seller\0US\0catalog-v2.US.seller.50").entity().get("region").textValue());
+        assertEquals("EU", stored.get("seller\0EU\0catalog-v2.EU.seller.9").entity().get("region").textValue());
         verify(pause).sleep(Duration.ofMillis(100));
         verify(pause).sleep(Duration.ofMillis(150));
     }
 
     @Test
     void changedPayloadsAndOtherRejectionsStopWithoutRetries() throws Exception {
-        fault("create catalog-v1.US.product.1", Fault.CONFLICT);
-        assertEquals("Create product catalog-v1.US.product.1 failed on attempt 1: HTTP 409 PRODUCT_IDEMPOTENCY_CONFLICT",
+        fault("create catalog-v2.US.product.1", Fault.CONFLICT);
+        assertEquals("Create product catalog-v2.US.product.1 failed on attempt 1: HTTP 409 PRODUCT_IDEMPOTENCY_CONFLICT",
                 assertThrows(SeedingException.class, seeder::seed).getMessage());
         assertEquals(1, stored.size());
         String sellerId = stored.values().iterator().next().entity().get("sellerId").textValue();
-        stored.put("product\0" + sellerId + "\0catalog-v1.US.product.1", new Stored("catalog-v1.US.product.1",
+        stored.put("product\0" + sellerId + "\0catalog-v2.US.product.1", new Stored("catalog-v2.US.product.1",
                 json.createObjectNode().put("name", "Retained other payload"), json.createObjectNode()));
-        assertEquals("Create product catalog-v1.US.product.1 failed on attempt 1: HTTP 409 PRODUCT_IDEMPOTENCY_CONFLICT",
+        assertEquals("Create product catalog-v2.US.product.1 failed on attempt 1: HTTP 409 PRODUCT_IDEMPOTENCY_CONFLICT",
                 assertThrows(SeedingException.class, seeder::seed).getMessage());
-        fault("create catalog-v1.US.seller.1", Fault.CONFLICT);
-        assertEquals("Create seller catalog-v1.US.seller.1 failed on attempt 1: HTTP 409 SELLER_IDEMPOTENCY_CONFLICT",
+        fault("create catalog-v2.US.seller.1", Fault.CONFLICT);
+        assertEquals("Create seller catalog-v2.US.seller.1 failed on attempt 1: HTTP 409 SELLER_IDEMPOTENCY_CONFLICT",
                 assertThrows(SeedingException.class, seeder::seed).getMessage());
         verifyNoInteractions(pause);
     }
@@ -166,21 +167,21 @@ class CatalogSeederTest {
     @Test
     void completesOnlyAfterPrimaryReadsConfirmEveryAcknowledgedEntity() throws Exception {
         Map<String, String> failures = new LinkedHashMap<>();
-        failures.put("read catalog-v1.ASIA.seller.50", "Read seller catalog-v1.ASIA.seller.50 failed on attempt 1: HTTP 404 SELLER_NOT_FOUND");
-        failures.put("read catalog-v1.EU.seller.7", "Read seller catalog-v1.EU.seller.7 returned a different ID than its acknowledged creation");
-        failures.put("lookup catalog-v1.EU.seller.1", "Look up seller catalog-v1.EU.seller.1 returned a different ID than its acknowledged creation");
-        failures.put("read catalog-v1.US.product.100", "Read product catalog-v1.US.product.100 returned a different ID than its acknowledged creation");
-        failures.put("lookup catalog-v1.ASIA.product.1", "Look up product catalog-v1.ASIA.product.1 returned a different ID than its acknowledged creation");
-        failures.put("lookup catalog-v1.US.product.1", "Look up product catalog-v1.US.product.1 failed on attempt 1: HTTP 404 PRODUCT_NOT_FOUND");
-        failures.put("read catalog-v1.EU.product.2", "Read product catalog-v1.EU.product.2 failed on attempt 1: Product response does not match its definition");
-        failures.put("lookup catalog-v1.US.seller.3", "Look up seller catalog-v1.US.seller.3 failed on attempt 1: Seller response does not match its definition");
+        failures.put("read catalog-v2.ASIA.seller.50", "Read seller catalog-v2.ASIA.seller.50 failed on attempt 1: HTTP 404 SELLER_NOT_FOUND");
+        failures.put("read catalog-v2.EU.seller.7", "Read seller catalog-v2.EU.seller.7 returned a different ID than its acknowledged creation");
+        failures.put("lookup catalog-v2.EU.seller.1", "Look up seller catalog-v2.EU.seller.1 returned a different ID than its acknowledged creation");
+        failures.put("read catalog-v2.US.product.50", "Read product catalog-v2.US.product.50 returned a different ID than its acknowledged creation");
+        failures.put("lookup catalog-v2.ASIA.product.1", "Look up product catalog-v2.ASIA.product.1 returned a different ID than its acknowledged creation");
+        failures.put("lookup catalog-v2.US.product.1", "Look up product catalog-v2.US.product.1 failed on attempt 1: HTTP 404 PRODUCT_NOT_FOUND");
+        failures.put("read catalog-v2.EU.product.2", "Read product catalog-v2.EU.product.2 failed on attempt 1: Product response does not match its definition");
+        failures.put("lookup catalog-v2.US.seller.3", "Look up seller catalog-v2.US.seller.3 failed on attempt 1: Seller response does not match its definition");
         for (Map.Entry<String, String> expected : failures.entrySet()) {
             Fault fault = expected.getValue().contains("HTTP 404") ? Fault.NOT_FOUND
                     : expected.getValue().contains("different ID") ? Fault.OTHER_ID : Fault.CHANGED_PAYLOAD;
             fault(expected.getKey(), fault);
             assertEquals(expected.getValue(), assertThrows(SeedingException.class, seeder::seed).getMessage());
         }
-        assertEquals(450, stored.size());
+        assertEquals(352, stored.size());
         assertEquals(issuedIds(), ids(seeder.seed()));
         verifyNoInteractions(pause);
     }
@@ -276,10 +277,19 @@ class CatalogSeederTest {
             ObjectNode entity = payload.deepCopy();
             if (products.matches()) {
                 entity.put("sellerId", products.group(1)).put("productId", Long.toString(nextId))
-                        .put("stock", payload.get("initialStock").intValue());
+                        .put("stock", payload.get("initialStock").intValue())
+                        .put("countryCode", stored.values().stream()
+                                .filter(value -> !value.entity().has("productId")
+                                        && value.entity().get("sellerId").textValue().equals(products.group(1)))
+                                .findFirst().orElseThrow().entity().get("countryCode").textValue())
+                        .put("newOrderEligible", true).putNull("legacyReason");
             } else {
-                entity.put("sellerId", Long.toString(nextId))
-                        .set("profitsEarned", json.createObjectNode().put("USD", "0.00").put("EUR", "0.00"));
+                entity.put("sellerId", Long.toString(nextId));
+                ObjectNode profits = json.createObjectNode();
+                dev.nklip.javacraft.shardshop.common.CurrencyPolicy.currencies(
+                        payload.get("region").textValue(), payload.get("countryCode").textValue())
+                        .forEach(currency -> profits.put(currency, "0.00"));
+                entity.set("profitsEarned", profits);
             }
             nextId += 7919;
             stored.put(scope, new Stored(key, payload, entity));

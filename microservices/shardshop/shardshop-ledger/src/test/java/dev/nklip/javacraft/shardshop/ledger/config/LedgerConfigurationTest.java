@@ -26,6 +26,9 @@ class LedgerConfigurationTest {
         LedgerConfiguration defaults = new SmallRyeConfigBuilder()
                 .withConverter(Duration.class, 100, new DurationConverter())
                 .withMapping(LedgerConfiguration.class).build().getConfigMapping(LedgerConfiguration.class);
+        // The default repeats the shared policy; a policy change must change the default.
+        assertEquals(java.util.Set.copyOf(dev.nklip.javacraft.shardshop.common.CurrencyPolicy.SUPPORTED_CURRENCIES),
+                defaults.allowedCurrencies());
         assertEquals("jdbc:postgresql://" + migration.group(1) + ":5432/ledger", defaults.database().url());
     }
 }

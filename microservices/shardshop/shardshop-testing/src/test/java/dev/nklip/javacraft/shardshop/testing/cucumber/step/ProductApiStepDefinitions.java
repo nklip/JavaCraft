@@ -151,8 +151,8 @@ public class ProductApiStepDefinitions {
         created.add(new Created(alias, key, request, response));
     }
 
-    @Then("each/the creation returns 201 with the requested seller, a new seller ID and the profits USD {string} and EUR {string}")
-    public void sellersCreated(String usd, String eur) {
+    @Then("each/the creation returns 201 with the requested seller, a new seller ID and policy-appropriate zero profits")
+    public void sellersCreated() {
         Set<String> otherIds = new HashSet<>();
         for (Seller seller : api.sellers()) {
             if (created.stream().noneMatch(creation -> creation.alias().equals(seller.alias()))) {
@@ -161,7 +161,7 @@ public class ProductApiStepDefinitions {
         }
         for (Created seller : created) {
             assertSeller(seller.response(), 201, seller.request().get("companyName").asText(),
-                    seller.request().get("region").asText(), Map.of("USD", usd, "EUR", eur));
+                    seller.request().get("region").asText(), ZERO_PROFITS);
             assertTrue(otherIds.add(Json.parse(seller.response().body()).get("sellerId").asText()), "A new seller ID");
         }
     }
@@ -224,20 +224,20 @@ public class ProductApiStepDefinitions {
 
     @Given("the product {string} of the seller {string} with the key {string}")
     public void product(String alias, String sellerAlias, String key) throws IOException {
-        Created product = createProduct(alias, sellerAlias, key, itemRequest());
+        Created product = createProduct(alias, sellerAlias, key, CatalogApi.itemRequest(api.seller(sellerAlias).region()));
         assertProduct(product.response(), 201, product.request(), api.seller(sellerAlias).id(), 2);
     }
 
     @When("a client creates the product {string} of the seller {string} with the key {string}")
     public void clientCreatesProduct(String alias, String sellerAlias, String key) throws IOException {
         created.clear();
-        created.add(createProduct(alias, sellerAlias, key, itemRequest()));
+        created.add(createProduct(alias, sellerAlias, key, CatalogApi.itemRequest(api.seller(sellerAlias).region())));
     }
 
     @When("a client creates the product {string} of the seller {string} with the key {string} and these fields:")
     public void clientCreatesProductWithFields(String alias, String sellerAlias, String key, Map<String, String> fields)
             throws IOException {
-        ObjectNode request = itemRequest();
+        ObjectNode request = CatalogApi.itemRequest(api.seller(sellerAlias).region());
         fields.forEach((field, value) -> {
             if ("initialStock".equals(field)) {
                 request.put(field, Integer.parseInt(value));
@@ -398,7 +398,7 @@ public class ProductApiStepDefinitions {
     public void concurrentProducts(int count, String alias, String sellerAlias, String key)
             throws InterruptedException, IOException {
         Seller seller = api.seller(sellerAlias);
-        ObjectNode request = itemRequest();
+        ObjectNode request = CatalogApi.itemRequest(seller.region());
         List<Response> responses = concurrently(count,
                 () -> api.postUntilAnswered(seller.path() + "/products", key, Json.bytes(request)));
         created.clear();

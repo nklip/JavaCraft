@@ -2,6 +2,7 @@ package dev.nklip.javacraft.shardshop.testing.kind;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import dev.nklip.javacraft.shardshop.common.CurrencyPolicy;
 import dev.nklip.javacraft.shardshop.common.amqp.BrokerSettings;
 import dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.Json;
@@ -38,7 +39,9 @@ public final class KindSagaDrill {
             guard.run(() -> {
                 try {
                     saga.deployed();
+                    saga.normalPolicy();
                     pauseProducer(guard);
+                    restrictPolicy(guard);
                     buyer();
                     try (Tunnel http = new Tunnel(lab, "service/shardshop-order", 8080);
                          Tunnel broker = new Tunnel(lab, "service/shardshop-rabbitmq", 5672)) {
@@ -55,13 +58,14 @@ public final class KindSagaDrill {
                         expandPolicy(guard);
                         replay(broker, rejected, true);
                         race(http);
-                        partialRelease(http);
+                        atomicStockFailure(http);
                         saga.invariants();
                     }
                 } catch (IOException | InterruptedException failure) { throw failure; }
                 catch (Exception failure) { throw new IOException("Saga replay/race drill failed", failure); }
             });
         }
+        saga.normalPolicy();
     }
 
     public void relocateCdc() throws IOException, InterruptedException {
@@ -156,7 +160,9 @@ public final class KindSagaDrill {
     private void pauseProducer(KindDrillGuard guard) throws IOException, InterruptedException {
         int replicas = deployment.resource("deployment", "shardshop-order-producer").path("spec").path("replicas").asInt(-1);
         require(replicas == 1, "Saga drill requires the normal single producer replica");
-        guard.onClose("restore order producer replica count", () -> {
+        guard.onClose("restore order producer replica count after the normal ledger policy is ready", () -> {
+            saga.normalPolicy();
+            awaitDeployment("ledger");
             lab.kubectl("scale", "deployment/shardshop-order-producer", "--replicas=" + replicas);
             awaitDeployment("order-producer");
             return true;
@@ -179,12 +185,12 @@ public final class KindSagaDrill {
         throw new IOException("Producer has not created any buyers");
     }
 
-    // Seeded catalog-v1 products only: the drill must not use the stock of the saga gate's own products.
+    // Seeded catalog-v2 products only: the drill must not use the stock of the saga gate's own products.
     private JsonNode product(String currency) throws IOException, InterruptedException {
         for (String shard : lab.shards()) {
             String product = saga.sql(shard, "SELECT row_to_json(x)::text FROM (SELECT seller_id::text, product_id::text, stock, initial_stock "
                     + "FROM catalog.products WHERE currency=" + KindSaga.literal(currency) + " AND stock>4 "
-                    + "AND starts_with(creation_key, 'catalog-v1.') ORDER BY product_id LIMIT 1) x").strip();
+                    + "AND starts_with(creation_key, 'catalog-v2.') ORDER BY product_id LIMIT 1) x").strip();
             if (!product.isEmpty()) return KindLab.parse(product);
         }
         throw new IOException("No seeded product with remaining " + currency + " stock");
@@ -275,23 +281,32 @@ public final class KindSagaDrill {
         awaitOrder(id, "CANCELLED");
     }
 
+    /** The drill's own rejection check: every supported currency except EUR. */
+    private void restrictPolicy(KindDrillGuard guard) throws IOException, InterruptedException {
+        policy(guard, String.join(",", CurrencyPolicy.SUPPORTED_CURRENCIES.stream().filter(currency -> !currency.equals("EUR")).toList()));
+    }
+
     private void expandPolicy(KindDrillGuard guard) throws IOException, InterruptedException {
-        JsonNode deployment = this.deployment.resource("deployment", "shardshop-ledger");
-        JsonNode previous = deployment.at("/spec/template/spec/containers/0/env").deepCopy();
+        policy(guard, String.join(",", CurrencyPolicy.SUPPORTED_CURRENCIES));
+    }
+
+    private void policy(KindDrillGuard guard, String currencies) throws IOException, InterruptedException {
+        JsonNode resource = deployment.resource("deployment", "shardshop-ledger");
+        JsonNode previous = resource.at("/spec/template/spec/containers/0/env").deepCopy();
         guard.onClose("restore ledger allowlist environment and ready deployment", () -> {
             replaceEnv("ledger", previous);
             awaitDeployment("ledger");
             return true;
         });
-        var expanded = previous.deepCopy();
-        require(expanded.isArray(), "Ledger environment must be an explicit array");
-        for (JsonNode variable : expanded) require(!variable.path("name").asText().equals("SHARDSHOP_LEDGER_ALLOWED_CURRENCIES"),
-                "Drill needs the ledger policy from its unchanged ConfigMap");
-        ((com.fasterxml.jackson.databind.node.ArrayNode) expanded).addObject().put("name", "SHARDSHOP_LEDGER_ALLOWED_CURRENCIES").put("value", "USD,EUR");
-        replaceEnv("ledger", expanded);
+        var selected = Json.newObject().arrayNode();
+        require(previous.isArray(), "Ledger environment must be an explicit array");
+        for (JsonNode variable : previous)
+            if (!variable.path("name").asText().equals("SHARDSHOP_LEDGER_ALLOWED_CURRENCIES")) selected.add(variable.deepCopy());
+        selected.addObject().put("name", "SHARDSHOP_LEDGER_ALLOWED_CURRENCIES").put("value", currencies);
+        replaceEnv("ledger", selected);
         awaitDeployment("ledger");
-        require(saga.pod("ledger").at("/spec/containers/0/env").equals(expanded),
-                "Ready ledger pod has not adopted the expanded EUR allowlist");
+        require(saga.pod("ledger").at("/spec/containers/0/env").equals(selected),
+                "Ready ledger pod has not adopted the scoped allowlist");
     }
 
     private void replaceEnv(String app, JsonNode env) throws IOException, InterruptedException {
@@ -327,25 +342,36 @@ public final class KindSagaDrill {
         saga.invariants();
     }
 
-    private void partialRelease(Tunnel tunnel) throws Exception {
+    private void atomicStockFailure(Tunnel tunnel) throws Exception {
         JsonNode first = product("USD");
         JsonNode second = null;
-        for (String shard : lab.shards().subList(1, lab.shards().size())) {
+        for (String shard : lab.shards()) {
             String row = saga.sql(shard, "SELECT row_to_json(x)::text FROM (SELECT seller_id::text,product_id::text,stock,initial_stock "
-                    + "FROM catalog.products WHERE currency='USD' AND product_id<>" + KindSaga.id(first.path("product_id").asText())
-                    + " AND starts_with(creation_key, 'catalog-v1.') ORDER BY product_id LIMIT 1) x").strip();
+                    + "FROM catalog.products WHERE currency='USD' AND product_id>" + KindSaga.id(first.path("product_id").asText())
+                    + " AND starts_with(creation_key, 'catalog-v2.') ORDER BY product_id LIMIT 1) x").strip();
             if (!row.isEmpty()) { second = KindLab.parse(row); break; }
         }
-        require(second != null && second.path("initial_stock").asInt() < Integer.MAX_VALUE, "Partial-release fixture needs a second bounded stock product");
+        require(second != null && second.path("initial_stock").asInt() < Integer.MAX_VALUE, "Atomic stock failure needs a second bounded USD product");
         ObjectNode request = request("USD", first, 1);
         ((com.fasterxml.jackson.databind.node.ArrayNode) request.path("items")).add(request("USD", second, second.path("initial_stock").asInt() + 1).path("items").get(0));
         String id = accept(tunnel, request);
         awaitOrder(id, "CANCELLED");
         require(reason(id).equals("OUT_OF_STOCK"), "Oversized order must fail stock before ledger");
-        long released = 0;
-        for (String shard : lab.shards()) released += saga.number(shard,
-                "SELECT count(*) FROM catalog.stock_reservations WHERE order_id=" + id + " AND released_at IS NOT NULL");
-        require(released == 1, "Partial reservation must be retained as exactly one released row");
+        // Each supported currency occupies one catalog shard in this retained topology. A shard group
+        // is atomic, so failure on the second item rolls back the first item's reservation and stock write.
+        for (String shard : lab.shards()) {
+            require(saga.number(shard, "SELECT count(*) FROM catalog.stock_reservations WHERE order_id=" + id) == 0,
+                    "A failed atomic catalog group must leave no reservation rows");
+            require(saga.number(shard, "SELECT count(*) FROM catalog.profit_credits WHERE order_id=" + id) == 0,
+                    "A stock failure must never credit seller profit");
+        }
+        for (JsonNode item : List.of(first, second)) {
+            long unchanged = 0;
+            for (String shard : lab.shards()) unchanged += saga.number(shard,
+                    "SELECT count(*) FROM catalog.products WHERE product_id=" + KindSaga.id(item.path("product_id").asText())
+                            + " AND stock=" + item.path("stock").asInt());
+            require(unchanged == 1, "A failed atomic catalog group must preserve every item's prior stock");
+        }
         http(tunnel, "PUT", path(id), request, 200);
         saga.invariants();
     }

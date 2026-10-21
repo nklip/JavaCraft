@@ -33,14 +33,18 @@ final class KindDeploymentTest {
     }
 
     @Test
-    void catalogCountsAcceptOnlyTheSagaGateFixtureBesideCatalogV1() throws IOException {
-        String seeded = "50 100 0 0 150";
-        KindDeployment.validateCatalogCounts(Map.of("shard-a", seeded, "shard-b", seeded, "shard-c", seeded));
-        for (String gate : List.of("50 100 1 0 151", "50 100 1 2 153"))
-            KindDeployment.validateCatalogCounts(Map.of("shard-a", gate, "shard-b", seeded, "shard-c", seeded));
-        for (String invalid : List.of("50 100 0 0 151", "50 100 2 2 154", "50 100 1 3 154", "50 101 0 0 151", "50 100 0 0"))
-            assertThrows(IOException.class, () -> KindDeployment.validateCatalogCounts(
-                    Map.of("shard-a", invalid, "shard-b", seeded, "shard-c", seeded)), invalid);
+    void catalogCountsAcceptOnlyTheDatasetsAndTheGateFixtures() throws IOException {
+        KindDeployment.validateCatalogCounts(Map.of("shard-a", "50 50 0 0 0 0 0 0 100",
+                "shard-b", "50 100 0 0 0 0 0 0 150", "shard-c", "51 51 0 0 0 0 0 0 102"));
+        KindDeployment.validateCatalogCounts(Map.of("shard-a", "50 50 1 1 0 0 0 0 102",
+                "shard-b", "50 100 1 1 0 0 0 0 152", "shard-c", "51 51 0 0 0 0 0 0 102"));
+        // The retained lab of 2026-10-21: catalog-v1 and the step 4.9 gate fixture stay beside the current rows.
+        KindDeployment.validateCatalogCounts(Map.of("shard-a", "50 50 1 1 50 100 1 2 255",
+                "shard-b", "50 100 1 1 50 100 0 0 302", "shard-c", "51 51 0 0 50 100 0 0 252"));
+        // Step 4.12 validation: the earlier rule accepted any number of rows beside the known ones.
+        for (String invalid : List.of("151 201 2 2 150 300 1 2 810", "151 201 0 0 0 0 0 0 353", "151 200 0 0 0 0 0 0 351",
+                "151 201 3 2 0 0 0 0 357", "151 201 0 0 150 299 0 0 801", "151 201 0 0 0 0 2 2 356", "151 201 0 0 351"))
+            assertThrows(IOException.class, () -> KindDeployment.validateCatalogCounts(Map.of("all", invalid)), invalid);
     }
 
     @Test
@@ -85,21 +89,21 @@ final class KindDeploymentTest {
 
     @Test
     void digestMustBeTheSingleRequestedSuccessfulSummary() throws IOException {
-        assertEquals(DIGEST, KindDeployment.digest("Resolved catalog-v1 key-to-ID SHA-256 " + DIGEST
-                + "\nSeeded and verified catalog-v1 key-to-ID SHA-256 " + DIGEST, "Seeded and verified catalog-v1"));
-        assertThrows(IOException.class, () -> KindDeployment.digest("Resolved catalog-v1 key-to-ID SHA-256 " + DIGEST,
-                "Seeded and verified catalog-v1"));
-        assertThrows(IOException.class, () -> KindDeployment.digest("Seeded and verified catalog-v1 key-to-ID SHA-256 " + DIGEST + "b",
-                "Seeded and verified catalog-v1"));
-        String summary = "Seeded and verified catalog-v1 key-to-ID SHA-256 " + DIGEST;
-        assertThrows(IOException.class, () -> KindDeployment.digest(summary + "\n" + summary, "Seeded and verified catalog-v1"));
+        assertEquals(DIGEST, KindDeployment.digest("Resolved catalog-v2 key-to-ID SHA-256 " + DIGEST
+                + "\nSeeded and verified catalog-v2 key-to-ID SHA-256 " + DIGEST, "Seeded and verified catalog-v2"));
+        assertThrows(IOException.class, () -> KindDeployment.digest("Resolved catalog-v2 key-to-ID SHA-256 " + DIGEST,
+                "Seeded and verified catalog-v2"));
+        assertThrows(IOException.class, () -> KindDeployment.digest("Seeded and verified catalog-v2 key-to-ID SHA-256 " + DIGEST + "b",
+                "Seeded and verified catalog-v2"));
+        String summary = "Seeded and verified catalog-v2 key-to-ID SHA-256 " + DIGEST;
+        assertThrows(IOException.class, () -> KindDeployment.digest(summary + "\n" + summary, "Seeded and verified catalog-v2"));
     }
 
     @Test
     void runningReaderDigestSurvivesLargeLogsAndRotationOfItsStartupSummary() throws Exception {
         KindLab lab = mock(KindLab.class);
         String recurring = report("2026-10-13T12:00:31Z", "30.0", 6000, "200.0", "OK=6000")
-                + ", catalog-v1 key-to-ID SHA-256 " + DIGEST + "\n";
+                + ", catalog-v2 key-to-ID SHA-256 " + DIGEST + "\n";
         // The startup line has rotated away; the current log alone is over the command-output limit.
         String history = recurring.repeat(22_000);
         when(lab.kubectl(any(String[].class))).thenAnswer(invocation -> {
@@ -115,14 +119,14 @@ final class KindDeploymentTest {
 
     @Test
     void readerDigestAcceptsStartupOrConsistentReportsAndRejectsMissingOrConflictingEvidence() throws IOException {
-        String startup = "Resolved catalog-v1 [US 50 sellers, 100 products], key-to-ID SHA-256 " + DIGEST;
+        String startup = "Resolved catalog-v2 [US 50 sellers, 100 products], key-to-ID SHA-256 " + DIGEST;
         String interval = report("2026-10-13T12:00:31Z", "30.0", 6000, "200.0", "OK=6000")
-                + ", catalog-v1 key-to-ID SHA-256 " + DIGEST;
+                + ", catalog-v2 key-to-ID SHA-256 " + DIGEST;
         assertEquals(DIGEST, KindDeployment.readerDigest(startup));
         assertEquals(DIGEST, KindDeployment.readerDigest(startup + "\n" + interval + "\n" + interval));
         assertThrows(IOException.class, () -> KindDeployment.readerDigest(interval + "\n" + interval.replace(DIGEST, "b".repeat(64))));
         assertThrows(IOException.class, () -> KindDeployment.readerDigest(interval.replace(DIGEST, "invalid")));
-        assertThrows(IOException.class, () -> KindDeployment.readerDigest(interval.replace("catalog-v1", "catalog-v2")));
+        assertThrows(IOException.class, () -> KindDeployment.readerDigest(interval.replace("catalog-v2", "catalog-v1")));
         assertThrows(IOException.class, () -> KindDeployment.readerDigest("unrelated key-to-ID SHA-256 " + DIGEST));
         assertThrows(IOException.class, () -> KindDeployment.readerDigest(""));
     }

@@ -79,7 +79,7 @@ class ReaderDatasetsTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"{}", "{\"USD\":\"0.00\"}", "{\"USD\":\"-0.00\",\"EUR\":\"0.00\"}",
+    @ValueSource(strings = {"{}", "{\"EUR\":\"0.00\"}", "{\"USD\":\"-0.00\",\"EUR\":\"0.00\"}",
             "{\"USD\":\"0.00\",\"EUR\":\"0.00\",\"usd\":\"0.00\"}"})
     void rejectsInvalidProfitSnapshots(String profits) throws Exception {
         ObjectNode response = sellerResponse();
@@ -88,20 +88,26 @@ class ReaderDatasetsTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"sellerId", "companyName", "region", "profitsEarned", "extra"})
+    @ValueSource(strings = {"sellerId", "companyName", "region", "countryCode", "profitsEarned", "extra"})
     void rejectsInvalidOrMismatchedSellerResponses(String field) {
         ObjectNode response = sellerResponse().put(field, "invalid");
         assertThrows(IllegalArgumentException.class, () -> datasets.lookupSeller(seller).decoder().apply(response));
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"sellerId", "productId", "name", "description", "price", "unitCost", "currency", "initialStock", "stock", "extra"})
+    @ValueSource(strings = {"sellerId", "productId", "name", "description", "price", "unitCost", "currency", "initialStock", "stock", "countryCode", "newOrderEligible", "legacyReason", "extra"})
     void rejectsInvalidOrMismatchedProductResponses(String field) {
         ObjectNode response = productResponse();
         if (field.equals("sellerId")) {
             response.put(field, "1");
         } else if (field.equals("initialStock") || field.equals("stock")) {
             response.put(field, fixture.initialStock() + 1);
+        } else if (field.equals("countryCode")) {
+            response.put(field, "JP");
+        } else if (field.equals("newOrderEligible")) {
+            response.put(field, false);
+        } else if (field.equals("legacyReason")) {
+            response.put(field, "CURRENCY_NOT_ALLOWED_FOR_SELLER_COUNTRY");
         } else {
             response.put(field, "invalid");
         }
@@ -113,7 +119,7 @@ class ReaderDatasetsTest {
 
     @Test
     void refusesForeignDefinitionsWrongParentsAndInvalidIdsBeforeAnyRequest() {
-        SellerDefinition unknownSeller = new SellerDefinition("foreign", seller.companyName(), seller.region());
+        SellerDefinition unknownSeller = new SellerDefinition("foreign", seller.companyName(), seller.region(), seller.countryCode());
         ProductDefinition unknownProduct = new ProductDefinition("foreign", seller.key(), fixture.name(),
                 fixture.description(), fixture.price(), fixture.unitCost(), fixture.currency(), fixture.initialStock());
         assertThrows(IllegalArgumentException.class, () -> datasets.lookupSeller(unknownSeller));
@@ -134,7 +140,7 @@ class ReaderDatasetsTest {
 
     private ObjectNode sellerResponse() {
         ObjectNode response = JsonNodeFactory.instance.objectNode().put("companyName", seller.companyName())
-                .put("region", seller.region()).put("sellerId", SELLER_ID);
+                .put("region", seller.region()).put("countryCode", seller.countryCode()).put("sellerId", SELLER_ID);
         response.set("profitsEarned", JsonNodeFactory.instance.objectNode().put("USD", "0.00").put("EUR", "0.00"));
         return response;
     }
@@ -143,6 +149,7 @@ class ReaderDatasetsTest {
         return JsonNodeFactory.instance.objectNode().put("name", fixture.name()).put("description", fixture.description())
                 .put("price", fixture.price()).put("unitCost", fixture.unitCost()).put("currency", fixture.currency())
                 .put("initialStock", fixture.initialStock()).put("sellerId", SELLER_ID).put("productId", PRODUCT_ID)
-                .put("stock", 0);
+                .put("stock", 0).put("countryCode", seller.countryCode())
+                .put("newOrderEligible", true).putNull("legacyReason");
     }
 }

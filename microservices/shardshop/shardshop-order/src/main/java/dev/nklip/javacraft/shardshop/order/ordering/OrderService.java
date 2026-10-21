@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.order.ordering;
 
 import dev.nklip.javacraft.shardshop.common.Sha256;
+import dev.nklip.javacraft.shardshop.common.CurrencyPolicy;
 import dev.nklip.javacraft.shardshop.idgen.IdGenerationUnavailableException;
 import dev.nklip.javacraft.shardshop.idgen.IdGenerator;
 import dev.nklip.javacraft.shardshop.sharding.Shard;
@@ -217,6 +218,14 @@ public final class OrderService {
         }
         if (!products.getFirst().currency().equals(creation.currency())) {
             return new CatalogOutcome(List.of(), CURRENCY_MISMATCH);
+        }
+        if (products.stream().anyMatch(product -> !CurrencyPolicy.permits(
+                product.sellerRegion(), product.sellerCountryCode(), product.currency())
+                || !CurrencyPolicy.validAmount(product.price(), product.currency())
+                || product.price().signum() < 0 || product.unitCost() == null
+                || !CurrencyPolicy.validAmount(product.unitCost(), product.currency())
+                || product.unitCost().signum() < 0)) {
+            return new CatalogOutcome(List.of(), PRODUCT_CURRENCY_POLICY);
         }
         return new CatalogOutcome(List.copyOf(products), null);
     }

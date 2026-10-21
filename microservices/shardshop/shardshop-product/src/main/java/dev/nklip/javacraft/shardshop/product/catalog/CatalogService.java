@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.product.catalog;
 
 import dev.nklip.javacraft.shardshop.common.Sha256;
+import dev.nklip.javacraft.shardshop.common.CurrencyPolicy;
 import dev.nklip.javacraft.shardshop.idgen.IdGenerationUnavailableException;
 import dev.nklip.javacraft.shardshop.idgen.IdGenerator;
 import dev.nklip.javacraft.shardshop.sharding.Shard;
@@ -8,6 +9,8 @@ import dev.nklip.javacraft.shardshop.sharding.ShardRouter;
 import dev.nklip.javacraft.shardshop.sharding.ShardTopology;
 
 import java.math.BigInteger;
+import java.math.BigDecimal;
+import java.util.stream.Collectors;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -50,10 +53,17 @@ public final class CatalogService {
             var existing = session.sellerByKey(creation.region(), key);
             if (existing.isPresent()) {
                 Seller seller = existing.orElseThrow();
-                if (!seller.companyName().equals(creation.companyName()) || !seller.region().equals(creation.region())) {
+                if (!seller.companyName().equals(creation.companyName()) || !seller.region().equals(creation.region())
+                        || creation.countryCode() != null && !creation.countryCode().equals(seller.countryCode())) {
                     throw new CatalogFailure(SELLER_CONFLICT);
                 }
                 return new Creation<>(seller, false);
+            }
+            final List<String> currencies;
+            try {
+                currencies = CurrencyPolicy.currencies(creation.region(), creation.countryCode());
+            } catch (IllegalArgumentException failure) {
+                throw new CatalogFailure(INVALID_REQUEST);
             }
             long id = sellerId(shard);
             session.insertSeller(id, key, creation);
@@ -61,7 +71,8 @@ public final class CatalogService {
                     id,
                     creation.companyName(),
                     creation.region(),
-                    Map.of("USD", "0.00", "EUR", "0.00")
+                    currencies.stream().collect(Collectors.toUnmodifiableMap(currency -> currency, currency -> "0.00")),
+                    creation.countryCode()
             ), true);
         });
     }
@@ -87,12 +98,14 @@ public final class CatalogService {
                 }
                 return new Creation<>(product, false);
             }
-            if (session.seller(sellerId).isEmpty()) {
-                throw new CatalogFailure(MISSING_PARENT);
+            Seller seller = session.seller(sellerId).orElseThrow(() -> new CatalogFailure(MISSING_PARENT));
+            if (!CurrencyPolicy.permits(seller.region(), seller.countryCode(), creation.currency())
+                    || !validPrice(creation.price(), creation.currency()) || !validPrice(creation.unitCost(), creation.currency())) {
+                throw new CatalogFailure(INVALID_REQUEST);
             }
             long id = nextId();
             session.insertProduct(id, sellerId, key, creation);
-            return new Creation<>(new Product(sellerId, id, creation, creation.initialStock()), true);
+            return new Creation<>(new Product(sellerId, id, creation, creation.initialStock(), seller.region(), seller.countryCode()), true);
         });
     }
 
@@ -115,6 +128,15 @@ public final class CatalogService {
         boolean more = candidates.size() > limit;
         List<ListedProduct> items = more ? candidates.subList(0, limit) : candidates;
         return new ProductPage(region, items, more ? items.getLast().productId() : null);
+    }
+
+    private static boolean validPrice(String value, String currency) {
+        try {
+            BigDecimal amount = new BigDecimal(value);
+            return amount.signum() >= 0 && CurrencyPolicy.validAmount(amount, currency);
+        } catch (IllegalArgumentException failure) {
+            return false;
+        }
     }
 
     private List<Shard> regionalShards(String region) {

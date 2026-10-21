@@ -6,7 +6,7 @@
   "sagaId": "100925016375300097",
   "orderId": "100925016375300096",
   "buyerId": "21380884070404097",
-  "requestFingerprint": "d792169145bd02ef98e712245fcaccc895c64dd60279db5a5dc2342c4d1fff2f",
+  "requestFingerprint": "82b3421671a774507e4510d61f97e4ddad802b53332e367b66e5e2eb3814c45f",
   "occurredAt": "2026-10-06T12:00:00Z",
   "resultMessageId": "100925016375300100",
   "snapshot": {
@@ -15,7 +15,7 @@
     "items": [
       {
         "itemPosition": 0,
-        "sellerId": "11234023833608192",
+        "sellerId": "11234023833608193",
         "productId": "11234023837802496",
         "quantity": 2,
         "productName": "Travel mug",

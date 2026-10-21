@@ -66,8 +66,8 @@ public final class StockReservationStepDefinitions {
         product.start(ProductRuntime.Endpoints.PRIMARIES);
         order.start(Set.of());
         abundant = product("abundant", "US", 40, "shard-a");
-        european = product("european", "EU", 10, "shard-b");
-        scarce = product("scarce", "ASIA", 4, "shard-c");
+        european = product("european", "US", 10, "shard-d");
+        scarce = product("scarce", "US", 4, "shard-d");
         var request = Json.object("{\"firstName\":\"Alex\",\"surname\":\"Example\",\"email\":\"alex@example.com\","
                 + "\"phone\":\"+12025550123\",\"region\":\"EU\",\"address\":{\"line1\":\"1 Example Road\","
                 + "\"city\":\"Example City\",\"postalCode\":\"00001\",\"countryCode\":\"US\"}}");
@@ -205,7 +205,7 @@ public final class StockReservationStepDefinitions {
         var request = request(1, abundant, scarce);
         String id = accept(request);
         order.enableStock();
-        order.restart(Set.of("shard-c"));
+        order.restart(Set.of("shard-d"));
         eventually("Earlier catalog shard reservation commits before the unavailable shard", () ->
                 count(shards.ofSeller(abundant.seller().id()), "catalog.stock_reservations", "order_id=" + id) == 1
                         && failures(id) > 0);

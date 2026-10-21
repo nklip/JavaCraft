@@ -100,20 +100,20 @@ public class CatalogResource {
 
     private SellerResponse sellerResponse(Seller seller) {
         return new SellerResponse(Long.toString(seller.sellerId()), seller.companyName(), seller.region(),
-                seller.profitsEarned());
+                seller.profitsEarned(), seller.countryCode());
     }
 
     private ProductResponse productResponse(Product product) {
         ProductCreation creation = product.creation();
         return new ProductResponse(Long.toString(product.sellerId()), Long.toString(product.productId()),
                 creation.name(), creation.description(), creation.price(), creation.unitCost(), creation.currency(),
-                creation.initialStock(), product.stock());
+                creation.initialStock(), product.stock(), product.countryCode(), product.newOrderEligible(), product.legacyReason());
     }
 
-    public record SellerResponse(String sellerId, String companyName, String region, Map<String, String> profitsEarned) {
+    public record SellerResponse(String sellerId, String companyName, String region, Map<String, String> profitsEarned, String countryCode) {
     }
 
     public record ProductResponse(String sellerId, String productId, String name, String description,
-                                  String price, String unitCost, String currency, int initialStock, int stock) {
+                                  String price, String unitCost, String currency, int initialStock, int stock, String countryCode, boolean newOrderEligible, String legacyReason) {
     }
 }

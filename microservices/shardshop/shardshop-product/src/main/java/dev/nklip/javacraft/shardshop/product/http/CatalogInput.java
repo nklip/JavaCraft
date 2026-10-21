@@ -23,9 +23,14 @@ final class CatalogInput {
     SellerCreation seller(byte[] body, HttpHeaders headers) {
         JsonNode node = document(body, headers);
         try {
-            JsonFields.requireFields(node, "companyName", "region");
+            if (node.has("countryCode")) {
+                JsonFields.requireFields(node, "companyName", "region", "countryCode");
+            } else {
+                JsonFields.requireFields(node, "companyName", "region");
+            }
             return new SellerCreation(JsonFields.nonblankText(node, "companyName", 200),
-                    region(JsonFields.text(node, "region")));
+                    region(JsonFields.text(node, "region")), node.has("countryCode")
+                            ? JsonFields.matchingText(node, "countryCode", "[A-Z]{2}") : null);
         } catch (IllegalArgumentException failure) {
             throw invalid();
         }

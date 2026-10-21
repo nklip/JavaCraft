@@ -80,7 +80,7 @@ final class KindWorkloadPolicyTest {
     void allowsTheChartWorkloadsAndDocumentedHttpConfiguration() {
         for (Map<String, String> settings : java.util.List.of(Map.ofEntries(
                 Map.entry("SHARDSHOP_READER_PRODUCT_URL", "https://shardshop-product:8080/base"),
-                Map.entry("SHARDSHOP_READER_CATALOG_VERSION", "catalog-v1"),
+                Map.entry("SHARDSHOP_READER_CATALOG_VERSION", "catalog-v2"),
                 Map.entry("SHARDSHOP_READER_REQUEST_RATE", "400"),
                 Map.entry("SHARDSHOP_READER_WORKERS", "32"),
                 Map.entry("SHARDSHOP_READER_CONNECTIONS", "32"),
@@ -92,7 +92,7 @@ final class KindWorkloadPolicyTest {
                 Map.entry("SHARDSHOP_READER_IDLE_TIMEOUT", "10"),
                 Map.entry("SHARDSHOP_READER_REPORT_INTERVAL", "PT1M30S")), Map.of(
                 "SHARDSHOP_SEEDER_PRODUCT_URL", "http://shardshop-product.shardshop.svc:8080",
-                "SHARDSHOP_SEEDER_CATALOG_VERSION", "catalog-v1",
+                "SHARDSHOP_SEEDER_CATALOG_VERSION", "catalog-v2",
                 "SHARDSHOP_SEEDER_CONNECT_TIMEOUT", "2s",
                 "SHARDSHOP_SEEDER_REQUEST_TIMEOUT", "5s",
                 "SHARDSHOP_SEEDER_MAX_ATTEMPTS", "5",

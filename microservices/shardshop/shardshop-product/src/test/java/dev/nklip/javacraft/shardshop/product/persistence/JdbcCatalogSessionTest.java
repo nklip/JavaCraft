@@ -105,17 +105,19 @@ class JdbcCatalogSessionTest {
         PreparedStatement profits = mock();
         when(connection.prepareStatement(contains("INSERT INTO catalog.seller_profits"))).thenReturn(profits);
         when(statement.executeUpdate()).thenReturn(1);
-        when(profits.executeUpdate()).thenReturn(2);
+        when(profits.executeUpdate()).thenReturn(1);
 
-        session.insertSeller(42L, "seller-key", new SellerCreation("Company", "EU"));
+        session.insertSeller(42L, "seller-key", new SellerCreation("Company", "EU", "FR"));
 
         verify(statement).setLong(1, 42L);
         verify(statement).setString(2, "Company");
         verify(statement).setString(3, "EU");
         verify(statement).setString(4, "seller-key");
-        verify(profits).setLong(1, 42L);
-        verify(profits).setLong(2, 42L);
-        verify(profits).executeUpdate();
+        verify(statement).setString(5, "FR");
+        verify(profits, times(2)).setLong(1, 42L);
+        verify(profits).setString(2, "EUR");
+        verify(profits).setString(2, "GBP");
+        verify(profits, times(2)).executeUpdate();
 
         session.insertProduct(43L, 42L, "product-key", creation());
 
@@ -144,6 +146,7 @@ class JdbcCatalogSessionTest {
         when(rows.getInt("initial_stock")).thenReturn(100);
         when(rows.getInt("stock")).thenReturn(72);
         when(rows.getBigDecimal("price")).thenReturn(new BigDecimal("19.95"));
+        when(rows.getBigDecimal("unit_cost")).thenReturn(new BigDecimal("0.00"));
         when(rows.getBigDecimal("profit")).thenReturn(new BigDecimal("-100000000000000000.01"), BigDecimal.ZERO);
 
         List<ListedProduct> products = session.products("ASIA", 2, 9007199254740993L);
@@ -161,14 +164,16 @@ class JdbcCatalogSessionTest {
     @Test
     void creationRejectsIncompleteWrites() throws SQLException {
         CatalogFailure sellerFailure = assertThrows(CatalogFailure.class,
-                () -> session.insertSeller(42, "key", new SellerCreation("Company", "EU")));
+                () -> session.insertSeller(42, "key", new SellerCreation("Company", "EU", "FR")));
         assertEquals(CatalogFailure.Reason.UNAVAILABLE, sellerFailure.reason());
         CatalogFailure productFailure = assertThrows(CatalogFailure.class,
                 () -> session.insertProduct(43, 42, "key", creation()));
         assertEquals(CatalogFailure.Reason.UNAVAILABLE, productFailure.reason());
         when(statement.executeUpdate()).thenReturn(1);
+        PreparedStatement missingProfitWrite = mock();
+        when(connection.prepareStatement(contains("INSERT INTO catalog.seller_profits"))).thenReturn(missingProfitWrite);
         CatalogFailure profitsFailure = assertThrows(CatalogFailure.class,
-                () -> session.insertSeller(42, "key", new SellerCreation("Company", "EU")));
+                () -> session.insertSeller(42, "key", new SellerCreation("Company", "EU", "FR")));
         assertEquals(CatalogFailure.Reason.UNAVAILABLE, profitsFailure.reason());
     }
 
@@ -190,7 +195,7 @@ class JdbcCatalogSessionTest {
                 value -> value.seller(1), value -> value.sellerByKey("EU", "key"),
                 value -> value.product(1, 2), value -> value.productByKey(1, "key"),
                 value -> value.products("US", 26, 0),
-                value -> value.insertSeller(1, "key", new SellerCreation("Company", "EU")),
+                value -> value.insertSeller(1, "key", new SellerCreation("Company", "EU", "FR")),
                 value -> value.insertProduct(2, 1, "key", creation()));
         for (Consumer<JdbcCatalogSession> operation : operations) {
             CatalogFailure failure = assertThrows(CatalogFailure.class, () -> operation.accept(session));

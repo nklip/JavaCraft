@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.workload.reader.catalog;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import dev.nklip.javacraft.shardshop.common.CurrencyPolicy;
 import dev.nklip.javacraft.shardshop.common.IdParser;
 import dev.nklip.javacraft.shardshop.common.JsonFields;
 import dev.nklip.javacraft.shardshop.workload.dataset.CatalogDataset;
@@ -20,12 +21,15 @@ import java.util.function.Function;
 public final class ReaderDatasets {
     private final String catalogVersion;
     private final CatalogDataset catalog;
+    private final Map<String, String> countriesBySellerKey;
     private final Set<SellerDefinition> knownSellers;
     private final Set<ProductDefinition> knownProducts;
 
     public ReaderDatasets(String catalogVersion) {
         this.catalogVersion = catalogVersion;
         this.catalog = new CatalogDataset(catalogVersion);
+        this.countriesBySellerKey = catalog.sellers().stream().collect(java.util.stream.Collectors.toUnmodifiableMap(
+                SellerDefinition::key, SellerDefinition::countryCode));
         this.knownSellers = Set.copyOf(catalog.sellers());
         this.knownProducts = Set.copyOf(catalog.products());
     }
@@ -47,13 +51,15 @@ public final class ReaderDatasets {
             throw new IllegalArgumentException("Seller does not belong to the selected dataset");
         }
         return new Read<>("/api/v1/sellers/by-key/" + definition.key() + "?region=" + definition.region(), response -> {
-            JsonFields.requireFields(response, "sellerId", "companyName", "region", "profitsEarned");
+            JsonFields.requireFields(response, "sellerId", "companyName", "region", "countryCode", "profitsEarned");
             if (!definition.companyName().equals(JsonFields.text(response, "companyName"))
-                    || !definition.region().equals(JsonFields.text(response, "region"))) {
+                    || !definition.region().equals(JsonFields.text(response, "region"))
+                    || !definition.countryCode().equals(JsonFields.text(response, "countryCode"))) {
                 throw new IllegalArgumentException("Seller response does not match its definition");
             }
             return new SellerDescriptor(definition, JsonFields.id(response, "sellerId"),
-                    JsonFields.signedMoneyMap(response, "profitsEarned", "USD", "EUR"));
+                    JsonFields.signedMoneyMap(response, "profitsEarned",
+                            CurrencyPolicy.currencies(definition.region(), definition.countryCode()).toArray(String[]::new)));
         });
     }
 
@@ -79,13 +85,17 @@ public final class ReaderDatasets {
                 productDecoder(product.definition(), product.sellerId(), product.productId()));
     }
 
-    private static Function<JsonNode, ProductDescriptor> productDecoder(ProductDefinition definition, String sellerId,
+    private Function<JsonNode, ProductDescriptor> productDecoder(ProductDefinition definition, String sellerId,
                                                                         String productId) {
         return response -> {
             JsonFields.requireFields(response, "sellerId", "productId", "name", "description",
-                    "price", "unitCost", "currency", "initialStock", "stock");
+                    "price", "unitCost", "currency", "initialStock", "stock",
+                    "countryCode", "newOrderEligible", "legacyReason");
             String returnedProductId = JsonFields.id(response, "productId");
-            if (!sellerId.equals(JsonFields.id(response, "sellerId"))
+            if (!countriesBySellerKey.get(definition.sellerKey()).equals(JsonFields.text(response, "countryCode"))
+                    || !response.get("newOrderEligible").isBoolean() || !response.get("newOrderEligible").booleanValue()
+                    || !response.get("legacyReason").isNull()
+                    || !sellerId.equals(JsonFields.id(response, "sellerId"))
                     || (productId != null && !productId.equals(returnedProductId))
                     || !definition.name().equals(JsonFields.text(response, "name"))
                     || !definition.description().equals(JsonFields.text(response, "description"))

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -28,7 +29,7 @@ class KindStartupScriptTest {
         Path source = Path.of(System.getProperty("shardshop.directory", "..")).toAbsolutePath().normalize();
         helm = commandPath("helm");
         for (String directory : List.of("scripts", "bin", "tmp")) Files.createDirectories(temporary.resolve(directory));
-        for (String script : List.of("cluster-create.sh", "up.sh", "down.sh")) {
+        for (String script : List.of("cluster-create.sh", "up.sh", "webpages.sh", "down.sh")) {
             Files.copy(source.resolve("scripts").resolve(script), temporary.resolve("scripts").resolve(script));
         }
         if (Files.isDirectory(source.resolve("scripts/lib"))) {
@@ -96,13 +97,33 @@ class KindStartupScriptTest {
                   *) exit 99;;
                 esac
                 """);
+        executable("lsof", """
+                #!/bin/bash
+                set -eu
+                printf 'lsof %s\n' "$*" >> "$FIXTURE/events"
+                [[ "$(cat "$FIXTURE/failure")" != port-inspection ]] || exit 2
+                case "$*" in '-t -nP -iTCP:18080 -sTCP:LISTEN'|'-t -nP -iTCP:18081 -sTCP:LISTEN') ;; *) exit 99;; esac
+                for port in 18080 18081; do
+                  if [[ " $* " == *" -iTCP:$port "* && -f "$FIXTURE/occupied-$port" ]]; then
+                    pid=$(cat "$FIXTURE/occupied-$port")
+                    if kill -0 "$pid" 2>/dev/null; then printf '%s\\n' "$pid"; exit 0; fi
+                  fi
+                done
+                exit 1
+                """);
         executable("kubectl", """
                 #!/bin/bash
                 set -eu
                 printf 'kubectl %s\n' "$*" >> "$FIXTURE/events"
                 case "$*" in
                   *'port-forward '*)
-                    [[ ! -e "$TMPDIR/shardshop-up.lock" && ! -e "$(cat "$FIXTURE/snapshot")" ]] || exit 76
+                    if [[ -f "$FIXTURE/clear-before-forward" ]]; then
+                      while read -r pid; do
+                        if kill -0 "$pid" 2>/dev/null; then echo 'Forwarding started before page listener exited' >&2; exit 80; fi
+                      done < "$FIXTURE/clear-before-forward"
+                    fi
+                    [[ ! -e "$TMPDIR/shardshop-up.lock" ]] || exit 76
+                    if [[ -f "$FIXTURE/snapshot" ]]; then [[ ! -e "$(cat "$FIXTURE/snapshot")" ]] || exit 76; fi
                     case "$*" in *service/shardshop-product*) service=product;; *) service=order;; esac
                     echo $$ > "$FIXTURE/forward-pid-$service"
                     [[ "$(cat "$FIXTURE/failure")" != "port-forward-$service" ]] || exit 77
@@ -288,11 +309,26 @@ class KindStartupScriptTest {
     }
 
     @Test
+    void upAndWebpagesRejectArgumentsBeforeAnyExternalCommandOrTemporaryState() throws Exception {
+        for (String script : List.of("up.sh", "webpages.sh")) {
+            for (String argument : List.of("--pages-only", "--anything", "unexpected")) {
+                Result result = run(script, argument);
+                assertNotEquals(0, result.exit(), result.output());
+                assertTrue(events().isEmpty(), events().toString());
+                assertFalse(Files.exists(lock()));
+                assertFalse(Files.exists(temporary.resolve("snapshot")));
+                assertTemporaryFilesCleaned();
+            }
+        }
+    }
+
+    @Test
     void upWithoutAClusterFailsBeforeBuildingOrMutatingAnything() throws Exception {
         Result result = run("up.sh");
         assertNotEquals(0, result.exit(), result.output());
         assertTrue(result.output().contains("cluster-create.sh"), result.output());
-        assertEquals(List.of("docker buildx version", "docker scout version", "kind get nodes --name shardshop"), events());
+        assertEquals(List.of("docker buildx version", "docker scout version", "kind get nodes --name shardshop"),
+                events());
         assertFalse(Files.exists(lock()));
     }
 
@@ -345,7 +381,7 @@ class KindStartupScriptTest {
         state("nodes", NODES);
         state("running", "false");
         Result result = run("up.sh");
-        assertPageSessionEnded(result);
+        assertEquals(0, result.exit(), result.output());
         assertBefore("docker update --restart=on-failure:1 " + String.join(" ", NODES.strip().split("\n")), "docker start ");
         assertTrue(events().stream().anyMatch(line -> line.contains("rollout restart daemonset/kindnet")));
         assertTrue(events().stream().anyMatch(line -> line.startsWith("mvn build ")
@@ -365,9 +401,45 @@ class KindStartupScriptTest {
     }
 
     @Test
-    void upForwardsBothPagesOnlyAfterSuccessfulApplicationAcceptance() throws Exception {
+    void upCompletesDeploymentAndReleasesInvocationWithoutInspectingOrForwardingPagePorts() throws Exception {
         state("nodes", NODES);
         Result result = run("up.sh");
+        assertEquals(0, result.exit(), result.output());
+        assertTrue(events().contains("application-acceptance-complete"), events().toString());
+        assertTrue(events().stream().noneMatch(line -> line.startsWith("lsof ") || line.contains(" port-forward ")),
+                events().toString());
+        assertTrue(result.output().contains("scripts/webpages.sh"), result.output());
+        assertInvocationCleaned();
+        assertTemporaryFilesCleaned();
+    }
+
+    @Test
+    void upLeavesOccupiedPagePortsUntouched() throws Exception {
+        state("nodes", NODES);
+        Process productOwner = new ProcessBuilder("/bin/sleep", "60").start();
+        Process orderOwner = new ProcessBuilder("/bin/sleep", "60").start();
+        try {
+            state("occupied-18080", Long.toString(productOwner.pid()));
+            state("occupied-18081", Long.toString(orderOwner.pid()));
+            Result result = run("up.sh");
+            assertEquals(0, result.exit(), result.output());
+            assertTrue(productOwner.isAlive(), "Deployment must leave the product page listener untouched");
+            assertTrue(orderOwner.isAlive(), "Deployment must leave the order page listener untouched");
+            assertTrue(events().contains("application-acceptance-complete"), events().toString());
+            assertTrue(events().stream().noneMatch(line -> line.startsWith("lsof ") || line.contains(" port-forward ")),
+                    events().toString());
+            assertInvocationCleaned();
+        } finally {
+            productOwner.destroyForcibly();
+            orderOwner.destroyForcibly();
+            assertTrue(productOwner.waitFor(5, TimeUnit.SECONDS));
+            assertTrue(orderOwner.waitFor(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void webpagesOpensBothPageForwards() throws Exception {
+        Result result = run("webpages.sh");
         assertPageSessionEnded(result);
         assertEquals(List.of(
                         "kubectl --context kind-shardshop -n shardshop port-forward --address 127.0.0.1 service/shardshop-order 18081:8080",
@@ -376,8 +448,135 @@ class KindStartupScriptTest {
         assertTrue(result.output().contains("http://127.0.0.1:18080/products/"), result.output());
         assertTrue(result.output().contains("http://127.0.0.1:18081/orders/"), result.output());
         assertForwardsStopped();
-        assertBefore("application-acceptance-complete", "kubectl --context kind-shardshop -n shardshop port-forward ");
-        assertInvocationCleaned();
+        assertTemporaryFilesCleaned();
+    }
+
+    @Test
+    void webpagesTerminatesOwnersOfEitherOrBothPagePortsBeforeForwarding() throws Exception {
+        state("nodes", NODES);
+        Process unrelated = new ProcessBuilder("/bin/sleep", "60").start();
+        try {
+            for (List<Integer> ports : List.of(List.of(18080), List.of(18081), List.of(18080, 18081))) {
+                for (int port : List.of(18080, 18081)) Files.deleteIfExists(temporary.resolve("occupied-" + port));
+                List<Process> owners = new ArrayList<>();
+                try {
+                    for (int port : ports) {
+                        Process owner = new ProcessBuilder("/bin/sleep", "60").start();
+                        owners.add(owner);
+                        state("occupied-" + port, Long.toString(owner.pid()));
+                    }
+                    state("clear-before-forward", String.join("\n", owners.stream().map(owner -> Long.toString(owner.pid())).toList()) + "\n");
+                    state("events", "");
+                    Result result = run("webpages.sh");
+                    assertPageSessionEnded(result);
+                    assertForwardsStopped();
+                    for (Process owner : owners) assertTrue(owner.waitFor(2, TimeUnit.SECONDS), "The discovered port owner must exit");
+                    assertTrue(unrelated.isAlive(), "An unlisted process must remain untouched");
+                    assertBefore("lsof ", "kubectl --context kind-shardshop -n shardshop port-forward ");
+                    assertTrue(events().stream().allMatch(line -> line.startsWith("lsof ") || line.contains(" port-forward ")), events().toString());
+                    assertFalse(Files.exists(lock()));
+                } finally {
+                    for (Process owner : owners) { owner.destroyForcibly(); owner.waitFor(5, TimeUnit.SECONDS); }
+                }
+            }
+        } finally {
+            unrelated.destroyForcibly();
+            assertTrue(unrelated.waitFor(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void webpagesEscalatesForAnOwnerIgnoringTerminationBeforeForwarding() throws Exception {
+        state("nodes", NODES);
+        Path ready = temporary.resolve("owner-ready");
+        Process owner = new ProcessBuilder("/bin/bash", "-c", "trap '' TERM; touch \"$1\"; exec /bin/sleep 60", "fixture", ready.toString()).start();
+        try {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (!Files.exists(ready) && owner.isAlive() && System.nanoTime() < deadline) Thread.sleep(20);
+            assertTrue(Files.exists(ready), "Owner must install its signal handler before startup");
+            state("occupied-18081", Long.toString(owner.pid()));
+            state("clear-before-forward", owner.pid() + "\n");
+            Result result = run("webpages.sh");
+            assertPageSessionEnded(result);
+            assertForwardsStopped();
+            assertTrue(owner.waitFor(2, TimeUnit.SECONDS));
+            assertEquals(137, owner.exitValue(), "Ignoring TERM must cause bounded KILL escalation");
+            assertBefore("lsof ", "kubectl --context kind-shardshop -n shardshop port-forward ");
+            assertFalse(Files.exists(lock()));
+        } finally {
+            owner.destroyForcibly();
+            assertTrue(owner.waitFor(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void webpagesPortInspectionFailureStopsBeforeForwarding() throws Exception {
+        state("nodes", NODES);
+        state("failure", "port-inspection");
+        Result result = run("webpages.sh");
+        assertNotEquals(0, result.exit(), result.output());
+        assertTrue(result.output().toLowerCase().contains("inspect"), result.output());
+        assertTrue(events().stream().noneMatch(line -> line.startsWith("mvn ") || line.startsWith("skaffold ")
+                || line.startsWith("kubectl ") || line.startsWith("helmfile ")), events().toString());
+        assertFalse(Files.exists(lock()));
+    }
+
+    @Test
+    void webpagesOpensBothPagesWithoutBuildingDeployingOrChangingTheLab() throws Exception {
+        state("nodes", NODES);
+        state("block-forward", "");
+        state("secret-retained", "retained credentials");
+        try (Running up = start("webpages.sh")) {
+            awaitForwarding(up);
+            assertTrue(up.process().isAlive());
+            assertEquals(2, events().stream().filter(line -> line.contains(" port-forward ")).count());
+            assertTrue(forwardPids().stream().allMatch(pid -> ProcessHandle.of(pid).orElseThrow().isAlive()));
+            assertWebpagesPreservedLab();
+            Process signal = new ProcessBuilder("/bin/kill", "-TERM", Long.toString(up.process().pid())).start();
+            try {
+                assertTrue(signal.waitFor(5, TimeUnit.SECONDS));
+                assertEquals(0, signal.exitValue());
+            } finally {
+                signal.destroyForcibly();
+            }
+            assertTrue(up.process().waitFor(5, TimeUnit.SECONDS));
+            assertEquals(143, up.process().exitValue());
+            assertForwardsStopped();
+            assertWebpagesPreservedLab();
+            assertTemporaryFilesCleaned();
+        }
+    }
+
+    @Test
+    void webpagesStartupFailureReapsBothTunnelsAndPreservesTheLab() throws Exception {
+        state("nodes", NODES);
+        state("block-forward", "");
+        state("secret-retained", "retained credentials");
+        for (String service : List.of("product", "order")) {
+            state("failure", "port-forward-" + service);
+            Result result = run("webpages.sh");
+            assertEquals(77, result.exit(), result.output());
+            assertTrue(result.output().contains(service + " forwarding stopped"), result.output());
+            assertForwardsStopped();
+            assertWebpagesPreservedLab();
+            assertTemporaryFilesCleaned();
+        }
+    }
+
+    private void assertWebpagesPreservedLab() throws IOException {
+        assertTrue(events().stream().allMatch(line -> line.startsWith("lsof ")
+                || line.contains(" port-forward ")), events().toString());
+        assertEquals(NODES, Files.readString(temporary.resolve("nodes")));
+        assertEquals("true", Files.readString(temporary.resolve("running")));
+        assertEquals("retained credentials", Files.readString(temporary.resolve("secret-retained")));
+        assertFalse(Files.exists(lock()));
+        assertFalse(Files.exists(temporary.resolve("snapshot")), "Webpages must not create a deployment snapshot");
+    }
+
+    private void assertTemporaryFilesCleaned() throws IOException {
+        try (var files = Files.list(temporary.resolve("tmp"))) {
+            assertEquals(List.of(), files.toList(), "Scripts must clean their invocation-owned temporary files");
+        }
     }
 
     @Test
@@ -391,33 +590,18 @@ class KindStartupScriptTest {
     }
 
     @Test
-    void forwardingStartupFailureIsPropagatedAfterCleanup() throws Exception {
-        state("nodes", NODES);
-        state("block-forward", "");
-        for (String service : List.of("product", "order")) {
-            state("failure", "port-forward-" + service);
-            Result result = run("up.sh");
-            assertEquals(77, result.exit(), result.output());
-            assertTrue(result.output().contains(service + " forwarding stopped"), result.output());
-            assertEquals("true", Files.readString(temporary.resolve("running")));
-            assertInvocationCleaned();
-            assertForwardsStopped();
-        }
-    }
-
-    @Test
     void forwardingOwnsTheForegroundAndCanBeInterruptedWithoutStoppingTheCluster() throws Exception {
         for (String signal : List.of("INT", "TERM")) {
             state("nodes", NODES);
             state("running", "true");
             state("block-forward", "");
             for (String service : List.of("product", "order")) Files.deleteIfExists(temporary.resolve("forward-pid-" + service));
-            try (Running up = start("up.sh")) {
+            try (Running up = start("webpages.sh")) {
                 awaitForwarding(up);
                 assertTrue(up.process().isAlive());
                 assertTrue(forwardPids().stream().allMatch(pid -> ProcessHandle.of(pid).orElseThrow().isAlive()),
                         "Both tunnels must run under the foreground owner");
-                assertInvocationCleaned();
+                assertFalse(Files.exists(lock()), "Webpage forwarding must not retain the lifecycle lock");
                 Process kill = new ProcessBuilder("/bin/kill", "-" + signal, Long.toString(up.process().pid())).start();
                 try {
                     assertTrue(kill.waitFor(5, TimeUnit.SECONDS));
@@ -437,9 +621,9 @@ class KindStartupScriptTest {
     void downCanStopTheClusterWhileForwardingIsRunning() throws Exception {
         state("nodes", NODES);
         state("block-forward", "");
-        try (Running up = start("up.sh")) {
+        try (Running up = start("webpages.sh")) {
             awaitForwarding(up);
-            assertInvocationCleaned();
+            assertFalse(Files.exists(lock()), "Webpage forwarding must not retain the lifecycle lock");
             Result down = run("down.sh");
             assertEquals(0, down.exit(), down.output());
             assertEquals("false\n", Files.readString(temporary.resolve("running")));
@@ -452,7 +636,7 @@ class KindStartupScriptTest {
         state("nodes", NODES);
         state("block-forward", "");
         state("failure", "forward-exit-order");
-        Result result = run("up.sh");
+        Result result = run("webpages.sh");
         assertEquals(79, result.exit(), result.output());
         assertTrue(result.output().contains("http://127.0.0.1:18081/orders/"), result.output());
         assertTrue(result.output().contains("order forwarding stopped"), result.output());
@@ -485,20 +669,20 @@ class KindStartupScriptTest {
     }
 
     private void assertInvocationCleaned() throws IOException {
-        assertFalse(Files.exists(lock()), "Forwarding must not retain the lifecycle lock");
+        assertFalse(Files.exists(lock()), "Deployment must release the lifecycle lock");
         Path snapshot = Path.of(Files.readString(temporary.resolve("snapshot")));
-        assertFalse(Files.exists(snapshot), "The invocation snapshot must be removed before forwarding");
+        assertFalse(Files.exists(snapshot), "The deployment snapshot must be removed on exit");
     }
 
     @Test
     void everyUpRotatesTheRestartToken() throws Exception {
         state("nodes", NODES);
         Result first = run("up.sh");
-        assertPageSessionEnded(first);
+        assertEquals(0, first.exit(), first.output());
         assertEquals("restart-" + "a".repeat(24), applicationValues().path("restartToken").asText());
         state("random-digit", "b");
         Result unchanged = run("up.sh");
-        assertPageSessionEnded(unchanged);
+        assertEquals(0, unchanged.exit(), unchanged.output());
         assertEquals("restart-" + "b".repeat(24), applicationValues().path("restartToken").asText());
         List<String> builds = events().stream().filter(line -> line.startsWith("skaffold build ")).toList();
         assertEquals(2, builds.size());
@@ -568,9 +752,11 @@ class KindStartupScriptTest {
         return events().stream().filter(line -> line.startsWith("mvn kind-")).map(line -> line.split(" ")[1]).toList();
     }
 
-    private Running start(String script) throws IOException {
+    private Running start(String script, String... arguments) throws IOException {
         Path output = temporary.resolve("output-" + invocation++);
-        ProcessBuilder builder = new ProcessBuilder("/bin/bash", temporary.resolve("scripts").resolve(script).toString())
+        List<String> command = new ArrayList<>(List.of("/bin/bash", temporary.resolve("scripts").resolve(script).toString()));
+        command.addAll(List.of(arguments));
+        ProcessBuilder builder = new ProcessBuilder(command)
                 .directory(temporary.toFile())
                 .redirectErrorStream(true).redirectOutput(output.toFile());
         builder.environment().putAll(Map.of("PATH", temporary.resolve("bin") + ":" + System.getenv("PATH"),
@@ -582,8 +768,8 @@ class KindStartupScriptTest {
         return new Running(process, output);
     }
 
-    private Result run(String script) throws Exception {
-        try (Running running = start(script)) {
+    private Result run(String script, String... arguments) throws Exception {
+        try (Running running = start(script, arguments)) {
             assertTrue(running.process().waitFor(30, TimeUnit.SECONDS), "Startup script exceeded its test deadline");
             assertTrue(Files.size(running.output()) <= 65_536, "Unexpectedly large lifecycle output");
             return new Result(running.process().exitValue(), Files.readString(running.output()));

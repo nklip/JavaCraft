@@ -26,8 +26,8 @@ class CatalogServiceTest {
     private final ShardTopology topology = ShardTopology.fromNamesAndRegions("a,b,c,d", "US,EU,ASIA,US");
     private final ShardRouter router = new ShardRouter(topology);
     private final CatalogService service = new CatalogService(store, generator, router, topology, new CatalogService.Settings(false, 1024));
-    private final ProductCreation payload = new ProductCreation("Mug", "Insulated mug", "19.95", "12.50", "EUR", 10);
-    private final Seller seller = new Seller(1, "Company", "US", Map.of("USD", "0.00", "EUR", "12.30"));
+    private final ProductCreation payload = new ProductCreation("Mug", "Insulated mug", "19.95", "12.50", "USD", 10);
+    private final Seller seller = new Seller(1, "Company", "US", Map.of("USD", "12.30"), "US");
     private final Product product = new Product(1, 2, payload, 7);
 
     @Test
@@ -35,11 +35,11 @@ class CatalogServiceTest {
         writes();
         reads();
         when(generator.nextId()).thenAnswer(invocation -> counter++);
-        Creation<Seller> result = service.createSeller("key", new SellerCreation("Company", "US"));
+        Creation<Seller> result = service.createSeller("key", new SellerCreation("Company", "US", "US"));
         assertTrue(result.created());
         assertEquals("US", router.route(result.entity().sellerId()).region());
-        assertEquals(Map.of("USD", "0.00", "EUR", "0.00"), result.entity().profitsEarned());
-        verify(session).insertSeller(result.entity().sellerId(), "key", new SellerCreation("Company", "US"));
+        assertEquals(Map.of("USD", "0.00"), result.entity().profitsEarned());
+        verify(session).insertSeller(result.entity().sellerId(), "key", new SellerCreation("Company", "US", "US"));
         when(session.sellerByKey("US", "key")).thenReturn(Optional.of(result.entity()));
         CatalogService restarted = new CatalogService(store, generator, router, topology, new CatalogService.Settings(false, 1024));
         assertEquals(result.entity(), restarted.sellerByKey("US", "key"));
@@ -54,7 +54,7 @@ class CatalogServiceTest {
     void sellerRetryReturnsCurrentProfitWithoutAllocatingOrWriting() {
         writes();
         when(session.sellerByKey("US", "key")).thenReturn(Optional.of(seller));
-        assertEquals(new Creation<>(seller, false), service.createSeller("key", new SellerCreation("Company", "US")));
+        assertEquals(new Creation<>(seller, false), service.createSeller("key", new SellerCreation("Company", "US", "US")));
         verifyNoInteractions(generator);
         verify(session, never()).insertSeller(anyLong(), anyString(), any());
         assertThrows(UnsupportedOperationException.class, () -> seller.profitsEarned().put("USD", "2.00"));
@@ -88,7 +88,7 @@ class CatalogServiceTest {
                 .findFirst().orElseThrow();
         when(generator.nextId()).thenReturn(wrongRegionId);
         CatalogService bounded = new CatalogService(store, generator, router, topology, new CatalogService.Settings(false, 3));
-        fails(ID_UNAVAILABLE, () -> bounded.createSeller("key", new SellerCreation("Company", "US")));
+        fails(ID_UNAVAILABLE, () -> bounded.createSeller("key", new SellerCreation("Company", "US", "US")));
         verify(generator, times(3)).nextId();
         verify(session, never()).insertSeller(anyLong(), anyString(), any());
     }
@@ -107,7 +107,7 @@ class CatalogServiceTest {
         writes();
         when(session.seller(1)).thenReturn(Optional.of(seller));
         when(generator.nextId()).thenReturn(9L);
-        assertEquals(new Creation<>(new Product(1, 9, payload, 10), true), service.createProduct(1, "key", payload));
+        assertEquals(new Creation<>(new Product(1, 9, payload, 10, "US", "US"), true), service.createProduct(1, "key", payload));
         verify(store).write(eq(router.route(1)), any());
         var order = inOrder(session, generator);
         order.verify(session).lock(anyLong());
@@ -130,7 +130,7 @@ class CatalogServiceTest {
     void productConflictAndMissingParentDoNotGenerateIds() {
         writes();
         when(session.productByKey(1, "key")).thenReturn(Optional.of(product));
-        var changed = new ProductCreation("Mug", "Other description", "19.95", "12.50", "EUR", 10);
+        var changed = new ProductCreation("Mug", "Other description", "19.95", "12.50", "USD", 10);
         fails(PRODUCT_CONFLICT, () -> service.createProduct(1, "key", changed));
         fails(MISSING_PARENT, () -> service.createProduct(1, "new", payload));
         verifyNoInteractions(generator);
@@ -202,6 +202,53 @@ class CatalogServiceTest {
         fails(INVALID_REQUEST, () -> service.products("US", 101, 0));
         fails(INVALID_REQUEST, () -> service.products("US", 25, -1));
         verifyNoInteractions(store, generator);
+    }
+
+    @Test
+    void rejectsNewSellerWithoutMappedCountryAndCountryChangesButKeepsOldRetry() {
+        writes();
+        fails(INVALID_REQUEST, () -> service.createSeller("new", new SellerCreation("Arbitrary", "US")));
+        fails(INVALID_REQUEST, () -> service.createSeller("new", new SellerCreation("Arbitrary", "US", "JP")));
+        when(session.sellerByKey("US", "key")).thenReturn(Optional.of(seller));
+        assertEquals(new Creation<>(seller, false), service.createSeller("key", new SellerCreation("Company", "US")));
+        fails(SELLER_CONFLICT, () -> service.createSeller("key", new SellerCreation("Company", "US", "JP")));
+        verifyNoInteractions(generator);
+        verify(session, never()).insertSeller(anyLong(), anyString(), any());
+    }
+
+    @Test
+    void enforcesCountryCurrencyAndIntegralPrecisionWithoutWritingButPreservesLegacyRetry() {
+        writes();
+        Seller japan = new Seller(1, "Arbitrary business", "ASIA", Map.of("JPY", "0.00"), "JP");
+        when(session.seller(1)).thenReturn(Optional.of(japan));
+        ProductCreation invalidCurrency = new ProductCreation("Mug", "Mug", "19.00", "12.00", "CNY", 5);
+        ProductCreation fractionalYen = new ProductCreation("Mug", "Mug", "19.01", "12.00", "JPY", 5);
+        ProductCreation fractionalCost = new ProductCreation("Mug", "Mug", "19.00", "12.01", "JPY", 5);
+        for (ProductCreation invalid : List.of(invalidCurrency, fractionalYen, fractionalCost)) {
+            fails(INVALID_REQUEST, () -> service.createProduct(1, "new", invalid));
+        }
+        when(session.seller(1)).thenReturn(Optional.of(new Seller(1, "Legacy", "ASIA", Map.of())));
+        fails(INVALID_REQUEST, () -> service.createProduct(1, "new", payload));
+        when(session.productByKey(1, "old")).thenReturn(Optional.of(product));
+        assertEquals(new Creation<>(product, false), service.createProduct(1, "old", payload));
+        verifyNoInteractions(generator);
+        verify(session, never()).insertProduct(anyLong(), anyLong(), anyString(), any());
+    }
+
+    @Test
+    void createsIntegralYenProductAndKeepsLegacyRowsVisibleWithReasons() {
+        writes();
+        when(session.seller(1)).thenReturn(Optional.of(new Seller(1, "Japan", "ASIA", Map.of(), "JP")));
+        when(generator.nextId()).thenReturn(9L);
+        ProductCreation yen = new ProductCreation("Mug", "Mug", "19.00", "12.00", "JPY", 5);
+        Product created = service.createProduct(1, "new", yen).entity();
+        assertTrue(created.newOrderEligible());
+        assertEquals("JP", created.countryCode());
+        assertNull(created.legacyReason());
+        assertEquals("UNRESOLVED_SELLER_COUNTRY", product.legacyReason());
+        assertEquals("DISALLOWED_SELLER_CURRENCY", new Product(1, 2, payload, 7, "ASIA", "JP").legacyReason());
+        assertEquals("INVALID_CURRENCY_PRECISION", new Product(1, 2,
+                new ProductCreation("Mug", "Mug", "19.01", "12.00", "JPY", 5), 5, "ASIA", "JP").legacyReason());
     }
 
     private ListedProduct listed(long id) {

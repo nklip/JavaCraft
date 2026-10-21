@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import dev.nklip.javacraft.shardshop.common.CurrencyPolicy;
 import dev.nklip.javacraft.shardshop.common.IdParser;
 import dev.nklip.javacraft.shardshop.common.JsonFields;
 import dev.nklip.javacraft.shardshop.common.JsonHttpClient;
@@ -48,7 +49,7 @@ public final class OrderRequests {
     public OrderStatus submit(PlannedOrder order) throws IOException, InterruptedException {
         Objects.requireNonNull(order);
         String path = path(order.buyerId(), order.orderId());
-        if (!("USD".equals(order.currency()) || "EUR".equals(order.currency())) || order.items().isEmpty()
+        if (!CurrencyPolicy.SUPPORTED_CURRENCIES.contains(order.currency()) || order.items().isEmpty()
                 || order.items().size() > 1000) {
             throw new IllegalArgumentException("Invalid order payload");
         }

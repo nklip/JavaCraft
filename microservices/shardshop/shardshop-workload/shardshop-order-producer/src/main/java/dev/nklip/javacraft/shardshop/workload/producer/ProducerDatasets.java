@@ -3,6 +3,7 @@ package dev.nklip.javacraft.shardshop.workload.producer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import dev.nklip.javacraft.shardshop.common.CurrencyPolicy;
 import dev.nklip.javacraft.shardshop.common.IdParser;
 import dev.nklip.javacraft.shardshop.common.JsonFields;
 import dev.nklip.javacraft.shardshop.common.JsonHttpClient;
@@ -55,13 +56,15 @@ public final class ProducerDatasets {
             throw new IllegalArgumentException("Seller does not belong to the selected dataset");
         }
         return product.get("/api/v1/sellers/by-key/" + definition.key() + "?region=" + definition.region(), response -> {
-            JsonFields.requireFields(response, "sellerId", "companyName", "region", "profitsEarned");
+            JsonFields.requireFields(response, "sellerId", "companyName", "region", "countryCode", "profitsEarned");
             if (!definition.companyName().equals(JsonFields.text(response, "companyName"))
-                    || !definition.region().equals(JsonFields.text(response, "region"))) {
+                    || !definition.region().equals(JsonFields.text(response, "region"))
+                    || !definition.countryCode().equals(JsonFields.text(response, "countryCode"))) {
                 throw new IllegalArgumentException("Seller response does not match its definition");
             }
             return new SellerDescriptor(definition, JsonFields.id(response, "sellerId"),
-                    JsonFields.signedMoneyMap(response, "profitsEarned", "USD", "EUR"));
+                    JsonFields.signedMoneyMap(response, "profitsEarned",
+                            CurrencyPolicy.currencies(definition.region(), definition.countryCode()).toArray(String[]::new)));
         });
     }
 
@@ -75,8 +78,12 @@ public final class ProducerDatasets {
         new IdParser().parse(sellerId);
         return product.get("/api/v1/sellers/" + sellerId + "/products/by-key/" + definition.key(), response -> {
             JsonFields.requireFields(response, "sellerId", "productId", "name", "description",
-                    "price", "unitCost", "currency", "initialStock", "stock");
-            if (!sellerId.equals(JsonFields.id(response, "sellerId"))
+                    "price", "unitCost", "currency", "initialStock", "stock",
+                    "countryCode", "newOrderEligible", "legacyReason");
+            if (!seller.definition().countryCode().equals(JsonFields.text(response, "countryCode"))
+                    || !response.get("newOrderEligible").isBoolean() || !response.get("newOrderEligible").booleanValue()
+                    || !response.get("legacyReason").isNull()
+                    || !sellerId.equals(JsonFields.id(response, "sellerId"))
                     || !definition.name().equals(JsonFields.text(response, "name"))
                     || !definition.description().equals(JsonFields.text(response, "description"))
                     || !definition.unitCost().equals(JsonFields.text(response, "unitCost"))

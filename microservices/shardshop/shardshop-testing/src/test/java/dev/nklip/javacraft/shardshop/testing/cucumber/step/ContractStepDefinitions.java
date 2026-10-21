@@ -89,20 +89,20 @@ public class ContractStepDefinitions {
         assertEquals(List.of(), ExampleIds.violations(values, Set.of("sellerId", "productId", "buyerId")));
     }
 
-    @Then("the {int} sellers of catalog-v1 match the {string} schema of the product contract")
+    @Then("the {int} sellers of catalog-v2 match the {string} schema of the product contract")
     public void sellersAreValid(int count, String schema) {
         List<Definition> sellers = StoredCatalog.definitions(true);
-        assertEquals(count, sellers.size(), "Sellers of catalog-v1");
+        assertEquals(count, sellers.size(), "Sellers of catalog-v2");
         for (Definition seller : sellers) {
             assertValid(Contracts.PRODUCT_API, schema, seller.key(), new JsonObject()
-                    .put("companyName", seller.companyName()).put("region", seller.region()));
+                    .put("companyName", seller.companyName()).put("region", seller.region()).put("countryCode", seller.countryCode()));
         }
     }
 
-    @Then("the {int} products of catalog-v1 match the {string} schema of the product contract")
+    @Then("the {int} products of catalog-v2 match the {string} schema of the product contract")
     public void productsAreValid(int count, String schema) {
         List<Definition> products = StoredCatalog.definitions(false);
-        assertEquals(count, products.size(), "Products of catalog-v1");
+        assertEquals(count, products.size(), "Products of catalog-v2");
         for (Definition product : products) {
             assertValid(Contracts.PRODUCT_API, schema, product.key(), new JsonObject().put("name", product.name())
                     .put("description", product.description()).put("price", product.price())

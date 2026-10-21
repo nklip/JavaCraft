@@ -6,7 +6,7 @@ migrationStream: catalog
 run: ""
 # up.sh replaces this value on every deployment to restart application Deployments.
 restartToken: ""
-datasetVersion: catalog-v1
+datasetVersion: catalog-v2
 images:
   product: ""
   product-seeder: ""
@@ -116,8 +116,8 @@ order:
 
 ledgerApplication:
   configuration:
-    # The schema requires USD and rejects EUR: the kind saga gate and drill need both outcomes.
-    shardshop.ledger.allowed-currencies: USD
+    # Normal operation accepts every supported product currency; rejection drills scope their own policy.
+    shardshop.ledger.allowed-currencies: USD,EUR,GBP,CNY,VND,KRW,JPY
   resources:
     requests:
       cpu: 100m
@@ -132,7 +132,7 @@ orderProducer:
   # No $: SmallRye Config expands ${...} and rewrites the escapes $$ and \$.
   runName: ""
   configuration:
-    SHARDSHOP_PRODUCER_REJECTED_ORDER_PERCENT: "10"
+    SHARDSHOP_PRODUCER_REJECTED_ORDER_PERCENT: "-1"
   resources:
     requests:
       cpu: 100m

@@ -57,9 +57,9 @@ public final class ProductBrowserStepDefinitions {
             for (var shard : shards.all()) {
                 if (!shard.region().equals("US") && index >= 2) continue;
                 var seller = api.seller(shard.name());
-                ObjectNode payload = CatalogApi.itemRequest()
+                ObjectNode payload = CatalogApi.itemRequest(shard.region())
                         .put("name", "Unseeded <item> & " + shard.name() + " " + index)
-                        .put("currency", index % 2 == 0 ? "USD" : "EUR")
+
                         .put("initialStock", index == 0 ? 0 : 100 + index)
                         .put("price", index == 3 ? "99999999999999999.99" : "19.95");
                 var created = api.post(seller.path() + "/products", "browser-item-" + index, Json.bytes(payload));
@@ -79,9 +79,9 @@ public final class ProductBrowserStepDefinitions {
     @Then("the regional browser paginates every stored product once with exact product earnings")
     public void pagesMatchStoredTruth() throws Exception {
         browser.assertProduct(usProduct(0), 0, Map.of("USD", "0.30"));
-        browser.assertProduct(usProduct(1), 101, Map.of("EUR", "-7.45"));
+        browser.assertProduct(usProduct(1), 101, Map.of("USD", "-7.45"));
         browser.assertProduct(usProduct(2), 102, Map.of("USD", "0.00"));
-        browser.assertProduct(usProduct(3), 103, Map.of("EUR", "100000000000000000.01"));
+        browser.assertProduct(usProduct(3), 103, Map.of("USD", "100000000000000000.01"));
         browser.assertProduct(usProduct(4), 104, Map.of("USD", "0.00"));
         for (String region : List.of("US", "EU", "ASIA")) {
             List<JsonNode> expected = stored(region);
@@ -226,7 +226,7 @@ public final class ProductBrowserStepDefinitions {
         List<JsonNode> rows = new ArrayList<>();
         for (var shard : shards.all()) {
             try (Connection connection = shards.superuser(shard);
-                 PreparedStatement query = connection.prepareStatement("SELECT p.*, s.company_name, s.region, "
+                 PreparedStatement query = connection.prepareStatement("SELECT p.*, s.company_name, s.region, s.country_code, "
                          + "COALESCE((SELECT sum(c.amount) FROM catalog.profit_credits c "
                          + "WHERE c.product_id=p.product_id), 0.00) AS profit "
                          + "FROM catalog.products p JOIN catalog.sellers s ON s.seller_id=p.seller_id WHERE s.region=?")) {
@@ -236,9 +236,9 @@ public final class ProductBrowserStepDefinitions {
                         ObjectNode row = Json.newObject().put("sellerId", result.getString("seller_id"))
                                 .put("productId", result.getString("product_id"))
                                 .put("sellerName", result.getString("company_name")).put("name", result.getString("name"))
-                                .put("region", result.getString("region")).put("initialStock", result.getInt("initial_stock"))
+                                .put("region", result.getString("region")).put("countryCode", result.getString("country_code")).put("initialStock", result.getInt("initial_stock"))
                                 .put("stock", result.getInt("stock")).put("price", result.getBigDecimal("price").toPlainString())
-                                .put("currency", result.getString("currency"));
+                                .put("currency", result.getString("currency")).put("newOrderEligible", true).putNull("legacyReason");
                         row.putObject("profitsEarned").put(result.getString("currency"),
                                 result.getBigDecimal("profit").setScale(2).toPlainString());
                         rows.add(row);

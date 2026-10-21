@@ -110,7 +110,7 @@
     "datasetVersion": {
       "type": "string",
       "enum": [
-        "catalog-v1"
+        "catalog-v2"
       ]
     },
     "productSeeder": {
@@ -347,19 +347,7 @@
           "properties": {
             "shardshop.ledger.allowed-currencies": {
               "type": "string",
-              "allOf": [
-                {
-                  "pattern": "^[A-Z]{3}(,[A-Z]{3})*$"
-                },
-                {
-                  "pattern": "(^|,)USD(,|$)"
-                },
-                {
-                  "not": {
-                    "pattern": "(^|,)EUR(,|$)"
-                  }
-                }
-              ]
+              "pattern": "^(USD|EUR|GBP|CNY|VND|KRW|JPY)(,(USD|EUR|GBP|CNY|VND|KRW|JPY))*$"
             },
             "shardshop.ledger.max-pool-size": {
               "type": "string",
@@ -391,7 +379,7 @@
           "properties": {
             "SHARDSHOP_PRODUCER_REJECTED_ORDER_PERCENT": {
               "type": "string",
-              "pattern": "^(100|[0-9]{1,2})$"
+              "pattern": "^(-1|100|[0-9]{1,2})$"
             },
             "SHARDSHOP_PRODUCER_MAX_ATTEMPTS": {
               "type": "string",

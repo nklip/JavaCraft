@@ -1,4 +1,4 @@
-# Shared implementation for the four lifecycle scripts. Source it from Bash.
+# Shared implementation for the lifecycle and webpage scripts. Source it from Bash.
 # down.sh and cluster-destroy.sh use only lifecycle_init and require_tools.
 # Provisioning and application delivery remain in their respective entry points.
 
@@ -37,7 +37,67 @@ require_tools() {
     done
 }
 
-# Own only this invocation's forwards; stopping them never stops the lab.
+# Inspect both ports before returning any PIDs, so an inspection error cannot
+# turn into a partial cleanup. Only listening processes are selected.
+page_listener_pids() {
+    local port output status pid pids=
+    for port in 18080 18081; do
+        if output=$(lsof -t -nP -iTCP:"$port" -sTCP:LISTEN 2>&1); then
+            for pid in $output; do
+                [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || {
+                    echo "Unable to inspect local port $port: unexpected lsof output." >&2
+                    return 1
+                }
+            done
+            pids="$pids$output"$'\n'
+        else
+            status=$?
+            # lsof returns 1 with no output when no listener matches.
+            if [[ "$status" != 1 || -n "$output" ]]; then
+                echo "Unable to inspect local port $port (lsof exit $status): $output" >&2
+                return 1
+            fi
+        fi
+    done
+    [[ -z "$pids" ]] || printf '%s' "$pids" | sort -u
+}
+
+# webpages.sh owns these local page ports. Clear old forwards or other listeners
+# before opening new tunnels. Only the discovered listener PIDs are signalled.
+page_access_clear_ports() {
+    local pids pid deadline
+    pids=$(page_listener_pids) || return 1
+    [[ -n "$pids" ]] || return 0
+    echo 'Clearing local page ports 18080 and 18081.'
+    for pid in $pids; do
+        echo "Stopping listener PID $pid (TERM)."
+        kill -TERM "$pid" 2>/dev/null || true
+    done
+    deadline=$((SECONDS + 5))
+    while :; do
+        pids=$(page_listener_pids) || return 1
+        [[ -n "$pids" ]] || return 0
+        (( SECONDS < deadline )) || break
+        sleep 0.1
+    done
+    # Refresh from the actual listeners instead of retaining stale PIDs.
+    for pid in $pids; do
+        echo "Stopping remaining listener PID $pid (KILL)."
+        kill -KILL "$pid" 2>/dev/null || true
+    done
+    deadline=$((SECONDS + 2))
+    while :; do
+        pids=$(page_listener_pids) || return 1
+        [[ -n "$pids" ]] || return 0
+        if (( SECONDS >= deadline )); then
+            echo "Unable to release local ports 18080/18081; listener PIDs: $pids. Startup stopped." >&2
+            return 1
+        fi
+        sleep 0.1
+    done
+}
+
+# Session cleanup owns only this invocation's forwards; it never stops the lab.
 page_access_cleanup() {
     trap '' INT TERM
     local pid
@@ -47,8 +107,13 @@ page_access_cleanup() {
 }
 
 page_access() {
-    local service port index status deadline ready
+    local service port index status deadline ready pids
     local services=(product order) ports=(18080 18081)
+    pids=$(page_listener_pids) || return 1
+    if [[ -n "$pids" ]]; then
+        echo "Local page ports became occupied (PIDs: $pids). Run scripts/webpages.sh again to reopen both pages. The lab remains running." >&2
+        return 1
+    fi
     forward_pids=()
     forward_state=$(mktemp -d)
     trap page_access_cleanup EXIT

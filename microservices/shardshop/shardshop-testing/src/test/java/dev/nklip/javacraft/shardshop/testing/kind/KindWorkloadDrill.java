@@ -96,7 +96,7 @@ public final class KindWorkloadDrill {
         lab.await("temporary HTTP seeder Job " + jobName + " completion", Duration.ofSeconds(330),
                 () -> KindDeployment.completed(deployment.resource("job", jobName)));
         JsonNode successful = deployment.successfulSeeder(jobName);
-        return KindDeployment.digest(deployment.logs(KindDeployment.name(successful)), "Seeded and verified catalog-v1");
+        return KindDeployment.digest(deployment.logs(KindDeployment.name(successful)), "Seeded and verified catalog-v2");
     }
 
     static void validateJob(JsonNode job, String name, String run, String image) throws IOException {

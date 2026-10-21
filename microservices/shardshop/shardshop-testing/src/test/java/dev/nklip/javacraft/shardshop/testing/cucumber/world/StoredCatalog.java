@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The catalog-v1 rows on the shards. The expected payloads come from the dataset TSV files and the step 3.5 rules,
+ * The catalog-v2 rows on the shards. The expected payloads come from the dataset TSV files and the step 3.5 rules,
  * written again here, independently of the Java dataset definitions.
  */
 public final class StoredCatalog {
@@ -33,7 +33,7 @@ public final class StoredCatalog {
 
     /** The payload of one dataset entity; {@code sellerKey} is null for a seller. */
     public record Definition(String key, String sellerKey, String region, String companyName, String name,
-                             String description, String price, String unitCost, String currency, int initialStock) {
+                             String description, String price, String unitCost, String currency, int initialStock, String countryCode) {
         public boolean seller() {
             return sellerKey == null;
         }
@@ -42,7 +42,7 @@ public final class StoredCatalog {
     /** One stored entity with its shard; the product fields are null for a seller. */
     public record Row(String key, String shard, String sellerId, String productId, String region, String companyName,
                       String name, String description, String price, String unitCost, String currency,
-                      Integer initialStock, Integer stock) {
+                      Integer initialStock, Integer stock, String countryCode) {
     }
 
     private StoredCatalog() {
@@ -55,23 +55,31 @@ public final class StoredCatalog {
             List<String> rows;
             try {
                 rows = Files.readAllLines(ShardShopFiles.resolve("shardshop-workload/shardshop-datasets/src/main/"
-                        + "resources/datasets/catalog-v1/" + region + ".tsv"), StandardCharsets.UTF_8);
+                        + "resources/datasets/catalog-v2/" + region + ".tsv"), StandardCharsets.UTF_8);
             } catch (IOException failure) {
                 throw new UncheckedIOException(failure);
             }
             assertEquals("companyName\tcountryCode\trank", rows.getFirst(), "Header of " + region);
-            assertEquals(51, rows.size(), "Rows of " + region);
-            for (int ordinal = 1; ordinal <= 50; ordinal++) {
+            assertEquals(region.equals("ASIA") ? 52 : 51, rows.size(), "Rows of " + region);
+            int productOrdinal = 0;
+            for (int ordinal = 1; ordinal < rows.size(); ordinal++) {
                 String company = rows.get(ordinal).split("\t")[0];
-                String sellerKey = "catalog-v1." + region + ".seller." + ordinal;
-                sellers.add(new Definition(sellerKey, null, region, company, null, null, null, null, null, 0));
-                List<String> currencies = List.of("USD", "EUR");
+                String country = rows.get(ordinal).split("\t")[1];
+                String sellerKey = "catalog-v2." + region + ".seller." + ordinal;
+                sellers.add(new Definition(sellerKey, null, region, company, null, null, null, null, null, 0, country));
+                List<String> currencies = switch (region) {
+                    case "US" -> List.of("USD");
+                    case "EU" -> List.of("EUR", "GBP");
+                    case "ASIA" -> List.of(switch (country) { case "CN" -> "CNY"; case "VN" -> "VND"; case "KR" -> "KRW"; case "JP" -> "JPY"; default -> throw new AssertionError(country); });
+                    default -> throw new AssertionError(region);
+                };
                 for (int offset = 1; offset <= currencies.size(); offset++) {
                     String currency = currencies.get(offset - 1);
-                    products.add(new Definition("catalog-v1." + region + ".product." + (2 * ordinal - 2 + offset),
+                    products.add(new Definition("catalog-v2." + region + ".product." + (++productOrdinal),
                             sellerKey, region, null, company + " Sample Product " + currency,
-                            "Synthetic " + currency + " catalog item sold by " + company + ".", "19.95", "12.50",
-                            currency, 1000));
+                            "Synthetic " + currency + " catalog item sold by " + company + ".",
+                            List.of("JPY", "KRW", "VND").contains(currency) ? "20.00" : "19.95",
+                            List.of("JPY", "KRW", "VND").contains(currency) ? "12.00" : "12.50", currency, 1000, country));
                 }
             }
         }
@@ -93,11 +101,16 @@ public final class StoredCatalog {
                 Map<String, String> sellerIds = new HashMap<>();
                 try (ResultSet sellers = statement.executeQuery("SELECT creation_key, seller_id, region, company_name, "
                         + "(SELECT string_agg(currency || '=' || amount, ',' ORDER BY currency) FROM catalog.seller_profits p "
-                        + "WHERE p.seller_id = s.seller_id) AS profits FROM catalog.sellers s")) {
+                        + "WHERE p.seller_id = s.seller_id) AS profits, country_code FROM catalog.sellers s")) {
                     while (sellers.next()) {
                         Row row = new Row(sellers.getString(1), shard.name(), sellers.getString(2), null,
-                                sellers.getString(3), sellers.getString(4), null, null, null, null, null, null, null);
-                        assertEquals("EUR=0.00,USD=0.00", sellers.getString(5), "Profits of " + row.key());
+                                sellers.getString(3), sellers.getString(4), null, null, null, null, null, null, null, sellers.getString(6));
+                        String expectedProfits = switch (row.region()) {
+                            case "US" -> "USD=0.00"; case "EU" -> "EUR=0.00,GBP=0.00";
+                            case "ASIA" -> switch (row.countryCode()) { case "CN" -> "CNY=0.00"; case "VN" -> "VND=0.00"; case "KR" -> "KRW=0.00"; case "JP" -> "JPY=0.00"; default -> throw new AssertionError(row.countryCode()); };
+                            default -> throw new AssertionError(row.region());
+                        };
+                        assertEquals(expectedProfits, sellers.getString(5), "Profits of " + row.key());
                         assertNull(rows.put(row.key(), row), "A creation key is stored more than once: " + row.key());
                         sellerIds.put(row.sellerId(), row.key());
                     }
@@ -108,7 +121,7 @@ public final class StoredCatalog {
                         Row row = new Row(products.getString(1), shard.name(), products.getString(2),
                                 products.getString(3), null, null, products.getString(4), products.getString(5),
                                 products.getString(6), products.getString(7), products.getString(8),
-                                products.getInt(9), products.getInt(10));
+                                products.getInt(9), products.getInt(10), null);
                         assertTrue(sellerIds.containsKey(row.sellerId()), "Product " + row.key() + " is apart from its seller");
                         assertNull(rows.put(row.key(), row), "A creation key is stored more than once: " + row.key());
                     }
@@ -130,6 +143,7 @@ public final class StoredCatalog {
             if (definition.seller()) {
                 storedSellers++;
                 assertEquals(definition.region(), row.region(), "Region of " + row.key());
+                assertEquals(definition.countryCode(), row.countryCode(), "Country of " + row.key());
                 assertEquals(definition.companyName(), row.companyName(), "Company of " + row.key());
                 assertEquals(shards.ofKey(definition.region(), row.key()).name(), row.shard(), "Key home of " + row.key());
                 assertEquals(shards.ofSeller(row.sellerId()).name(), row.shard(), "ID route of " + row.key());

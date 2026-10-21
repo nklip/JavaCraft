@@ -94,8 +94,8 @@ class ProductReaderTest {
         reader = reader(2, 3, 50, Duration.ofMillis(300), Duration.ofSeconds(5));
         reader.start(reader.resolve(), failures::incrementAndGet);
         long started = System.nanoTime();
-        assertEquals(150, product.sellerLookups.get());
-        assertEquals(300, product.productLookups.get());
+        assertEquals(151, product.sellerLookups.get());
+        assertEquals(201, product.productLookups.get());
         awaitUntil(() -> product.reads.get() >= 60);
         reader.stop();
         double seconds = (System.nanoTime() - started) / 1e9;
@@ -110,11 +110,11 @@ class ProductReaderTest {
         assertEquals(0, failures.get());
         assertFalse(reader.failed());
         assertEquals(List.of(
-                "INFO Resolved catalog-v1 [US 50 sellers, 100 products; EU 50 sellers, 100 products; "
-                        + "ASIA 50 sellers, 100 products], key-to-ID SHA-256 " + expectedDigest(),
+                "INFO Resolved catalog-v2 [US 50 sellers, 50 products; EU 50 sellers, 100 products; "
+                        + "ASIA 51 sellers, 51 products], key-to-ID SHA-256 " + expectedDigest(),
                 "INFO Reading at 50 requests/s with 3 workers and 2 connections"), messages().subList(0, 2));
         assertTrue(messages().getLast().startsWith("INFO Product reads, total "), messages().getLast());
-        assertTrue(messages().getLast().endsWith(", max=2}, catalog-v1 key-to-ID SHA-256 " + expectedDigest()),
+        assertTrue(messages().getLast().endsWith(", max=2}, catalog-v2 key-to-ID SHA-256 " + expectedDigest()),
                 messages().getLast());
         assertTrue(messages().stream().anyMatch(message -> message.startsWith("INFO Product reads, interval ")));
     }
@@ -127,9 +127,9 @@ class ProductReaderTest {
         awaitUntil(() -> messages().stream().anyMatch(message -> message.startsWith("INFO Product reads, interval ")));
         reader.stop();
 
-        String evidence = ", catalog-v1 key-to-ID SHA-256 " + expectedDigest();
+        String evidence = ", catalog-v2 key-to-ID SHA-256 " + expectedDigest();
         List<String> retained = messages();
-        assertFalse(retained.stream().anyMatch(message -> message.contains("Resolved catalog-v1")), retained.toString());
+        assertFalse(retained.stream().anyMatch(message -> message.contains("Resolved catalog-v2")), retained.toString());
         assertTrue(retained.getLast().startsWith("INFO Product reads, total "), retained.toString());
         assertTrue(retained.stream().allMatch(message -> message.endsWith(evidence)), retained.toString());
     }
@@ -160,7 +160,7 @@ class ProductReaderTest {
         awaitUntil(() -> messages().stream().anyMatch(message -> message.startsWith("INFO Product reads, interval ")));
         reader.stop();
 
-        String evidence = ", catalog-v1 key-to-ID SHA-256 " + expectedDigest();
+        String evidence = ", catalog-v2 key-to-ID SHA-256 " + expectedDigest();
         assertTrue(messages().stream().allMatch(message -> message.endsWith(evidence)), messages().toString());
     }
 
@@ -179,7 +179,7 @@ class ProductReaderTest {
         // Each read that ends at its deadline closes its connection.
         assertTrue(product.connections.size() >= 3, product.connections.size() + " connections");
         assertTrue(messages().getLast().startsWith("WARN Product reads, total "), messages().getLast());
-        assertTrue(messages().getLast().endsWith(", catalog-v1 key-to-ID SHA-256 " + expectedDigest()),
+        assertTrue(messages().getLast().endsWith(", catalog-v2 key-to-ID SHA-256 " + expectedDigest()),
                 messages().getLast());
         assertEquals(0, failures.get());
     }
@@ -233,7 +233,7 @@ class ProductReaderTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"catalog-v1.EU.seller.10, Look up seller", "catalog-v1.ASIA.product.7, Look up product"})
+    @CsvSource({"catalog-v2.EU.seller.10, Look up seller", "catalog-v2.ASIA.product.7, Look up product"})
     void reportsAMissingEntityAsNotReadyAndResolvesAgainAfterItAppears(String key, String operation) throws Exception {
         product.missingKeys.add(key);
         reader = reader(2, 2, 50, Duration.ofSeconds(30), Duration.ofSeconds(5));
@@ -244,7 +244,7 @@ class ProductReaderTest {
         product.missingKeys.remove(key);
         ProductReader.Catalog catalog = reader.resolve();
         assertEquals(1, messages().size());
-        assertTrue(messages().getFirst().startsWith("INFO Resolved catalog-v1 "), messages().getFirst());
+        assertTrue(messages().getFirst().startsWith("INFO Resolved catalog-v2 "), messages().getFirst());
         assertEquals(0, product.reads.get());
         reader.start(catalog, failures::incrementAndGet);
         awaitUntil(() -> product.reads.get() > 0);
@@ -252,21 +252,21 @@ class ProductReaderTest {
 
     @Test
     void reportsAConflictingEntityAsAFailureThatAWaitCannotRepair() {
-        product.conflictingKeys.add("catalog-v1.US.seller.3");
+        product.conflictingKeys.add("catalog-v2.US.seller.3");
         reader = reader(1, 1, 50, Duration.ofSeconds(30), Duration.ofSeconds(5));
         ReaderException failure = assertThrows(ReaderException.class, reader::resolve);
         assertFalse(failure instanceof CatalogNotReadyException, failure.getClass().getName());
-        assertEquals("Look up seller catalog-v1.US.seller.3 failed with INVALID_RESPONSE", failure.getMessage());
+        assertEquals("Look up seller catalog-v2.US.seller.3 failed with INVALID_RESPONSE", failure.getMessage());
     }
 
     @ParameterizedTest
     @CsvSource({"503, CATALOG_UNAVAILABLE, UNAVAILABLE, true", "503, READ_REPLICA_UNAVAILABLE, REPLICA_UNAVAILABLE, true",
             "500, INTERNAL_ERROR, HTTP_ERROR, false"})
     void reportsOnlyARejectionThatAWaitCanRepairAsNotReady(int status, String code, Outcome outcome, boolean notReady) {
-        product.rejectedKeys.put("catalog-v1.EU.seller.10", new FakeProductServer.Rejection(status, code));
+        product.rejectedKeys.put("catalog-v2.EU.seller.10", new FakeProductServer.Rejection(status, code));
         reader = reader(2, 2, 50, Duration.ofSeconds(30), Duration.ofSeconds(5));
         ReaderException failure = assertThrows(ReaderException.class, reader::resolve);
-        assertEquals("Look up seller catalog-v1.EU.seller.10 failed with " + outcome, failure.getMessage());
+        assertEquals("Look up seller catalog-v2.EU.seller.10 failed with " + outcome, failure.getMessage());
         assertEquals(notReady, failure instanceof CatalogNotReadyException, failure.getClass().getName());
     }
 
@@ -275,7 +275,7 @@ class ProductReaderTest {
         product.lookupDelayMillis = 2_000;
         reader = reader(1, 1, 50, Duration.ofSeconds(30), Duration.ofMillis(300));
         CatalogNotReadyException failure = assertThrows(CatalogNotReadyException.class, reader::resolve);
-        assertEquals("Look up seller catalog-v1.US.seller.1 failed with DEADLINE", failure.getMessage());
+        assertEquals("Look up seller catalog-v2.US.seller.1 failed with DEADLINE", failure.getMessage());
     }
 
     @Test
@@ -290,7 +290,7 @@ class ProductReaderTest {
         reader = new ProductReader(new ReaderDatasets(CatalogDataset.VERSION), requests,
                 new RatePacer(50, System::nanoTime, SLEEP), metrics, 1, Duration.ofSeconds(1), System::nanoTime, random);
         CatalogNotReadyException failure = assertThrows(CatalogNotReadyException.class, reader::resolve);
-        assertEquals("Look up seller catalog-v1.US.seller.1 failed with TRANSPORT", failure.getMessage());
+        assertEquals("Look up seller catalog-v2.US.seller.1 failed with TRANSPORT", failure.getMessage());
     }
 
     @Test

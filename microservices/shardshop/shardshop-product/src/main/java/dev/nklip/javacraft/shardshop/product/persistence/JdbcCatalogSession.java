@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.product.persistence;
 
 import dev.nklip.javacraft.shardshop.common.jdbc.DatabasePhases;
+import dev.nklip.javacraft.shardshop.common.CurrencyPolicy;
 import dev.nklip.javacraft.shardshop.product.catalog.CatalogFailure;
 import dev.nklip.javacraft.shardshop.product.catalog.CatalogStore;
 
@@ -19,9 +20,9 @@ import static dev.nklip.javacraft.shardshop.product.catalog.CatalogModel.*;
 
 /** JDBC operations belonging to one connection, transaction and deadline. */
 final class JdbcCatalogSession implements CatalogStore.Session {
-    private static final String SELLER_COLUMNS = "seller_id, company_name, region";
-    private static final String PRODUCT_COLUMNS = "seller_id, product_id, name, description, price, unit_cost, "
-            + "currency, initial_stock, stock";
+    private static final String SELLER_COLUMNS = "seller_id, company_name, region, country_code";
+    private static final String PRODUCT_COLUMNS = "p.seller_id, p.product_id, p.name, p.description, p.price, p.unit_cost, "
+            + "p.currency, p.initial_stock, p.stock, s.region, s.country_code";
 
     private final Connection connection;
     private final DatabasePhases.Deadline deadline;
@@ -84,7 +85,7 @@ final class JdbcCatalogSession implements CatalogStore.Session {
             long sellerId = result.getLong("seller_id");
             String companyName = result.getString("company_name");
             String region = result.getString("region");
-            return Optional.of(new Seller(sellerId, companyName, region, profits(sellerId)));
+            return Optional.of(new Seller(sellerId, companyName, region, profits(sellerId), result.getString("country_code")));
         }
     }
 
@@ -105,7 +106,7 @@ final class JdbcCatalogSession implements CatalogStore.Session {
     @Override
     public Optional<Product> productByKey(long sellerId, String key) {
         try (PreparedStatement statement = prepare("SELECT " + PRODUCT_COLUMNS
-                + " FROM catalog.products WHERE seller_id = ? AND creation_key = ?")) {
+                + " FROM catalog.products p JOIN catalog.sellers s ON s.seller_id = p.seller_id WHERE p.seller_id = ? AND p.creation_key = ?")) {
             statement.setLong(1, sellerId);
             statement.setString(2, key);
             return productResult(statement);
@@ -117,7 +118,7 @@ final class JdbcCatalogSession implements CatalogStore.Session {
     @Override
     public Optional<Product> product(long sellerId, long productId) {
         try (PreparedStatement statement = prepare("SELECT " + PRODUCT_COLUMNS
-                + " FROM catalog.products WHERE seller_id = ? AND product_id = ?")) {
+                + " FROM catalog.products p JOIN catalog.sellers s ON s.seller_id = p.seller_id WHERE p.seller_id = ? AND p.product_id = ?")) {
             statement.setLong(1, sellerId);
             statement.setLong(2, productId);
             return productResult(statement);
@@ -129,7 +130,7 @@ final class JdbcCatalogSession implements CatalogStore.Session {
     @Override
     public List<ListedProduct> products(String region, int limit, long after) {
         // Bound the page before aggregating immutable credits; stock reservations are not sales.
-        String sql = "WITH page AS (SELECT p.seller_id, p.product_id, s.company_name, p.name, s.region, "
+        String sql = "WITH page AS (SELECT p.seller_id, p.product_id, s.company_name, p.name, s.region, s.country_code, p.unit_cost, "
                 + "p.initial_stock, p.stock, p.price, p.currency FROM catalog.products p "
                 + "JOIN catalog.sellers s ON s.seller_id = p.seller_id "
                 + "WHERE s.region = ? AND p.product_id > ? ORDER BY p.product_id LIMIT ?) "
@@ -149,7 +150,8 @@ final class JdbcCatalogSession implements CatalogStore.Session {
                             rows.getString("company_name"), rows.getString("name"), rows.getString("region"),
                             rows.getInt("initial_stock"), rows.getInt("stock"),
                             rows.getBigDecimal("price").toPlainString(), currency,
-                            Map.of(currency, rows.getBigDecimal("profit").setScale(2).toPlainString())));
+                            Map.of(currency, rows.getBigDecimal("profit").setScale(2).toPlainString()),
+                            rows.getString("country_code"), rows.getBigDecimal("unit_cost").toPlainString()));
                 }
             }
             return List.copyOf(products);
@@ -172,24 +174,27 @@ final class JdbcCatalogSession implements CatalogStore.Session {
                     result.getInt("initial_stock")
             );
             return Optional.of(new Product(result.getLong("seller_id"), result.getLong("product_id"),
-                    creation, result.getInt("stock")));
+                    creation, result.getInt("stock"), result.getString("region"), result.getString("country_code")));
         }
     }
 
     @Override
     public void insertSeller(long id, String key, SellerCreation creation) {
         try (PreparedStatement statement = prepare(
-                "INSERT INTO catalog.sellers(seller_id, name, region, creation_key) VALUES (?, ?, ?, ?)")) {
+                "INSERT INTO catalog.sellers(seller_id, name, region, creation_key, country_code) VALUES (?, ?, ?, ?, ?)")) {
             statement.setLong(1, id);
             statement.setString(2, creation.companyName());
             statement.setString(3, creation.region());
             statement.setString(4, key);
+            statement.setString(5, creation.countryCode());
             requireRows(statement.executeUpdate(), 1);
             try (PreparedStatement profits = prepare(
-                    "INSERT INTO catalog.seller_profits(seller_id, currency) VALUES (?, 'USD'), (?, 'EUR')")) {
-                profits.setLong(1, id);
-                profits.setLong(2, id);
-                requireRows(profits.executeUpdate(), 2);
+                    "INSERT INTO catalog.seller_profits(seller_id, currency) VALUES (?, ?)")) {
+                for (String currency : CurrencyPolicy.currencies(creation.region(), creation.countryCode())) {
+                    profits.setLong(1, id);
+                    profits.setString(2, currency);
+                    requireRows(profits.executeUpdate(), 1);
+                }
             }
         } catch (SQLException failure) {
             throw new CatalogFailure(unavailable);

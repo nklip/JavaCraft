@@ -1,7 +1,9 @@
 package dev.nklip.javacraft.shardshop.order;
 
+import dev.nklip.javacraft.shardshop.common.CurrencyPolicy;
 import io.quarkus.test.common.http.TestHTTPResource;
 import io.quarkus.test.junit.QuarkusTest;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -14,8 +16,10 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -44,6 +48,22 @@ class OrderPageTest {
                     () -> assertNotStored(js),
                     () -> assertVersioned(stylesheet),
                     () -> assertVersioned(script));
+        }
+    }
+
+    /** The page repeats the zero-minor-unit currencies of the shared policy; a policy change must change the page. */
+    @Test
+    void packagedScriptOmitsDecimalsForTheZeroMinorUnitCurrenciesOfThePolicy() throws Exception {
+        try (HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()) {
+            HttpResponse<String> page = get(client, root.resolve("orders/"), "text/html");
+            String script = get(client, linkedAsset(page.body(), "src", "orders.js"), "javascript").body();
+            Matcher list = Pattern.compile("\\[(\"[A-Z]{3}\"(?:, \"[A-Z]{3}\")*)]\\.includes\\(currency\\)").matcher(script);
+            assertTrue(list.find(), "The script must name its zero-minor-unit currencies");
+            Set<String> scripted = Arrays.stream(list.group(1).split(", ")).map(code -> code.replace("\"", ""))
+                    .collect(Collectors.toSet());
+            assertFalse(list.find(), "The script must name its zero-minor-unit currencies once");
+            assertEquals(CurrencyPolicy.SUPPORTED_CURRENCIES.stream().filter(code -> CurrencyPolicy.fractionDigits(code) == 0)
+                    .collect(Collectors.toSet()), scripted);
         }
     }
 

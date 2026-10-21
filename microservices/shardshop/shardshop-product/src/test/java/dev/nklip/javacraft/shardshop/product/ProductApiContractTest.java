@@ -92,8 +92,8 @@ class ProductApiContractTest {
                 List.of(0, "-0.00", "+1.00", "01.00", "-01.00", "1", "1.0", "1.000", "1e2", "1.00\n", "1.00\r\n",
                         "100000000000000000.00", "-100000000000000000.00")));
         assertEquals(List.of(), API.unexpected(SCHEMAS + "ProfitsEarned",
-                List.of(PROFITS, PROFITS.copy().put("JPY", "-1.00")),
-                List.of(new JsonObject(), new JsonObject().put("USD", "0.00"), new JsonObject().put("EUR", "0.00"),
+                List.of(PROFITS, PROFITS.copy().put("JPY", "-1.00"), new JsonObject().put("USD", "0.00"), new JsonObject().put("EUR", "0.00")),
+                List.of(new JsonObject(),
                         new JsonArray(), PROFITS.copy().put("usd", "1.00"), PROFITS.copy().put("EUR", "-0.00"),
                         PROFITS.copy().put("US", "1.00"), PROFITS.copy().put("EUR\n", "1.00"),
                         PROFITS.copy().put("USD", 0))));
@@ -106,7 +106,7 @@ class ProductApiContractTest {
         JsonObject sellerFields = new JsonObject().put("sellerId", "1").put("name", "Old seller")
                 .put("profitsEarned", new JsonObject().put("USD", "0.00").put("EUR", "0.00"));
         assertEquals(List.of(), API.unexpected(SCHEMAS + "CreateSeller",
-                List.of(SELLER, SELLER.copy().put("companyName", " Société Exemple ")),
+                List.of(SELLER, SELLER.copy().put("companyName", " Société Exemple "), SELLER.copy().put("countryCode", "FR")),
                 concat(invalidVariants(SELLER, sellerFields), Stream.of(123, "", " \t", "A".repeat(201))
                         .map(name -> (Object) SELLER.copy().put("companyName", name)).toList(),
                         List.of(SELLER.copy().put("region", "UNKNOWN")))));
@@ -121,11 +121,12 @@ class ProductApiContractTest {
 
     @Test
     void responsesHaveExactlyTheirFields() {
-        JsonObject seller = SELLER.copy().put("sellerId", "1").put("profitsEarned", PROFITS);
+        JsonObject seller = SELLER.copy().put("sellerId", "1").put("profitsEarned", PROFITS).put("countryCode", "FR");
         assertEquals(List.of(), API.unexpected(SCHEMAS + "Seller", List.of(seller),
                 List.of(without(seller, "profitsEarned"), seller.copy().put("name", "Old seller"),
                         seller.copy().put("profitsEarned", "15.00"))));
-        JsonObject product = PRODUCT.copy().put("sellerId", "1").put("productId", "2").put("stock", 7);
+        JsonObject product = PRODUCT.copy().put("sellerId", "1").put("productId", "2").put("stock", 7)
+                .put("countryCode", "US").put("newOrderEligible", true).put("legacyReason", null);
         assertEquals(List.of(), API.unexpected(SCHEMAS + "Product", List.of(product),
                 List.of(without(product, "description"), without(product, "unitCost"),
                         without(product, "sellerId"))));
@@ -136,7 +137,8 @@ class ProductApiContractTest {
         JsonObject product = new JsonObject().put("sellerId", "9007199254740993").put("productId", LONG_MAX)
                 .put("sellerName", "Company").put("name", "Mug").put("region", "EU")
                 .put("initialStock", 10).put("stock", 7).put("price", "19.95").put("currency", "JPY")
-                .put("profitsEarned", new JsonObject().put("JPY", "-100000000000000000.01"));
+                .put("profitsEarned", new JsonObject().put("JPY", "-100000000000000000.01"))
+                .put("countryCode", "FR").put("newOrderEligible", false).put("legacyReason", "DISALLOWED_SELLER_CURRENCY");
         JsonObject page = new JsonObject().put("region", "EU").put("items", new JsonArray().add(product))
                 .put("nextAfter", LONG_MAX);
         assertEquals(List.of(), API.unexpected(SCHEMAS + "ProductPage",
@@ -197,7 +199,7 @@ class ProductApiContractTest {
         JsonObject product = example("#/paths/~1api~1v1~1sellers~1{sellerId}~1products/post/responses/201");
         assertEquals(seller.getString("sellerId"), product.getString("sellerId"),
                 "The product creation example uses the seller of the seller creation example");
-        assertEquals(new JsonObject().put("USD", "0.00").put("EUR", "0.00"), seller.getJsonObject("profitsEarned"),
+        assertEquals(new JsonObject().put("EUR", "0.00").put("GBP", "0.00"), seller.getJsonObject("profitsEarned"),
                 "A new seller starts with zero profits in each currency");
     }
 

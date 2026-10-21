@@ -5,8 +5,9 @@ Source selection reviewed on **2026-10-07**; Java reproduction verified on
 belong to this workload module. They contain no entity IDs; product/order create
 IDs when workloads submit the payloads.
 
-The checked-in data provide 50 company sellers and 1,000 synthetic buyers per
-region. US and EU each retain 1,000 given-name entries and 1,000 surname entries.
+The source selection provides 50 company sellers and 1,000 synthetic buyers per
+region. The current `catalog-v2` adds one explicitly synthetic Vietnam company
+to cover VND, for 151 sellers and 201 products. US and EU each retain 1,000 given-name entries and 1,000 surname entries.
 ASIA uses the complete deduplicated curated lists from the four Faker person
 providers below: 345 given-name entries and 503 surname entries. Reusing name
 components yields 250 distinct synthetic buyer emails per Asian country without
@@ -178,9 +179,11 @@ are not records collected from real people.
 
 Generation never creates an entity ID. Regional fixture ordinals become stable
 creation retry keys only; the workload still obtains every buyer ID from order.
-Both `catalog-v1` and `buyers-v1` are the initial unreleased datasets. Edits before
-their first release or use keep v1. Change the dataset version and keys before
-changing a payload that has already been released or used.
+`buyers-v1` keeps its original payload and keys. `catalog-v2` has new creation
+keys because seller country and product currencies change the creation payload.
+The retained `catalog-v1` TSVs and selection evidence remain unchanged for
+migration and provenance. Change dataset versions and keys before changing a
+payload that has already been released or used.
 
 ## Company sellers and synthetic products
 
@@ -201,7 +204,35 @@ exhaustive ultimate-parent consolidation or a company-sales ranking.
 
 The 50 ASIA sellers comprise 32 from China, 14 from Japan and 4 from South Korea.
 Vietnam is eligible but has no selected entry before the cutoff; no country
-quota was imposed on company selection. Each company receives two synthetic
-products, one USD and one EUR, with test descriptions, prices, unit costs and
-stock. Those products and future workload profit balances do not represent the
-named companies' real catalog, costs, revenue or profits.
+quota was imposed on company selection. `catalog-v2/US.tsv` and `EU.tsv` copy
+the retained selection byte for byte. `catalog-v2/ASIA.tsv` keeps all 50 original
+rows and appends `Vietnam Sample Company`, country `VN`, rank `synthetic`.
+That row is a fictional coverage fixture, has no published rank or source brand,
+and is excluded from the ranked selection. Its source is this workload definition.
+
+`CurrencyPolicy` supplies each seller's product currencies: US → USD;
+EU27 → EUR and GBP; CN → CNY; VN → VND; KR → KRW; JP → JPY.
+This produces US 50 products, EU 100 products, and ASIA 51 products
+(CNY 32, KRW 4, JPY 14, VND 1). Each permitted currency receives one
+synthetic product. Prices/costs are `19.95`/`12.50` for two-minor-unit currencies
+and `20.00`/`12.00` for JPY, KRW and VND. Wire values always use two decimal
+places; zero-minor-unit currencies have no fractional value. Test descriptions,
+stock, products and workload profit balances do not represent the named
+companies' real catalog, costs, revenue or profits.
+
+The producer's default `rejected-order-percent=-1` is balanced traffic. Each window
+of 201 consecutive ordinals starts one order with each product, in an order that
+sorts the products by the unsigned SHA-256 of run name, NUL, `first-item`, NUL and
+definition key. The order uses that product's currency and up to two following
+products of the same currency; VND currently has one product. Thus each product is
+in at most three orders of a window, and currencies appear in proportion to their
+products. Buyer selection is independent of currency. Explicit values `0..100` scope
+a USD/EUR rejection drill and require a ledger allowlist matching that drill. Every
+allocation uses a new versioned identity: `<run-name>:catalog-v2:balanced` or
+`<run-name>:catalog-v2:usd-eur-<percent>`. The earlier seven-way choice used
+`<run-name>:catalog-v2:all`; its allocations stay unchanged.
+If this exceeds 200 code points, the identity is `catalog-v2:` followed by the
+lowercase SHA-256 of that complete identity. Old allocations keep their old
+run names and ordinals; new planning never reuses their identities. A restart
+with unchanged run name, dataset and selection mode reconstructs the same
+allocation, buyer, currency, products, item order and quantities.

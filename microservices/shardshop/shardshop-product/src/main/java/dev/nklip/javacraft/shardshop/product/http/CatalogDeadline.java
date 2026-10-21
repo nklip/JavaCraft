@@ -105,8 +105,8 @@ public class CatalogDeadline implements WriterInterceptor {
         context.addEndHandler(ignored -> {
             synchronized (state) {
                 state.finished = true;
-                vertx.cancelTimer(timer);
             }
+            vertx.cancelTimer(timer);
         });
         context.next();
     }
@@ -126,11 +126,14 @@ public class CatalogDeadline implements WriterInterceptor {
             context.proceed();
             return;
         }
+        if (routingContext.response().ended() || routingContext.response().closed()) {
+            return;
+        }
         synchronized (state) {
-            if (state.expired || routingContext.response().ended() || routingContext.response().closed()) {
+            if (state.expired || state.finished) {
                 return;
             }
-            // Claim the response before serialization; never hold this monitor across output IO.
+            // Only arbitrate ownership here: Vert.x can invoke the end handler under its connection lock.
             state.responseStarted = true;
         }
         try {
@@ -143,19 +146,25 @@ public class CatalogDeadline implements WriterInterceptor {
     }
 
     private void expire(RoutingContext context, State state) {
+        boolean responseStarted;
         synchronized (state) {
-            if (state.finished || context.response().ended() || context.response().closed()) {
+            if (state.finished || state.expired) {
                 return;
             }
             state.expired = true;
-            if (state.responseStarted || context.response().headWritten()) {
-                context.request().connection().close();
-                return;
-            }
-            String code = state.replica ? "READ_REPLICA_UNAVAILABLE" : "CATALOG_UNAVAILABLE";
-            context.response().setStatusCode(503).putHeader("Content-Type", "application/json")
-                    .end("{\"code\":\"" + code + "\",\"message\":\"Catalog request exceeded its deadline.\"}");
+            responseStarted = state.responseStarted;
         }
+        // Even response status reads can take the connection lock; never nest it with state.
+        if (context.response().ended() || context.response().closed()) {
+            return;
+        }
+        if (responseStarted || context.response().headWritten()) {
+            context.request().connection().close();
+            return;
+        }
+        String code = state.replica ? "READ_REPLICA_UNAVAILABLE" : "CATALOG_UNAVAILABLE";
+        context.response().setStatusCode(503).putHeader("Content-Type", "application/json")
+                .end("{\"code\":\"" + code + "\",\"message\":\"Catalog request exceeded its deadline.\"}");
     }
 
     static final class State {

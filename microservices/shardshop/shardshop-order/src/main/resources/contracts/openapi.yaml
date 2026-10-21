@@ -224,7 +224,9 @@ paths:
       description: |
         Use an order allocation belonging to this buyer. Only currency and requested
         items are supplied; prices, snapshots and totals come from the catalog.
-        Region imposes no purchase restriction; all items must use one currency.
+        Buyer region imposes no purchase restriction; all items must use one currency.
+        New orders require products compliant with seller region/country currency policy and
+        minor-unit precision. Retained identical retries recover saved snapshots before this check.
         An accepted order and PENDING_STOCK saga commit together before 202. No command
         is published by the HTTP request; stock reservation precedes the ledger outbox.
         Identical retries return 202 while pending or 200 when terminal, without new
@@ -241,7 +243,7 @@ paths:
            Failure to perform the checks is 503 ORDER_STORE_UNAVAILABLE.
         3. Release the transaction, lock and connection before bounded catalog IO.
            Catalog errors rank CATALOG_UNAVAILABLE (503), PRODUCT_NOT_FOUND (422),
-           MIXED_CURRENCIES (422), CURRENCY_MISMATCH (422), in that order.
+           MIXED_CURRENCIES (422), CURRENCY_MISMATCH (422), PRODUCT_CURRENCY_POLICY (422), in that order.
         4. Reacquire the lock and repeat the order checks before using any catalog
            outcome. Concurrent creation or quarantine wins. If still new, a validation
            error writes nothing; otherwise commit order/snapshots/PENDING_STOCK together.
@@ -269,7 +271,7 @@ paths:
             example:
               currency: EUR
               items:
-                - {sellerId: '11234023833608192', productId: '11234023837802496', quantity: 2}
+                - {sellerId: '11234023833608193', productId: '11234023837802496', quantity: 2}
       responses:
         '202':
           description: Committed new or existing pending order; poll the status URL
@@ -462,7 +464,7 @@ components:
     Currency:
       type: string
       pattern: '^[A-Z]{3}(?![\s\S])'
-      description: Three uppercase ASCII letters; ledger support is evaluated asynchronously.
+      description: Three uppercase ASCII letters. New orders match seller-policy-compliant products; buyer region does not restrict currency. Retained orders keep their original currency. Normal ledger supports CNY, EUR, GBP, JPY, KRW, USD and VND.
     Email:
       type: string
       minLength: 3
@@ -707,12 +709,14 @@ components:
             allOf:
               - $ref: '#/components/schemas/Error'
               - properties:
-                  code: {enum: [PRODUCT_NOT_FOUND, MIXED_CURRENCIES, CURRENCY_MISMATCH]}
+                  code: {enum: [PRODUCT_NOT_FOUND, MIXED_CURRENCIES, CURRENCY_MISMATCH, PRODUCT_CURRENCY_POLICY]}
           examples:
             missingProduct:
               value: {code: PRODUCT_NOT_FOUND, message: Product was not found under its seller.}
             mixedCurrencies:
               value: {code: MIXED_CURRENCIES, message: All products must use the same currency.}
+            productCurrencyPolicy:
+              value: {code: PRODUCT_CURRENCY_POLICY, message: Product is unavailable under the seller country currency policy.}
             mismatchedCurrency:
               value: {code: CURRENCY_MISMATCH, message: Order currency must match the products.}
     OrderStoreUnavailable:

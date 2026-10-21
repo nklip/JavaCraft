@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class SeedReportTest {
     private static final Map<String, String> PROFITS = Map.of("USD", "0.00", "EUR", "0.00");
     // Independently computed with: printf '<the five mapping lines>' | shasum -a 256
-    private static final String MAPPING_DIGEST = "e6bbbdd5ccdcd1eac0a4ed30d22333deed5721c49b1bfd7714cae9baca56af7b";
+    private static final String MAPPING_DIGEST = "5e3821ae6cf2eb093fe79de43fc0b529a8b534fc8a711051e399b94987db7017";
     private static final String EMPTY_DIGEST = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
     private final CatalogDataset catalog = new CatalogDataset(CatalogDataset.VERSION);
     private final SellerDefinition us = catalog.sellersByRegion().get("US").getFirst();
@@ -26,18 +26,18 @@ class SeedReportTest {
     @Test
     void summarizesRegionsAndCurrenciesWithTheKeyToIdDigest() {
         List<ProductDefinition> usProducts = catalog.productsBySeller().get(us.key());
-        ProductDefinition euUsd = catalog.productsBySeller().get(eu.key()).getFirst();
+        ProductDefinition euEur = catalog.productsBySeller().get(eu.key()).getFirst();
         SeedReport report = new SeedReport(CatalogDataset.VERSION,
                 List.of(new CreatedSeller(us, "9007199254740993", PROFITS),
                         new CreatedSeller(eu, "9223372036854775807", Map.of("USD", "-1.25", "EUR", "0.00"))),
                 List.of(new CreatedProduct(usProducts.getFirst(), "9007199254740993", "11", 1000),
-                        new CreatedProduct(usProducts.getLast(), "9007199254740993", "12", 999),
-                        new CreatedProduct(euUsd, "9223372036854775807", "13", 0)));
-        assertEquals("catalog-v1.US.product.1", usProducts.getFirst().key());
-        assertEquals("catalog-v1.EU.product.1", euUsd.key());
+                        new CreatedProduct(euEur, "9223372036854775807", "12", 999),
+                        new CreatedProduct(catalog.productsBySeller().get(eu.key()).getLast(), "9223372036854775807", "13", 0)));
+        assertEquals("catalog-v2.US.product.1", usProducts.getFirst().key());
+        assertEquals("catalog-v2.EU.product.1", euEur.key());
         assertEquals(MAPPING_DIGEST, report.mappingDigest());
-        assertEquals("Seeded and verified catalog-v1 [US 1 sellers, 2 products {USD=1, EUR=1}; "
-                + "EU 1 sellers, 1 products {USD=1}], key-to-ID SHA-256 " + MAPPING_DIGEST, report.summary());
+        assertEquals("Seeded and verified catalog-v2 [US 1 sellers, 1 products {USD=1}; "
+                + "EU 1 sellers, 2 products {EUR=1, GBP=1}], key-to-ID SHA-256 " + MAPPING_DIGEST, report.summary());
     }
 
     @Test
@@ -48,6 +48,6 @@ class SeedReportTest {
         assertEquals(List.of(), report.sellers());
         assertThrows(UnsupportedOperationException.class, () -> report.products().clear());
         assertEquals(EMPTY_DIGEST, report.mappingDigest());
-        assertEquals("Seeded and verified catalog-v1 [], key-to-ID SHA-256 " + EMPTY_DIGEST, report.summary());
+        assertEquals("Seeded and verified catalog-v2 [], key-to-ID SHA-256 " + EMPTY_DIGEST, report.summary());
     }
 }

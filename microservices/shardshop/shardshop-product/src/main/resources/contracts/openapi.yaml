@@ -28,7 +28,12 @@ info:
     object member names, unknown/repeated query parameters and malformed bodies
     are INVALID_REQUEST. Requests use application/json. Price is a nonnegative
     fixed-two-decimal string, avoiding JSON floating-point rounding. Currency is
-    exactly three uppercase ASCII letters; region does not select currency.
+    exactly three uppercase ASCII letters. New prices follow the seller policy:
+    US/US permits USD; the application's 27 EU countries permit EUR and GBP;
+    ASIA/CN permits CNY, VN permits VND, KR permits KRW and JP permits JPY.
+    Unknown or mismatched countries/currencies return 400 INVALID_REQUEST before
+    new business writes. JPY, KRW and VND amounts must be mathematically integral
+    (19.00 is valid, 19.01 is invalid); other supported currencies use two digits.
     Company names, product names and descriptions contain Unicode scalar values,
     excluding NUL and unpaired UTF-16 surrogates; a valid surrogate pair decodes
     to one scalar value. Invalid text
@@ -91,6 +96,9 @@ paths:
         stock and pending profit intents never count as earnings. Product currency
         is immutable and the credit foreign key enforces the same currency.
         IDs and exact money are strings. Reads never mutate or allocate IDs.
+        Legacy products remain visible. countryCode is null when provenance is
+        unresolved; newOrderEligible is false with legacyReason describing why
+        a product cannot be used in a new order. Historical money remains intact.
 
         The configured read profile applies to all selected shards. Replica
         reads may lag and never fall back to primaries. Any selected shard
@@ -119,18 +127,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProductPage'
               example:
-                region: ASIA
+                region: EU
                 items:
-                  - sellerId: '11234023833608192'
+                  - sellerId: '11234023833608193'
                     productId: '11234023837802496'
                     sellerName: Example Company
                     name: Travel mug
-                    region: ASIA
+                    region: EU
+                    countryCode: FR
                     initialStock: 10
                     stock: 7
                     price: '19.95'
-                    currency: USD
-                    profitsEarned: {USD: '-1.50'}
+                    currency: EUR
+                    newOrderEligible: true
+                    legacyReason: null
+                    profitsEarned: {EUR: '-1.50'}
                 nextAfter: null
         '400':
           $ref: '#/components/responses/InvalidRequest'
@@ -149,7 +160,10 @@ paths:
         collection, requested region and Idempotency-Key. Equal normalized values
         return the saved seller with 200; a different companyName in that scope returns
         409 SELLER_IDEMPOTENCY_CONFLICT without mutation or new ID generation.
-        A missing or unknown region is 400 INVALID_REQUEST.
+        New sellers require countryCode and a mapped region/country combination;
+        missing, unknown or mismatched countries return 400 INVALID_REQUEST.
+        countryCode is immutable. An omitted country is accepted only to recover an
+        existing matching company/region key from the previous contract.
 
         For a new mapping, generate a live seller ID whose route matches the
         requested region within the bounded generation budget. Commit the seller
@@ -170,8 +184,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateSeller'
             example:
-              companyName: Asia Market
-              region: ASIA
+              companyName: Europe Market
+              region: EU
+              countryCode: FR
       responses:
         '201':
           description: Seller committed for the first time.
@@ -180,10 +195,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Seller'
               example:
-                sellerId: '11234023833608192'
-                companyName: Asia Market
-                region: ASIA
-                profitsEarned: {USD: '0.00', EUR: '0.00'}
+                sellerId: '11234023833608193'
+                companyName: Europe Market
+                region: EU
+                countryCode: FR
+                profitsEarned: {EUR: '0.00', GBP: '0.00'}
         '200':
           $ref: '#/components/responses/SellerOk'
         '400':
@@ -271,7 +287,11 @@ paths:
 
         For a new mapping, require the seller on its reachable primary before
         allocating an ID (otherwise 422 SELLER_NOT_FOUND). Generate a live product
-        ID, then commit the product and mapping together on the seller's primary
+        ID after validating price and unitCost against the seller's saved country
+        and currency precision. A missing/unresolved country or disallowed price
+        returns 400 INVALID_REQUEST before business writes. Identical existing
+        product retries remain valid even if the saved price is now noncompliant.
+        Then commit the product and mapping together on the seller's primary
         with stock = initialStock. Return 201 with the generated productId.
         Concurrent identical calls create one product. Store unavailability or
         an unknown commit returns 503, never a missing-seller result. Retry the
@@ -298,7 +318,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Product'
               example:
-                sellerId: '11234023833608192'
+                sellerId: '11234023833608193'
                 productId: '11234023837802496'
                 name: Travel mug
                 description: Reusable insulated travel mug with a secure lid.
@@ -307,6 +327,9 @@ paths:
                 currency: EUR
                 initialStock: 10
                 stock: 10
+                countryCode: FR
+                newOrderEligible: true
+                legacyReason: null
         '200':
           $ref: '#/components/responses/ProductOk'
         '400':
@@ -385,7 +408,7 @@ components:
       description: Canonical seller ID returned by seller creation. Never a shard selector.
       schema:
         $ref: '#/components/schemas/Id'
-      example: '11234023833608192'
+      example: '11234023833608193'
     ProductId:
       name: productId
       in: path
@@ -426,10 +449,11 @@ components:
           schema:
             $ref: '#/components/schemas/Seller'
           example:
-            sellerId: '11234023833608192'
-            companyName: Asia Market
-            region: ASIA
-            profitsEarned: {USD: '0.00', EUR: '15.00'}
+            sellerId: '11234023833608193'
+            companyName: Europe Market
+            region: EU
+            countryCode: FR
+            profitsEarned: {EUR: '15.00', GBP: '0.00'}
     ProductOk:
       description: Stored product with current stock; a POST response confirms an identical creation retry.
       content:
@@ -437,7 +461,7 @@ components:
           schema:
             $ref: '#/components/schemas/Product'
           example:
-            sellerId: '11234023833608192'
+            sellerId: '11234023833608193'
             productId: '11234023837802496'
             name: Travel mug
             description: Reusable insulated travel mug with a secure lid.
@@ -446,6 +470,9 @@ components:
             currency: EUR
             initialStock: 10
             stock: 7
+            countryCode: FR
+            newOrderEligible: true
+            legacyReason: null
     InvalidRequest:
       description: Invalid syntax, fields, canonical IDs, idempotency key, region or creation payload; correct the request.
       content:
@@ -543,7 +570,7 @@ components:
     ProductSummary:
       type: object
       additionalProperties: false
-      required: [sellerId, productId, sellerName, name, region, initialStock, stock, price, currency, profitsEarned]
+      required: [sellerId, productId, sellerName, name, region, initialStock, stock, price, currency, profitsEarned, countryCode, newOrderEligible, legacyReason]
       properties:
         sellerId:
           $ref: '#/components/schemas/Id'
@@ -573,6 +600,19 @@ components:
             type: string
             pattern: '^(?!-0\.00(?![\s\S]))-?(?:0|[1-9][0-9]*)\.[0-9]{2}(?![\s\S])'
           description: Exact signed sum of applied credits by currency, including 0.00 in the product currency when none exist. Aggregate precision is not rounded to an individual credit's NUMERIC(19,2) bound.
+        countryCode:
+          anyOf:
+            - $ref: '#/components/schemas/CountryCode'
+            - type: 'null'
+        newOrderEligible:
+          type: boolean
+          description: Whether the saved seller-country currency and price/cost precision permit a new order.
+        legacyReason:
+          enum: [null, UNRESOLVED_SELLER_COUNTRY, DISALLOWED_SELLER_CURRENCY, INVALID_CURRENCY_PRECISION]
+    CountryCode:
+      type: string
+      pattern: '^[A-Z]{2}(?![\s\S])'
+      description: Immutable explicit ISO country code. New sellers must match a configured region/country mapping.
     Id:
       type: string
       minLength: 1
@@ -584,7 +624,7 @@ components:
         rejecting LF/CRLF suffixes as well as all other non-digit text. Do not
         trim, parse JSON numbers, round through floating point or coerce input.
       pattern: '^(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[01][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])(?![\s\S])'
-      examples: ['1', '11234023833608192', '9223372036854775807']
+      examples: ['1', '11234023833608193', '9223372036854775807']
     Name:
       type: string
       minLength: 1
@@ -603,8 +643,8 @@ components:
     Currency:
       type: string
       pattern: '^[A-Z]{3}(?![\s\S])'
-      description: Three uppercase ASCII letters; independent of region.
-      examples: [USD, EUR]
+      description: Three uppercase ASCII letters; reads retain historical currencies. New prices permit only the configured seller-country currencies.
+      examples: [USD, EUR, GBP, CNY, VND, KRW, JPY]
     Stock:
       type: integer
       format: int32
@@ -625,7 +665,7 @@ components:
     ProfitsEarned:
       type: object
       readOnly: true
-      required: [USD, EUR]
+      minProperties: 1
       propertyNames:
         $ref: '#/components/schemas/Currency'
       additionalProperties:
@@ -633,7 +673,8 @@ components:
       description: |
         Service-maintained cumulative confirmed profit grouped by currency, using
         snapshotted (unitPrice - unitCost) times quantity and counting each order
-        item once. USD and EUR start at 0.00; other currencies appear when earned.
+        item once. New sellers initialize only currencies allowed for their country;
+        existing balances and historical currencies are preserved.
         Never sum different currencies or accept this map in creation requests.
     CreateSeller:
       type: object
@@ -644,10 +685,12 @@ components:
           $ref: '#/components/schemas/Name'
         region:
           $ref: '#/components/schemas/Region'
+        countryCode:
+          $ref: '#/components/schemas/CountryCode'
     Seller:
       type: object
       additionalProperties: false
-      required: [sellerId, companyName, region, profitsEarned]
+      required: [sellerId, companyName, region, profitsEarned, countryCode]
       properties:
         sellerId:
           $ref: '#/components/schemas/Id'
@@ -655,6 +698,10 @@ components:
           $ref: '#/components/schemas/Name'
         region:
           $ref: '#/components/schemas/Region'
+        countryCode:
+          anyOf:
+            - $ref: '#/components/schemas/CountryCode'
+            - type: 'null'
         profitsEarned:
           $ref: '#/components/schemas/ProfitsEarned'
     CreateProduct:
@@ -678,7 +725,7 @@ components:
     Product:
       type: object
       additionalProperties: false
-      required: [sellerId, productId, name, description, price, unitCost, currency, initialStock, stock]
+      required: [sellerId, productId, name, description, price, unitCost, currency, initialStock, stock, countryCode, newOrderEligible, legacyReason]
       description: |
         Products are grouped by their immutable parent sellerId. Initial stock
         and creation fields are immutable; current stock is changed only by order
@@ -706,6 +753,15 @@ components:
           $ref: '#/components/schemas/Stock'
         stock:
           $ref: '#/components/schemas/Stock'
+        countryCode:
+          anyOf:
+            - $ref: '#/components/schemas/CountryCode'
+            - type: 'null'
+        newOrderEligible:
+          type: boolean
+          description: Whether the saved seller-country currency and price/cost precision permit a new order.
+        legacyReason:
+          enum: [null, UNRESOLVED_SELLER_COUNTRY, DISALLOWED_SELLER_CURRENCY, INVALID_CURRENCY_PRECISION]
     IdempotencyKey:
       type: string
       minLength: 1

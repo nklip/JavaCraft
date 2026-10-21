@@ -32,6 +32,18 @@ class DatasetSourcesTest {
             "ASIA", Set.of("CN", "VN", "KR", "JP"));
 
     @Test
+    void currentCatalogPreservesRankedSourceRowsAndLabelsTheVietnamSupplement() throws Exception {
+        for (String region : List.of("US", "EU", "ASIA")) {
+            Path root = Path.of("src/main/resources/datasets");
+            var original = Files.readAllLines(root.resolve("catalog-v1/" + region + ".tsv"));
+            var current = Files.readAllLines(root.resolve("catalog-v2/" + region + ".tsv"));
+            assertEquals(original, current.subList(0, original.size()));
+            assertEquals(region.equals("ASIA") ? List.of("Vietnam Sample Company\tVN\tsynthetic") : List.of(),
+                    current.subList(original.size(), current.size()));
+        }
+    }
+
+    @Test
     void namePoolsHaveUniqueNamesOfTheirRegionCountries() throws IOException {
         for (String region : COUNTRIES.keySet()) {
             for (String kind : List.of("given", "surname")) {

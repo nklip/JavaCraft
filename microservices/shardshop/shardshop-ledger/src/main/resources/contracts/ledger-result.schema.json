@@ -77,7 +77,7 @@
     "rejectionReason": {
       "type": "string",
       "const": "UNSUPPORTED_CURRENCY",
-      "description": "Definitive business rejection because the currency is absent from the ledger allowlist. The defined rejection scenario allows USD and rejects EUR. Present only for LedgerRejected; infrastructure failures and identity conflicts are not business rejections."
+      "description": "Definitive business rejection because the currency is absent from the ledger allowlist. Only explicitly scoped rejection tests exclude EUR; normal deployment allows all seven supported currencies. Present only for LedgerRejected; infrastructure failures and identity conflicts are not business rejections."
     },
     "decidedAt": {
       "$ref": "#/$defs/timestamp",
@@ -130,7 +130,7 @@
     "currency": {
       "type": "string",
       "pattern": "^[A-Z]{3}(?![\\s\\S])",
-      "description": "Uppercase three-letter currency code; region does not determine currency."
+      "description": "Saved product currency; buyer region does not restrict buying. Retained historical decisions keep their currency."
     },
     "requestFingerprint": {
       "type": "string",

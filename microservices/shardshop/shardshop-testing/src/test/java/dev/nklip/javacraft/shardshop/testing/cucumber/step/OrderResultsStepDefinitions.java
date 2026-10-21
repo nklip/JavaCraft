@@ -79,7 +79,7 @@ public final class OrderResultsStepDefinitions {
         product.start(ProductRuntime.Endpoints.PRIMARIES);
         order.start(Set.of());
         us = createProduct("us", "US", "shard-a", "19.95", "12.50");
-        asia = createProduct("asia", "ASIA", "shard-c", "4.00", "6.00");
+        asia = createProduct("asia", "US", "shard-d", "4.00", "6.00");
         ObjectNode profile = Json.object("{\"firstName\":\"Alex\",\"surname\":\"Example\","
                 + "\"email\":\"alex@example.com\",\"phone\":\"+12025550123\",\"region\":\"EU\","
                 + "\"address\":{\"line1\":\"1 Example Road\",\"city\":\"Example City\","
@@ -97,6 +97,136 @@ public final class OrderResultsStepDefinitions {
         order.stop();
         product.stop();
         if (ledgerDatabase != null) postgres.dropDatabase(ledgerDatabase);
+    }
+
+    @Then("all seven currencies confirm cross-region purchases with exact profits and immutable legacy retries")
+    public void regionalCurrencies() throws Exception {
+        // Buyer location is deliberately unrelated to seller currency, including US buying Japanese JPY.
+        ObjectNode profile = Json.object("{\"firstName\":\"Casey\",\"surname\":\"Currency\",\"email\":\"currency@example.com\","
+                + "\"phone\":\"+12025550123\",\"region\":\"US\",\"address\":{\"line1\":\"1 Example Road\","
+                + "\"city\":\"Example City\",\"postalCode\":\"00001\",\"countryCode\":\"US\"}}");
+        String usBuyer = body(http("POST", "/api/v1/buyers", "currency-us-buyer", profile), 201).path("buyerId").asText();
+        List<CatalogApi.Product> fixtures = new java.util.ArrayList<>();
+        for (String mapping : List.of("US:US:USD", "EU:DE:EUR", "EU:FR:GBP", "ASIA:CN:CNY", "ASIA:VN:VND", "ASIA:KR:KRW", "ASIA:JP:JPY")) {
+            String[] values = mapping.split(":");
+            String currency = values[2];
+            var sellerRequest = CatalogApi.sellerRequest("Arbitrary currency " + currency, values[0]).put("countryCode", values[1]);
+            var sellerResponse = catalog.createSeller("currency-" + currency, sellerRequest);
+            body(sellerResponse, 201);
+            var seller = catalog.remember(currency, "currency-" + currency, sellerRequest, sellerResponse);
+            var payload = CatalogApi.itemRequest().put("currency", currency).put("price", "19.00").put("unitCost", "12.00").put("initialStock", 10);
+            var created = catalog.post(seller.path() + "/products", "currency-item", Json.bytes(payload));
+            body(created, 201);
+            var fixture = catalog.remember(currency, seller, "currency-item", payload, created);
+            fixtures.add(fixture);
+            if (List.of("JPY", "KRW", "VND").contains(currency)) {
+                for (String field : List.of("price", "unitCost")) {
+                    var invalid = payload.deepCopy().put(field, "19.01");
+                    CatalogApi.assertError(catalog.post(seller.path() + "/products", "invalid-" + field, Json.bytes(invalid)), 400, "INVALID_REQUEST");
+                }
+            }
+            String forbidden = currency.equals("USD") ? "EUR" : "USD";
+            CatalogApi.assertError(catalog.post(seller.path() + "/products", "forbidden", Json.bytes(payload.deepCopy().put("currency", forbidden))), 400, "INVALID_REQUEST");
+        }
+        ObjectNode missingCountry = CatalogApi.sellerRequest("Missing country", "US");
+        missingCountry.remove("countryCode");
+        for (ObjectNode invalidSeller : List.of(missingCountry,
+                CatalogApi.sellerRequest("Wrong country", "US").put("countryCode", "JP"),
+                CatalogApi.sellerRequest("Unmapped country", "ASIA").put("countryCode", "SG")))
+            CatalogApi.assertError(catalog.createSeller("invalid-country", invalidSeller), 400, "INVALID_REQUEST");
+        startWorkers(true);
+        startLedger("USD,EUR,GBP,CNY,VND,KRW,JPY");
+        for (var fixture : fixtures) {
+            buyer = fixture.request().path("currency").asText().equals("USD") ? buyer : usBuyer;
+            String id = accept(2, fixture);
+            awaitStatus(id, "PENDING_LEDGER");
+            ObjectNode saved = command(id);
+            assertEquals(2, saved.path("schemaVersion").asInt());
+            assertEquals("38.00", saved.at("/snapshot/amount").asText());
+            publishCommand(saved);
+            awaitStatus(id, "CONFIRMED");
+            await("currency profit " + fixture.id(), () -> credits(fixture, id) == 1);
+            assertEquals(0, new BigDecimal("14.00").compareTo(credit(fixture, id)));
+            assertEquals(0, new BigDecimal("14.00").compareTo(balance(fixture)));
+            browser.assertProduct(fixture, 8, Map.of(fixture.request().path("currency").asText(), "14.00"));
+            publishCommand(saved);
+            assertEquals(200, http("PUT", path(id), null, request(2, fixture)).status());
+        }
+        // An identical accepted request recovers under saved snapshots after its seller loses country provenance.
+        var legacy = fixtures.getLast();
+        String id = allocate();
+        ObjectNode original = request(1, legacy);
+        body(http("PUT", path(id), null, original), 202);
+        awaitStatus(id, "PENDING_LEDGER");
+        ObjectNode saved = command(id);
+        try (Connection connection = shards.superuser(shards.ofSeller(legacy.seller().id())); var statement = connection.createStatement()) {
+            statement.executeUpdate("UPDATE catalog.sellers SET country_code=NULL WHERE seller_id=" + legacy.seller().id());
+        }
+        body(http("PUT", path(id), null, original), 202);
+        assertEquals(saved, command(id));
+        String fresh = allocate();
+        CatalogApi.assertError(http("PUT", path(fresh), null, original), 422, "PRODUCT_CURRENCY_POLICY");
+        publishCommand(saved);
+        awaitStatus(id, "CONFIRMED");
+        String mixed = allocate();
+        CatalogApi.assertError(http("PUT", path(mixed), null, request(1, fixtures.get(0), fixtures.get(1))), 422, "MIXED_CURRENCIES");
+    }
+
+    @Then("a retained version-one JPY snapshot survives country cutover, restart and identical retries")
+    public void retainedCurrencyRecovery() throws Exception {
+        var sellerRequest = CatalogApi.sellerRequest("Retained Japanese seller", "ASIA").put("countryCode", "JP");
+        var sellerResponse = catalog.createSeller("retained-jpy", sellerRequest);
+        body(sellerResponse, 201);
+        var seller = catalog.remember("retained-jpy", "retained-jpy", sellerRequest, sellerResponse);
+        var payload = CatalogApi.itemRequest().put("currency", "JPY").put("price", "19.00").put("unitCost", "12.00").put("initialStock", 10);
+        var created = catalog.post(seller.path() + "/products", "retained-item", Json.bytes(payload));
+        body(created, 201);
+        var fixture = catalog.remember("retained-jpy", seller, "retained-item", payload, created);
+        String id = accept(2, fixture);
+        ObjectNode original = request(2, fixture);
+        // Reproduce the retained database state from the permissive v1 contract before starting any saga worker.
+        // The request fingerprint contains IDs/quantity/currency, so saved prices remain independent of retry input.
+        try (Connection connection = shards.superuser(home()); var statement = connection.createStatement()) {
+            statement.executeUpdate("UPDATE ordering.orders SET currency_policy_version=1,total_amount=39.90 WHERE order_id=" + id);
+            statement.executeUpdate("UPDATE ordering.order_items SET unit_price=19.95,unit_cost=12.50 WHERE order_id=" + id);
+        }
+        try (Connection connection = shards.superuser(shards.ofSeller(seller.id())); var statement = connection.createStatement()) {
+            statement.executeUpdate("UPDATE catalog.sellers SET country_code=NULL WHERE seller_id=" + seller.id());
+            statement.executeUpdate("UPDATE catalog.products SET price=19.95,unit_cost=12.50 WHERE product_id=" + fixture.id());
+        }
+        body(http("PUT", path(id), null, original), 202);
+        assertEquals(new BigDecimal("39.90"), decimal(home().database(), "SELECT total_amount FROM ordering.orders WHERE order_id=" + id));
+        String fresh = allocate();
+        CatalogApi.assertError(http("PUT", path(fresh), null, original), 422, "PRODUCT_CURRENCY_POLICY");
+        startWorkers(true);
+        awaitStatus(id, "PENDING_LEDGER");
+        ObjectNode saved = command(id);
+        assertEquals(1, saved.path("schemaVersion").asInt());
+        assertEquals("39.90", saved.at("/snapshot/amount").asText());
+        assertEquals("JPY", saved.at("/snapshot/currency").asText());
+        assertEquals("19.95", saved.at("/snapshot/items/0/unitPrice").asText());
+        order.restart(Set.of());
+        body(http("PUT", path(id), null, original), 202);
+        assertEquals(saved, command(id));
+        startLedger("USD,EUR,GBP,CNY,VND,KRW,JPY");
+        publishCommand(saved);
+        awaitStatus(id, "CONFIRMED");
+        await("retained fractional JPY profit", () -> credits(fixture, id) == 1);
+        assertEquals(new BigDecimal("14.90"), credit(fixture, id));
+        assertEquals(new BigDecimal("14.90"), balance(fixture));
+        JsonNode row = browser.page("region=ASIA&limit=1").path("items").get(0);
+        assertEquals("19.95", row.path("price").asText());
+        assertFalse(row.path("newOrderEligible").asBoolean());
+        assertEquals("UNRESOLVED_SELLER_COUNTRY", row.path("legacyReason").asText());
+        assertEquals("14.90", row.at("/profitsEarned/JPY").asText());
+        publishCommand(saved);
+        await("retained ledger duplicate replay", () -> scalar(ledgerDatabase,
+                "SELECT count(*) FROM ledger.ledger_outbox WHERE message_id=" + saved.path("resultMessageId").asText()
+                        + " AND publication_attempt>=2 AND published_at IS NOT NULL") == 1);
+        assertEquals(1, credits(fixture, id));
+        assertEquals(new BigDecimal("14.90"), balance(fixture));
+        body(http("PUT", path(id), null, original), 200);
+        assertEquals(saved, command(id));
     }
 
     @Then("a packaged ledger recording confirms a cross-shard order and credits its items once")
@@ -278,7 +408,7 @@ public final class OrderResultsStepDefinitions {
         awaitStatus(id, "CONFIRMED");
         assertEquals(2, scalar(home(), "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id));
         order.enableProfit();
-        order.restart(Set.of("shard-c"));
+        order.restart(Set.of("shard-d"));
         await("reachable seller credited", () -> credits(us, id) == 1);
         assertEquals(0, credits(asia, id));
         order.restart(Set.of());
@@ -541,7 +671,7 @@ public final class OrderResultsStepDefinitions {
     }
 
     private static ObjectNode request(int quantity, CatalogApi.Product... fixtures) {
-        ObjectNode request = Json.newObject().put("currency", "USD");
+        ObjectNode request = Json.newObject().put("currency", fixtures[0].request().path("currency").asText());
         var items = request.putArray("items");
         for (var fixture : fixtures) items.addObject().put("sellerId", fixture.seller().id())
                 .put("productId", fixture.id()).put("quantity", quantity);
@@ -575,7 +705,7 @@ public final class OrderResultsStepDefinitions {
     private BigDecimal balance(CatalogApi.Product fixture) throws Exception {
         return decimal(shards.ofSeller(fixture.seller().id()).database(),
                 "SELECT amount FROM catalog.seller_profits WHERE seller_id=" + fixture.seller().id()
-                        + " AND currency='USD'");
+                        + " AND currency=" + "'" + fixture.request().path("currency").asText() + "'");
     }
 
     private BigDecimal decimal(String database, String query) throws SQLException {

@@ -72,10 +72,10 @@ public final class OrderListingStepDefinitions {
 
     @Given("arbitrary orders with tied creation times occupy every regional shard")
     public void fixtures() throws Exception {
-        selected = product("selected", "EU", "USD", "Cedar Travel Kit");
-        var other = product("other", "ASIA", "USD", "Cedar 50%_ ' OR 1=1 --");
+        selected = product("selected", "US", "USD", "Cedar Travel Kit");
+        var other = product("other", "US", "USD", "Cedar 50%_ ' OR 1=1 --");
         otherProductId = other.id();
-        var euros = product("euros", "US", "EUR", "Euro Umbrella");
+        var euros = product("euros", "EU", "EUR", "Euro Umbrella");
         Map<CatalogShards.Shard, String> buyers = new LinkedHashMap<>();
         Map<String, String> buyerNames = new LinkedHashMap<>();
         for (var shard : shards.all()) {

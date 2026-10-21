@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Checks the real HTTP listing, including exact decimal strings and IDs safe from JSON number rounding. */
 public final class ProductBrowser {
     private static final Set<String> FIELDS = Set.of("sellerId", "productId", "sellerName", "name", "region",
-            "initialStock", "stock", "price", "currency", "profitsEarned");
+            "initialStock", "stock", "price", "currency", "profitsEarned", "countryCode", "newOrderEligible", "legacyReason");
     private final CatalogApi api;
 
     public ProductBrowser(CatalogApi api) {

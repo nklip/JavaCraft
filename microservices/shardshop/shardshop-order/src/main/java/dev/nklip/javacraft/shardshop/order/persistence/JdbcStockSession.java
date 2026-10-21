@@ -55,7 +55,7 @@ final class JdbcStockSession {
                 + "FROM candidate c WHERE s.saga_id = c.saga_id RETURNING s.*) "
                 + "SELECT s.saga_id, s.command_id, s.stock_lease_version, s.stock_failures, "
                 + "s.cancellation_reason, o.buyer_id, o.order_id, o.request_fingerprint, o.currency, "
-                + "o.total_amount, o.status FROM claimed s JOIN ordering.orders o ON o.order_id = s.order_id")) {
+                + "o.total_amount, o.status, o.currency_policy_version FROM claimed s JOIN ordering.orders o ON o.order_id = s.order_id")) {
             statement.setLong(1, positiveMillis(lease));
             try (ResultSet rows = statement.executeQuery()) {
                 if (!rows.next()) {
@@ -66,7 +66,8 @@ final class JdbcStockSession {
                         rows.getBigDecimal("total_amount"), rows.getString("status"),
                         rows.getString("cancellation_reason"));
                 return Optional.of(new Saga(rows.getLong("saga_id"), rows.getLong("command_id"), order,
-                        items(order.orderId()), rows.getLong("stock_lease_version"), rows.getInt("stock_failures")));
+                        items(order.orderId()), rows.getLong("stock_lease_version"), rows.getInt("stock_failures"),
+                        rows.getInt("currency_policy_version")));
             }
         }
     }
@@ -189,7 +190,7 @@ final class JdbcStockSession {
     private String envelope(Saga saga, long messageId, long resultId) {
         ObjectNode envelope = JsonNodeFactory.instance.objectNode();
         envelope.put("type", "RecordOrder");
-        envelope.put("schemaVersion", 1);
+        envelope.put("schemaVersion", saga.currencyPolicyVersion());
         envelope.put("messageId", Long.toString(messageId));
         envelope.put("commandId", Long.toString(saga.commandId()));
         envelope.put("sagaId", Long.toString(saga.sagaId()));
@@ -199,7 +200,7 @@ final class JdbcStockSession {
         envelope.put("occurredAt", clock.instant().truncatedTo(ChronoUnit.MICROS).toString());
         envelope.put("resultMessageId", Long.toString(resultId));
         ObjectNode snapshot = envelope.putObject("snapshot");
-        snapshot.put("amount", saga.order().totalAmount().setScale(2).toPlainString());
+        snapshot.put("amount", saga.order().totalAmount().setScale(2, java.math.RoundingMode.UNNECESSARY).toPlainString());
         snapshot.put("currency", saga.order().currency());
         var items = snapshot.putArray("items");
         saga.items().stream().sorted(Comparator.comparingInt(ItemSnapshot::position)).forEach(item -> {
@@ -209,7 +210,7 @@ final class JdbcStockSession {
             value.put("productId", Long.toString(item.productId()));
             value.put("quantity", item.quantity());
             value.put("productName", item.productName());
-            value.put("unitPrice", item.unitPrice().setScale(2).toPlainString());
+            value.put("unitPrice", item.unitPrice().setScale(2, java.math.RoundingMode.UNNECESSARY).toPlainString());
             value.put("currency", item.currency());
         });
         return envelope.toString();

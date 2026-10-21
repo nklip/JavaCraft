@@ -11,7 +11,7 @@ import java.util.Set;
 public interface LedgerConfiguration {
     @WithDefault("true") boolean enabled();
     @WithDefault("4") int maxPoolSize();
-    @WithDefault("USD") Set<String> allowedCurrencies();
+    @WithDefault("CNY,EUR,GBP,JPY,KRW,USD,VND") Set<String> allowedCurrencies();
     Database database();
     Broker broker();
     Publisher publisher();

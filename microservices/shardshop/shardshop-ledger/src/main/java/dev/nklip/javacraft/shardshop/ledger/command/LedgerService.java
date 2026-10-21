@@ -18,7 +18,7 @@ public final class LedgerService {
     public LedgerService(LedgerStore store, Set<String> allowedCurrencies, Clock clock) {
         this.store = java.util.Objects.requireNonNull(store);
         this.allowedCurrencies = Set.copyOf(allowedCurrencies);
-        if (this.allowedCurrencies.isEmpty() || this.allowedCurrencies.stream().anyMatch(c -> !c.matches("[A-Z]{3}"))) {
+        if (this.allowedCurrencies.isEmpty() || this.allowedCurrencies.stream().anyMatch(c -> !dev.nklip.javacraft.shardshop.common.CurrencyPolicy.SUPPORTED_CURRENCIES.contains(c))) {
             throw new IllegalArgumentException("Invalid ledger currency allowlist");
         }
         this.clock = java.util.Objects.requireNonNull(clock);

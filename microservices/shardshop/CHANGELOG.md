@@ -3568,3 +3568,335 @@ node microservices/shardshop/shardshop-testing/src/test/resources/browser/order-
   microservices/shardshop/shardshop-order/src/main/resources/META-INF/resources/orders/orders.js
 git diff --check
 ```
+
+## Step 4.12
+
+**2026-10-21:** the shared currency policy restricts new product prices and costs
+by immutable seller country: US/USD; EU/EUR or GBP; CN/CNY, VN/VND, KR/KRW and
+JP/JPY within ASIA. Product validates arbitrary API entities independently of
+workload definitions. Buyer location does not restrict purchases; each order
+keeps one product currency. New prices, costs, totals and ledger commands use exact
+currency precision. JPY, KRW and VND require whole units; fixed-two-decimal storage
+and transport remain unchanged. Both pages display native precision without
+rounding historical fractional money.
+
+Catalog V6 backfills country only from matching catalog-v1 key/company/region
+provenance and exposes an operator report for unresolved or noncompliant rows.
+Legacy products remain readable, with explicit eligibility metadata, and are
+blocked from new purchases when they fail the policy. Ordering V7 preserves
+existing rows as policy version 1; new orders explicitly save version 2. The stock
+worker emits the saved version. Ledger accepts both envelopes and preserves
+saved decisions, including historical fractional currency and rejection replay.
+Identical accepted-order retries use their saved snapshots before catalog checks.
+
+Catalog-v2 keeps old keys intact and adds policy-compliant definitions for 151
+sellers and 201 products. Its supplemental Vietnam seller is explicitly synthetic.
+The seeder, reader and producer verify country and eligibility metadata. Normal
+producer load selects all seven currencies and groups same-currency products,
+independently of buyer location. A version/mode namespace keeps old workload
+allocations intact. Normal ledger and Helm settings allow all seven currencies;
+rejection drills temporarily exclude EUR and restore the ledger before resuming
+the producer. The first retained deployment brings the v2-capable ledger online
+before resuming the paused order rollout.
+
+Validation:
+
+- The final clean source reactor passes 1,665 unit/provider checks and 71 packaged
+  startup checks. The product page's 36 Node tests and order page's 20 Node tests
+  pass, including native currency precision and unchanged legacy fractional text.
+- The broad PostgreSQL/RabbitMQ run executes 125 scenarios: 113 pass initially.
+  It exposes strict workload decoders still expecting the old product response,
+  stale contract and terminal-status expectations, and outage fixtures that put
+  order storage on the catalog shard being disabled. These are corrected and
+  covered by the focused rerun. A transient product creation deadline and an
+  unchanged broker dead-letter retry timeout are also rerun without relaxing
+  deadlines or assertions.
+- The focused currency scenarios confirm all seven currencies across buyer
+  regions with exact totals/profits, forbid new noncompliant catalog purchases,
+  preserve mixed-currency rejection, and replay identical accepted orders after
+  seller-country loss. A saved schema-v1 JPY order preserves its fractional
+  `39.90` total and `14.90` profit through restart and duplicate delivery.
+- The focused rerun passes 41 of 42 selected scenarios, with 83 filtered out.
+  Its only failure is the unchanged RabbitMQ capacity/backpressure scenario,
+  which again times out waiting 210 seconds for a dead-letter retry. This
+  remaining broker test failure is not described as a passing full suite.
+- The first retained deployment exposes a remaining USD/EUR-only guard in the
+  producer's HTTP submission path. Six regression cases fail before the fix;
+  the guard now uses the shared currency policy. All 140 producer unit tests
+  pass, followed by all three packaged producer scenarios, including accepted
+  HTTP submissions in every supported currency and deterministic restart.
+- The final `up.sh` run qualifies every image and passes all five deployment
+  acceptance scenarios on the retained lab (application revision 35). The saved
+  CNY allocation from the failed deployment becomes confirmed without a reset;
+  live queries find confirmed policy-v2 orders in all seven currencies and the
+  expected 201 catalog-v2 products. All nine retained sample hashes (the oldest
+  ten orders, products and profit credits on each shard) match their pre-upgrade
+  values. Local forwarding initially encounters occupied ports from stale
+  tunnels after rollout; after those stale tunnels exit, the existing
+  `page_access` helper restores both localhost pages without another deployment.
+- Both retained-lab saga drills pass: duplicate decisions/rejection replay,
+  stock competition and atomic rollback, then CDC recovery on another worker.
+  Cleanup restores the normal seven-currency ledger before restarting the
+  producer. All application replicas are ready and no rollout is left paused.
+- Live browser checks cover product and order views in US, EU and ASIA. New
+  prices show USD, EUR/GBP and country-specific ASIA currencies; JPY/KRW/VND
+  prices, earnings and order totals display whole units. Historical incompatible
+  products retain their original amounts and show the legacy notice. The US
+  order view includes confirmed purchases in all seven currencies. Both local
+  page tunnels and the retained lab remain running.
+
+Commands from the repository root:
+
+```bash
+# Broad regression run: 113/125 scenarios passed before the corrections above.
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify
+# Final source/unit checks and focused integration rerun: 41/42 selected scenarios pass.
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@contracts or @order-api or @currency-policy or @order-producer or @product-seeder or @product-reader or @product-api or @rabbitmq'
+# Producer submission regression and final packaged HTTP verification: passed.
+mvn -B -ntp -f microservices/shardshop/pom.xml \
+  -pl shardshop-workload/shardshop-order-producer -am package
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  -Dtest=KindWorkloadPolicyTest -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false \
+  '-Dcucumber.filter.tags=@order-producer'
+# Retained deployment and its acceptance gates: passed; see forwarding note above.
+bash microservices/shardshop/scripts/up.sh
+# Retained saga drills: both scenarios passed. Prepare "$snapshot" as the README
+# verification snapshot section describes.
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT \
+  -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-saga-drill
+# Restore only page access after stale tunnels release their ports (run in Bash).
+source microservices/shardshop/scripts/lib/lifecycle.sh
+context=kind-shardshop
+page_access
+node --test microservices/shardshop/shardshop-product/src/test/js/products.test.cjs
+node microservices/shardshop/shardshop-testing/src/test/resources/browser/order-page.test.cjs \
+  microservices/shardshop/shardshop-order/src/main/resources/META-INF/resources/orders/orders.js
+git diff --check
+```
+
+### Step 4.12 validation fixes
+
+**2026-10-21:** A validation of the step found seven problems, and the user asked
+to fix all of them with the recommended options.
+
+1. The normal producer gave each currency one seventh of the orders, but catalog-v2
+   has one VND product and four KRW products. On the lab, the VND product lost
+   approximately 460 units each hour and had 402 of 1,000 units after approximately
+   80 minutes. Balanced traffic now starts one order with each product in every
+   window of 201 ordinals, in a run-specific order, and takes that product's currency.
+   Up to two following products of the same currency complete the order. Thus each
+   product is in at most three orders of a window, and at the lab rate 1,000 units
+   last approximately 20 hours. The allocation mode is `balanced`, thus the retained
+   `:catalog-v2:all` orders stay unchanged. The lab producer was stopped from 14:09
+   to 14:50 UTC to keep 402 VND units until this fix was deployed.
+2. The `up.sh` saga gate stopped the producer, waited for all sagas and restarted the
+   ledger two times with an out-of-band allowlist in each deployment. The gate now
+   checks that the deployed allowlist is every supported currency, and the normal
+   policy must confirm its USD and EUR orders. The gate changes no deployment or
+   workload. The explicit saga drill keeps the scoped EUR rejection and replay.
+3. The catalog count gate accepted any number of unknown rows. It now counts
+   catalog-v2, the gate fixture, the retained catalog-v1 and the retained step 4.9
+   gate fixture separately. Any other row fails the gate.
+4. The evidence had no complete integration run after the corrections, and the
+   producer command needed locally installed SNAPSHOT JARs. The full suite now passes
+   (below). The producer command has `-am`, and the drill command names the README
+   snapshot instead of a temporary path.
+5. Copies of the currency policy had no test that detects a difference. A catalog
+   migration scenario gives the V6 report a seller for every ISO country in each
+   region, with products in all supported currencies, and compares each reason with
+   `CurrencyPolicy`. Unit tests compare the zero-minor-unit lists of both pages, the
+   RecordOrder version 2 enums, the ledger default and the Helm default and schema
+   with `CurrencyPolicy`. The drill builds its scoped allowlists from `CurrencyPolicy`.
+6. VERSIONS.md records the new runtime dependency of `shardshop-datasets` on
+   `shardshop-common`. The `SellerOk` example gives the French seller EUR and GBP
+   balances.
+7. The one parked command in `ledger.record-order.dlq` is a duplicate. Its USD order
+   was created at 12:11 UTC, before the 4.12 rollout. The command failed six
+   deliveries at 12:12 UTC, when database and broker pods restarted; the relay
+   published it again at 12:16:18 UTC, and the ledger recorded it. The parked copy
+   stays for an operator.
+
+Validation:
+
+- Before the fix, the new planner test failed for the reported reason: the VND
+  product was in 28 of 201 orders of one window. The earlier count rule accepted 544
+  unknown rows in its own unit test.
+- Mutants in scratch copies: CH in the EU list of `CurrencyPolicy` fails the report
+  scenario (6 rows differ). CHF in the supported list fails the ledger default, the
+  RecordOrder schema and the Helm guards. VND removed from the page lists fails both
+  page guards.
+- After the fixes, the source reactor passes **1,659 unit/provider tests** (the 11
+  cases of the removed seven-way choice are gone, 5 tests are new) and **71 startup
+  checks**. The full `-pl shardshop-testing -am -Pintegration clean verify` passes
+  **127 scenarios** in 33 minutes, including the RabbitMQ capacity scenario and the
+  new report scenario. The only WARN line is the accepted Ryuk line. The capacity
+  scenario also passed in 191 seconds in a full run before the fixes; the earlier
+  timeouts happened while the Mac slept several times between 15:04 and 16:38 local
+  time. The corrected producer command passes its three scenarios in 3 minutes.
+- `up.sh` deployed application revision 36. The release, catalog, topology and saga
+  gates passed. The saga gate confirmed its USD and EUR orders, and the ledger and
+  producer had only their rollout ReplicaSets. The reader gate failed: during a
+  stall of the whole Docker VM after the rollout, one product pod deadlocked (see the
+  open problem below), and 1–5 reader requests in each interval exceeded the 5-second
+  deadline. After that pod was replaced, all four deployment scenarios passed, and
+  both saga drills passed in 2 minutes 24 seconds and restored the lab.
+- In its first 546 balanced ordinals, the lab producer used every product: 8–24
+  units each, and 2 units of the VND product. All orders were confirmed.
+
+Problem found during this verification, not changed in that pass (see the later
+[source fix](#http-deadline-lock-inversion-fix)): the product
+`CatalogDeadline` timer holds the request state monitor while it calls
+`connection().close()`. At the same time, a worker thread that ends the response holds
+the Vert.x connection monitor and runs the end handler, which needs the state
+monitor. A SIGQUIT thread dump showed this Java-level deadlock; one event loop stayed
+blocked for more than 10 minutes. `OrderDeadline` has the same code. Both are from
+steps 3.6 and 4.1.
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-workload/shardshop-order-producer -am test \
+  -Dtest=OrderPlannerTest -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
+bash microservices/shardshop/scripts/up.sh
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
+  -Dshardshop.kind.snapshot="$snapshot"
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT \
+  -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-saga-drill
+```
+
+## HTTP deadline lock-inversion fix
+
+**2026-10-21:** fixed the preexisting `CatalogDeadline` and `OrderDeadline`
+lock inversion exposed by the VM stall during step 4.12 verification. The saved
+SIGQUIT dump shows the product timer holding request state while waiting for
+`Http1xServerConnection`; a response worker holds that connection while invoking
+an end handler that waits for request state. The pinned Vert.x 4.5.34 sources
+also synchronize response status reads on the connection.
+
+Both filters now hold their state monitor only to finish a request or decide
+whether the writer or timeout owns its response. Transport reads, status/body
+writes, connection closing and timer cancellation occur outside that monitor.
+The timeout still returns the existing 503 before serialization or closes a
+response already claimed by the writer. Completed or expired requests suppress
+late serialization. The four-second product and ten-second order deadlines,
+error contracts and business transaction behavior are unchanged.
+
+Validation:
+
+- Before the fix, three coordinated product regressions reproduce the lock
+  cycle. Five order regressions reproduce it at response status reads, response
+  ending, connection closing and timer cancellation; a sixth catches late
+  serialization after completion. Timed test locks break the cycle on failure
+  so the test JVM does not retain deadlocked threads.
+- After the fix, all 25 product and nine order deadline tests pass, including
+  timeout/writer ownership and blocked-serialization coverage. The selected
+  reactor passes 619 product/order unit/provider tests, 501 core dependency
+  tests and all 71 packaged routing/startup checks.
+- The packaged HTTP suite passes 192 testing-module unit checks and 24 of 25
+  selected integration scenarios, including deadline and recovery scenarios.
+  The pooled-connection concurrency scenario initially fails during fixture
+  setup: creating a product returns `503 CATALOG_UNAVAILABLE` with the store's
+  unknown-outcome message, before the concurrency assertion runs. Its unchanged
+  focused rerun passes. Provider logs contain no warning/error explaining that
+  setup failure, so its cause remains undetermined; the initial run is not
+  recorded as wholly passing.
+
+This source fix has not been redeployed to the running lab. The deployment and
+saga results in the preceding section belong to the earlier application revision.
+
+Commands from the repository root:
+
+```bash
+# Red regressions against the original implementations: expected failures above.
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product -am test \
+  -Dtest=CatalogDeadlineTest -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am test \
+  -Dtest=OrderDeadlineTest -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false
+# Final module and packaged startup verification: passed.
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-order -am verify
+# Packaged HTTP integration: 24 passed; one fixture setup failed as described above.
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify \
+  '-Dcucumber.filter.tags=@product-api or @order-api'
+# Unchanged focused rerun using the already-built providers and test classes: passed.
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration \
+  failsafe:integration-test failsafe:verify '-Dcucumber.filter.tags=@order-api' \
+  '-Dcucumber.filter.name=Concurrent requests wait for a pooled connection instead of returning 503'
+```
+
+## Local webpage port cleanup
+
+**2026-10-21:** webpage access now belongs to the separate, argument-free
+`scripts/webpages.sh`. It clears listeners on local ports 18080 and 18081,
+then starts and supervises the product and order tunnels and prints both URLs.
+It uses `lsof` to identify listening PIDs, sends TERM, waits up to five seconds,
+then sends KILL to any remaining listeners. Both ports must be released within
+two further seconds; inspection or cleanup failure stops the script. Processes
+outside those listener results are untouched.
+
+`up.sh` accepts no arguments and returns after deployment and acceptance,
+releasing its lock and snapshot. It leaves local listeners alone and prints the
+command for opening the webpages. `webpages.sh` requires only `kubectl` and
+`lsof`, without building, deploying or taking the deployment lock. Ctrl+C closes
+both tunnels owned by that invocation and leaves the lab running.
+
+Validation: all **199 testing-module tests** pass, covering argument rejection,
+successful deployment without port inspection or forwarding, existing listeners
+left untouched by deployment, TERM/KILL cleanup before webpage forwarding,
+unlisted-process preservation, and tunnel failure/interruption cleanup. Bash
+syntax and diff checks pass. Two successive live `webpages.sh` invocations
+replaced the first pair of listeners; both page URLs returned HTTP 200 before
+and after replacement. Ctrl+C removed both test tunnels, with no application
+redeployment.
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing test
+bash -n microservices/shardshop/scripts/up.sh microservices/shardshop/scripts/webpages.sh microservices/shardshop/scripts/lib/lifecycle.sh
+```
+
+Live access was checked by running `./webpages.sh` from
+`microservices/shardshop/scripts` twice, requesting `/products/` on port 18080
+and `/orders/` on port 18081 with `curl --fail --silent --max-time 10`, and
+interrupting the second invocation before checking both ports were released.
+
+## Regional order currency distribution
+
+**2026-10-21:** normal producer traffic now follows buyer-region preferences:
+US orders are 90% USD; EU orders are 80% EUR and 10% GBP; ASIA orders are 60% CNY
+and 10% each KRW, JPY and VND. The remaining 10% in each region is split equally
+between the other two regions. Foreign EU purchases use EUR:GBP at 4:1, following
+the requested ASIA example. Foreign ASIA purchases preserve CNY:KRW:JPY:VND at
+6:1:1:1: 3⅓% CNY and 5⁄9% each KRW, JPY and VND of US/EU orders.
+
+A deterministic weighted schedule spreads the choices through cycles of 900
+orders per buyer region, interleaving all three regions in the full dataset.
+Products rotate within each currency across regions and cycle boundaries.
+The default allocation namespace is now `catalog-v2:regional-v1`, so the new
+buyer/currency/item selections cannot conflict with retained `catalog-v2:balanced`
+orders. Explicit USD/EUR test modes preserve their selections and allocation
+namespaces. Product currency rules and purchase eligibility are unchanged.
+
+Validation: **134 producer tests**, **328 dependency tests** and **199 testing-module
+tests** pass. All **three selected `@order-producer` packaged HTTP/PostgreSQL
+scenarios** pass; the other 124 integration scenarios are excluded by the tag.
+Coverage includes exact counts over repeated cycles, home preference in short
+samples, every currency for every buyer region, rotation through all products,
+reconstruction from reordered lookup results, cycle boundaries, `Long.MAX_VALUE`,
+subset buyer fixtures, HTTP retries and restart recovery. The normal HTTP scenario
+checks 120 accepted orders across all three buyer regions and all seven currencies.
+`git diff --check` passes.
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-workload/shardshop-order-producer -am verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify '-Dcucumber.filter.tags=@order-producer'
+```
+
+This change has not been deployed to the running lab. The next `scripts/up.sh`
+build and rollout starts the versioned stream; historical orders remain unchanged.

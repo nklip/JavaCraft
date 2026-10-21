@@ -29,6 +29,8 @@ import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -338,6 +340,112 @@ class CatalogDeadlineTest {
             }
             assertNull(output.get(5, TimeUnit.SECONDS));
         }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"timeout-close", "timeout-status", "writer-status"})
+    void responseCompletionCannotDeadlockWithTransportAccess(String operation) throws Exception {
+        CatalogDeadline deadline = start();
+        WriterInterceptorContext writer = mock(WriterInterceptorContext.class);
+        boolean closing = operation.equals("timeout-close");
+        if (closing) {
+            deadline.aroundWriteTo(writer);
+        }
+        // Vert.x invokes the end handler while holding its connection monitor. Use a
+        // timed lock here so a regression fails without leaving deadlocked test threads.
+        ReentrantLock transport = new ReentrantLock();
+        CountDownLatch completionHasTransport = new CountDownLatch(1);
+        CountDownLatch transportRequested = new CountDownLatch(1);
+        if (closing) {
+            when(connection.close()).thenAnswer(ignored -> {
+                awaitTransport(transport, transportRequested);
+                return Future.succeededFuture();
+            });
+        } else {
+            when(response.ended()).thenAnswer(ignored -> {
+                awaitTransport(transport, transportRequested);
+                return true;
+            });
+        }
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var completion = executor.submit(() -> {
+                transport.lock();
+                try {
+                    completionHasTransport.countDown();
+                    assertTrue(transportRequested.await(5, TimeUnit.SECONDS));
+                    end.getValue().handle(Future.succeededFuture());
+                } finally {
+                    transport.unlock();
+                }
+                return null;
+            });
+            assertTrue(completionHasTransport.await(5, TimeUnit.SECONDS));
+            var access = executor.submit(() -> {
+                if (operation.equals("writer-status")) {
+                    deadline.aroundWriteTo(writer);
+                } else {
+                    timer.getValue().handle(17L);
+                }
+                return null;
+            });
+            access.get(5, TimeUnit.SECONDS);
+            completion.get(5, TimeUnit.SECONDS);
+        }
+        verify(vertx).cancelTimer(17L);
+        verify(response, never()).setStatusCode(503);
+        if (closing) {
+            verify(connection).close();
+        } else {
+            verify(writer, never()).proceed();
+        }
+    }
+
+    private static void awaitTransport(ReentrantLock transport, CountDownLatch requested) throws InterruptedException {
+        requested.countDown();
+        assertTrue(transport.tryLock(2, TimeUnit.SECONDS),
+                "Transport access must let the response end handler finish without a lock cycle");
+        transport.unlock();
+    }
+
+    @Test
+    void timeoutWinsWhileTheWriterChecksTransportBeforeClaimingTheResponse() throws Exception {
+        CatalogDeadline deadline = start();
+        WriterInterceptorContext writer = mock(WriterInterceptorContext.class);
+        AtomicBoolean firstStatusRead = new AtomicBoolean(true);
+        CountDownLatch checking = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        when(response.ended()).thenAnswer(ignored -> {
+            if (firstStatusRead.compareAndSet(true, false)) {
+                checking.countDown();
+                assertTrue(release.await(5, TimeUnit.SECONDS));
+            }
+            return false;
+        });
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var output = executor.submit(() -> {
+                deadline.aroundWriteTo(writer);
+                return null;
+            });
+            try {
+                assertTrue(checking.await(5, TimeUnit.SECONDS));
+                assertTimeoutPreemptively(Duration.ofSeconds(1), () -> timer.getValue().handle(17L));
+            } finally {
+                release.countDown();
+            }
+            output.get(5, TimeUnit.SECONDS);
+        }
+        verify(response).end("{\"code\":\"CATALOG_UNAVAILABLE\",\"message\":\"Catalog request exceeded its deadline.\"}");
+        verify(writer, never()).proceed();
+        verify(connection, never()).close();
+    }
+
+    @Test
+    void finishedRequestsSuppressTheirLateWriter() throws IOException {
+        CatalogDeadline deadline = start();
+        end.getValue().handle(Future.succeededFuture());
+        WriterInterceptorContext writer = mock(WriterInterceptorContext.class);
+        deadline.aroundWriteTo(writer);
+        verify(writer, never()).proceed();
     }
 
     @Test

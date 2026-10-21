@@ -21,6 +21,7 @@ function page(region, number, count = 3) {
     region,
     items: [{ productId: String(9007199254740990n + BigInt(number)), sellerId: '9223372036854775807',
       name: region + ' product ' + number, sellerName: '<b>Seller</b>', region,
+      countryCode: "FR", newOrderEligible: true, legacyReason: null,
       initialStock: 10, stock: 7, price: '99999999999999999.99', currency: 'EUR',
       profitsEarned: { EUR: '-100000000000000000.01' } }],
     nextAfter: number < count ? String(number * 25) : null
@@ -434,4 +435,27 @@ test('Last shares one eight-second deadline and Refresh retries the end after ti
   assert.match(text(app.element('products')), /EU product 4/);
   assert.equal(app.element('first').disabled, false);
   assert.equal(app.element('last').disabled, true);
+});
+
+
+test('country, legacy reason and currency minor units are visible without losing historical money', async () => {
+  const app = browser('https://shop.example/products/?region=ASIA', () => {
+    const result = page('ASIA', 1, 1);
+    result.items = ['JPY', 'KRW', 'VND', 'GBP'].map((currency, index) => ({ ...result.items[0],
+      productId: String(index + 1), countryCode: index === 3 ? null : 'JP', currency,
+      price: index === 1 ? '19.01' : '19.00', profitsEarned: { [currency]: index === 1 ? '-1.01' : '-1.00' },
+      newOrderEligible: index === 0, legacyReason: index === 0 ? null : index === 3 ?
+        'UNRESOLVED_SELLER_COUNTRY' : 'INVALID_CURRENCY_PRECISION' }));
+    return result;
+  });
+  await app.settled();
+  const rendered = app.element('products').children.map(text);
+  assert.match(rendered[0], /19JPY/);
+  assert.match(rendered[0], /−1JPY/);
+  assert.match(rendered[1], /19\.01KRW/);
+  assert.match(rendered[1], /−1\.01KRW/);
+  assert.match(rendered[2], /19VND/);
+  assert.match(rendered[3], /19\.00GBP/);
+  assert.match(rendered[3], /Country unresolved/);
+  assert.match(rendered[3], /Unavailable for new orders: UNRESOLVED_SELLER_COUNTRY/);
 });

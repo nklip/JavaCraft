@@ -38,3 +38,11 @@ Feature: Order applies ledger results and credits confirmed seller profit
   Scenario: Seller credit survives an interrupted home mark and competing workers
     Then a committed seller credit is reused after an interrupted home mark by two workers
 
+
+  @currency-policy @product-browser
+  Scenario: Every supported currency crosses buyer regions and survives ledger replay and retained cutover
+    Then all seven currencies confirm cross-region purchases with exact profits and immutable legacy retries
+
+  @currency-policy @product-browser
+  Scenario: A retained fractional JPY order recovers through the legacy contract after country cutover
+    Then a retained version-one JPY snapshot survives country cutover, restart and identical retries

@@ -185,7 +185,7 @@ class OrderProviderTest {
 
     @ParameterizedTest
     @CsvSource({"INVALID_REQUEST,400", "BUYER_IDEMPOTENCY_CONFLICT,409", "ORDER_ID_CONFLICT,409",
-            "ORDER_RECONCILIATION_REQUIRED,409", "PRODUCT_NOT_FOUND,422", "MIXED_CURRENCIES,422", "CURRENCY_MISMATCH,422",
+            "ORDER_RECONCILIATION_REQUIRED,409", "PRODUCT_NOT_FOUND,422", "MIXED_CURRENCIES,422", "CURRENCY_MISMATCH,422", "PRODUCT_CURRENCY_POLICY,422",
             "ORDER_STORE_UNAVAILABLE,503", "CATALOG_UNAVAILABLE,503", "ID_GENERATION_UNAVAILABLE,503"})
     void mapsTypedFailuresToStableCodes(String code, int status) throws Exception {
         when(service.putOrder(anyLong(), anyLong(), any())).thenThrow(new OrderFailure(OrderFailure.Reason.valueOf(code)));

@@ -19,7 +19,8 @@ public interface ProducerConfiguration {
     String catalogVersion();
     @WithDefault(BuyerDataset.VERSION)
     String buyerVersion();
-    @WithDefault("10")
+    /** -1 selects all supported currencies; 0..100 explicitly scopes the USD/EUR rejection drill. */
+    @WithDefault("-1")
     int rejectedOrderPercent();
     @WithDefault("2s")
     Duration connectTimeout();

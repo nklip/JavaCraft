@@ -21,11 +21,12 @@
   let lastRequested = false;
 
   // Format the decimal text itself: converting money to Number loses precision.
-  function money(value, signed = false) {
+  function money(value, signed = false, currency) {
     const negative = value.startsWith("-");
     const [whole, fraction] = (negative ? value.slice(1) : value).split(".");
     const prefix = negative ? "−" : signed && value !== "0.00" ? "+" : "";
-    return prefix + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "." + fraction;
+    return prefix + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+      + (["JPY", "KRW", "VND"].includes(currency) && fraction === "00" ? "" : "." + fraction);
   }
 
   function validPage(data, selectedRegion) {
@@ -39,7 +40,12 @@
       && data.items.length <= PAGE_SIZE && (data.nextAfter === null || id(data.nextAfter))
       && data.items.every((item) => item && id(item.productId) && id(item.sellerId)
         && typeof item.name === "string" && typeof item.sellerName === "string"
-        && item.region === selectedRegion && stock(item.initialStock) && stock(item.stock)
+        && item.region === selectedRegion
+        && (item.countryCode === null || typeof item.countryCode === "string" && /^[A-Z]{2}$/.test(item.countryCode))
+        && typeof item.newOrderEligible === "boolean"
+        && (item.newOrderEligible ? item.legacyReason === null :
+          ["UNRESOLVED_SELLER_COUNTRY", "DISALLOWED_SELLER_CURRENCY", "INVALID_CURRENCY_PRECISION"].includes(item.legacyReason))
+        && stock(item.initialStock) && stock(item.stock)
         && decimal(item.price, false) && currency(item.currency)
         && item.profitsEarned !== null && typeof item.profitsEarned === "object"
         && !Array.isArray(item.profitsEarned)
@@ -64,7 +70,7 @@
   function amount(value, currency, signed = false) {
     const style = signed && value !== "0.00"
       ? value.startsWith("-") ? " profit-negative" : " profit-positive" : "";
-    const line = node("span", "amount" + style, money(value, signed));
+    const line = node("span", "amount" + style, money(value, signed, currency));
     line.append(node("span", "currency", currency));
     return line;
   }
@@ -73,7 +79,13 @@
     const fragment = document.createDocumentFragment();
     for (const item of items) {
       const row = node("tr");
-      row.append(identity(item.name, item.productId), identity(item.sellerName, item.sellerId));
+      const productCell = identity(item.name, item.productId);
+      if (item.newOrderEligible === false) {
+        productCell.append(node("span", "legacy-status", "Unavailable for new orders: " + item.legacyReason));
+      }
+      const sellerCell = identity(item.sellerName, item.sellerId);
+      sellerCell.append(node("span", "seller-country", item.countryCode || "Country unresolved"));
+      row.append(productCell, sellerCell);
       row.append(node("td", "numeric", item.initialStock.toLocaleString("en-US")));
       row.append(node("td", "numeric" + (item.stock === 0 ? " zero-stock" : ""), item.stock.toLocaleString("en-US")));
       const price = node("td", "numeric");

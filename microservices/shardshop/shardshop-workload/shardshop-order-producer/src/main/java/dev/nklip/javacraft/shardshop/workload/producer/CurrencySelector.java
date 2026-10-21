@@ -7,8 +7,8 @@ import java.math.BigInteger;
 import java.util.Objects;
 
 /**
- * Selects EUR when the unsigned SHA-256 digest of an issued order ID, modulo 100,
- * is below the configured rejection percentage; otherwise selects USD.
+ * Validates the selection setting. {@code -1} is the buyer-region currency mix.
+ * {@code 0..100} is the explicit USD/EUR test distribution from the issued order ID.
  */
 public final class CurrencySelector {
 
@@ -18,7 +18,7 @@ public final class CurrencySelector {
     private final int rejectedOrderPercent;
 
     public CurrencySelector() {
-        this(10);
+        this(-1);
     }
 
     public CurrencySelector(int rejectedOrderPercent) {
@@ -27,15 +27,27 @@ public final class CurrencySelector {
 
     public CurrencySelector(IdParser idParser, int rejectedOrderPercent) {
         this.idParser = Objects.requireNonNull(idParser, "ID parser must not be null");
-        if (rejectedOrderPercent < 0 || rejectedOrderPercent > 100) {
-            throw new IllegalArgumentException("Rejected order percentage must be between 0 and 100");
+        if (rejectedOrderPercent < -1 || rejectedOrderPercent > 100) {
+            throw new IllegalArgumentException("Rejected order percentage must be -1 (normal traffic) or between 0 and 100");
         }
         this.rejectedOrderPercent = rejectedOrderPercent;
     }
 
+    public String mode() {
+        return normalTraffic() ? "regional-v1" : "usd-eur-" + rejectedOrderPercent;
+    }
+
+    public boolean normalTraffic() {
+        return rejectedOrderPercent == -1;
+    }
+
+    /** Only for the explicit USD/EUR distribution; normal traffic uses the planner's regional schedule. */
     public String select(String orderId) {
         // Validate only; retain the exact original text as the hash input.
         idParser.parse(orderId);
+        if (normalTraffic()) {
+            throw new IllegalStateException("Normal traffic uses the buyer-region currency mix");
+        }
         int bucket = Sha256.unsignedDigest(orderId).mod(BUCKET_COUNT).intValue();
         return bucket < rejectedOrderPercent ? "EUR" : "USD";
     }

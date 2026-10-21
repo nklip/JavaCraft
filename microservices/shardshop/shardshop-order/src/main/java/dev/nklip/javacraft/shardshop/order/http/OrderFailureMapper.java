@@ -22,6 +22,7 @@ public class OrderFailureMapper implements ExceptionMapper<OrderFailure> {
                     "Operator reconciliation is required before reusing this order ID.");
             case PRODUCT_NOT_FOUND -> error(422, failure.reason().name(), "Product was not found under its seller.");
             case MIXED_CURRENCIES -> error(422, failure.reason().name(), "All products must use the same currency.");
+            case PRODUCT_CURRENCY_POLICY -> error(422, failure.reason().name(), "Product is unavailable under the seller country currency policy.");
             case CURRENCY_MISMATCH -> error(422, failure.reason().name(), "Order currency must match the products.");
             case ORDER_STORE_UNAVAILABLE -> error(503, failure.reason().name(),
                     "Order store is temporarily unavailable; retry the same request.");

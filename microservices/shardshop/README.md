@@ -53,7 +53,7 @@ allocation or allocator access. Only product/order create entity and message IDs
 
 `shardshop-workload` aggregates the three applications and the pure Java
 `shardshop-datasets` library. This library contains **all workload datasets** and
-has no runtime dependencies. Only workload applications consume it. Product,
+uses the common currency policy. Only workload applications consume it. Product,
 order, ledger and the core libraries do not package dataset classes or resources.
 Applications do not depend on one another and own their service request/response
 models. All six still depend on common directly.
@@ -64,21 +64,58 @@ generates an ID whose route matches that region; products inherit their seller's
 region. Buyers may purchase across regions under the currency and stock rules.
 There are no service dataset endpoints or fixture-ID whitelists.
 
+## Regional product currencies (step 4.12)
+
+Product prices follow seller location: US uses USD; EU permits EUR and GBP;
+ASIA maps CN→CNY, VN→VND, KR→KRW and JP→JPY. Customers may buy across regions;
+each order keeps its products' currency and contains only one currency.
+See the [currency policy and retained-data cutover](ARCHITECTURE.md#regional-currency-policy-and-retained-data-cutover-step-412)
+for country validation, precision, legacy rows and immutable replay behavior.
+The [product guide](shardshop-product/README.md) and
+[order guide](shardshop-order/README.md) describe service errors and page display.
+
+### First upgrade from a v1-only ledger
+
+For this one-time retained-lab cutover, the ledger must become v2-capable before
+new order pods publish v2 commands. Pause the **order Deployment rollout** before
+running `up.sh`; existing order pods continue serving and emitting v1:
+
+```bash
+kubectl --context kind-shardshop -n shardshop rollout pause deployment/shardshop-order
+bash microservices/shardshop/scripts/up.sh
+```
+
+While `up.sh` waits for application readiness, use another terminal to verify that
+the ledger Deployment and its ready pod use the **new ledger image digest printed
+by this invocation**, with its updated generation observed and no old ledger pod.
+Then complete the order rollout:
+
+```bash
+kubectl --context kind-shardshop -n shardshop rollout status deployment/shardshop-ledger --timeout=120s
+kubectl --context kind-shardshop -n shardshop rollout resume deployment/shardshop-order
+```
+
+A successful rollout status for the old digest is insufficient. If the build or
+deployment fails, resume the order rollout before leaving the cutover. Preserve an
+operator's preexisting paused state instead of taking ownership of it. After this
+upgrade both services understand v2; subsequent deployments use ordinary `up.sh`.
+No stored message or ledger decision is replaced during the transition.
+
 ## Workload-owned datasets and service-issued IDs (step 3.5)
 
 All definitions and source data live in
 [`shardshop-workload/shardshop-datasets`](shardshop-workload/shardshop-datasets).
-`CatalogDataset("catalog-v1")` and `BuyerDataset("buyers-v1")` expose immutable,
+`CatalogDataset("catalog-v2")` and `BuyerDataset("buyers-v1")` expose immutable,
 ID-free definitions. Regional TSV resources are under
-`src/main/resources/datasets/catalog-v1/{US,EU,ASIA}.tsv` and
-`src/main/resources/datasets/buyers-v1/{US,EU,ASIA}.tsv`. Both datasets are the
-initial unreleased v1; edits before their first release or use keep that version.
+`src/main/resources/datasets/catalog-v2/{US,EU,ASIA}.tsv` and
+`src/main/resources/datasets/buyers-v1/{US,EU,ASIA}.tsv`. Catalog v2 versions the country-aware payloads and keys; buyers-v1 is unchanged.
+Retained catalog-v1 source resources remain available as migration provenance.
 Unsupported versions fail locally before any HTTP request.
 
 | Definition | Per region | Total | Payload |
 |---|---|---|---|
-| Company sellers | 50 | 150 | Published company names and immutable home region |
-| Products | 100 | 300 | Two synthetic products per seller, USD then EUR; name, description, price `19.95`, unit cost `12.50`, initial stock 1000 |
+| Company sellers | US/EU 50; ASIA 51 | 151 | Published company names plus one explicit synthetic VN fixture; immutable home region and country |
+| Products | US 50; EU 100; ASIA 51 | 201 | One synthetic product per allowed seller currency; exact policy-compliant price/cost, initial stock 1000 |
 | Person buyers | 1000 | 3000 | First name, surname, email, phone, postal address and immutable home region |
 
 The regional coverage is US, the EU27 single market, and an ASIA dataset limited
@@ -98,7 +135,7 @@ countries; these plausible names are not a population-frequency ranking.
 Use `CatalogDataset.sellersByRegion()` and `BuyerDataset.buyersByRegion()` to
 select regional definitions. `CatalogDataset.productsBySeller()` groups products
 by the local seller key. Retry keys include the version, region, entity type and
-regional ordinal, such as `catalog-v1.US.seller.1`, `catalog-v1.US.product.1` and
+regional ordinal, such as `catalog-v2.US.seller.1`, `catalog-v2.US.product.1` and
 `buyers-v1.US.buyer.1`. These groups do not generate or select entity IDs.
 
 A product definition references its local `sellerKey`, which is resolved to the
@@ -117,9 +154,9 @@ keys are scoped by requested region; product keys are scoped by parent seller ID
 Product's step 3.6 provider persists these keys in the catalog. Order's step 4.1
 provider persists buyer creation keys in ordering, including recovery after restart.
 
-Seller requests contain `companyName` and `region`. Seller responses also include
-service-owned `profitsEarned` balances by currency, starting with `USD: "0.00"`
-and `EUR: "0.00"`. Additional currency codes are allowed. Profit means confirmed
+Seller requests contain `companyName`, `region` and immutable `countryCode`. Seller responses also include
+service-owned `profitsEarned` balances, starting at `"0.00"` for the seller's
+policy currencies. Historical balances remain unchanged. Profit means confirmed
 sales margin: `(unitPrice - unitCost) × quantity`, using stored order-item
 snapshots. Losses use negative amounts; currencies are never added together.
 Retries return current profits and never reset them. Workloads neither send nor
@@ -162,8 +199,8 @@ After a change to common, run the
 Maven Enforcer rejects direct, optional and transitive dataset dependencies
 outside workloads. `DatasetSourcesTest` checks the retained name pools, the
 name/email correspondence of the buyers, the regional coverage and the retained
-source hashes. `Contracts.feature` of `shardshop-testing` checks that all 150 seller,
-300 product and 3000 buyer creation payloads match the product and order contracts
+source hashes. `Contracts.feature` of `shardshop-testing` checks that all 151 seller,
+201 product and 3000 buyer creation payloads match the product and order contracts
 ([contract checks](#http-and-message-contracts-step-31)):
 
 ```bash
@@ -202,8 +239,8 @@ introduces the service and links its full OpenAPI contract.
 ## Product seeder (step 3.7)
 
 `shardshop-product-seeder` is the finite application for the seeder Job. It sends
-the `catalog-v1` definitions to the product API in dataset order: each seller, and
-then the USD and EUR products of that seller. Each POST has the definition key in
+the `catalog-v2` definitions to the product API in dataset order: each seller, and
+then the products in that seller's policy currencies. Each POST has the definition key in
 `Idempotency-Key`. Product requests use the seller ID from the seller response.
 After all creations, the seeder reads each seller and product by its returned ID
 and by its creation key. Each read must return the acknowledged ID and the dataset
@@ -222,11 +259,11 @@ and payloads that the failed run received.
 | `503`, a response timeout, or a refused or closed connection | Send the same request again after a backoff, up to `max-attempts` attempts |
 | A different status, an invalid response, or a read with a different ID or payload | Stop the run at once |
 
-The seeder exits with code 0 only after it created and verified all 150 sellers and
-300 products. Then it logs one summary line:
+The seeder exits with code 0 only after it created and verified all 151 sellers and
+201 products. Then it logs one summary line:
 
 ```text
-Seeded and verified catalog-v1 [US 50 sellers, 100 products {USD=50, EUR=50}; EU 50 sellers, 100 products {USD=50, EUR=50}; ASIA 50 sellers, 100 products {USD=50, EUR=50}], key-to-ID SHA-256 <hex>
+Seeded and verified catalog-v2 [US 50 sellers, 50 products {USD=50}; EU 50 sellers, 100 products {EUR=50, GBP=50}; ASIA 51 sellers, 51 products {CNY=32, JPY=14, KRW=4, VND=1}], key-to-ID SHA-256 <hex>
 ```
 
 The digest is the SHA-256 of one `key=sellerId` line per seller and one
@@ -238,7 +275,7 @@ failure type. Then the seeder exits with code 1. Log lines contain no response p
 | Property | Default | Purpose |
 |---|---|---|
 | `shardshop.seeder.product-url` | None. Startup fails without it | Base URL of the product Service |
-| `shardshop.seeder.catalog-version` | `catalog-v1` | Dataset version. Other versions fail before HTTP |
+| `shardshop.seeder.catalog-version` | `catalog-v2` | Dataset version. Other versions fail before HTTP |
 | `shardshop.seeder.connect-timeout` | `2s` | HTTP/1.1 connection deadline |
 | `shardshop.seeder.request-timeout` | `5s` | Complete deadline of one attempt, including the response body |
 | `shardshop.seeder.max-attempts` | `5` | Attempts for each request, 1–10 |
@@ -255,13 +292,13 @@ data ([seeding gate](#seeding-gate)).
 `ProductSeeder.feature` of [step 3.10](#integration-tests-with-testcontainers-step-310)
 runs the packaged seeder against the packaged product and four shard databases
 (two US). It does not connect to the kind lab. A database session holds the
-advisory lock of `catalog-v1.EU.seller.10`, so the first seeder run fails with
-`503` after 59 sellers and 118 products. After a product restart with a new
+advisory lock of `catalog-v2.EU.seller.10`, so the first seeder run fails with
+`503` after 59 sellers and 68 products. After a product restart with a new
 generator ID, a complete run must keep those rows unchanged. Two complete runs
 must store identical rows and log the same digest. The scenario calculates the
 expected payloads from the dataset TSVs and the digest from the stored IDs. It
 also checks seller ID routes, creation-key homes, product colocation and zero
-USD/EUR profits. A last run against product with unavailable replica reads must
+policy-appropriate currency profits. A last run against product with unavailable replica reads must
 fail and leave the rows unchanged:
 
 ```bash
@@ -271,13 +308,13 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pinteg
 ## Product reader (step 3.8)
 
 `shardshop-product-reader` is the long-running application for the reader
-Deployment. At startup, it looks up each `catalog-v1` seller by its creation key
+Deployment. At startup, it looks up each `catalog-v2` seller by its creation key
 and region. Then it looks up each product by its creation key under the returned
 seller ID. Each response must agree with the dataset payload. The reader keeps the
 returned IDs; it never generates or derives an ID. Then it logs one line:
 
 ```text
-Resolved catalog-v1 [US 50 sellers, 100 products; EU 50 sellers, 100 products; ASIA 50 sellers, 100 products], key-to-ID SHA-256 <hex>
+Resolved catalog-v2 [US 50 sellers, 50 products; EU 50 sellers, 100 products; ASIA 51 sellers, 51 products], key-to-ID SHA-256 <hex>
 ```
 
 The digest uses the same lines as the [seeder digest](#product-seeder-step-37).
@@ -327,7 +364,7 @@ these outcomes:
 The reader logs one metric line for each report interval:
 
 ```text
-Product reads, interval 30.0 s: 6000 requests, 200.0/s, outcomes {OK=6000}, latency ms {p50=2, p95=4, p99=7, max=15}, regions {ASIA=1996, EU=2009, US=1995}, pool {leased=3, pending=0, available=13, max=16}, catalog-v1 key-to-ID SHA-256 <hex>
+Product reads, interval 30.0 s: 6000 requests, 200.0/s, outcomes {OK=6000}, latency ms {p50=2, p95=4, p99=7, max=15}, regions {ASIA=1996, EU=2009, US=1995}, pool {leased=3, pending=0, available=13, max=16}, catalog-v2 key-to-ID SHA-256 <hex>
 ```
 
 Each interval and total report repeats the digest of the resolved catalog being
@@ -347,7 +384,7 @@ thus workload packages still contain no Vert.x or Netty runtime.
 | Property | Default | Purpose |
 |---|---|---|
 | `shardshop.reader.product-url` | None. Startup fails without it | Base URL of the product Service |
-| `shardshop.reader.catalog-version` | `catalog-v1` | Dataset version. Other versions fail before HTTP |
+| `shardshop.reader.catalog-version` | `catalog-v2` | Dataset version. Other versions fail before HTTP |
 | `shardshop.reader.request-rate` | `200` | Request starts per second for all workers, 1–10000 |
 | `shardshop.reader.workers` | `16` | Concurrent workers, from the number of connections to 256 |
 | `shardshop.reader.connections` | `16` | HTTP/1.1 connections, 1–64 |
@@ -409,13 +446,15 @@ sources, migrate and deploy with one `up.sh` invocation:
 bash microservices/shardshop/scripts/up.sh
 ```
 
-After successful deployment and acceptance, `up.sh` starts both localhost
-port-forwards and prints [the product page](http://127.0.0.1:18080/products/)
-and [the order page](http://127.0.0.1:18081/orders/). Keep the terminal open;
-Ctrl+C stops both tunnels and leaves the workloads running. The deployment
-lock is released before forwarding, so `down.sh` can run from another terminal.
-Both ports must be free. A forwarding startup failure or later tunnel exit is
-reported and both invocation-owned forwards are cleaned up.
+After successful deployment and acceptance, `up.sh` exits. Open both webpages
+with the separate command:
+
+```bash
+bash microservices/shardshop/scripts/webpages.sh
+```
+
+It replaces listeners on the two local page ports and prints both URLs. Keep
+the terminal open; Ctrl+C closes its tunnels and leaves the workloads running.
 See the [product page guide](shardshop-product/README.md#1-regional-product-webpage)
 and [order page guide](shardshop-order/README.md#1-regional-order-webpage)
 for startup prerequisites and tunnel lifecycle.
@@ -520,8 +559,8 @@ records the scan results and the reviewed statements.
 
 The reader owns its start condition, as the
 [workload lifecycle](ARCHITECTURE.md#workload-lifecycle) defines. It sees the
-catalog only through product's HTTP API. At startup, it looks up the 150 sellers
-and 300 products of `catalog-v1` by creation key, and it sends load only after all
+catalog only through product's HTTP API. At startup, it looks up the 151 sellers
+and 201 products of `catalog-v2` by creation key, and it sends load only after all
 lookups succeed and match the dataset:
 
 - While an entity is missing or product is unavailable, slow or not reachable,
@@ -620,8 +659,10 @@ The lab must already be running, migrated and deployed through `up.sh`, with two
 Ready product pods and one running reader. The scenarios
 observe this deployment and preserve reader replicas. They check the deployed
 routing and database topology, workload credential restrictions, the saved IDs and
-rows for all 150 `catalog-v1` sellers and 300 products, and the reader's resolution
-digest. Only the saga gate's own seller and two products can also exist.
+rows for all 151 `catalog-v2` sellers and 201 products, and the reader's resolution
+digest. Only these rows can also exist: the saga gate's two sellers and two products,
+and on the retained lab the complete `catalog-v1` (150 sellers, 300 products) and the
+step 4.9 gate seller with its two products. Any other catalog row fails the check.
 Within 120 seconds, the read counters of both Ready product pods must increase;
 a fresh reader report interval must contain only `OK` reads at 180/s or more.
 Use `-Dshardshop.kind.tags=kind-workload` for the workload checks alone.
@@ -685,20 +726,20 @@ objects.
 
 | Feature | Replaces | Cases |
 |---|---|---|
-| `CatalogMigration.feature` | `verify-catalog-migration.py`, `verify-catalog-lab.sh` | V1 through V5 upgrade of legacy rows and backfill, history validation of a rerun, object owners, no functions or triggers, creation-key and product constraints, profit-credit identities and lookup index, the privileges of each role and login, and a changed grants file that Flyway reapplies and that removes stale privileges |
+| `CatalogMigration.feature` | `verify-catalog-migration.py`, `verify-catalog-lab.sh` | V1 through V6 upgrade of legacy rows, provenance-based country backfill and legacy reporting, history validation of a rerun, object owners, no functions or triggers, creation-key and product constraints, profit-credit identities and lookup index, the privileges of each role and login, and a changed grants file that Flyway reapplies and that removes stale privileges |
 | `ProductApi.feature` | `verify-product-provider.py` | Seller and product creation, retries and conflicts on the shard of the key or seller, current stock and profits, integer forms, concurrent creation, lost responses, invalid input over the real HTTP stack, 32 KiB bodies, an incomplete body, a held lock with a full pool, restarts, and unavailable primaries or replicas |
 | `ProductTransport.feature` | `verify-product-transport.py` | TLS sessions, an untrusted CA, a host name that the certificate does not name, and pool recovery after a PostgreSQL restart without a product restart |
 | `ProductBrowser.feature` | Step 4.10 acceptance | Arbitrary products across regional shards, keyset pagination, exact signed per-product earnings, invalid queries, unavailable shards and replicas, and packaged browser assets; tagged `OrderResults.feature` scenarios verify reservation, cancellation and confirmed-credit updates |
 | `ProductSeeder.feature` | `verify-product-seeder.py` | The [seeder runbook](#product-seeder-step-37) cases |
 | `ProductReader.feature` | `verify-product-reader.py` | The [reader runbook](#product-reader-step-38) cases |
-| `Contracts.feature` | `verify-contracts.py` and `verify-datasets.py` (step 3.12), for what connects the contracts of different modules | The RecordOrder example buys the product of the product creation example; both ledger result examples answer the RecordOrder example with its reserved result message ID, amount and currency, after its time; the illustrative IDs of all examples follow the service-issued ID rules; each row of catalog-v1 and buyers-v1 is a valid creation request of product or order |
+| `Contracts.feature` | `verify-contracts.py` and `verify-datasets.py` (step 3.12), for what connects the contracts of different modules | The RecordOrder example buys the product of the product creation example; both ledger result examples answer the RecordOrder example with its reserved result message ID, amount and currency, after its time; the illustrative IDs of all examples follow the service-issued ID rules; each row of catalog-v2 and buyers-v1 is a valid creation request of product or order |
 | `GeneratorAllocation.feature` | `verify-generator-allocation.sh` (step 3.11) | A reservation at each start and restart, the generator ID of new sellers, six concurrent starts, the permissions of the product, order, ledger, workload and default service accounts, the retention policy, and the failures: another registry UID, an exhausted, missing or unreadable registry, a refused PATCH, an untrusted CA, a host name that the server certificate does not name and an API server that does not answer |
 
 The expected bodies come from the product OpenAPI document; an error body has only
 a code and a nonempty message. Since step 3.12, `CatalogApi` also checks each product
 response against that document: the document must define its status for the
-operation, and the body must match the schema of that status. The full run checks 189
-responses. The scenarios calculate routes, key homes and advisory locks again with
+operation, and the body must match the schema of that status. The scenarios
+calculate routes, key homes and advisory locks again with
 the JDK, and they read the dataset TSV files, not the Java definitions. On the lab,
 every `up.sh` invocation runs Flyway through Helm hooks and validates actual
 history under the [migration rules](#database-schemas-and-migrations-step-23).
@@ -720,8 +761,9 @@ It never reads the order or catalog databases and generates no IDs.
 The transaction locks the order, saga, command and transport identities in a stable
 order with PostgreSQL advisory locks. A new supported-currency command inserts
 one permanent decision and ledger entry, its reserved result binding, inbox and
-pending result outbox. The default allowlist is `USD`; other valid currencies save
-a permanent `REJECTED` decision with `UNSUPPORTED_CURRENCY` and no entry. The
+pending result outbox. The default allowlist is `CNY,EUR,GBP,JPY,KRW,USD,VND`.
+A valid currency excluded by an explicitly scoped test policy saves a permanent
+`REJECTED` decision with `UNSUPPORTED_CURRENCY` and no entry. The
 consumer acknowledges only after commit. Malformed commands use
 `basic.reject(requeue=false)`; transient transaction failures use
 `basic.reject(requeue=true)` and the broker's bounded delayed-retry/DLQ policy.
@@ -750,7 +792,7 @@ shardshop.ledger.database.username=ledger_app
 shardshop.ledger.database.password=${LEDGER_DATABASE_PASSWORD}
 shardshop.ledger.database.root-certificate=/etc/shardshop/ledger/ca.crt
 shardshop.ledger.max-pool-size=4
-shardshop.ledger.allowed-currencies=USD
+shardshop.ledger.allowed-currencies=CNY,EUR,GBP,JPY,KRW,USD,VND
 shardshop.ledger.broker.host=shardshop-rabbitmq
 shardshop.ledger.broker.port=5672
 shardshop.ledger.broker.virtual-host=shardshop
@@ -876,13 +918,32 @@ has no database credentials, Kubernetes token, shard router or ID generator.
 Configure a required `run-name`; keep it and the dataset versions and rejection
 percentage unchanged across restarts. Each run starts at ordinal `0`. The producer
 selects a buyer deterministically, calls the durable order-allocation API, and uses
-the returned order ID unchanged. Its SHA-256 currency bucket selects EUR when below
-`rejected-order-percent`, otherwise USD. The planner selects three products in that
-currency, one per US/EU/ASIA seller region, with quantities from one through three.
-It hashes `runName`, the decimal ordinal and a selection role separated by NULs,
-over descriptors sorted by definition key. Mutable stock and profits never affect
-selection. Every order therefore exercises a purchase across regions without
-mixing currencies. With a USD-only ledger, EUR orders exercise business rejection.
+the returned order ID unchanged. Normal mode (`rejected-order-percent=-1`) follows
+this currency mix by **buyer home region**:
+
+| Buyer region | USD | EUR | GBP | CNY | KRW | JPY | VND |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| US | 90% | 4% | 1% | 3⅓% | 5⁄9% | 5⁄9% | 5⁄9% |
+| EU | 5% | 80% | 10% | 3⅓% | 5⁄9% | 5⁄9% | 5⁄9% |
+| ASIA | 5% | 4% | 1% | 60% | 10% | 10% | 10% |
+
+Each region has 90% home-currency orders and 5% from each other region. Foreign
+EU purchases use EUR:GBP at 4:1; foreign ASIA purchases preserve CNY:KRW:JPY:VND
+at 6:1:1:1. The producer interleaves buyer regions and spreads weighted currency
+choices through each cycle. These shares are exact every 900 orders per buyer
+region (2,700 orders across the full dataset); smaller samples approximate them.
+Within each currency, all products take turns as the first item in a run-specific
+order. The next one or two products of that currency complete the order.
+Quantities are from one through three. Buyer choice within the scheduled region
+and quantities hash `runName`, the decimal ordinal and a selection role separated
+by NULs. Mutable stock and profits never affect selection.
+
+This is a workload preference: customers can still buy from every seller region,
+and orders retain the products' currency. An explicit 0–100 mode keeps the
+USD/EUR rejection-test distribution from the issued order ID and selects up to
+three products of that currency independently of buyer region. EUR succeeds under
+normal ledger configuration; only an explicit scoped test allowlist causes its
+business rejection.
 
 Buyer POST, allocation POST, order PUT and status GET retry transport failures and
 HTTP 503 with capped backoff and jitter. Other HTTP errors, invalid JSON and
@@ -905,14 +966,18 @@ finished orders took less than one second. The log reports
 `Order producer recovered <count> finished orders before ordinal <ordinal>`, and the
 progress lines count recovered orders separately. A new independent
 run requires a new explicitly configured name. Do not change selection settings
-under an existing name. The loop does not replenish stock; eventual out-of-stock
-cancellations are expected in a sustained run.
+under an existing name. Normal allocation names now include `catalog-v2:regional-v1`,
+separating the new selections from earlier `catalog-v2:balanced` orders. After an
+upgrade, the new stream starts at ordinal zero; existing orders and their currencies
+are unchanged, so a page containing both streams need not show the new percentages.
+The loop does not replenish stock; eventual out-of-stock cancellations are expected
+in a sustained run.
 
 | `shardshop.producer` setting | Default | Meaning |
 |---|---|---|
 | `product-url`, `order-url`, `run-name` | Required | Service base URLs and durable run identity |
-| `catalog-version`, `buyer-version` | `catalog-v1`, `buyers-v1` | Immutable workload definitions |
-| `rejected-order-percent` | `10` | Integer 0–100; selects EUR by the issued order ID |
+| `catalog-version`, `buyer-version` | `catalog-v2`, `buyers-v1` | Immutable workload definitions |
+| `rejected-order-percent` | `-1` | Buyer-region currency mix above; explicit 0–100 selects the scoped USD/EUR test distribution |
 | `connect-timeout`, `request-timeout` | `2s`, `5s` | Connection and complete HTTP-attempt limits |
 | `startup-deadline` | `5m` | Complete budget for each of catalog and buyer setup; maximum 5m |
 | `order-deadline` | `60s` | Allocation through terminal status; maximum 10m |
@@ -936,8 +1001,8 @@ java -Dshardshop.producer.product-url=http://localhost:8080 \
 
 The packaged `OrderProducer.feature` uses real product/order APIs and PostgreSQL.
 It hides committed buyer, allocation and PUT responses behind a test proxy, then
-checks identical retries, restart recovery, all buyer regions, USD/EUR selection
-and terminal polling. The test controls terminal database transitions to isolate
+checks identical retries, restart recovery, all buyer regions, home-currency preference,
+all seven currencies and terminal polling. The test controls terminal database transitions to isolate
 the producer's HTTP behavior; the step 4.9 kind suites verify the complete deployed saga. Run:
 
 ```bash
@@ -968,10 +1033,11 @@ The kind values set `orderProducer.runName: kind-saga-v1`. Keep that name and
 selection settings stable when resuming this retained run. Use a new run name only
 for an intentional new workload. The values schema rejects `$` in the run name,
 because SmallRye Config expands `${...}` and removes the escapes `$$` and `\$`. The
-default producer rejection share is 10 percent. `ledgerApplication.configuration`
-sets `shardshop.ledger.allowed-currencies: USD`. The schema accepts only lists that
-contain USD and not EUR, because the saga gate and the saga drill need a confirmed
-USD order and a rejected EUR order. The normal startup command builds all seven
+default producer setting `rejected-order-percent: -1` selects the buyer-region currency
+mix above, rotating the 201 catalog products within their currencies.
+`ledgerApplication.configuration` permits `CNY,EUR,GBP,JPY,KRW,USD,VND`.
+The explicit 0–100 producer test mode selects USD/EUR, and rejection requires a
+separately scoped ledger policy. Normal EUR purchases succeed. The normal startup command builds all seven
 images, migrates all streams, deploys the six applications and runs the release
 and saga acceptance gates:
 
@@ -984,14 +1050,16 @@ the reader and seeder; startup does not implement its HTTP loops. The default
 `kind-deployment` selection includes `kind-saga`. This gate does not examine
 producer orders, thus the producer rejection share, stock use and restart replay
 do not change its result. Through local port forwards to the product and order
-Services, it creates its own US seller with one USD and one EUR product and its own
-EU buyer. Thus the order shard is not the product shard. Each product starts with
-1,000,000 units. The fixed `kind-saga-gate.*` creation keys make later runs recover
-the same IDs. Each run then submits one USD order, which must become `CONFIRMED`,
-and one EUR order, which the ledger must reject with `UNSUPPORTED_CURRENCY`. The gate
-checks the ledger decisions, the stock reservations and their release, the seller
-profit, the HTTP status and the stock and profit invariants. Each run uses one unit
-of the gate's USD stock and keeps its two orders as evidence.
+Services, it creates valid US/USD and EU/EUR seller/product fixtures and its own
+buyer. The order shard differs from each product shard. Each product starts with
+1,000,000 units. The fixed `kind-saga-gate-v2.*` creation keys make later runs recover
+the same IDs. The gate first checks that the deployed ledger allowlist is every
+supported currency. Each run then submits one USD order and one EUR order, and the
+normal policy must confirm both. The gate checks the ledger decisions, the stock
+reservations, the seller profit, the HTTP status and the stock and profit invariants.
+Each run uses one unit of each gate product and keeps its two orders as evidence. The
+gate does not stop the producer or change the ledger; business rejection belongs to
+the explicit saga drill below.
 
 Prepare the [verification snapshot](#kind-verification-snapshot-step-315) and run
 the explicit saga drill for duplicate delivery, permanent rejection replay after
@@ -1006,7 +1074,11 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind 
 The drill pauses the producer while exercising its own orders and restores the
 temporary deployment settings afterward. The lab runs one order replica with one
 stock worker thread, thus the two orders reserve stock in sequence, not in a race.
-The step 4.2 PostgreSQL scenarios cover competing stock coordinators. The drill keeps business and allocator history;
+The retained lab has one catalog shard per region, and each permitted currency belongs to one shard.
+Its two-item stock-failure check therefore verifies atomic rollback within that shard: an oversized
+second item leaves both stocks unchanged, with no reservation rows or profit credits. The step 4.2
+PostgreSQL scenarios use two US shards to cover cross-shard partial-reservation compensation and
+competing stock coordinators. The drill keeps business and allocator history;
 new order JVM starts permanently consume generator IDs. Do not run the kind suite
 and the disposable Testcontainers suite against shared build outputs concurrently.
 
@@ -1111,10 +1183,14 @@ message schemas define `requestFingerprint`, command/result correlation, immutab
 snapshots and timestamp-preserving replay. Cross-field arithmetic, issuance and
 stored-state checks require provider tests beyond schema validation.
 
-The examples form one EUR purchase: seller/product IDs use generator 2 on
+The product HTTP, order HTTP, legacy v1 command and ledger result examples form
+one EUR purchase from an EU seller in France: seller/product IDs use generator 2 on
 2026-02-01, the buyer ID uses generator 1 on 2026-03-01, and
 order/saga/command/transport IDs use generator 1 at 2026-10-06T11:59:59Z, before
 command publication. Seller and buyer regions match the existing routing rule.
+The separate [JPY v2 command example](shardshop-order/src/main/resources/contracts/examples/record-order-jpy.json)
+uses distinct order, product and transport identities for a US buyer purchasing
+from a Japanese seller routed to ASIA; it is not a rewrite of the EUR order.
 These are illustrative wire examples, not workload IDs; actual creation responses
 use the services' live generators. Workload definitions contain no IDs.
 
@@ -1188,14 +1264,17 @@ remains with those providers/consumers.
 The allocation `requestOrdinal` permits `"0"`, thus `IdParser` does not validate
 it ([wire contracts](ARCHITECTURE.md#wire-contracts-step-31)).
 
-The order producer's `CurrencySelector` validates an order-service-issued ID,
-uses the shared `Sha256.unsignedDigest` to hash its unchanged UTF-8 text, and takes the full unsigned digest
-modulo 100. It returns EUR for buckets below the rejection percentage and USD
-otherwise. The default is 10; the integer constructor accepts 0 through 100.
+The order producer's `CurrencySelector` validates the selection setting. The default
+`-1` uses the planner's buyer-region currency schedule. An explicit 0–100 test
+percentage validates an order-service-issued ID, hashes its unchanged UTF-8 text with the shared `Sha256.unsignedDigest`, and selects EUR when
+the digest modulo 100 is below the percentage, USD otherwise. Buyer location does
+not affect this explicit test mode.
 Tests pin the architecture's buckets 0, 9, 10 and 99, plus exact large-ID values.
 The producer loop supplies its configured percentage and retains the
-chosen payload across retries. The routing library uses the same digest helper;
-the order producer has no shard-routing dependency.
+chosen payload across retries. Allocation run names include the catalog version and
+versioned selection mode so changed payloads cannot collide with retained orders.
+The routing library uses the same digest helper; the order producer has no shard-routing
+dependency.
 
 Run the shared utility tests alone with
 `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-core/common clean verify`.
@@ -1628,7 +1707,8 @@ without moving any data.
 The lab runs on kind, and everything through the final acceptance run works on
 this one machine; the AWS track with Terraform (PLAN milestone 7) is optional and
 comes later. Take `docker`, `kind`, `kubectl`, `helm`, `helmfile`, `skaffold`,
-`openssl`, and `jq` from your `PATH`, like Maven; this project never downloads or pins tool binaries. It was tested with
+`openssl`, and `jq` from your `PATH`, like Maven. The separate `webpages.sh`
+command requires `kubectl` and `lsof`. This project never downloads or pins tool binaries. It was tested with
 Docker Desktop 4.92.0, kind 0.33.0, kubectl 1.36, Helm 4.3.0, and jq 1.7.1.
 The revised workflow additionally requires Helmfile 1.8.0 and Skaffold 2.25.0;
 install tools on `PATH` and follow [VERSIONS.md](VERSIONS.md) for qualification.
@@ -1678,11 +1758,11 @@ allocator state fails closed: recover independent backups for retained data, or
 explicitly destroy and recreate a demonstrably unused failed bootstrap. Never treat
 an existing cluster as fresh to bypass this guard.
 
-`up.sh` requires the prepared cluster and reports the creation command if it is
-missing. It resumes stopped nodes, builds current sources, validates/scans images,
+`up.sh` takes no arguments. It requires the prepared cluster and reports the
+creation command if it is missing. It resumes stopped nodes, builds current sources, validates/scans images,
 checks the prepared infrastructure, migrates and deploys the applications. It never
 creates namespaces or credentials or syncs infrastructure releases.
-Every invocation replaces product, order, ledger, reader and order producer pods,
+Every deployment invocation replaces product, order, ledger, reader and order producer pods,
 even when code and configuration are unchanged. Helm applies a fresh shared restart
 annotation to all five Deployment templates; its seeder hook and final acceptance gate verify the
 new workload.
@@ -2269,7 +2349,11 @@ Run migrations and application deployment through `up.sh` so the Helmfile gates 
 lock `${TMPDIR:-/tmp}/shardshop-up.lock`. Use the same `TMPDIR` for all four. A
 concurrent call fails before changing the lab; retry it after the first finishes.
 After successful deployment, `up.sh` releases this lock and its temporary snapshot
-before starting the two supervised page port-forwards.
+and exits. The separate, argument-free `webpages.sh` replaces local page listeners
+and supervises both tunnels on the deployed lab without taking the deployment
+lock, rebuilding images or restarting applications. See the
+[product](shardshop-product/README.md#open-the-webpage) and
+[order](shardshop-order/README.md#open-the-webpage) guides for access and port-conflict recovery.
 Ordinary failure and INT/TERM release the lock after the active command ends.
 After SIGKILL or a machine failure, verify that no invocation remains active and
 inspect retained Jobs before removing a stale lock directory.

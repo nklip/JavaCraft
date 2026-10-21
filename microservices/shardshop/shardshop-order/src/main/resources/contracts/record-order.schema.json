@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:shardshop:order:record-order:v1",
-  "title": "RecordOrder v1",
-  "description": "Order-owned immutable command envelope, written only after successful stock reservation in the transaction entering PENDING_LEDGER. Send the stored JSON envelope to the durable ledger.commands exchange with routing key ledger.record-order and destination queue ledger.record-order; do not send a Debezium row-change wrapper. Publish persistently with mandatory routing and confirms. An envelope retransmission retains every field including both transport IDs and occurredAt. A new reconciliation command reserves new, distinct messageId and resultMessageId in order but retains commandId, sagaId, orderId, buyerId, requestFingerprint and the complete snapshot. Ledger never generates IDs. Consumers enforce cross-field and stored-identity equality described below; JSON Schema alone cannot express those constraints. Preserve the decision, snapshot, command/result bindings and exact result envelopes permanently, including after inbox/outbox cleanup. Cleanup order outboxes only after confirmed publication, the configured retention window and a durable CDC checkpoint past the insert.",
+  "$id": "urn:shardshop:order:record-order",
+  "title": "RecordOrder v1 and v2",
+  "description": "Order-owned immutable command envelope, written only after successful stock reservation in the transaction entering PENDING_LEDGER. Send the stored JSON envelope to the durable ledger.commands exchange with routing key ledger.record-order and destination queue ledger.record-order; do not send a Debezium row-change wrapper. Publish persistently with mandatory routing and confirms. An envelope retransmission retains every field including both transport IDs and occurredAt. A new reconciliation command reserves new, distinct messageId and resultMessageId in order but retains commandId, sagaId, orderId, buyerId, requestFingerprint and the complete snapshot. Ledger never generates IDs. Consumers enforce cross-field and stored-identity equality described below; JSON Schema alone cannot express those constraints. Preserve the decision, snapshot, command/result bindings and exact result envelopes permanently, including after inbox/outbox cleanup. Cleanup order outboxes only after confirmed publication, the configured retention window and a durable CDC checkpoint past the insert. Version 1 preserves retained orders and messages. New orders use version 2, requiring supported currencies and ISO 4217 minor-unit precision; neither version rewrites saved envelopes or decisions.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -24,7 +24,10 @@
     },
     "schemaVersion": {
       "type": "integer",
-      "const": 1
+      "enum": [
+        1,
+        2
+      ]
     },
     "messageId": {
       "$ref": "#/$defs/snowflakeId",
@@ -76,7 +79,7 @@
     "currency": {
       "type": "string",
       "pattern": "^[A-Z]{3}(?![\\s\\S])",
-      "description": "Uppercase three-letter currency code; region does not determine currency."
+      "description": "Product currency, unrestricted by buyer region. New orders follow seller country policy; retained snapshots keep their currency."
     },
     "requestFingerprint": {
       "type": "string",
@@ -163,5 +166,66 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "const": 2
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "snapshot": {
+            "properties": {
+              "currency": {
+                "enum": [
+                  "CNY",
+                  "EUR",
+                  "GBP",
+                  "JPY",
+                  "KRW",
+                  "USD",
+                  "VND"
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "currency": {
+                      "enum": [
+                        "JPY",
+                        "KRW",
+                        "VND"
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "amount": {
+                      "pattern": "^(?:0|[1-9][0-9]{0,16})\\.00(?![\\s\\S])"
+                    },
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "unitPrice": {
+                            "pattern": "^(?:0|[1-9][0-9]{0,16})\\.00(?![\\s\\S])"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
 }

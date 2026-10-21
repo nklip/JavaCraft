@@ -33,8 +33,13 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 /** Step 4.8 through the packaged applications and service-owned PostgreSQL schemas. */
 public final class OrderProducerStepDefinitions {
-    private static final String USD_RUN = "producer-acceptance-usd";
-    private static final String EUR_RUN = "producer-acceptance-eur";
+    private static final String USD_NAME = "producer-acceptance-usd";
+    private static final String USD_RUN = USD_NAME + ":catalog-v2:usd-eur-0";
+    private static final String EUR_NAME = "producer-acceptance-eur";
+    private static final String EUR_RUN = EUR_NAME + ":catalog-v2:usd-eur-100";
+    private static final String NORMAL_NAME = "producer-acceptance-all-currencies";
+    private static final String NORMAL_RUN = NORMAL_NAME + ":catalog-v2:regional-v1";
+    private static final List<String> NORMAL_CURRENCIES = List.of("CNY", "EUR", "GBP", "JPY", "KRW", "USD", "VND");
     private static final Duration STARTUP_WAIT = Duration.ofMinutes(6);
     private static final Duration ORDER_WAIT = Duration.ofSeconds(45);
 
@@ -100,7 +105,7 @@ public final class OrderProducerStepDefinitions {
 
     @When("the USD order producer starts before catalog seeding")
     public void startUsd() throws Exception {
-        workloads.startProducer(USD_RUN, 0);
+        workloads.startProducer(USD_NAME, 0);
     }
 
     @Then("it waits for the complete catalog without creating buyers or orders")
@@ -113,7 +118,7 @@ public final class OrderProducerStepDefinitions {
         assertEquals(0, count("ordering.order_allocations", null));
     }
 
-    @Then("the producer creates all 3000 buyers and submits a USD order with one item from each region")
+    @Then("the producer creates all 3000 buyers and submits a USD order with three distinct items in that currency")
     public void firstUsd() throws Exception {
         await(STARTUP_WAIT, "Producer did not create all buyers and submit its first order", () -> {
             usdFirst = snapshot(USD_RUN, 0);
@@ -131,14 +136,14 @@ public final class OrderProducerStepDefinitions {
     @When("the producer stops and restarts with the same run name and percentage")
     public void restartUsd() throws Exception {
         assertStopped();
-        workloads.startProducer(USD_RUN, 0);
+        workloads.startProducer(USD_NAME, 0);
     }
 
     @Then("its pending first order and allocation are unchanged and no second ordinal was allocated")
     public void replayUsd() throws Exception {
         await(STARTUP_WAIT, "Restart did not finish resolving catalog and buyers", () ->
                 workloads.producer().lines().stream().anyMatch(line ->
-                        line.contains("Order producer ready: sellers=150 products=300 buyers=3000")));
+                        line.contains("Order producer ready: sellers=151 products=201 buyers=3000")));
         await(ORDER_WAIT, "Restart did not replay the first allocation and PUT", () -> {
             OrderResponseProxy.ReplayCalls now = proxy.replayCalls(USD_RUN, usdFirst.buyerId(), 0, usdFirst.id());
             return now.allocation() > beforeReplay.allocation() && now.put() > beforeReplay.put();
@@ -165,10 +170,10 @@ public final class OrderProducerStepDefinitions {
     @When("the producer stops and a separate EUR run starts")
     public void startEur() throws Exception {
         assertStopped();
-        workloads.startProducer(EUR_RUN, 100);
+        workloads.startProducer(EUR_NAME, 100);
     }
 
-    @Then("it submits a EUR order with one item from each region and reuses the 3000 buyers")
+    @Then("it submits a EUR order with three distinct items in that currency and reuses the 3000 buyers")
     public void firstEur() throws Exception {
         await(STARTUP_WAIT, "EUR run did not submit its first order", () -> {
             eurFirst = snapshot(EUR_RUN, 0);
@@ -191,6 +196,64 @@ public final class OrderProducerStepDefinitions {
         assertEquals(2, count("ordering.order_allocations", EUR_RUN));
         assertOrder(snapshot(EUR_RUN, 1), "EUR");
         assertStopped();
+    }
+
+    @When("the normal seven-currency order producer starts")
+    public void startNormal() throws Exception {
+        workloads.startProducer(NORMAL_NAME, -1);
+    }
+
+    @Then("it submits accepted HTTP orders in all seven currencies with matching catalog items and regional buying preferences")
+    public void everyCurrencyPassesHttpSubmission() throws Exception {
+        await(STARTUP_WAIT, "Normal producer did not create all buyers and become ready", () ->
+                workloads.producer().lines().stream().anyMatch(line ->
+                        line.contains("Order producer ready: sellers=151 products=201 buyers=3000")));
+        assertBuyerDataset();
+        Map<String, Set<String>> homeCurrencies = Map.of(
+                "US", Set.of("USD"), "EU", Set.of("EUR", "GBP"),
+                "ASIA", Set.of("CNY", "KRW", "JPY", "VND"));
+        Map<String, Integer> buyerRegions = new HashMap<>();
+        Map<String, Integer> homePurchases = new HashMap<>();
+        Set<String> observed = new HashSet<>();
+        // A bounded HTTP sample checks wiring and regional bias; unit tests cover the complete weighted cycle.
+        for (long ordinal = 0; ordinal < 120; ordinal++) {
+            long current = ordinal;
+            await(ORDER_WAIT, "Normal producer did not submit regional-v1 ordinal " + current,
+                    () -> snapshot(NORMAL_RUN, current) != null);
+            OrderSnapshot accepted = snapshot(NORMAL_RUN, current);
+            assertTrue(NORMAL_CURRENCIES.contains(accepted.currency()), "Unsupported currency " + accepted.currency());
+            assertOrder(accepted, accepted.currency());
+            String region = buyerRegion(accepted.buyerId());
+            buyerRegions.merge(region, 1, Integer::sum);
+            if (homeCurrencies.get(region).contains(accepted.currency())) {
+                homePurchases.merge(region, 1, Integer::sum);
+            }
+            observed.add(accepted.currency());
+            complete(accepted, "CONFIRMED", null);
+        }
+        assertEquals(Set.copyOf(NORMAL_CURRENCIES), observed,
+                "Normal producer must carry every supported currency through the packaged HTTP provider");
+        assertEquals(Map.of("US", 40, "EU", 40, "ASIA", 40), buyerRegions,
+                "Normal producer must interleave all three buyer regions");
+        for (String region : homeCurrencies.keySet()) {
+            assertTrue(homePurchases.getOrDefault(region, 0) > buyerRegions.get(region) / 2,
+                    "Most " + region + " purchases must use home-region currencies: " + homePurchases);
+            assertTrue(homePurchases.getOrDefault(region, 0) < buyerRegions.get(region),
+                    region + " buyers must also purchase across regions");
+        }
+        assertStopped();
+    }
+
+    private String buyerRegion(String buyerId) throws SQLException {
+        try (Connection connection = shards.superuser(shards.ofSeller(buyerId));
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT region FROM ordering.buyers WHERE buyer_id=?")) {
+            statement.setLong(1, Long.parseLong(buyerId));
+            try (ResultSet rows = statement.executeQuery()) {
+                assertTrue(rows.next(), "Missing buyer " + buyerId);
+                return rows.getString(1);
+            }
+        }
     }
 
     @When("the order producer checks its startup with a blank run name")
@@ -238,7 +301,7 @@ public final class OrderProducerStepDefinitions {
         assertNotNull(snapshot);
         assertEquals("PENDING_STOCK", snapshot.status());
         assertEquals(currency, snapshot.currency());
-        assertEquals(3, snapshot.items().size());
+        assertEquals(currency.equals("VND") ? 1 : 3, snapshot.items().size());
         Map<String, StoredCatalog.Row> products = new HashMap<>();
         for (StoredCatalog.Row row : StoredCatalog.read(shards).values()) {
             if (row.productId() != null) {
@@ -255,7 +318,12 @@ public final class OrderProducerStepDefinitions {
             assertTrue(item.quantity() >= 1 && item.quantity() <= 3, "Item quantity " + item.quantity());
             regions.add(product.key().split("\\.")[1]);
         }
-        assertEquals(Set.of("US", "EU", "ASIA"), regions);
+        assertEquals(switch (currency) {
+            case "USD" -> Set.of("US");
+            case "EUR", "GBP" -> Set.of("EU");
+            default -> Set.of("ASIA");
+        }, regions);
+        assertEquals(snapshot.items().size(), snapshot.items().stream().map(Item::productId).distinct().count());
     }
 
     private OrderSnapshot snapshot(String run, long ordinal) throws SQLException {

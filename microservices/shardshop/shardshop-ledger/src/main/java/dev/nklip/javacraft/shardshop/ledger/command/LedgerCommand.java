@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.nklip.javacraft.shardshop.common.IdParser;
+import dev.nklip.javacraft.shardshop.common.CurrencyPolicy;
 import dev.nklip.javacraft.shardshop.common.JsonFields;
 import dev.nklip.javacraft.shardshop.common.JsonRequests;
 import dev.nklip.javacraft.shardshop.common.Sha256;
@@ -46,8 +47,8 @@ public record LedgerCommand(long messageId, long resultMessageId, long commandId
     private static LedgerCommand validated(JsonNode root) {
         JsonFields.requireFields(root, "type", "schemaVersion", "messageId", "commandId", "sagaId",
                 "orderId", "buyerId", "requestFingerprint", "occurredAt", "resultMessageId", "snapshot");
-        if (!"RecordOrder".equals(JsonFields.text(root, "type"))
-                || JsonFields.nonnegativeInteger(root, "schemaVersion") != 1) {
+        int version = JsonFields.nonnegativeInteger(root, "schemaVersion");
+        if (!"RecordOrder".equals(JsonFields.text(root, "type")) || version < 1 || version > 2) {
             throw new IllegalArgumentException("Unsupported RecordOrder type or schema version");
         }
         IdParser ids = new IdParser();
@@ -66,6 +67,9 @@ public record LedgerCommand(long messageId, long resultMessageId, long commandId
         JsonFields.requireFields(snapshot, "amount", "currency", "items");
         BigDecimal amount = money(snapshot, "amount");
         String currency = currency(snapshot, "currency");
+        if (version == 2 && !CurrencyPolicy.validAmount(amount, currency)) {
+            throw new IllegalArgumentException("Snapshot amount violates currency precision");
+        }
         JsonNode items = snapshot.get("items");
         if (items == null || !items.isArray() || items.isEmpty() || items.size() > 1000) {
             throw new IllegalArgumentException("snapshot items must hold 1 to 1000 items");
@@ -95,7 +99,11 @@ public record LedgerCommand(long messageId, long resultMessageId, long commandId
                 throw new IllegalArgumentException("Item currency differs from the snapshot currency");
             }
             JsonFields.nonblankText(item, "productName", 200);
-            sum = sum.add(money(item, "unitPrice").multiply(BigDecimal.valueOf(quantity)));
+            BigDecimal unitPrice = money(item, "unitPrice");
+            if (version == 2 && !CurrencyPolicy.validAmount(unitPrice, currency)) {
+                throw new IllegalArgumentException("Unit price violates currency precision");
+            }
+            sum = sum.add(unitPrice.multiply(BigDecimal.valueOf(quantity)));
             if (index != 0) {
                 normalizedRequest.append(',');
             }

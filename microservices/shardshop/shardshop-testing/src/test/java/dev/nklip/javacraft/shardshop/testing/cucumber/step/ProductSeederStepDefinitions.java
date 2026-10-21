@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** The packaged seeder of step 3.7 against product and the shard databases of the scenario. */
 public class ProductSeederStepDefinitions {
     private static final Pattern SUMMARY =
-            Pattern.compile("Seeded and verified catalog-v1 \\[(.*)], key-to-ID SHA-256 ([0-9a-f]{64})$");
+            Pattern.compile("Seeded and verified catalog-v2 \\[(.*)], key-to-ID SHA-256 ([0-9a-f]{64})$");
 
     private final CatalogShards shards;
     private final CatalogLock lock;
@@ -84,7 +84,7 @@ public class ProductSeederStepDefinitions {
         return summaries.getFirst();
     }
 
-    @Then("the shards store {int} sellers and {int} products of catalog-v1 with their dataset payloads and placement")
+    @Then("the shards store {int} sellers and {int} products of catalog-v2 with their dataset payloads and placement")
     public void shardsStore(int sellers, int products) throws SQLException {
         stored = StoredCatalog.read(shards);
         StoredCatalog.assertDataset(shards, stored, sellers, products);

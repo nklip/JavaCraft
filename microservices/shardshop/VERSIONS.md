@@ -351,7 +351,8 @@ are recorded there. Review these families with the platform by **2026-11-04**.
 The [step 3.5 audit command](README.md#workload-owned-datasets-and-service-issued-ids-step-35)
 rebuilds all six applications because common changed.
 
-The catalog-v1 and buyers-v1 datasets keep the library free of runtime dependencies. Mockito
+The catalog-v1 and buyers-v1 datasets kept the library free of runtime dependencies until
+[step 4.12](#step-412-currency-precision-qualification) added `shardshop-common`. Mockito
 is test-only for resource IO failure checks (13 dataset SBOM components including
 test dependencies). The 2026-10-07 audit passes 559 unit/client/startup tests and
 48 packaged checks, with 100% line/branch coverage in ten Java modules. All 3,450
@@ -1089,3 +1090,23 @@ from **34 to 48 components**: the client, SLF4J API, these two test artifacts an
 the ten platform artifacts that the JBoss Log Manager uses. The order and ledger
 SBOMs keep **304** and **193** components. OSV returns no findings for the 14 added
 coordinates.
+
+## Step 4.12 currency precision qualification
+
+On **2026-10-21**, the official SIX ISO 4217 List One (publication **2026-09-17**)
+was read directly and its minor-unit values verified: **USD, EUR, GBP and CNY: 2;
+JPY, KRW and VND: 0**. [SIX currency data standards](https://www.six-group.com/en/products-services/financial-information/data-standards.html),
+[authoritative XML](https://www.six-group.com/dam/download/financial-information/data-center/iso-currrency/lists/list-one.xml).
+`CurrencyPolicy` pins the explicitly supported currencies; adding countries or
+currencies requires reviewing this source and updating policy and acceptance tests.
+The fixed two-decimal wire/storage representation remains compatible, with `.00`
+required for new zero-minor-unit amounts. Retained snapshots keep their original
+values and message version. No JDK, framework or infrastructure version changes
+are required for this feature; the existing review deadlines remain in force.
+
+`shardshop-datasets` now depends on `shardshop-common` for `CurrencyPolicy`. Its
+runtime scope therefore gains `shardshop-common` and `jackson-core`; before this step
+it had no runtime dependencies. `jackson-databind` stays in its test scope. The seeder,
+reader and producer packages already contained both artifacts: on **2026-10-21** their
+`quarkus-app-dependencies.txt` lists were identical before and after this step. No
+artifact or version is added.

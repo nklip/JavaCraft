@@ -143,6 +143,38 @@ class OrderServiceTest {
     }
 
     @Test
+    void usBuyerCanBuyJapaneseProductsAndRetryAfterCatalogBecomesIneligible() {
+        var creation = new OrderCreation("JPY", List.of(new OrderItem(11, 21, 3)));
+        store.lookup = item -> Optional.of(new Product(11, 21, "Japanese product", new BigDecimal("1500.00"),
+                new BigDecimal("1000.00"), "JPY", "ASIA", "JP"));
+        Order accepted = service.putOrder(1, 2, creation);
+        assertEquals(new BigDecimal("4500.00"), accepted.totalAmount());
+        assertEquals("JPY", accepted.currency());
+        store.lookup = item -> Optional.of(new Product(11, 21, "Legacy product", new BigDecimal("1500.50"),
+                new BigDecimal("1000.00"), "JPY", "ASIA", null));
+        assertEquals(accepted, service.putOrder(1, 2, creation));
+        store.allocations.put(3L, new Allocation(1, 3, "run", 1));
+        fails(PRODUCT_CURRENCY_POLICY, () -> service.putOrder(1, 3, creation));
+        assertEquals(1, store.insertions);
+    }
+
+    @Test
+    void rejectsUnresolvedOrMismatchedCountriesAndFractionalZeroMinorUnitPricesBeforeAcceptance() {
+        for (Product product : List.of(
+                new Product(11, 21, "Unresolved", BigDecimal.ONE, BigDecimal.ZERO, "JPY", "ASIA", null),
+                new Product(11, 21, "Wrong country", BigDecimal.ONE, BigDecimal.ZERO, "JPY", "ASIA", "CN"),
+                new Product(11, 21, "Wrong region", BigDecimal.ONE, BigDecimal.ZERO, "JPY", "US", "JP"),
+                new Product(11, 21, "Fractional price", new BigDecimal("1.01"), BigDecimal.ZERO, "JPY", "ASIA", "JP"),
+                new Product(11, 21, "Fractional cost", BigDecimal.ONE, new BigDecimal("0.01"), "JPY", "ASIA", "JP"))) {
+            store.lookup = item -> Optional.of(product);
+            fails(PRODUCT_CURRENCY_POLICY, () -> service.putOrder(1, 2, new OrderCreation("JPY", payload.items())));
+        }
+        assertTrue(store.orders.isEmpty());
+        assertEquals(0, store.insertions);
+        verifyNoInteractions(generator);
+    }
+
+    @Test
     void fingerprintMatchesExactCompactContractJsonAndChangesWithItemOrder() throws Exception {
         String compact = "{\"buyerId\":\"1\",\"orderId\":\"2\",\"currency\":\"USD\",\"items\":[{\"sellerId\":\"11\",\"productId\":\"21\",\"quantity\":3}]}";
         String expected = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
@@ -265,7 +297,8 @@ class OrderServiceTest {
     void overflowingOrFractionalTotalsAreRejectedAfterCatalogAndFinalRecheck() {
         for (String price : List.of("99999999999999999.99", "0.001")) {
             store.lookup = item -> Optional.of(product(item, "USD", price, "0.00"));
-            fails(INVALID_REQUEST, () -> service.putOrder(1, 2, payload));
+            fails(price.equals("0.001") ? PRODUCT_CURRENCY_POLICY : INVALID_REQUEST,
+                    () -> service.putOrder(1, 2, payload));
         }
         assertEquals(4, store.writes);
         assertTrue(store.orders.isEmpty());
@@ -446,7 +479,8 @@ class OrderServiceTest {
 
     private static Product product(OrderItem item, String currency, String price, String cost) {
         return new Product(item.sellerId(), item.productId(), "Product " + item.productId(),
-                new BigDecimal(price), new BigDecimal(cost), currency);
+                new BigDecimal(price), new BigDecimal(cost), currency,
+                currency.equals("USD") ? "US" : "EU", currency.equals("USD") ? "US" : "DE");
     }
 
     private static void fails(OrderFailure.Reason reason, org.junit.jupiter.api.function.Executable work) {

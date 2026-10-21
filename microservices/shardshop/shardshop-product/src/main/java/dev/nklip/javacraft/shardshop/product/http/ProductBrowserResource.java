@@ -37,7 +37,7 @@ public class ProductBrowserResource {
         List<ProductSummary> items = page.items().stream().map(product -> new ProductSummary(
                 Long.toString(product.sellerId()), Long.toString(product.productId()), product.sellerName(),
                 product.name(), product.region(), product.initialStock(), product.stock(), product.price(),
-                product.currency(), product.profitsEarned())).toList();
+                product.currency(), product.profitsEarned(), product.countryCode(), product.newOrderEligible(), product.legacyReason())).toList();
         return new ProductPageResponse(page.region(), items,
                 page.nextAfter() == null ? null : Long.toString(page.nextAfter()));
     }
@@ -47,6 +47,6 @@ public class ProductBrowserResource {
 
     public record ProductSummary(String sellerId, String productId, String sellerName, String name, String region,
                                  int initialStock, int stock, String price, String currency,
-                                 Map<String, String> profitsEarned) {
+                                 Map<String, String> profitsEarned, String countryCode, boolean newOrderEligible, String legacyReason) {
     }
 }

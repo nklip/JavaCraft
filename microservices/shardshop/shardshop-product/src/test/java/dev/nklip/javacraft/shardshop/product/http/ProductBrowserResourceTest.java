@@ -32,7 +32,7 @@ class ProductBrowserResourceTest {
         assertEquals("EU", response.region());
         assertEquals("9223372036854775807", response.nextAfter());
         assertEquals(List.of(new ProductBrowserResource.ProductSummary("9007199254740993", "9223372036854775807",
-                "Company", "Mug", "EU", 10, 7, "99999999999999999.99", "EUR", product.profitsEarned())), response.items());
+                "Company", "Mug", "EU", 10, 7, "99999999999999999.99", "EUR", product.profitsEarned(), null, false, "UNRESOLVED_SELLER_COUNTRY")), response.items());
         var order = inOrder(deadline, service);
         order.verify(deadline).check();
         order.verify(service).products("EU", 1, 9007199254740993L);

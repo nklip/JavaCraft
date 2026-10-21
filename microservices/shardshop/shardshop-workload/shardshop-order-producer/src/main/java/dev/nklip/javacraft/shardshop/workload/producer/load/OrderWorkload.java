@@ -113,7 +113,7 @@ public final class OrderWorkload {
             throws ProducerException, InterruptedException {
         String buyerId = planner.buyer(ordinal).buyerId();
         progress.buyer(buyerId);
-        String orderId = retry.call("Order allocation", () -> orders.allocate(buyerId, runName, ordinal));
+        String orderId = retry.call("Order allocation", () -> orders.allocate(buyerId, planner.allocationRunName(), ordinal));
         progress.order(orderId);
         PlannedOrder order = planner.plan(ordinal, orderId);
         // Construct once. Every retry sends the same IDs, currency, item order and quantities.

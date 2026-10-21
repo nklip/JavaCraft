@@ -39,9 +39,9 @@ public final class CatalogApi {
     private static final Pattern CANONICAL_ID = Pattern.compile("[1-9][0-9]{0,18}");
     private static final Pattern ENTITY = Pattern.compile("\\{(seller|product):([^}]+)}");
     private static final Pattern RAW_BYTE = Pattern.compile("\\\\x([0-9a-fA-F]{2})");
-    private static final Set<String> SELLER_FIELDS = Set.of("sellerId", "companyName", "region", "profitsEarned");
+    private static final Set<String> SELLER_FIELDS = Set.of("sellerId", "companyName", "region", "countryCode", "profitsEarned");
     private static final Set<String> PRODUCT_FIELDS = Set.of("sellerId", "productId", "name", "description", "price",
-            "unitCost", "currency", "initialStock", "stock");
+            "unitCost", "currency", "initialStock", "stock", "countryCode", "newOrderEligible", "legacyReason");
 
     private final ProductRuntime product;
     private final Map<String, Seller> sellers = new LinkedHashMap<>();
@@ -83,7 +83,16 @@ public final class CatalogApi {
         ObjectNode request = Json.newObject();
         request.put("companyName", companyName);
         request.put("region", region);
+        request.put("countryCode", defaultCountry(region));
         return request;
+    }
+
+    public static String defaultCountry(String region) {
+        return switch (region) { case "US" -> "US"; case "EU" -> "DE"; case "ASIA" -> "CN"; default -> "US"; };
+    }
+
+    public static ObjectNode itemRequest(String region) {
+        return itemRequest().put("currency", switch (region) { case "EU" -> "EUR"; case "ASIA" -> "CNY"; default -> "USD"; });
     }
 
     /** The product payload of the provider checks of step 3.6. */
@@ -217,7 +226,14 @@ public final class CatalogApi {
             assertTrue(entry.getValue().isTextual(), "Profit amounts are strings");
             actual.put(entry.getKey(), entry.getValue().asText());
         });
-        assertEquals(profits, actual, "profitsEarned");
+        Map<String, String> expected = switch (region) {
+            case "US" -> Map.of("USD", profits.getOrDefault("USD", "0.00"));
+            case "EU" -> Map.of("EUR", profits.getOrDefault("EUR", "0.00"), "GBP", profits.getOrDefault("GBP", "0.00"));
+            case "ASIA" -> Map.of("CNY", profits.getOrDefault("CNY", "0.00"));
+            default -> throw new AssertionError("Unknown fixture region " + region);
+        };
+        assertEquals(defaultCountry(region), body.path("countryCode").asText(), "countryCode");
+        assertEquals(expected, actual, "profitsEarned");
     }
 
     /** A product body: exactly the OpenAPI fields, the requested values, canonical IDs and this stock. */
@@ -233,6 +249,8 @@ public final class CatalogApi {
         assertTrue(body.get("initialStock").isInt() && body.get("stock").isInt(), "Stock values are integers");
         assertEquals(request.get("initialStock").intValue(), body.get("initialStock").intValue(), "initialStock");
         assertEquals(stock, body.get("stock").intValue(), "stock");
+        assertTrue(body.path("newOrderEligible").asBoolean());
+        assertTrue(body.path("legacyReason").isNull());
     }
 
     /** An error body: only a code and a nonempty message. */

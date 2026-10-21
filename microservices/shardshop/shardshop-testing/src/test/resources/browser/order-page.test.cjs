@@ -389,3 +389,17 @@ test('details fit the content viewport excluding scrollbars and constrain width 
   assert.equal(panel.style.maxWidth, '256px');
   assert.ok(parseFloat(panel.style.left) + 256 <= 280 - 12, 'Narrow viewport constrains popover before positioning');
 });
+
+
+test('native precision renders whole JPY, KRW and VND while preserving legacy fractional money', async () => {
+  for (const currency of ['JPY', 'KRW', 'VND']) {
+    for (const [total, expected] of [['19.00', '19' + currency], ['19.01', '19.01' + currency], ['99999999999999999.00', '99,999,999,999,999,999' + currency]]) {
+      const b = await browser({ respond: () => { const value = page(); Object.assign(value.items[0], { currency, total }); return value; } });
+      assert.ok(b.el('orders').textContent.includes(expected), b.el('orders').textContent);
+    }
+  }
+  for (const currency of ['USD', 'EUR', 'GBP', 'CNY']) {
+    const b = await browser({ respond: () => { const value = page(); Object.assign(value.items[0], { currency, total: '19.00' }); return value; } });
+    assert.ok(b.el('orders').textContent.includes('19.00' + currency));
+  }
+});

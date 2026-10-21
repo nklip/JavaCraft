@@ -58,8 +58,14 @@ the application release and acceptance checks against the existing foundation.
    bash microservices/shardshop/scripts/up.sh
    ```
 
-2. Wait for `up.sh` to print both page URLs. After deployment and acceptance,
-   it starts and supervises both localhost tunnels:
+2. Open access to both webpages:
+
+   ```bash
+   bash microservices/shardshop/scripts/webpages.sh
+   ```
+
+   Wait for `webpages.sh` to print both URLs. It starts and supervises both
+   localhost tunnels:
 
    | Page | Local port | Service port |
    |---|---|---|
@@ -69,9 +75,13 @@ the application release and acceptance checks against the existing foundation.
 3. Open <http://127.0.0.1:18081/orders/>.
 4. Keep the terminal open while you use either webpage.
 
-Both local ports must be available. A forwarding startup failure is reported;
-`up.sh` stops the tunnels it started and leaves the deployed lab running.
-Free the occupied port and rerun `up.sh` to deploy and open both pages.
+`webpages.sh` takes no arguments and requires only `kubectl` and `lsof`.
+It stops existing listeners on ports 18080 and 18081, sends TERM first, waits
+up to five seconds, then sends KILL to remaining listeners. Both ports must be
+released before it opens the tunnels. Run the same command whenever you need
+to reopen access; it does not rebuild or restart applications.
+A forwarding failure stops the tunnels started by this invocation and leaves
+the deployed lab running.
 
 ### Filters, sorting and navigation
 
@@ -164,6 +174,13 @@ node microservices/shardshop/shardshop-testing/src/test/resources/browser/order-
   microservices/shardshop/shardshop-order/src/main/resources/META-INF/resources/orders/orders.js
 ```
 
+### Currency display and retained orders
+
+Orders retain their products' currency regardless of buyer region or address.
+JPY, KRW and VND display whole amounts when the saved fraction is `.00`; other
+currencies display two decimal places. Fractional historical amounts remain visible
+exactly. Retained orders and their snapshots are never relabeled or recalculated.
+
 ## 2. Buyer and order provider
 
 <sub>[Back to contents](#contents)</sub>
@@ -175,6 +192,14 @@ The [OpenAPI contract](src/main/resources/contracts/openapi.yaml) defines full
 request and response schemas; the
 [saga architecture](../ARCHITECTURE.md#5-order-creation-and-ledger-saga) defines
 the cross-service workflow.
+
+New orders require products allowed by their seller's immutable country/region and
+currency precision. An unresolved legacy seller or noncompliant price/cost returns
+`422 PRODUCT_CURRENCY_POLICY`. The existing `MIXED_CURRENCIES` and `CURRENCY_MISMATCH`
+errors still apply; buyer location does not restrict buying. A US buyer can purchase
+a Japanese JPY product. Identical retries of accepted historical orders return saved
+state before catalog validation, even if the product is now unavailable for new orders.
+See [cutover semantics](../ARCHITECTURE.md#regional-currency-policy-and-retained-data-cutover-step-412).
 
 Order is now a long-running HTTP/1.1 provider. `--check-startup` validates its
 routing, generator and pool configuration and exits without opening a database
@@ -197,7 +222,7 @@ existing identities without consuming another generator ID.
 that buyer. It checks quarantine and the saved request fingerprint under a
 transaction advisory lock, releases the transaction and connection, and resolves
 products through their sellers' primaries. Catalog outcomes have fixed precedence:
-unavailable, missing product, mixed currencies, then currency mismatch. A second
+unavailable, missing product, mixed currencies, currency mismatch, then seller currency policy. A second
 locked transaction repeats the durable checks before using those outcomes.
 Concurrent creation or quarantine therefore takes precedence over a failed lookup.
 

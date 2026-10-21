@@ -2,6 +2,7 @@ package dev.nklip.javacraft.shardshop.testing.kind;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import dev.nklip.javacraft.shardshop.common.CurrencyPolicy;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.Json;
 
 import java.io.IOException;
@@ -29,7 +30,9 @@ import static dev.nklip.javacraft.shardshop.testing.kind.KindDeployment.require;
  */
 public final class KindSaga {
     /** Creation-key prefix of the gate fixture; later runs send the same keys and payloads and recover the same IDs. */
-    static final String GATE = "kind-saga-gate";
+    static final String GATE = "kind-saga-gate-v2";
+    /** Prefix of the step 4.9 gate fixture. The retained lab keeps it with an unresolved country; no run creates it. */
+    static final String RETAINED_GATE = "kind-saga-gate";
     private static final int GATE_STOCK = 1_000_000;
     private final KindLab lab;
     private final KindDeployment deployment;
@@ -63,34 +66,53 @@ public final class KindSaga {
         });
     }
 
-    /** Each run adds one USD and one EUR order; the USD order uses one unit of the gate's own stock. */
+    /**
+     * Each run adds one USD and one EUR order, and both must be confirmed by the deployed seven-currency ledger
+     * policy. Each order uses one unit of the gate's own stock. The gate changes no deployment or workload; the
+     * explicit saga drill owns the scoped ledger rejection.
+     */
     public void ownOrders() throws IOException, InterruptedException {
         deployed();
+        normalPolicy();
         try (Tunnel product = new Tunnel(lab, "service/shardshop-product", 8080);
              Tunnel order = new Tunnel(lab, "service/shardshop-order", 8080)) {
             Fixture fixture = fixture(product, order);
             String run = GATE + "-" + UUID.randomUUID();
-            String confirmed = submit(order, fixture, run, 0, "USD");
-            String rejected = submit(order, fixture, run, 1, "EUR");
-            awaitOrder(order, fixture, confirmed, "CONFIRMED", "");
-            awaitOrder(order, fixture, rejected, "CANCELLED", "UNSUPPORTED_CURRENCY");
+            String usd = submit(order, fixture, run, 0, "USD");
+            String eur = submit(order, fixture, run, 1, "EUR");
+            awaitOrder(order, fixture, usd, "CONFIRMED", "");
+            awaitOrder(order, fixture, eur, "CONFIRMED", "");
         }
         invariants();
     }
 
-    /** A US seller and an EU buyer, thus each gate order reserves stock and credits profit on another shard. */
-    record Fixture(String seller, String usd, String eur, String buyer, String home) { }
+    /** The deployed ledger allowlist, from its ConfigMap or an environment override, is every supported currency. */
+    void normalPolicy() throws IOException, InterruptedException {
+        JsonNode resource = deployment.resource("deployment", "shardshop-ledger");
+        String configured = deployment.resource("configmap", "shardshop-ledger-config").path("data")
+                .path("application.properties").asText().lines()
+                .filter(line -> line.startsWith("shardshop.ledger.allowed-currencies="))
+                .map(line -> line.substring(line.indexOf('=') + 1)).findFirst().orElse("");
+        for (JsonNode variable : resource.at("/spec/template/spec/containers/0/env"))
+            if (variable.path("name").asText().equals("SHARDSHOP_LEDGER_ALLOWED_CURRENCIES")) configured = variable.path("value").asText();
+        require(Set.copyOf(List.of(configured.split(","))).equals(Set.copyOf(CurrencyPolicy.SUPPORTED_CURRENCIES)),
+                "Normal ledger policy must allow every supported currency");
+    }
+
+    /** Separate policy-valid US/USD and EU/EUR sellers with an ASIA buyer. */
+    record Fixture(String seller, String euroSeller, String usd, String eur, String buyer, String home) { }
 
     private Fixture fixture(Tunnel product, Tunnel order) throws IOException, InterruptedException {
-        String seller = id(created(product, "/api/v1/sellers", GATE + ".seller",
-                Json.newObject().put("companyName", "Kind saga gate").put("region", "US")).path("sellerId").asText());
-        String products = "/api/v1/sellers/" + seller + "/products";
-        String usd = id(created(product, products, GATE + ".product.USD", gateProduct("USD")).path("productId").asText());
-        String eur = id(created(product, products, GATE + ".product.EUR", gateProduct("EUR")).path("productId").asText());
+        String seller = id(created(product, "/api/v1/sellers", GATE + ".seller.US",
+                Json.newObject().put("companyName", "Kind saga gate US").put("region", "US").put("countryCode", "US")).path("sellerId").asText());
+        String euroSeller = id(created(product, "/api/v1/sellers", GATE + ".seller.EU",
+                Json.newObject().put("companyName", "Kind saga gate EU").put("region", "EU").put("countryCode", "DE")).path("sellerId").asText());
+        String usd = id(created(product, "/api/v1/sellers/" + seller + "/products", GATE + ".product.USD", gateProduct("USD")).path("productId").asText());
+        String eur = id(created(product, "/api/v1/sellers/" + euroSeller + "/products", GATE + ".product.EUR", gateProduct("EUR")).path("productId").asText());
         String buyer = id(created(order, "/api/v1/buyers", GATE + ".buyer", gateBuyer()).path("buyerId").asText());
         for (String shard : lab.shards())
             if (number(shard, "SELECT count(*) FROM ordering.buyers WHERE buyer_id=" + buyer) == 1)
-                return new Fixture(seller, usd, eur, buyer, shard);
+                return new Fixture(seller, euroSeller, usd, eur, buyer, shard);
         throw new IOException("The gate buyer is on no inventory shard");
     }
 
@@ -102,7 +124,7 @@ public final class KindSaga {
 
     static ObjectNode gateBuyer() {
         ObjectNode buyer = Json.newObject().put("firstName", "Kind").put("surname", "Gate")
-                .put("email", "kind-saga-gate@example.com").put("phone", "+12025550123").put("region", "EU");
+                .put("email", "kind-saga-gate@example.com").put("phone", "+12025550123").put("region", "ASIA");
         buyer.putObject("address").put("line1", "1 Example Road").put("city", "Example City")
                 .put("postalCode", "00001").put("countryCode", "US");
         return buyer;
@@ -119,7 +141,7 @@ public final class KindSaga {
                 Json.newObject().put("runName", run).put("requestOrdinal", Integer.toString(ordinal)), Set.of(201))
                 .path("orderId").asText());
         ObjectNode request = Json.newObject().put("currency", currency);
-        request.putArray("items").addObject().put("sellerId", fixture.seller())
+        request.putArray("items").addObject().put("sellerId", currency.equals("USD") ? fixture.seller() : fixture.euroSeller())
                 .put("productId", currency.equals("USD") ? fixture.usd() : fixture.eur()).put("quantity", 1);
         order.call("PUT", orderPath(fixture, id), null, request, Set.of(202));
         return id;

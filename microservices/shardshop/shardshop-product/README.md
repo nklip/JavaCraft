@@ -43,8 +43,14 @@ The webpage shows the products of one region with their stock, price and earning
    bash microservices/shardshop/scripts/up.sh
    ```
 
-2. Wait for `up.sh` to print both page URLs. After deployment and acceptance,
-   it starts and supervises both localhost tunnels:
+2. Open access to both webpages:
+
+   ```bash
+   bash microservices/shardshop/scripts/webpages.sh
+   ```
+
+   Wait for `webpages.sh` to print both URLs. It starts and supervises both
+   localhost tunnels:
 
    | Page | Local port | Service port |
    |---|---|---|
@@ -54,9 +60,13 @@ The webpage shows the products of one region with their stock, price and earning
 3. Open <http://127.0.0.1:18080/products/>.
 4. Keep the terminal open while you use either webpage.
 
-Both local ports must be available. A forwarding startup failure is reported;
-`up.sh` stops the tunnels it started and leaves the deployed lab running.
-Free the occupied port and rerun `up.sh` to deploy and open both pages.
+`webpages.sh` takes no arguments and requires only `kubectl` and `lsof`.
+It stops existing listeners on ports 18080 and 18081, sends TERM first, waits
+up to five seconds, then sends KILL to remaining listeners. Both ports must be
+released before it opens the tunnels. Run the same command whenever you need
+to reopen access; it does not rebuild or restart applications.
+A forwarding failure stops the tunnels started by this invocation and leaves
+the deployed lab running.
 
 The controls below the products are **First · Previous · Page N · Next · Last**.
 First returns to page 1 of the selected region. Last follows the remaining pages
@@ -91,3 +101,29 @@ This discards the old HTML that browsers were previously allowed to retain for
 Product creates and reads sellers and products. The
 [OpenAPI contract](src/main/resources/contracts/openapi.yaml) defines the full
 request and response schemas.
+
+New sellers require an immutable `countryCode`: `US` in US; the existing 27 EU
+countries in EU; and `CN`, `VN`, `KR`, or `JP` in ASIA. New product prices and unit
+costs allow USD for US, EUR/GBP for EU, CNY for CN, VND for VN, KRW for KR, and JPY
+for JP. Invalid combinations return HTTP 400 `INVALID_REQUEST` before business
+writes. JPY/KRW/VND amounts must be integral; wire money remains exact fixed two
+decimal text (`19.00` is valid). Buyers may purchase across regions.
+
+Retained catalog rows keep their IDs, money and profits. Migration V6 backfills
+country only when the exact catalog-v1 creation key, saved company and region
+match the original TSV provenance. Other sellers retain a null country. Read
+responses expose `countryCode`, `newOrderEligible` and `legacyReason` for products;
+ineligible legacy products remain visible on the page and cannot enter new orders. The
+read-only `catalog.currency_policy_legacy` view reports cutover status. As the
+migration owner, inspect unresolved sellers (including sellers with no products)
+and noncompliant products with:
+
+```sql
+SELECT * FROM catalog.currency_policy_legacy
+WHERE legacy_reason IS NOT NULL ORDER BY seller_id, product_id;
+```
+
+Runtime roles cannot change seller countries or read this operator report. Identical
+old product retries and seller retries without country still recover saved rows;
+new sellers require country. Existing profit balances remain intact, while new
+sellers initialize only their allowed currencies.

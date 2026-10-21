@@ -29,13 +29,13 @@ public class ProductReaderStepDefinitions {
     private static final String READING = "Reading at 200 requests/s with 16 workers and 16 connections";
     private static final String WAITING = "The catalog is not complete yet: ";
     private static final String WAIT = "dev.nklip.javacraft.shardshop.workload.reader.config.CatalogWait/resolve/";
-    private static final Pattern RESOLVED = Pattern.compile("Resolved catalog-v1 \\[(.*)], key-to-ID SHA-256 ([0-9a-f]{64})$");
+    private static final Pattern RESOLVED = Pattern.compile("Resolved catalog-v2 \\[(.*)], key-to-ID SHA-256 ([0-9a-f]{64})$");
     private static final Pattern REPORT = Pattern.compile("\\b(INFO|WARN) .*Product reads, (interval|total) ([0-9.]+) s: "
             + "(\\d+) requests, ([0-9.]+)/s, outcomes \\{(.*?)}, latency ms \\{(.*?)}, regions \\{(.*?)}, pool \\{(.*?)}, "
-            + "catalog-v1 key-to-ID SHA-256 ([0-9a-f]{64})$");
+            + "catalog-v2 key-to-ID SHA-256 ([0-9a-f]{64})$");
     private static final Pattern COUNT = Pattern.compile("(\\w+)=(\\d+)");
     private static final Pattern STARTUP_FAILURE = Pattern.compile("ERROR .*Product reader startup failed: the catalog "
-            + "was not complete within the wait\\. Last failure: Look up seller catalog-v1\\.(US|EU|ASIA)\\.seller\\.\\d+ "
+            + "was not complete within the wait\\. Last failure: Look up seller catalog-v2\\.(US|EU|ASIA)\\.seller\\.\\d+ "
             + "failed with REPLICA_UNAVAILABLE$");
 
     private final ProductRuntime product;

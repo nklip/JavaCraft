@@ -24,7 +24,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * A loopback product API with service-issued IDs for catalog-v1. It counts lookups, reads and the TCP connections
+ * A loopback product API with service-issued IDs for catalog-v2. It counts lookups, reads and the TCP connections
  * that sent them, identified by the client address and port.
  */
 final class FakeProductServer implements AutoCloseable {
@@ -138,8 +138,11 @@ final class FakeProductServer implements AutoCloseable {
 
     private ObjectNode seller(SellerDefinition seller) {
         ObjectNode body = JsonNodeFactory.instance.objectNode().put("sellerId", ids.get(seller.key()))
-                .put("companyName", seller.companyName()).put("region", seller.region());
-        body.set("profitsEarned", JsonNodeFactory.instance.objectNode().put("USD", "0.00").put("EUR", "0.00"));
+                .put("companyName", seller.companyName()).put("region", seller.region()).put("countryCode", seller.countryCode());
+        ObjectNode profits = JsonNodeFactory.instance.objectNode();
+        dev.nklip.javacraft.shardshop.common.CurrencyPolicy.currencies(seller.region(), seller.countryCode())
+                .forEach(currency -> profits.put(currency, "0.00"));
+        body.set("profitsEarned", profits);
         return body;
     }
 
@@ -148,7 +151,10 @@ final class FakeProductServer implements AutoCloseable {
                 .put("productId", ids.get(product.key())).put("name", product.name())
                 .put("description", product.description()).put("price", product.price())
                 .put("unitCost", product.unitCost()).put("currency", product.currency())
-                .put("initialStock", product.initialStock()).put("stock", product.initialStock());
+                .put("initialStock", product.initialStock()).put("stock", product.initialStock())
+                .put("countryCode", catalog.sellers().stream().filter(seller -> seller.key().equals(product.sellerKey()))
+                        .findFirst().orElseThrow().countryCode())
+                .put("newOrderEligible", true).putNull("legacyReason");
     }
 
     private static ObjectNode error(String code, String message) {

@@ -2,6 +2,7 @@ package dev.nklip.javacraft.shardshop.workload.seeder.catalog;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import dev.nklip.javacraft.shardshop.common.CurrencyPolicy;
 import dev.nklip.javacraft.shardshop.common.IdParser;
 import dev.nklip.javacraft.shardshop.common.JsonFields;
 import dev.nklip.javacraft.shardshop.common.JsonHttpClient;
@@ -20,11 +21,14 @@ public final class SeederDatasets {
     private final JsonHttpClient product;
     private final String catalogVersion;
     private final CatalogDataset catalog;
+    private final Map<String, String> countriesBySellerKey;
 
     public SeederDatasets(JsonHttpClient product, String catalogVersion) {
         this.product = Objects.requireNonNull(product);
         this.catalogVersion = catalogVersion;
         this.catalog = new CatalogDataset(catalogVersion);
+        this.countriesBySellerKey = catalog.sellers().stream().collect(java.util.stream.Collectors.toUnmodifiableMap(
+                SellerDefinition::key, SellerDefinition::countryCode));
     }
 
     public String catalogVersion() {
@@ -47,7 +51,7 @@ public final class SeederDatasets {
     public CreatedSeller createSeller(SellerDefinition definition) throws IOException, InterruptedException {
         requireSeller(definition);
         JsonNode payload = JsonNodeFactory.instance.objectNode()
-                .put("companyName", definition.companyName()).put("region", definition.region());
+                .put("companyName", definition.companyName()).put("region", definition.region()).put("countryCode", definition.countryCode());
         return product.post("/api/v1/sellers", definition.key(), payload, sellerDecoder(definition));
     }
 
@@ -107,21 +111,27 @@ public final class SeederDatasets {
 
     private static Function<JsonNode, CreatedSeller> sellerDecoder(SellerDefinition definition) {
         return response -> {
-            JsonFields.requireFields(response, "sellerId", "companyName", "region", "profitsEarned");
+            JsonFields.requireFields(response, "sellerId", "companyName", "region", "countryCode", "profitsEarned");
             if (!definition.companyName().equals(JsonFields.text(response, "companyName"))
-                    || !definition.region().equals(JsonFields.text(response, "region"))) {
+                    || !definition.region().equals(JsonFields.text(response, "region"))
+                    || !definition.countryCode().equals(JsonFields.text(response, "countryCode"))) {
                 throw new IllegalArgumentException("Seller response does not match its definition");
             }
             return new CreatedSeller(definition, JsonFields.id(response, "sellerId"),
-                    JsonFields.signedMoneyMap(response, "profitsEarned", "USD", "EUR"));
+                    JsonFields.signedMoneyMap(response, "profitsEarned",
+                            CurrencyPolicy.currencies(definition.region(), definition.countryCode()).toArray(String[]::new)));
         };
     }
 
-    private static Function<JsonNode, CreatedProduct> productDecoder(ProductDefinition definition, String sellerId) {
+    private Function<JsonNode, CreatedProduct> productDecoder(ProductDefinition definition, String sellerId) {
         return response -> {
             JsonFields.requireFields(response, "sellerId", "productId", "name", "description",
-                    "price", "unitCost", "currency", "initialStock", "stock");
-            if (!sellerId.equals(JsonFields.id(response, "sellerId"))
+                    "price", "unitCost", "currency", "initialStock", "stock",
+                    "countryCode", "newOrderEligible", "legacyReason");
+            if (!countriesBySellerKey.get(definition.sellerKey()).equals(JsonFields.text(response, "countryCode"))
+                    || !response.get("newOrderEligible").isBoolean() || !response.get("newOrderEligible").booleanValue()
+                    || !response.get("legacyReason").isNull()
+                    || !sellerId.equals(JsonFields.id(response, "sellerId"))
                     || !definition.name().equals(JsonFields.text(response, "name"))
                     || !definition.description().equals(JsonFields.text(response, "description"))
                     || !definition.unitCost().equals(JsonFields.text(response, "unitCost"))

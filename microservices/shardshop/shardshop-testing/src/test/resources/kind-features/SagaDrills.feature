@@ -2,7 +2,8 @@
 Feature: Explicit kind saga replay and CDC relocation drills
   The shared drill lock serializes mutations. Recovery restores producer replicas,
   ledger policy and order placement; durable scoped orders remain as evidence.
-  One order replica with one stock worker reserves stock in sequence; step 4.2 tests competing coordinators.
+  One order replica with one stock worker reserves stock in sequence. A failed same-shard item group leaves
+  no reservations or stock changes; step 4.2 tests competing coordinators and cross-shard compensation.
 
   Scenario: Duplicate envelopes preserve decisions and two orders for the same stock never oversell
     Then scoped saga retries, rejection replay and two orders for the same stock preserve permanent effects

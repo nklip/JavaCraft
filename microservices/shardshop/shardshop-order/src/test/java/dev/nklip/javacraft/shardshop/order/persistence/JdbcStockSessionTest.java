@@ -200,8 +200,9 @@ class JdbcStockSessionTest {
         verify(connection).prepareStatement(contains("stock_lease_until > clock_timestamp()"));
     }
 
-    @Test
-    void successfulTransitionReservesIdsAndEmitsCompleteOrderedSchemaEnvelope() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {1, 2})
+    void successfulTransitionPreservesTheAcceptedCurrencyPolicyVersion(int version) throws Exception {
         PreparedStatement transition = mock();
         PreparedStatement order = mock();
         PreparedStatement identity = mock();
@@ -215,7 +216,9 @@ class JdbcStockSessionTest {
         }
         LongSupplier ids = mock();
         when(ids.getAsLong()).thenReturn(9007199254740993L, 9007199254740994L);
-        assertTrue(session.pendingLedger(SAGA, ids));
+        Saga accepted = new Saga(SAGA.sagaId(), SAGA.commandId(), SAGA.order(), SAGA.items(),
+                SAGA.leaseVersion(), SAGA.failures(), version);
+        assertTrue(session.pendingLedger(accepted, ids));
         var ordered = inOrder(transition, order, ids, identity, outbox);
         ordered.verify(transition).executeUpdate();
         ordered.verify(order).executeUpdate();
@@ -226,7 +229,7 @@ class JdbcStockSessionTest {
         verify(outbox).setString(eq(4), json.capture());
         JsonNode envelope = new ObjectMapper().readTree(json.getValue());
         assertEquals("RecordOrder", envelope.path("type").textValue());
-        assertEquals(1, envelope.path("schemaVersion").intValue());
+        assertEquals(version, envelope.path("schemaVersion").intValue());
         assertEquals("9007199254740993", envelope.path("messageId").textValue());
         assertEquals("9007199254740994", envelope.path("resultMessageId").textValue());
         assertEquals("81", envelope.path("commandId").textValue());
@@ -250,8 +253,9 @@ class JdbcStockSessionTest {
         verify(connection, never()).commit();
     }
 
-    @Test
-    void claimRestoresLeaseAndImmutableSnapshotsInRequestOrder() throws SQLException {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {1, 2})
+    void claimRestoresLeaseSnapshotsAndAcceptedCurrencyPolicy(int version) throws SQLException {
         PreparedStatement claim = mock();
         PreparedStatement items = mock();
         ResultSet claimed = mock();
@@ -265,6 +269,7 @@ class JdbcStockSessionTest {
         when(claimed.getLong("command_id")).thenReturn(81L);
         when(claimed.getLong("stock_lease_version")).thenReturn(7L);
         when(claimed.getInt("stock_failures")).thenReturn(2);
+        when(claimed.getInt("currency_policy_version")).thenReturn(version);
         when(claimed.getLong("buyer_id")).thenReturn(31L);
         when(claimed.getLong("order_id")).thenReturn(41L);
         when(claimed.getString("request_fingerprint")).thenReturn("a".repeat(64));
@@ -279,7 +284,8 @@ class JdbcStockSessionTest {
         when(snapshots.getBigDecimal("unit_price")).thenReturn(ITEM.unitPrice());
         when(snapshots.getBigDecimal("unit_cost")).thenReturn(ITEM.unitCost());
         when(snapshots.getString("currency")).thenReturn("USD");
-        assertEquals(SAGA, session.claim(Duration.ofSeconds(30)).orElseThrow());
+        assertEquals(new Saga(SAGA.sagaId(), SAGA.commandId(), SAGA.order(), SAGA.items(),
+                SAGA.leaseVersion(), SAGA.failures(), version), session.claim(Duration.ofSeconds(30)).orElseThrow());
         verify(claim).setLong(1, 30000);
         verify(connection).prepareStatement(contains("FOR UPDATE OF s SKIP LOCKED"));
         verify(connection).prepareStatement(contains("q.resolved_at IS NULL"));

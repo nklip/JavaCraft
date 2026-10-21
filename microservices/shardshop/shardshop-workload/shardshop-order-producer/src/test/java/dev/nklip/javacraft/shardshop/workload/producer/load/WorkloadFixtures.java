@@ -36,12 +36,13 @@ final class WorkloadFixtures {
         var catalog = new CatalogDataset(CatalogDataset.VERSION);
         var result = new ArrayList<ProductDescriptor>();
         int ordinal = 0;
-        for (String region : List.of("US", "EU", "ASIA")) {
-            var seller = catalog.sellersByRegion().get(region).getFirst();
+        int sellerOrdinal = 0;
+        for (var seller : catalog.sellers()) {
             for (var product : catalog.productsBySeller().get(seller.key())) {
-                result.add(new ProductDescriptor(product, Long.toString(100 + ordinal / 2),
+                result.add(new ProductDescriptor(product, Long.toString(100 + sellerOrdinal),
                         Long.toString(1000 + ordinal++), 1000));
             }
+            sellerOrdinal++;
         }
         return result;
     }

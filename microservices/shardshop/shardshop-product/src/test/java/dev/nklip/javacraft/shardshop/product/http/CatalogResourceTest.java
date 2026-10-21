@@ -123,12 +123,12 @@ class CatalogResourceTest {
     }
 
     private CatalogResource.SellerResponse sellerResponse() {
-        return new CatalogResource.SellerResponse(Long.toString(SELLER_ID), "Company", "EU", SELLER.profitsEarned());
+        return new CatalogResource.SellerResponse(Long.toString(SELLER_ID), "Company", "EU", SELLER.profitsEarned(), null);
     }
 
     private CatalogResource.ProductResponse productResponse() {
         return new CatalogResource.ProductResponse(Long.toString(SELLER_ID), Long.toString(PRODUCT_ID),
-                "Mug", "A mug", "19.95", "12.45", "EUR", 2, 1);
+                "Mug", "A mug", "19.95", "12.45", "EUR", 2, 1, null, false, "UNRESOLVED_SELLER_COUNTRY");
     }
 
     private HttpHeaders headers() {

@@ -13,6 +13,6 @@ public final class KindDeploymentSteps {
     @Then("order, ledger and the HTTP-only producer are deployed with durable CDC offsets")
     public void sagaDeployed() throws IOException, InterruptedException { new KindSaga().deployed(); }
 
-    @Then("the gate's own USD and EUR orders reach terminal ledger, stock and seller profit effects")
+    @Then("the gate's own USD and EUR orders are confirmed with ledger, stock and seller profit effects")
     public void sagaOrders() throws IOException, InterruptedException { new KindSaga().ownOrders(); }
 }

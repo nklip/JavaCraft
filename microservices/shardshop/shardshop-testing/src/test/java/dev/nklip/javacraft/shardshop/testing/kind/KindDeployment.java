@@ -56,7 +56,7 @@ public final class KindDeployment {
         require(completed(job), "The deployed release needs a successful seeder Job before workload checks");
         httpOnly(job.path("spec").path("template").path("spec"));
         JsonNode seeder = successfulSeeder(jobName);
-        String digest = digest(logs(name(seeder)), "Seeded and verified catalog-v1");
+        String digest = digest(logs(name(seeder)), "Seeded and verified catalog-v2");
         lab.await("reader resolves the deployed seeder ID digest", Duration.ofSeconds(360).plus(readerInterval(reader)), () -> {
             String readerDigest = readerDigest(reader);
             require(digest.equals(readerDigest), "Reader resolved a different catalog ID digest than its deployed seeder");
@@ -164,14 +164,14 @@ public final class KindDeployment {
         var found = new HashSet<String>();
         for (String line : logs.lines().toList()) {
             // Each interval repeats the resolved catalog identity, so rotation need not retain startup output.
-            if (!line.contains("Resolved catalog-v1")
-                    && !(line.contains("Product reads, interval ") && line.contains(", catalog-v1 key-to-ID SHA-256 "))) continue;
+            if (!line.contains("Resolved catalog-v2")
+                    && !(line.contains("Product reads, interval ") && line.contains(", catalog-v2 key-to-ID SHA-256 "))) continue;
             var match = DIGEST.matcher(line);
             require(match.find(), "Reader catalog summary has no valid ID digest");
             found.add(match.group(1));
             require(!match.find(), "Reader catalog summary has multiple ID digests");
         }
-        require(found.size() == 1, "Expected one consistent catalog-v1 ID digest in recent reader reports");
+        require(found.size() == 1, "Expected one consistent catalog-v2 ID digest in recent reader reports");
         return found.iterator().next();
     }
 
@@ -189,27 +189,35 @@ public final class KindDeployment {
         List<String> shards = lab.shards();
         require(!shards.isEmpty(), "The invocation inventory has no shards");
         Map<String, String> counts = new LinkedHashMap<>();
-        for (String shard : shards) counts.put(shard, sql(shard, "SELECT concat_ws(' ', "
-                + "(SELECT count(*) FROM catalog.sellers WHERE starts_with(creation_key, 'catalog-v1.')), "
-                + "(SELECT count(*) FROM catalog.products WHERE starts_with(creation_key, 'catalog-v1.')), "
-                + "(SELECT count(*) FROM catalog.sellers WHERE starts_with(creation_key, '" + KindSaga.GATE + ".')), "
-                + "(SELECT count(*) FROM catalog.products WHERE starts_with(creation_key, '" + KindSaga.GATE + ".')), "
-                + "(SELECT count(*) FROM catalog.sellers) + (SELECT count(*) FROM catalog.products))").strip());
+        String counted = String.join(", ", List.of("catalog-v2.", KindSaga.GATE + ".", "catalog-v1.", KindSaga.RETAINED_GATE + ".")
+                .stream().map(prefix -> "(SELECT count(*) FROM catalog.sellers WHERE starts_with(creation_key, '" + prefix + "')), "
+                        + "(SELECT count(*) FROM catalog.products WHERE starts_with(creation_key, '" + prefix + "'))").toList());
+        for (String shard : shards) counts.put(shard, sql(shard, "SELECT concat_ws(' ', " + counted
+                + ", (SELECT count(*) FROM catalog.sellers) + (SELECT count(*) FROM catalog.products))").strip());
         validateCatalogCounts(counts);
     }
 
-    /** Per shard: catalog-v1 sellers and products, the saga gate's own seller and products, then all rows. */
+    /**
+     * Per shard: sellers and products of catalog-v2, of the saga gate, of the retained catalog-v1 and of the
+     * retained step 4.9 gate, then all rows. A lab created after step 4.12 has no retained rows.
+     */
     static void validateCatalogCounts(Map<String, String> shards) throws IOException {
-        long[] total = new long[5];
+        long[] total = new long[9];
         for (var shard : shards.entrySet()) {
-            require(shard.getValue().matches("[0-9]+( [0-9]+){4}"), "Invalid catalog count result for " + shard.getKey());
+            require(shard.getValue().matches("[0-9]+( [0-9]+){8}"), "Invalid catalog count result for " + shard.getKey());
             String[] parts = shard.getValue().split(" ");
             for (int index = 0; index < total.length; index++) total[index] += Long.parseLong(parts[index]);
         }
-        require(total[0] == 150 && total[1] == 300, "Expected exactly 150 catalog-v1 sellers and 300 products; found "
+        require(total[0] == 151 && total[1] == 201, "Expected exactly 151 catalog-v2 sellers and 201 products; found "
                 + total[0] + " and " + total[1]);
-        require(total[2] <= 1 && total[3] <= 2 && total[4] == total[0] + total[1] + total[2] + total[3],
-                "The catalog has sellers or products outside catalog-v1 and the saga gate's own seller and two products");
+        require(total[2] <= 2 && total[3] <= 2, "The saga gate fixtures are duplicated");
+        require(total[4] == 0 && total[5] == 0 || total[4] == 150 && total[5] == 300,
+                "Retained catalog-v1 rows must be absent or complete; found " + total[4] + " sellers and " + total[5] + " products");
+        require(total[6] <= 1 && total[7] <= 2, "The retained step 4.9 gate fixtures are duplicated");
+        long known = 0;
+        for (int index = 0; index < 8; index++) known += total[index];
+        require(total[8] == known, "The catalog has " + (total[8] - known)
+                + " rows outside catalog-v2, catalog-v1 and the saga gate fixtures");
     }
 
     Map<String, String> catalogIds() throws IOException, InterruptedException {

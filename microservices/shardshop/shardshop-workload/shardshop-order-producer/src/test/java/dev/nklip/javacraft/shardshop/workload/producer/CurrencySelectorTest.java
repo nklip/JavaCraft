@@ -8,21 +8,23 @@ import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CurrencySelectorTest {
 
-    private final CurrencySelector selector = new CurrencySelector();
+    private final CurrencySelector selector = new CurrencySelector(10);
 
-    @ParameterizedTest
-    @CsvSource({
-            "880803840000004605, EUR",
-            "880803840000004432, EUR",
-            "880803840000004254, USD",
-            "880803840000004299, USD"
-    })
-    void selectsDefaultCurrencyAtPublishedBoundaries(String orderId, String expectedCurrency) {
-        assertEquals(expectedCurrency, selector.select(orderId));
+    @Test
+    void defaultSettingUsesRegionalTrafficWithoutAnOrderIdCurrencyChoice() {
+        CurrencySelector normal = new CurrencySelector();
+        assertTrue(normal.normalTraffic());
+        assertTrue(new CurrencySelector(-1).normalTraffic());
+        assertEquals("regional-v1", normal.mode());
+        assertFalse(selector.normalTraffic());
+        assertEquals("usd-eur-10", selector.mode());
+        assertThrows(IllegalStateException.class, () -> normal.select("1"));
     }
 
     // Buckets were calculated independently with Python hashlib over all 32 digest bytes.
@@ -54,12 +56,12 @@ class CurrencySelectorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {-1, 101, Integer.MIN_VALUE, Integer.MAX_VALUE})
+    @ValueSource(ints = {-2, 101, Integer.MIN_VALUE, Integer.MAX_VALUE})
     void rejectsPercentagesOutsideTheAllowedRange(int rejectedOrderPercent) {
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
                 () -> new CurrencySelector(rejectedOrderPercent));
 
-        assertEquals("Rejected order percentage must be between 0 and 100", exception.getMessage());
+        assertEquals("Rejected order percentage must be -1 (normal traffic) or between 0 and 100", exception.getMessage());
     }
 
     @Test
@@ -99,7 +101,7 @@ class CurrencySelectorTest {
     void preservesCurrencyAcrossRepeatedSelections(String orderId, String expectedCurrency) {
         for (int attempt = 0; attempt < 10; attempt++) {
             assertEquals(expectedCurrency, selector.select(orderId));
-            assertEquals(expectedCurrency, new CurrencySelector().select(orderId));
+            assertEquals(expectedCurrency, new CurrencySelector(10).select(orderId));
         }
     }
 }

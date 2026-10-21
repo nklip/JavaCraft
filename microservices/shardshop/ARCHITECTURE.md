@@ -55,8 +55,9 @@ reconciled in place; failures stop with recovery guidance and retained data.
 The step 3.15 `kind` profile defaults to `kind-deployment` through
 `shardshop.kind.tags`. It observes deployed routing, independent replication and
 persistent-volume identity (`kind-topology`) and the existing product workload
-(`kind-workload`): credential restrictions, the saved 150 seller/300 product IDs
-of `catalog-v1` (only the saga gate's own seller and two products can also exist),
+(`kind-workload`): credential restrictions, the saved 151 seller/201 product IDs
+of `catalog-v2` (only the retained 150/300 `catalog-v1` rows and the saga gate
+fixtures may also exist),
 matching seeder/reader digests, traffic through both Ready product pods within
 120 seconds, and a fresh all-OK reader interval at 180 requests/s or more. These
 checks require an already-migrated, deployed lab with two Ready product pods and
@@ -136,7 +137,7 @@ remains the baseline only for resources outside Helm ownership.
 After readiness/image delivery, Helmfile syncs `shardshop-migrations` and
 `shardshop-application` in dependency order. Each revision runs ordered Flyway
 hooks and idempotent seeding. Flyway's actual history is authoritative; no completed
-Job cache suppresses validation. Every `up.sh` invocation changes a shared restart
+Job cache suppresses validation. Every `up.sh` deployment changes a shared restart
 annotation on all five application Deployment templates through Helm, triggering replacement
 followed by the seeding and acceptance gates even for unchanged code. Each new
 product or order JVM consumes a fresh, non-reusable generator slot; a normal
@@ -149,12 +150,21 @@ outside its pod template. Successful seeder Jobs retain 24-hour verification
 logs; after TTL cleanup, standalone workload checks require a fresh `up.sh` run.
 
 After the deployment gates succeed, `up.sh` releases its deployment lock and
-serves local access through two owned `kubectl port-forward` processes: product
+exits. Both `up.sh` and `webpages.sh` accept no arguments. The separate
+`webpages.sh` serves local access through two owned `kubectl port-forward` processes: product
 at `http://127.0.0.1:18080/products/` and order at
 `http://127.0.0.1:18081/orders/`. Both bind to localhost. Exiting or interrupting
 the script closes both tunnels without stopping workloads; a failed tunnel
 ends the access session and reports the failure. Cluster shutdown remains the
 responsibility of `down.sh`.
+`webpages.sh` uses `lsof` to find processes listening on ports 18080 and 18081 and stops
+them before opening tunnels: TERM, a five-second grace period, then KILL for remaining
+listeners. It requires the ports to be released within two further seconds.
+A second inspection before opening tunnels catches newly occupied ports and
+reports an access failure. `webpages.sh` clears the ports and runs only
+the supervised access session against the existing deployment, without the
+deployment lock, build, rollout or acceptance gates. It permits access recovery
+without consuming more generator slots in an unnecessary rollout.
 
 Retained resources created by the earlier apply workflow require an explicit
 one-time ownership transfer after safety checks and resource/UID inspection,
@@ -304,33 +314,43 @@ Dataset definitions and service-side creation follow section 3.
    the Job of its run completes, because the seeder sends the same keys and
    payloads again. Workloads do not generate run IDs.
 
-The seeder creates sellers and products, and the order producer creates buyers,
-in US, EU, and ASIA, with both USD and EUR product fixtures in every region. Region and currency are independent: the
-order producer must exercise purchases from other regions and orders mixing
-sellers from all three regions within one currency. For deterministic saga
-rejection, select the separate USD and EUR fixtures.
-The order API accepts any valid single currency matching its products; the ledger
-allowlist is USD in the rejection scenario. Configure `rejected-order-percent=10`.
-The producer first obtains an order ID from the order service's allocation API.
-Using that returned ID with exactly the SHA-256 input and unsigned big-endian
-digest interpretation specified in section 3, compute
-`currencyBucket = digestInteger % 100`. Select
-EUR-only items when `currencyBucket < rejected-order-percent`, otherwise USD-only
-items. The percentage must be an integer from 0 through 100; the default selects
-approximately 10% of uniformly generated IDs. The order producer's tests fix the
-boundaries with IDs `880803840000004605` (bucket 0), `880803840000004432` (9),
-`880803840000004254` (10), and `880803840000004299` (99), computed independently
-of the implementation. A retry preserves its items and currency. This
-exercises a ledger business rejection rather than an HTTP validation failure.
+The seeder creates country-aware sellers and products in US, EU and ASIA.
+The shared currency policy below governs product prices; buyer location never
+limits currency. Normal ledger configuration accepts all seven supported currencies.
+The normal default `rejected-order-percent=-1` uses a buyer-region currency mix:
+US orders are 90% USD; EU orders are 80% EUR and 10% GBP; ASIA orders are 60% CNY
+and 10% each KRW, JPY and VND. Each region's remaining 10% is split equally between
+the other two regions. Foreign EU purchases split EUR:GBP at 4:1, and foreign ASIA
+purchases split CNY:KRW:JPY:VND at 6:1:1:1. These are workload preferences, without
+changing the product-pricing policy or cross-region purchase eligibility. An explicit
+`rejected-order-percent` from 0 through 100 keeps the legacy USD/EUR test distribution
+from the allocated order ID. A rejection test must also apply its own temporary
+ledger allowlist. EUR is accepted normally.
 
 Step 4.8 implements a single in-flight order stream. It resolves the full catalog,
 creates or recovers all buyers, then starts at ordinal zero for its required
-configured run name. Selection hashes the unchanged run name, decimal ordinal
-and role, separated by NULs; returned descriptors are sorted by definition key.
-Each order contains one product from each seller region in the selected currency,
-with deterministic quantities from one to three. Current stock/profits are never
-selection inputs. A restart reconstructs and replays earlier ordinals through
-the same allocation and PUT APIs before advancing. This deliberately trades
+configured run name. Normal traffic interleaves US, EU and ASIA buyers. Each region
+has a 900-order cycle with currency counts in USD/EUR/GBP/CNY/KRW/JPY/VND order:
+US `810/36/9/30/5/5/5`, EU `45/720/90/30/5/5/5`, ASIA `45/36/9/540/90/90/90`.
+Smooth weighted round-robin spreads choices through each cycle: add each weight
+to its current score, choose the highest (ties follow that currency order), then
+subtract 900 from the chosen score. Scores start at zero. The full dataset's cycle
+is 2,700 orders; a subset of buyer regions interleaves only its available regions.
+Buyer choice within a region hashes the unchanged run name, decimal ordinal and
+`buyer` role separated by NULs over descriptors sorted by definition key.
+
+Products within each currency are sorted by unsigned SHA-256 of the run name, NUL,
+`first-item`, NUL and definition key, with key as the tie-breaker. The number of
+preceding orders in that currency selects the next first product, across all buyer
+regions and cycle boundaries. The following products in that order complete up to
+three distinct items, with deterministic quantities from one to three. This visits
+every product within a currency before repeating; currencies with fewer products
+can exhaust their stock sooner. Current stock/profits are never selection inputs.
+Normal allocations use `catalog-v2:regional-v1`, keeping the changed buyer/currency/
+item selections separate from the prior `catalog-v2:balanced` stream. Historical
+orders are untouched, and explicit USD/EUR drill namespaces remain unchanged.
+A restart reconstructs and replays earlier ordinals through the same allocation and
+PUT APIs before advancing. This deliberately trades
 restart catch-up time for no workload-owned progress store. An ordinal that was
 terminal before its PUT gets no order interval; only the orders that the process
 submits or observes as pending are paced.
@@ -378,6 +398,14 @@ Thus the HTTP deadline filters of product and order
 stay in the applications, because they need Vert.x, JAX-RS and CDI wiring. The JSON
 parser of common uses the platform-managed Jackson streaming API. All six
 applications depend on common directly.
+
+The deadline filters synchronize only their request-state decisions. Response
+status reads, writes, connection closing and timer cancellation run outside that
+monitor: Vert.x can invoke response-end callbacks while holding its connection
+lock. A timeout claims the state before accessing transport, so a late writer is
+suppressed; if a writer already claimed the response, the timeout closes the
+connection instead of writing another response. Completion marks the state
+finished before cancelling the timer, and a queued timeout then does nothing.
 
 `shardshop-sharding`, in `shardshop-core/sharding`, depends on `shardshop-common`
 for digest calculation and owns the version-2 routing rule, shard topology and
@@ -542,8 +570,10 @@ and Helm application release. The single order Deployment uses `Recreate` to
 avoid overlapping CDC owners. The producer's configured run name stays independent
 of Helm revisions and startup restart tokens. Normal deployment acceptance does not
 examine producer orders. It creates one USD and one EUR order for its own buyer,
-seller and products, and checks their durable saga effects. These gate entities
-use fixed `kind-saga-gate.*` creation keys, thus later runs recover the same IDs.
+sellers and products, and checks their durable saga effects. Since step 4.12, the
+normal seven-currency ledger policy must confirm both orders; the gate changes no
+deployment or workload setting. These gate entities use fixed `kind-saga-gate-v2.*`
+creation keys, thus later runs recover the same IDs.
 The opt-in `kind-saga-drill` owns duplicate delivery, policy-change replay, two
 orders for the same stock and cross-worker order replacement. It restores temporary
 deployment settings through the shared drill guard. The lab has one order replica
@@ -747,14 +777,66 @@ existing retry/DLQ path. Workload generation backs off with a bounded budget.
 Once an ID has been assigned to a logical request, transient failures never
 replace it with another ID.
 
+### Regional currency policy and retained-data cutover (step 4.12)
+
+| Seller region | Seller country | New product currencies | Fractional digits |
+|---|---|---|---|
+| US | US | USD | 2 |
+| EU | Existing EU27 country codes | EUR, GBP | 2 |
+| ASIA | CN | CNY | 2 |
+| ASIA | VN | VND | 0 |
+| ASIA | KR | KRW | 0 |
+| ASIA | JP | JPY | 0 |
+
+GBP is allowed throughout the application's EU region; this does not add countries.
+Unknown countries and region/country mismatches fail new seller creation. Product
+creation checks this service-owned policy, including arbitrary non-dataset entities.
+`shardshop-core/common` owns `CurrencyPolicy`; workload resources are not runtime policy.
+Seller country is immutable. New orders validate the seller policy and both catalog
+price and unit cost before acceptance. Buyer home region/address never filters
+currencies. All items and the requested order currency must match; there is no FX.
+
+Minor units were qualified on 2026-10-21 against SIX's ISO 4217 List One, published
+2026-09-17 ([official list](https://www.six-group.com/dam/download/financial-information/data-center/iso-currrency/lists/list-one.xml)).
+The exact fixed-two-decimal wire format and `NUMERIC(19,2)` storage remain compatible:
+JPY/KRW/VND new amounts must end in `.00`. Reject fractional minor units instead of
+rounding. Totals and signed profit derive exactly from saved prices/costs and integer
+quantities. Both webpages omit `.00` for these currencies, but preserve fractional
+historical amounts instead of hiding or rounding them.
+
+Catalog V6 adds nullable `country_code`; it backfills only exact retained catalog-v1
+key, company name and region matches against verified source provenance. It changes
+no amount, currency, profit, stock, creation key or ID. Other seller countries stay
+unresolved. `catalog.currency_policy_legacy` reports unresolved/noncompliant catalog
+rows; the product API/page exposes `countryCode`, `newOrderEligible` and `legacyReason`.
+These rows remain readable and identical creation retries remain recoverable.
+New purchases of ineligible rows fail with `422 PRODUCT_CURRENCY_POLICY`.
+
+Ordering V7 gives retained orders `currency_policy_version=1`. Newly accepted orders
+explicitly save version 2. This value selects the RecordOrder schema version even
+when stock processing resumes after a restart. Version 2 checks supported currencies
+and minor-unit precision at the ledger boundary; version 1 preserves historical
+snapshots and pending orders. Existing outboxes, transport identities, decisions,
+result envelopes and balances are never rewritten. Duplicate orders return their
+saved state before any catalog policy lookup; duplicate ledger decisions replay their
+saved outcome before allowlist evaluation. Ledger results retain their v1 format.
+
+Normal deployment permits CNY, EUR, GBP, JPY, KRW, USD and VND. Rejection/replay drills
+scope a temporary allowlist to their own fixtures and restore the deployed policy.
+The first rollout holds the order Deployment paused until the new ledger image is
+ready, preventing v2 commands from reaching a v1-only consumer; the
+[upgrade runbook](README.md#first-upgrade-from-a-v1-only-ledger) documents this sequence.
+No retained lab reset or baseline migration edit is part of this cutover.
+
 ### Workload datasets, service-issued IDs, and routing
 
 All dataset definitions live in the pure `shardshop-datasets` library under
-`shardshop-workload`. `catalog-v1` defines 50 company sellers per region (150
-in total), with two synthetic products per seller, USD then EUR (300 products).
-`buyers-v1` defines 1,000 synthetic person profiles per region (3,000 buyers).
-Regional TSVs live under the module's `src/main/resources/datasets/catalog-v1/`
-and `datasets/buyers-v1/`, with `US.tsv`, `EU.tsv` and `ASIA.tsv` in each.
+`shardshop-workload`. `catalog-v2` retains 50 ranked companies per region and
+adds the explicitly synthetic Vietnam Sample Company to exercise VND: 151 sellers
+and 201 products (US 50, EU 100, ASIA 51). Each seller has one product per allowed
+currency. `buyers-v1` retains 1,000 synthetic profiles per region (3,000 buyers).
+Regional TSVs live under `src/main/resources/datasets/catalog-v2/` and
+`datasets/buyers-v1/`. The unchanged `catalog-v1` resources retain migration provenance.
 
 EU covers the EU27 single market; ASIA is limited to China, Vietnam, South Korea
 and Japan. Published brand value is the proxy for company popularity, with
@@ -773,11 +855,11 @@ Each definition contains a stable creation retry key and its immutable payload.
 Regional groups are exposed by `sellersByRegion()` and `buyersByRegion()`;
 `productsBySeller()` groups products by their local seller key until creation
 returns a real seller ID. The library contains no entity IDs, generator, clock,
-shard router, service wire models or runtime dependencies. Versioned keys include
-the region and ordinal, for example `catalog-v1.US.seller.1` and
-`buyers-v1.US.buyer.1`. Both datasets are the initial unreleased v1. Edits before
-their first release or use keep that version; subsequent payload changes require
-new keys/version, and no retained key can be reused with a different payload.
+shard router or service wire models. It consumes the pure common currency policy. Versioned keys include
+the region and ordinal, for example `catalog-v2.US.seller.1` and
+`buyers-v1.US.buyer.1`. Catalog-v2 replaces the v1 creation payloads/keys while
+buyers-v1 remains unchanged. Any subsequent payload change requires a new version,
+and no retained key can be reused with a different payload.
 Unsupported versions fail locally. See the
 [dataset runbook](README.md#workload-owned-datasets-and-service-issued-ids-step-35).
 
@@ -835,11 +917,11 @@ never recycle an allocation. Workload restarts reuse their configured run name
 and ordinals; a new independent run gets a new name from deployment configuration.
 Freeze dataset versions and workload settings for that run. Select the buyer,
 items and quantities deterministically from the configured run name and ordinal
-over the service-returned descriptors, using the returned order ID for currency
-selection. A restart therefore reconstructs the same buyer and creation payload
+over the service-returned descriptors. Normal traffic uses the regional schedule;
+only the explicit USD/EUR test mode uses the returned order ID for currency selection. A restart therefore reconstructs the same buyer and creation payload
 without generating IDs or keeping a local database.
 An allocation alone creates no order, saga or outbox. It supplies the ID needed
-for currency selection and the following idempotent PUT.
+for the following idempotent PUT and, in explicit test mode, currency selection.
 The allocation endpoint returns `201` for a new mapping and `200` for a retry,
 `422 BUYER_NOT_FOUND` for an absent buyer, `503 ORDER_STORE_UNAVAILABLE` for an
 unavailable store or unknown commit, and `503 ID_GENERATION_UNAVAILABLE` if a new
@@ -876,8 +958,9 @@ before UTF-8 encoding. Interpret all 32 SHA-256 digest bytes as one unsigned
 significant. Do not use a signed integer, truncate the digest, or use Java
 `hashCode()`. Both routing and currency selection use
 `shardshop-common`'s `Sha256.unsignedDigest` after validating the ID. The order
-producer applies modulo 100 and its rejection percentage independently of the
-configured shard result, without depending on `shardshop-sharding`.
+producer uses the order ID digest modulo 100 only in the explicit USD/EUR test mode;
+normal traffic uses the buyer definition's region and its weighted schedule. Neither
+mode depends on `shardshop-sharding` or computes routing from an ID.
 This is identifier/routing contract **version 2**,
 replacing the previous unreleased draft and its vectors. The hash contract stays
 immutable; the initial ordered inventory preserves all version-2 routing vectors.
@@ -919,7 +1002,7 @@ are independent of database shard IDs.
 | `catalog.sellers` | `seller_id` | Product service |
 | `catalog.products` | the product's `seller_id` | Product service creates them; the order service reads them and updates only `stock` in its reservation transactions |
 | `catalog.stock_reservations` | the product's `seller_id` | Order service, writing reservations and adjusting product stock in the same shard transaction |
-| `catalog.seller_profits` | `seller_id` | Product service inserts the zero USD/EUR balances. From step 4.7, the order service applies confirmed credits |
+| `catalog.seller_profits` | `seller_id` | Product service inserts zero balances for the seller policy currencies. From step 4.7, the order service applies confirmed credits |
 | `catalog.profit_credits` | the product's `seller_id` | From step 4.7, the order service inserts one immutable credit for each order and product |
 | `ordering.buyers` | `buyer_id` | Order service |
 | `ordering.order_allocations` | `buyer_id` | Order service; permanent allocation retry mappings |
@@ -934,8 +1017,9 @@ are independent of database shard IDs.
 
 Order items remain on their order's shard even when referenced products live on
 other shards: a buyer in US, EU, or ASIA may buy from sellers in any region, and
-one order may mix sellers from all three. Region does not restrict buying or
-determine currency; existing same-currency and stock rules still apply. Each item
+one order may mix sellers whose product currency matches. Seller region/country
+determines permitted product prices; buyer location imposes no currency restriction.
+The same-currency and stock rules still apply. Each item
 names its seller, product and the quantity the buyer wants; resolve them against
 the seller's primary before creating the order and
 persist server-derived product/price snapshots in its items. Product details are
@@ -1436,10 +1520,10 @@ Creation requires a stable `Idempotency-Key`; data calls route by returned selle
 ID. Product payloads expose no independent region or shard selector:
 
 - `POST /api/v1/sellers` creates a company seller with requested `companyName` and immutable
-  `region`; product chooses an ID routed to that region. Invalid regions return
+  `region` and `countryCode`; product chooses an ID routed to that region. Invalid regions return
   `400 INVALID_REQUEST`. Success returns the generated ID with `201`; an identical
   durable key/payload retry returns `200`, conflicting key reuse returns `409`.
-  Responses contain current `profitsEarned` balances, initially zero in USD/EUR;
+  Responses contain current `profitsEarned` balances, initially zero in allowed currencies;
   retries preserve these service-owned amounts.
 - `GET /api/v1/sellers/{sellerId}` returns the seller or `404`.
 - `GET /api/v1/sellers/by-key/{creationKey}?region=US` recovers the seller ID by
@@ -1493,8 +1577,9 @@ changes it. Product rejects POST bodies over 32 KiB with the same JSON
 values. Unit cost uses the product's currency and may exceed its price.
 
 Seller profit is the sum of `(snapshotted unitPrice - unitCost) × quantity` for
-confirmed sales, retained separately for each currency. USD/EUR balances begin
-at `0.00`; other uppercase three-letter currency balances are allowed. A loss is
+confirmed sales, retained separately for each currency. New sellers start with
+`0.00` in the policy currencies for their region/country. Historical balances
+remain unchanged, including currencies no longer allowed for new prices. A loss is
 negative; no exchange conversion or cross-currency netting occurs. Workloads
 only read these balances. They never seed a balance or infer profit from stock.
 
@@ -1732,8 +1817,9 @@ reacquiring the order lock; stock is not part of the snapshot, and the reservati
 step decides it. No catalog query occurs inside either order transaction. Bound
 advisory-lock acquisition and the write transaction as well. Derive amounts from
 catalog prices and requested quantities; never trust client totals. Ledger
-currency support is a later business decision, allowing the deterministic EUR
-rejection scenario after successful HTTP validation.
+currency support is a later business decision. Normal configuration accepts all
+supported currencies; only explicitly scoped tests remove a currency temporarily
+to verify rejection after successful HTTP validation.
 
 ### Stock reservation
 
@@ -2261,8 +2347,8 @@ Acceptance scenarios for implementation:
    Each seller's products and reservations stay on its home shard, and each
    buyer's orders on its home shard. Reject wrong-shard seller IDs or regions and
    foreign-region product creation at the database boundary. Exercise buyers in
-   every region buying from each other region and one order mixing US/EU/ASIA
-   sellers in one currency; USD and EUR fixtures exist in every region. Physical
+   every region buying from each other region, with same-currency orders under
+   the seller country policy, including a US buyer purchasing Japanese JPY products. Physical
    replication remains within each shard. Create schemas through `Database`
    resources and migrate the catalog and ordering streams without history
    collisions on all primaries. Assert the role matrix: `order_app` can select
@@ -2290,7 +2376,7 @@ Acceptance scenarios for implementation:
    margin once to its seller's balance in the order currency. Duplicate HTTP
    requests and duplicate messages create no additional records or credits.
 5. Use the order IDs that the allocation API returns, and EUR-only products
-   selected by the configured rejection share. Verify `202` becomes `CANCELLED`
+   from a valid EU seller under an explicitly scoped EUR-excluding ledger policy. Verify `202` becomes `CANCELLED`
    with no ledger entry and no seller profit, and that its reservations are
    released and stock restored. Change the ledger allowlist to include EUR, and
    clean transport inbox/outbox rows. Then a test harness publishes the original

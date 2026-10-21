@@ -49,7 +49,7 @@ class LedgerCommandTest {
                 valid.replace("\"productName\": \"Travel mug\"", "\"productName\": \"\\u0000\""),
                 valid.replace("\"type\": \"RecordOrder\"", "\"type\": \"RecordOrder\", \"type\": \"RecordOrder\""),
                 valid.replace("\"type\": \"RecordOrder\"", "\"type\": \"RecordOrder\", \"extra\": true"),
-                valid.replace("\"requestFingerprint\": \"d792169145bd02ef98e712245fcaccc895c64dd60279db5a5dc2342c4d1fff2f\"",
+                valid.replace("\"requestFingerprint\": \"82b3421671a774507e4510d61f97e4ddad802b53332e367b66e5e2eb3814c45f\"",
                         "\"requestFingerprint\": \"0000000000000000000000000000000000000000000000000000000000000000\"")
         };
         for (String document : malformed) {
@@ -77,7 +77,7 @@ class LedgerCommandTest {
                 {"messageId", "100925016375300099"}, {"resultMessageId", "100925016375300100"},
                 {"commandId", "100925016375300098"}, {"sagaId", "100925016375300097"},
                 {"orderId", "100925016375300096"}, {"buyerId", "21380884070404097"},
-                {"sellerId", "11234023833608192"}, {"productId", "11234023837802496"}
+                {"sellerId", "11234023833608193"}, {"productId", "11234023837802496"}
         };
         for (String[] id : ids) {
             String field = "\"" + id[0] + "\": \"" + id[1] + "\"";
@@ -159,10 +159,44 @@ class LedgerCommandTest {
         assertMalformed("Snapshot amount differs from the item total",
                 valid.replace("\"amount\": \"39.90\"", "\"amount\": \"39.89\""));
         assertMalformed("requestFingerprint differs from the normalized request",
-                valid.replace("d792169145bd02ef98e712245fcaccc895c64dd60279db5a5dc2342c4d1fff2f", "0".repeat(64)));
+                valid.replace("82b3421671a774507e4510d61f97e4ddad802b53332e367b66e5e2eb3814c45f", "0".repeat(64)));
         assertMalformed("Invalid occurredAt timestamp", valid.replace("2026-10-06T12:00:00Z", "2026-02-30T12:00:00Z"));
         assertMalformed("itemPosition differs from its array index",
                 valid.replace("\"itemPosition\": 0", "\"itemPosition\": 1"));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"USD,19.95", "EUR,19.95", "GBP,19.95", "CNY,19.95",
+            "JPY,1500.00", "KRW,19000.00", "VND,200000.00"})
+    void policyVersionTwoAcceptsEverySupportedCurrency(String currency, String price) throws Exception {
+        ObjectNode command = currencyCommand(currency, price, 2);
+        LedgerCommand accepted = LedgerCommand.parse(command.toString().getBytes(StandardCharsets.UTF_8));
+        assertEquals(currency, accepted.currency());
+        assertEquals(new java.math.BigDecimal(price).multiply(java.math.BigDecimal.TWO), accepted.amount());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"JPY", "KRW", "VND"})
+    void legacyFractionalSnapshotsRemainReadableWhileVersionTwoRejectsThem(String currency) throws Exception {
+        ObjectNode legacy = currencyCommand(currency, "19.95", 1);
+        assertEquals("39.90", LedgerCommand.parse(legacy.toString().getBytes(StandardCharsets.UTF_8)).amount().toPlainString());
+        ObjectNode current = legacy.deepCopy().put("schemaVersion", 2);
+        assertMalformed("Snapshot amount violates currency precision", current.toString());
+        current = currencyCommand(currency, "19.50", 2);
+        assertMalformed("Unit price violates currency precision", current.toString());
+    }
+
+    private static ObjectNode currencyCommand(String currency, String price, int version) throws Exception {
+        ObjectNode command = node(example()).put("schemaVersion", version);
+        ObjectNode snapshot = (ObjectNode) command.get("snapshot");
+        snapshot.put("currency", currency).put("amount", new java.math.BigDecimal(price)
+                .multiply(java.math.BigDecimal.TWO).toPlainString());
+        ((ObjectNode) snapshot.at("/items/0")).put("currency", currency).put("unitPrice", price);
+        String request = "{\"buyerId\":\"21380884070404097\",\"orderId\":\"100925016375300096\",\"currency\":\""
+                + currency + "\",\"items\":[{\"sellerId\":\"11234023833608193\",\"productId\":\"11234023837802496\",\"quantity\":2}]}";
+        command.put("requestFingerprint", HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(request.getBytes(StandardCharsets.UTF_8))));
+        return command;
     }
 
     private static void assertMalformed(String reason, String document) {
@@ -185,8 +219,8 @@ class LedgerCommandTest {
         items.add(second);
         ((ObjectNode) command.get("snapshot")).put("amount", "79.80");
         String normalized = "{\"buyerId\":\"21380884070404097\",\"orderId\":\"100925016375300096\",\"currency\":\"EUR\","
-                + "\"items\":[{\"sellerId\":\"11234023833608192\",\"productId\":\"11234023837802496\",\"quantity\":2},"
-                + "{\"sellerId\":\"11234023833608192\",\"productId\":\"" + secondProductId + "\",\"quantity\":2}]}";
+                + "\"items\":[{\"sellerId\":\"11234023833608193\",\"productId\":\"11234023837802496\",\"quantity\":2},"
+                + "{\"sellerId\":\"11234023833608193\",\"productId\":\"" + secondProductId + "\",\"quantity\":2}]}";
         try {
             command.put("requestFingerprint", HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                     .digest(normalized.getBytes(StandardCharsets.UTF_8))));

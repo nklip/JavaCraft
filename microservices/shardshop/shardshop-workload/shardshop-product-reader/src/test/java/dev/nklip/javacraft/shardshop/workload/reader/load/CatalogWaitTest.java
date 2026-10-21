@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @QuarkusTest
 @TestProfile(CatalogWaitTest.ShortWait.class)
 class CatalogWaitTest {
-    private static final String MISSING = "catalog-v1.ASIA.product.7";
+    private static final String MISSING = "catalog-v2.ASIA.product.7";
 
     @Inject
     CatalogWait catalogWait;
@@ -68,8 +68,8 @@ class CatalogWaitTest {
                 throw new CompletionException(failure);
             }
         });
-        // Each resolution looks up all 150 sellers before the missing product stops it.
-        awaitUntil(() -> product.sellerLookups.get() >= 2 * 150);
+        // Each resolution looks up all 151 sellers before the missing product stops it.
+        awaitUntil(() -> product.sellerLookups.get() >= 2 * 151);
         assertFalse(waiting.isDone());
         assertEquals(0, product.reads.get());
 
@@ -89,17 +89,17 @@ class CatalogWaitTest {
         long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
         assertEquals("Look up product " + MISSING + " failed with NOT_FOUND", failure.getMessage());
         assertTrue(elapsedMillis >= 1_500 && elapsedMillis < 10_000, elapsedMillis + " ms");
-        assertTrue(product.sellerLookups.get() >= 3 * 150, product.sellerLookups.get() + " seller lookups");
+        assertTrue(product.sellerLookups.get() >= 3 * 151, product.sellerLookups.get() + " seller lookups");
         assertEquals(0, product.reads.get());
     }
 
     @Test
     void stopsAtOnceWhenAWaitCannotRepairTheCatalog() {
-        product.conflictingKeys.add("catalog-v1.US.seller.3");
+        product.conflictingKeys.add("catalog-v2.US.seller.3");
         ReaderException failure = assertThrows(ReaderException.class, () -> catalogWait.resolve(reader));
         assertFalse(failure instanceof CatalogNotReadyException, failure.getClass().getName());
         // One resolution only: it stops at the first failure.
-        assertTrue(product.sellerLookups.get() <= 150, product.sellerLookups.get() + " seller lookups");
+        assertTrue(product.sellerLookups.get() <= 151, product.sellerLookups.get() + " seller lookups");
     }
 
     public static class ShortWait implements QuarkusTestProfile {
