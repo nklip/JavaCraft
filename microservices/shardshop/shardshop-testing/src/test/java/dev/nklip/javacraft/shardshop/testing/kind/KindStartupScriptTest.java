@@ -103,11 +103,13 @@ class KindStartupScriptTest {
                 case "$*" in
                   *'port-forward '*)
                     [[ ! -e "$TMPDIR/shardshop-up.lock" && ! -e "$(cat "$FIXTURE/snapshot")" ]] || exit 76
-                    [[ "$(cat "$FIXTURE/failure")" != port-forward ]] || exit 77
-                    if [[ -f "$FIXTURE/block-forward" ]]; then
-                      echo $$ > "$FIXTURE/forward-pid"
-                      exec sleep 60
-                    fi;;
+                    case "$*" in *service/shardshop-product*) service=product;; *) service=order;; esac
+                    echo $$ > "$FIXTURE/forward-pid-$service"
+                    [[ "$(cat "$FIXTURE/failure")" != "port-forward-$service" ]] || exit 77
+                    echo 'Forwarding from 127.0.0.1'
+                    if [[ "$(cat "$FIXTURE/failure")" == "forward-exit-$service" ]]; then sleep 0.3; exit 79; fi
+                    if [[ -f "$FIXTURE/block-forward" ]]; then exec sleep 60; fi
+                    exec sleep 0.5;;
                   *'create configmap shardshop-snowflake-generators '*) echo 12345678-1234-4234-8234-123456789abc;;
                   *'get secret '*)
                     arguments="$*"
@@ -343,7 +345,7 @@ class KindStartupScriptTest {
         state("nodes", NODES);
         state("running", "false");
         Result result = run("up.sh");
-        assertEquals(0, result.exit(), result.output());
+        assertPageSessionEnded(result);
         assertBefore("docker update --restart=on-failure:1 " + String.join(" ", NODES.strip().split("\n")), "docker start ");
         assertTrue(events().stream().anyMatch(line -> line.contains("rollout restart daemonset/kindnet")));
         assertTrue(events().stream().anyMatch(line -> line.startsWith("mvn build ")
@@ -363,12 +365,17 @@ class KindStartupScriptTest {
     }
 
     @Test
-    void upForwardsProductOnlyAfterSuccessfulApplicationAcceptance() throws Exception {
+    void upForwardsBothPagesOnlyAfterSuccessfulApplicationAcceptance() throws Exception {
         state("nodes", NODES);
         Result result = run("up.sh");
-        assertEquals(0, result.exit(), result.output());
-        assertEquals(List.of("kubectl --context kind-shardshop -n shardshop port-forward service/shardshop-product 18080:8080"),
-                events().stream().filter(line -> line.contains(" port-forward ")).toList());
+        assertPageSessionEnded(result);
+        assertEquals(List.of(
+                        "kubectl --context kind-shardshop -n shardshop port-forward --address 127.0.0.1 service/shardshop-order 18081:8080",
+                        "kubectl --context kind-shardshop -n shardshop port-forward --address 127.0.0.1 service/shardshop-product 18080:8080"),
+                events().stream().filter(line -> line.contains(" port-forward ")).sorted().toList());
+        assertTrue(result.output().contains("http://127.0.0.1:18080/products/"), result.output());
+        assertTrue(result.output().contains("http://127.0.0.1:18081/orders/"), result.output());
+        assertForwardsStopped();
         assertBefore("application-acceptance-complete", "kubectl --context kind-shardshop -n shardshop port-forward ");
         assertInvocationCleaned();
     }
@@ -386,11 +393,16 @@ class KindStartupScriptTest {
     @Test
     void forwardingStartupFailureIsPropagatedAfterCleanup() throws Exception {
         state("nodes", NODES);
-        state("failure", "port-forward");
-        Result result = run("up.sh");
-        assertEquals(77, result.exit(), result.output());
-        assertEquals("true", Files.readString(temporary.resolve("running")));
-        assertInvocationCleaned();
+        state("block-forward", "");
+        for (String service : List.of("product", "order")) {
+            state("failure", "port-forward-" + service);
+            Result result = run("up.sh");
+            assertEquals(77, result.exit(), result.output());
+            assertTrue(result.output().contains(service + " forwarding stopped"), result.output());
+            assertEquals("true", Files.readString(temporary.resolve("running")));
+            assertInvocationCleaned();
+            assertForwardsStopped();
+        }
     }
 
     @Test
@@ -399,12 +411,12 @@ class KindStartupScriptTest {
             state("nodes", NODES);
             state("running", "true");
             state("block-forward", "");
-            Files.deleteIfExists(temporary.resolve("forward-pid"));
+            for (String service : List.of("product", "order")) Files.deleteIfExists(temporary.resolve("forward-pid-" + service));
             try (Running up = start("up.sh")) {
                 awaitForwarding(up);
                 assertTrue(up.process().isAlive());
-                assertEquals(up.process().pid(), Long.parseLong(Files.readString(temporary.resolve("forward-pid")).trim()),
-                        "The foreground shell must be replaced by kubectl");
+                assertTrue(forwardPids().stream().allMatch(pid -> ProcessHandle.of(pid).orElseThrow().isAlive()),
+                        "Both tunnels must run under the foreground owner");
                 assertInvocationCleaned();
                 Process kill = new ProcessBuilder("/bin/kill", "-" + signal, Long.toString(up.process().pid())).start();
                 try {
@@ -415,6 +427,7 @@ class KindStartupScriptTest {
                 }
                 assertTrue(up.process().waitFor(5, TimeUnit.SECONDS), signal + " must stop forwarding promptly");
                 assertEquals(signal.equals("INT") ? 130 : 143, up.process().exitValue());
+                assertForwardsStopped();
                 assertEquals("true", Files.readString(temporary.resolve("running")), "Interrupting forwarding must leave the cluster running");
             }
         }
@@ -434,11 +447,41 @@ class KindStartupScriptTest {
         }
     }
 
+    @Test
+    void forwardingFailureAfterStartupStopsBothTunnels() throws Exception {
+        state("nodes", NODES);
+        state("block-forward", "");
+        state("failure", "forward-exit-order");
+        Result result = run("up.sh");
+        assertEquals(79, result.exit(), result.output());
+        assertTrue(result.output().contains("http://127.0.0.1:18081/orders/"), result.output());
+        assertTrue(result.output().contains("order forwarding stopped"), result.output());
+        assertForwardsStopped();
+        assertEquals("true", Files.readString(temporary.resolve("running")));
+    }
+
+    private void assertPageSessionEnded(Result result) {
+        assertEquals(1, result.exit(), "A clean forward exit still loses required page access: " + result.output());
+        assertTrue(result.output().contains("Product page:"), result.output());
+        assertTrue(result.output().contains("Order page:"), result.output());
+        assertTrue(result.output().contains("forwarding stopped (exit 0)"), result.output());
+    }
+
+    private List<Long> forwardPids() throws IOException {
+        return List.of(Long.parseLong(Files.readString(temporary.resolve("forward-pid-product")).trim()),
+                Long.parseLong(Files.readString(temporary.resolve("forward-pid-order")).trim()));
+    }
+
+    private void assertForwardsStopped() throws IOException {
+        assertTrue(forwardPids().stream().noneMatch(pid -> ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)),
+                "Both invocation-owned tunnels must be reaped");
+    }
+
     private void awaitForwarding(Running up) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (!Files.exists(temporary.resolve("forward-pid")) && up.process().isAlive()
+        while (!Files.readString(up.output()).contains("Order page:") && up.process().isAlive()
                 && System.nanoTime() < deadline) Thread.sleep(20);
-        assertTrue(Files.exists(temporary.resolve("forward-pid")), Files.readString(up.output()));
+        assertTrue(Files.readString(up.output()).contains("Order page:"), Files.readString(up.output()));
     }
 
     private void assertInvocationCleaned() throws IOException {
@@ -451,11 +494,11 @@ class KindStartupScriptTest {
     void everyUpRotatesTheRestartToken() throws Exception {
         state("nodes", NODES);
         Result first = run("up.sh");
-        assertEquals(0, first.exit(), first.output());
+        assertPageSessionEnded(first);
         assertEquals("restart-" + "a".repeat(24), applicationValues().path("restartToken").asText());
         state("random-digit", "b");
         Result unchanged = run("up.sh");
-        assertEquals(0, unchanged.exit(), unchanged.output());
+        assertPageSessionEnded(unchanged);
         assertEquals("restart-" + "b".repeat(24), applicationValues().path("restartToken").asText());
         List<String> builds = events().stream().filter(line -> line.startsWith("skaffold build ")).toList();
         assertEquals(2, builds.size());

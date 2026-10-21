@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.order.ordering;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 
 /** Immutable business values. Wire parsing and database representations belong to adapters. */
@@ -42,6 +43,28 @@ public final class OrderModel {
 
     public record ItemSnapshot(int position, long sellerId, long productId, int quantity,
                                String productName, BigDecimal unitPrice, BigDecimal unitCost, String currency) {
+    }
+
+    public enum SortDirection { ASC, DESC }
+
+    public record OrderCursor(Instant createdAt, long orderId) {
+    }
+
+    public record ListedItem(long productId, String productName, int quantity) {
+    }
+
+    public record ListedOrder(long orderId, long buyerId, String buyerName, Instant createdAt, String status,
+                              String cancellationReason, BigDecimal total, String currency,
+                              List<ListedItem> items) {
+        public ListedOrder {
+            items = List.copyOf(items);
+        }
+    }
+
+    public record OrderPage(String region, List<ListedOrder> items, OrderCursor nextAfter) {
+        public OrderPage {
+            items = List.copyOf(items);
+        }
     }
 
     public record Order(long buyerId, long orderId, String fingerprint, String currency,

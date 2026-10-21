@@ -28,6 +28,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static dev.nklip.javacraft.shardshop.order.ordering.OrderModel.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -80,6 +81,57 @@ class JdbcOrderStoreTest {
         verify(connection, times(2)).commit();
         verify(connection, times(2)).close();
         verify(connection, never()).rollback();
+    }
+
+    @Test
+    void listingUsesOneShrinkingDatabasePhaseAcrossEveryRegionalShard() throws SQLException {
+        AtomicLong time = new AtomicLong();
+        store = regionalStore(time);
+        doAnswer(invocation -> { time.compareAndSet(0, 1_200_000_000L); return null; }).when(connection).commit();
+
+        assertEquals(List.of(), store.orders(List.of(SHARD, new Shard("shard-d", "US")),
+                "US", null, null, SortDirection.DESC, 26, null));
+
+        verify(primary, times(2)).getConnection();
+        verify(connection, atLeastOnce()).setNetworkTimeout(any(), eq(1800));
+        verify(connection, times(2)).setReadOnly(true);
+    }
+
+    @Test
+    void laterShardsCannotStartAnotherFullPhaseOrReturnPartialResults() throws SQLException {
+        AtomicLong time = new AtomicLong();
+        store = regionalStore(time);
+        doAnswer(invocation -> { time.set(2_100_000_000L); return null; }).when(connection).commit();
+
+        assertEquals(OrderFailure.Reason.ORDER_STORE_UNAVAILABLE, assertThrows(OrderFailure.class,
+                () -> store.orders(List.of(SHARD, new Shard("shard-d", "US")), "US", 11L, null,
+                        SortDirection.ASC, 26, null)).reason());
+
+        verify(primary).getConnection();
+    }
+
+    @Test
+    void expiredFinalShardAndMissingRequiredShardBothFailWholeListing() throws SQLException {
+        AtomicLong time = new AtomicLong();
+        store = regionalStore(time);
+        doAnswer(invocation -> { time.set(3_100_000_000L); return null; }).when(connection).commit();
+        assertEquals(OrderFailure.Reason.ORDER_STORE_UNAVAILABLE, assertThrows(OrderFailure.class,
+                () -> store.orders(List.of(SHARD), "US", null, null, SortDirection.DESC, 26, null)).reason());
+
+        time.set(0);
+        assertEquals(OrderFailure.Reason.ORDER_STORE_UNAVAILABLE, assertThrows(OrderFailure.class,
+                () -> store.orders(List.of(new Shard("missing", "US")), "US", null, null,
+                        SortDirection.DESC, 26, null)).reason());
+        verify(primary).getConnection();
+    }
+
+    private JdbcOrderStore regionalStore(AtomicLong time) throws SQLException {
+        PreparedStatement orders = mock();
+        ResultSet rows = mock();
+        when(connection.prepareStatement(startsWith("WITH page"))).thenReturn(orders);
+        when(orders.executeQuery()).thenReturn(rows);
+        return new JdbcOrderStore(Map.of("shard-a", primary, "shard-d", primary),
+                new DatabasePhases(workers, cleanup, time::get), time::get);
     }
 
     @Test

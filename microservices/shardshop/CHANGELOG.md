@@ -3419,3 +3419,152 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
 bash -n microservices/shardshop/scripts/up.sh
 git diff --check
 ```
+
+## Step 4.11
+
+**2026-10-21:** order serves the read-only `/orders/` page from its application
+image. Buyer home region, optional canonical product ID and creation-date
+`ASC`/`DESC` sorting combine with First/Previous/Next/Last navigation. The URL
+retains filters, sort and page for reloads, copied links and browser history.
+Rows show exact order/buyer/product IDs, UTC microsecond timestamps, status and
+cancellation reason, total/currency and item quantities. Refresh only reads;
+loading, empty and error states clear stale rows. Assets use `no-store`.
+
+`GET /api/v1/orders` reads every primary in the selected buyer region under one
+shared three-second database budget. Product matching uses immutable order items
+without restricting seller regions or duplicating orders. Bounded shard pages
+are merged by creation time and numeric order ID in the selected direction;
+paired timestamp/ID cursors preserve equal-time and microsecond ordering.
+Ordering V6 adds date/ID and product/ID indexes, preserving earlier migrations,
+orders and runtime grants. A required shard failure fails the whole page.
+
+`up.sh` releases the deployment lock before supervising both localhost tunnels:
+product on 18080 and order on 18081. It prints both page URLs after listener
+readiness, streams diagnostics, and stops its owned forwards on exit, Ctrl+C
+or a forwarding failure without stopping workloads. The new order README follows
+the product guide, and both guides describe the shared access lifecycle.
+
+Validation:
+
+- The selected reactor passes 1,592 unit/provider tests, including 307 order
+  tests and 19 startup-script tests, plus 71 packaged startup checks. All 21
+  selected PostgreSQL/RabbitMQ integration scenarios pass; 101 unrelated
+  scenarios are intentionally filtered out. New scenarios cover four shards
+  (two US), service-created orders outside the datasets, cross-region products,
+  all statuses, tied timestamps and microsecond differences, both directions
+  with/without filtering, complete item lists, cursor boundaries, defaults,
+  invalid queries, refresh without writes, unavailable-shard failure and
+  packaged uncached assets. Existing order acceptance, migration, stock/profit
+  and product-browser checks pass in the same run.
+- The first reactor run caught a new OpenAPI example with generator-zero bits.
+  Replacing it with the existing qualified order example ID fixes the contract
+  audit; all assertions remain intact and the rerun passes.
+- All 10 dependency-free Node behavior tests pass, covering exact rendering,
+  literal HTML-like text, legacy orders without items, filters, sort, all page
+  controls, copied URLs/history, invalid IDs, superseded responses, empty/error
+  recovery and the complete eight-second browser deadline. Maven executes this
+  harness when Node is present; the explicit invocation also passes with no skips.
+- Shell syntax and whitespace checks pass. Lifecycle fixtures verify both
+  listener URLs, startup/runtime forwarding failures, unexpected clean exits,
+  interruption cleanup and the released deployment lock.
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@order-listing or @order-browser or @order-api or @product-browser'
+node --check microservices/shardshop/shardshop-order/src/main/resources/META-INF/resources/orders/orders.js
+node microservices/shardshop/shardshop-testing/src/test/resources/browser/order-page.test.cjs \
+  microservices/shardshop/shardshop-order/src/main/resources/META-INF/resources/orders/orders.js
+bash -n microservices/shardshop/scripts/up.sh microservices/shardshop/scripts/lib/lifecycle.sh
+git diff --check
+```
+
+Live acceptance:
+
+- `up.sh` passes its clean source build, existing image gates, retained-node and
+  DNS checks, ordering V6 migrations, application rollout and all five final
+  live release/deployment scenarios. Both page listeners become ready and the
+  script prints the product and order URLs after releasing its deployment lock.
+- The deployed browser verifies US/EU/ASIA, default DESC and ASC for all orders,
+  both directions with a product filter, clearing the filter, Next, filtered
+  page-2 reload restoration and Refresh. Every visible filtered row contains
+  the requested product; displayed dates follow the selected direction and
+  preserve UTC microseconds. Product remains available at the same time.
+- Ctrl+C exits `up.sh` with status 130 and removes both localhost listeners.
+  All five application Deployments remain at their desired ready replica counts.
+  `down.sh` then restores the four retained kind nodes to their original stopped
+  state without removing data. No live page tunnels remain.
+
+```bash
+bash microservices/shardshop/scripts/up.sh
+kubectl --context kind-shardshop -n shardshop get deployments \
+  -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,DESIRED:.spec.replicas
+lsof -nP -iTCP:18080 -iTCP:18081 -sTCP:LISTEN
+# Press Ctrl+C in the up.sh terminal; repeat the listener and Deployment checks.
+bash microservices/shardshop/scripts/down.sh
+docker ps -a --filter label=io.x-k8s.kind.cluster=shardshop --format '{{.Names}} {{.Status}}'
+git diff --check
+```
+
+### Order browser names, search and column sorting
+
+**2026-10-21:** the Created column header now toggles newest/oldest ordering,
+with newest first by default and accessible sort direction. Region, product
+search, Apply/Clear and Refresh share a control baseline; labels and helper text
+sit consistently above and below. Buyer full names and saved product names
+replace their IDs in the table. Names wrap in the available width, with narrower
+Status/Total columns. Hover, focus or click opens selectable details and separate
+Copy name/Copy ID actions; Escape and outside clicks dismiss the details. The
+popover respects the visible viewport, including scrollbar space, and reports
+clipboard failures without claiming success.
+
+The listing API returns `buyerName` and item `productName` alongside their IDs.
+The single search input accepts a canonical numeric ID or a case-insensitive
+literal part of a product name. The optional `productName` API parameter cannot
+be combined with `productId`; names allow 1–200 Unicode scalar values after
+trimming separator characters and reject controls or malformed Unicode. Bound
+SQL matches saved item names without catalog calls or wildcard interpretation.
+Orders remain unique and retain all items; region, direction and paired cursors
+continue to apply before global pagination. No schema migration is needed.
+
+Validation:
+
+- The initial scoped reactor passes 1,610 unit/provider checks, including 325
+  order checks, and 71 packaged startup checks. Twenty of 21 selected integration
+  scenarios pass, including all updated listing and browser scenarios. One
+  existing saved-order retry in the catalog-outage scenario returns
+  `503 ORDER_STORE_UNAVAILABLE` instead of `202`. The failing PUT does not enter
+  the listing code; its retained logs do not identify the underlying database
+  cause. The unchanged scenario passes on the focused rerun, alongside all three
+  listing scenarios and the packaged browser scenario: five passed, 117 filtered.
+- All 19 final Node behavior tests and the JavaScript syntax check pass. The
+  updated harness fails against the original script for missing names, name
+  filters, header sorting and popovers. Additional regressions reproduce and
+  fix Unicode trimming differences and popover clipping beside scrollbars.
+- A real browser using a localhost preview with synthetic data verifies aligned
+  41px controls, newest/oldest ordering, sorting resets to page 1, partial-name
+  and exact-ID searches, reload restoration, buyer/product details, actual
+  clipboard contents, Escape dismissal and visible popover bounds.
+- A final package build succeeds and all three packaged browser assets match
+  their source bytes. The running kind lab was not redeployed for this follow-up;
+  use the existing `up.sh` workflow to deploy these changes.
+
+Commands from the repository root:
+
+```bash
+# Initial broad check: one existing outage-recovery scenario failed as described above.
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@order-listing or @order-browser or @order-api or @product-browser'
+# Refresh the final UI assets after Java verification; tests above already covered the Java changes.
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am -DskipTests package
+# Final browser harness, packaged resources, listing and failed-scenario rerun: passed.
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify \
+  -Dtest=OrderBrowserScriptTest \
+  '-Dcucumber.filter.tags=@order-listing or @order-browser or @order-api' \
+  '-Dcucumber.filter.name=.*(Validation errors|Product filters|Empty regions|A failed shard|The packaged order).*'
+node --check microservices/shardshop/shardshop-order/src/main/resources/META-INF/resources/orders/orders.js
+node microservices/shardshop/shardshop-testing/src/test/resources/browser/order-page.test.cjs \
+  microservices/shardshop/shardshop-order/src/main/resources/META-INF/resources/orders/orders.js
+git diff --check
+```

@@ -101,9 +101,7 @@ helmfile -f "$work/helmfile.yaml.gotmpl" -l stage=application sync --skip-deps -
 echo 'ShardShop deployment verified: current images, seeded catalog, routing, reader traffic and order saga outcomes; workloads remain running.'
 
 # Deployment is complete. Release the snapshot and lock before the foreground
-# tunnel so down.sh and later deployments remain available in another terminal.
+# tunnels so down.sh and later deployments remain available in another terminal.
 lifecycle_cleanup
 trap - EXIT INT TERM
-echo 'Starting local product access at http://127.0.0.1:18080/products/.'
-echo 'Keep this terminal open. Ctrl+C stops forwarding only; use scripts/down.sh to stop the cluster.'
-exec kubectl --context "$context" -n shardshop port-forward service/shardshop-product 18080:8080
+page_access

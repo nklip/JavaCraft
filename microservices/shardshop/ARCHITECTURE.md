@@ -148,6 +148,14 @@ inputs. Seeder revision identity is recorded on reader and order-producer Deploy
 outside its pod template. Successful seeder Jobs retain 24-hour verification
 logs; after TTL cleanup, standalone workload checks require a fresh `up.sh` run.
 
+After the deployment gates succeed, `up.sh` releases its deployment lock and
+serves local access through two owned `kubectl port-forward` processes: product
+at `http://127.0.0.1:18080/products/` and order at
+`http://127.0.0.1:18081/orders/`. Both bind to localhost. Exiting or interrupting
+the script closes both tunnels without stopping workloads; a failed tunnel
+ends the access session and reports the failure. Cluster shutdown remains the
+responsibility of `down.sh`.
+
 Retained resources created by the earlier apply workflow require an explicit
 one-time ownership transfer after safety checks and resource/UID inspection,
 including existing immutable SQL ConfigMaps matching the current snapshot.
@@ -1623,6 +1631,46 @@ the order request. Later buyer/order calls route by returned buyer ID:
   starts another saga.
 - `GET /api/v1/buyers/{buyerId}/orders/{orderId}` returns the current status or
   `404`; accepting a request does not yet mean the ledger has recorded it.
+
+### Regional order page (step 4.11)
+
+Order serves a read-only `/orders/` page and `GET /api/v1/orders`. The required
+`region` (`US`, `EU`, or `ASIA`) selects the buyer's home region and all of its
+shards, including orders outside workload datasets. Optional `productId` matches
+an exact item ID; optional `productName` matches a case-insensitive literal
+substring of an immutable item name. These filters are mutually exclusive;
+names allow 1–200 Unicode characters after trimming. Both match regardless of
+the seller's region and return each order once with its complete item list.
+No catalog lookup is needed to filter orders or display saved product names.
+
+The API sorts by `ordering.orders.created_at`, then numeric order ID in the
+same direction. `sort` accepts `ASC` or `DESC` and defaults to `DESC`; `limit`
+defaults to 25 and is bounded to 1–100. Continuation supplies both
+`afterCreatedAt` and `afterOrderId` from the nullable `nextAfter` object. UTC
+timestamps retain PostgreSQL microsecond precision, while IDs and money remain
+decimal strings. Each shard selects at most the page size plus one orders
+before joining item rows. The service merges those candidates into one globally
+ordered page. Ordering V6 adds date/ID and product/ID indexes without modifying
+stored orders or widening runtime privileges.
+
+All selected primaries share one three-second database phase budget. An
+unavailable shard fails the entire page with `503 ORDER_STORE_UNAVAILABLE`;
+there is no partial regional result. Separate requests and shards do not form
+a snapshot, so current statuses may change between reads.
+
+The page shows order IDs, buyer full names, creation time in UTC, current status
+and cancellation reason, total/currency and product names/quantities. The API
+returns `buyerName` and item `productName` alongside IDs. Hover, focus or click
+on a name opens details with separate name/ID copy actions. The Created column
+header toggles the sort direction and exposes it through `aria-sort`; newest
+orders appear first by default. Region, product search and Refresh controls align
+in the toolbar. Pagination follows the product page: First, Previous, Page N,
+Next and Last. The URL preserves `region`, `productId` or `productName`, `sort`
+and `page` for copied links,
+reloads and browser history. Changing a filter or sort resets page 1; restoring
+a numbered page or jumping to Last resolves cursors within one eight-second
+loading deadline. Loading, empty and error states clear stale results.
+The packaged HTML, stylesheet and script use `Cache-Control: no-store`.
 
 ### Validation and HTTP errors
 

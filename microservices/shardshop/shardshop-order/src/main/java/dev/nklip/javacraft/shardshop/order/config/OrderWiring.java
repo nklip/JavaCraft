@@ -4,6 +4,7 @@ import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import dev.nklip.javacraft.shardshop.common.jdbc.JdbcUrls;
 import dev.nklip.javacraft.shardshop.idgen.IdGenerator;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderService;
+import dev.nklip.javacraft.shardshop.order.ordering.OrderListingService;
 import dev.nklip.javacraft.shardshop.order.persistence.JdbcOrderStore;
 import dev.nklip.javacraft.shardshop.order.stock.StockCoordinator;
 import dev.nklip.javacraft.shardshop.sharding.ShardRouter;
@@ -75,6 +76,12 @@ public class OrderWiring {
     OrderService service(JdbcOrderStore store, OrderService.Settings settings, IdGenerator generator,
                          ShardRouter router, ShardTopology topology) {
         return new OrderService(store, generator, router, topology, settings);
+    }
+
+    @Produces
+    @ApplicationScoped
+    OrderListingService listingService(JdbcOrderStore store, ShardTopology topology) {
+        return new OrderListingService(store, topology);
     }
 
     @Produces

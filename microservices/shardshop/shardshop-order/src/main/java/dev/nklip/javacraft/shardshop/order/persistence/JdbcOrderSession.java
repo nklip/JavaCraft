@@ -8,6 +8,9 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -190,6 +193,74 @@ final class JdbcOrderSession implements OrderStore.Session {
         } catch (SQLException failure) {
             throw new OrderFailure(unavailable);
         }
+    }
+
+    List<ListedOrder> orders(String region, Long productId, String productName,
+                             SortDirection sort, int limit, OrderCursor after) {
+        // Bound orders before joining their items; filtering an item join could duplicate or truncate orders.
+        String direction = sort.name();
+        String sql = "WITH page AS (SELECT o.order_id, o.buyer_id, b.name AS buyer_name, o.created_at, o.status, "
+                + "s.cancellation_reason, o.total_amount, o.currency FROM ordering.orders o "
+                + "JOIN ordering.buyers b ON b.buyer_id = o.buyer_id "
+                + "LEFT JOIN ordering.order_sagas s ON s.order_id = o.order_id WHERE b.region = ?"
+                + (productId == null ? "" : " AND EXISTS (SELECT 1 FROM ordering.order_items matched "
+                + "WHERE matched.order_id = o.order_id AND matched.product_id = ?)")
+                + (productName == null ? "" : " AND EXISTS (SELECT 1 FROM ordering.order_items matched "
+                + "WHERE matched.order_id = o.order_id AND strpos(lower(matched.product_name), lower(?)) > 0)")
+                + (after == null ? "" : " AND (o.created_at, o.order_id) "
+                + (sort == SortDirection.ASC ? ">" : "<") + " (?, ?)")
+                + " ORDER BY o.created_at " + direction + ", o.order_id " + direction + " LIMIT ?) "
+                + "SELECT p.*, i.product_id, i.product_name, i.quantity FROM page p "
+                + "LEFT JOIN ordering.order_items i ON i.order_id = p.order_id "
+                + "ORDER BY p.created_at " + direction + ", p.order_id " + direction + ", i.item_position ASC";
+        try (PreparedStatement statement = prepare(sql)) {
+            int parameter = 1;
+            statement.setString(parameter++, region);
+            if (productId != null) {
+                statement.setLong(parameter++, productId);
+            }
+            if (productName != null) {
+                statement.setString(parameter++, productName);
+            }
+            if (after != null) {
+                statement.setObject(parameter++, after.createdAt().atOffset(ZoneOffset.UTC));
+                statement.setLong(parameter++, after.orderId());
+            }
+            statement.setInt(parameter, limit);
+            List<ListedOrder> result = new ArrayList<>();
+            try (ResultSet rows = statement.executeQuery()) {
+                ListedOrder current = null;
+                List<ListedItem> items = new ArrayList<>();
+                while (rows.next()) {
+                    long orderId = rows.getLong("order_id");
+                    if (current == null || current.orderId() != orderId) {
+                        if (current != null) {
+                            result.add(withItems(current, items));
+                        }
+                        current = new ListedOrder(orderId, rows.getLong("buyer_id"), rows.getString("buyer_name"),
+                                rows.getObject("created_at", OffsetDateTime.class).toInstant(),
+                                rows.getString("status"), rows.getString("cancellation_reason"),
+                                rows.getBigDecimal("total_amount"), rows.getString("currency"), List.of());
+                        items.clear();
+                    }
+                    long product = rows.getLong("product_id");
+                    if (!rows.wasNull()) {
+                        items.add(new ListedItem(product, rows.getString("product_name"), rows.getInt("quantity")));
+                    }
+                }
+                if (current != null) {
+                    result.add(withItems(current, items));
+                }
+            }
+            return List.copyOf(result);
+        } catch (SQLException failure) {
+            throw new OrderFailure(unavailable);
+        }
+    }
+
+    private ListedOrder withItems(ListedOrder order, List<ListedItem> items) {
+        return new ListedOrder(order.orderId(), order.buyerId(), order.buyerName(), order.createdAt(), order.status(),
+                order.cancellationReason(), order.total(), order.currency(), items);
     }
 
     @Override

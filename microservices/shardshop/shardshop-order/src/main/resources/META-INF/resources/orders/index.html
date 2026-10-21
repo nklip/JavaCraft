@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Orders · ShardShop</title>
+  <link rel="stylesheet" href="/orders/orders.css?v=3">
+  <script src="/orders/orders.js?v=3" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to orders</a>
+  <header class="site-header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">s</span> ShardShop</div>
+    <span class="workspace-label">ORDER WORKSPACE</span>
+    <span class="read-only"><span aria-hidden="true"></span> Read only</span>
+  </header>
+  <main id="main">
+    <div class="page-heading">
+      <p class="eyebrow">REGIONAL ORDERS</p>
+      <h1>Orders</h1>
+      <p class="intro">Orders and their current status, by buyer home region.</p>
+    </div>
+    <section class="catalog" aria-label="Regional orders">
+      <div class="toolbar">
+        <div class="region-control">
+          <label for="region">Buyer home region</label>
+          <select id="region" name="region">
+            <option value="US">US · United States</option>
+            <option value="EU">EU · European Union</option>
+            <option value="ASIA">ASIA · Asia</option>
+          </select>
+          <span class="control-help">Orders by buyer home region.</span>
+        </div>
+        <form id="product-filter" class="filter-control" novalidate>
+          <label for="product-id">Product <span class="optional">(optional)</span></label>
+          <div class="filter-actions">
+            <input id="product-id" name="product" type="text" autocomplete="off" placeholder="Product ID or name" aria-describedby="filter-help">
+            <button id="apply-filter" type="submit">Apply</button>
+            <button id="clear-filter" type="button">Clear</button>
+          </div>
+          <span id="filter-help">Exact product ID or part of a product name.</span>
+        </form>
+        <div class="refresh-control">
+          <span class="control-label">Order status</span>
+          <button id="refresh" type="button"><span aria-hidden="true">↻</span> Refresh</button>
+          <span id="updated" class="control-help" role="status">Not yet loaded</span>
+        </div>
+      </div>
+      <div class="catalog-heading">
+        <h2>Order history <span id="region-badge" class="region-badge">US</span></h2>
+        <span id="item-count">Up to 25 orders per page</span>
+      </div>
+      <div id="announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+      <div id="results" aria-busy="true">
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Order history table, scroll horizontally for more columns">
+          <table>
+            <caption class="sr-only">Orders in the selected buyer home region, sorted by creation time. All dates are UTC.</caption>
+            <colgroup><col class="order-column"><col class="buyer-column"><col class="created-column"><col class="status-column"><col class="total-column"><col class="products-column"></colgroup>
+            <thead><tr>
+              <th scope="col">Order ID</th>
+              <th scope="col">Buyer</th>
+              <th id="created-heading" scope="col" aria-sort="descending"><button id="sort" class="sort-button" type="button" aria-label="Created, newest first. Sort oldest first">Created · UTC <span id="sort-direction" aria-hidden="true">↓</span></button></th>
+              <th scope="col">Status</th>
+              <th scope="col" class="numeric">Total</th>
+              <th scope="col">Products / quantities</th>
+            </tr></thead>
+            <tbody id="orders"></tbody>
+          </table>
+        </div>
+        <div id="state" class="state">
+          <span id="state-icon" class="state-icon" aria-hidden="true">↻</span>
+          <h3 id="state-title">Loading orders</h3>
+          <p id="state-description">Getting the latest orders for US.</p>
+        </div>
+      </div>
+      <nav class="pagination" aria-label="Order pages">
+        <div class="pagination-actions pagination-start">
+          <button id="first" type="button" disabled>First</button>
+          <button id="previous" type="button" disabled><span aria-hidden="true">←</span> Previous</button>
+        </div>
+        <p id="page-label" aria-current="page">Page 1</p>
+        <div class="pagination-actions pagination-end">
+          <button id="next" type="button" disabled>Next <span aria-hidden="true">→</span></button>
+          <button id="last" type="button" disabled>Last</button>
+        </div>
+      </nav>
+    </section>
+    <aside class="data-note" aria-label="About these figures">
+      <span class="info-icon" aria-hidden="true">i</span>
+      <div>
+        <h2>About this order history</h2>
+        <ul>
+          <li><strong>Region</strong> is the buyer's home region. Orders may contain products from other regions.</li>
+          <li><strong>Dates</strong> use UTC. Equal creation times are ordered by order ID in the selected direction.</li>
+          <li><strong>Status</strong> reflects the latest saved order state. Refresh to see subsequent changes.</li>
+        </ul>
+      </div>
+    </aside>
+    <footer>ShardShop <span aria-hidden="true">/</span> Regional order history</footer>
+    <noscript><p class="noscript">Enable JavaScript to load the order history.</p></noscript>
+  </main>
+</body>
+</html>

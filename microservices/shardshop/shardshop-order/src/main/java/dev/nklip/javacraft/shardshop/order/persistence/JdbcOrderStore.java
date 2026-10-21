@@ -5,6 +5,10 @@ import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import dev.nklip.javacraft.shardshop.common.jdbc.JdbcUrls;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderFailure;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderStore;
+import dev.nklip.javacraft.shardshop.order.ordering.OrderListingStore;
+import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.ListedOrder;
+import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.OrderCursor;
+import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.SortDirection;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.Product;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.ItemSnapshot;
 import dev.nklip.javacraft.shardshop.order.stock.StockFailure;
@@ -26,6 +30,7 @@ import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -33,18 +38,25 @@ import java.util.function.Function;
 import java.util.function.LongSupplier;
 
 /** Bounded per-endpoint pools and a hard deadline for the entire database phase. */
-public final class JdbcOrderStore implements OrderStore, StockStore, ResultStore, ProfitStore, AutoCloseable {
+public final class JdbcOrderStore implements OrderStore, OrderListingStore, StockStore, ResultStore, ProfitStore, AutoCloseable {
     private final Map<String, AgroalDataSource> pools;
     private final DatabasePhases phases;
+    private final LongSupplier nanoTime;
 
     public JdbcOrderStore(Map<String, Endpoint> primary, int maxPoolSize) {
         this.pools = pools(primary, maxPoolSize);
         this.phases = new DatabasePhases("order", Math.max(1, Math.multiplyExact(pools.size(), maxPoolSize)));
+        this.nanoTime = System::nanoTime;
     }
 
     JdbcOrderStore(Map<String, AgroalDataSource> pools, DatabasePhases phases) {
+        this(pools, phases, System::nanoTime);
+    }
+
+    JdbcOrderStore(Map<String, AgroalDataSource> pools, DatabasePhases phases, LongSupplier nanoTime) {
         this.pools = Map.copyOf(pools);
         this.phases = phases;
+        this.nanoTime = nanoTime;
     }
 
     private static Map<String, AgroalDataSource> pools(Map<String, Endpoint> primary, int size) {
@@ -92,6 +104,25 @@ public final class JdbcOrderStore implements OrderStore, StockStore, ResultStore
     public <T> T write(Shard shard, Function<OrderStore.Session, T> work) {
         return execute(shard, false, DatabasePhases.PHASE_BUDGET, OrderFailure.Reason.ORDER_STORE_UNAVAILABLE,
                 session -> work.apply(session));
+    }
+
+    @Override
+    public List<ListedOrder> orders(List<Shard> shards, String region, Long productId, String productName,
+                                    SortDirection sort, int limit, OrderCursor after) {
+        DatabasePhases.Deadline deadline = new DatabasePhases.Deadline(nanoTime,
+                nanoTime.getAsLong() + DatabasePhases.PHASE_BUDGET.toNanos());
+        List<ListedOrder> result = new ArrayList<>();
+        try {
+            for (Shard shard : shards) {
+                result.addAll(execute(shard, true, Duration.ofNanos(deadline.remainingNanos()),
+                        OrderFailure.Reason.ORDER_STORE_UNAVAILABLE,
+                        session -> session.orders(region, productId, productName, sort, limit, after)));
+            }
+            deadline.remainingNanos();
+            return List.copyOf(result);
+        } catch (SQLException failure) {
+            throw new OrderFailure(OrderFailure.Reason.ORDER_STORE_UNAVAILABLE);
+        }
     }
 
     @Override

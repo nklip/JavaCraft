@@ -5,18 +5,27 @@ import dev.nklip.javacraft.shardshop.common.IdParser;
 import dev.nklip.javacraft.shardshop.common.JsonFields;
 import dev.nklip.javacraft.shardshop.common.JsonRequests;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderFailure;
+import dev.nklip.javacraft.shardshop.order.ordering.OrderListingService;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.Address;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.AllocationRequest;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.BuyerCreation;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.OrderCreation;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.OrderItem;
+import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.OrderCursor;
+import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.SortDirection;
 import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.UriInfo;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.time.OffsetDateTime;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 
 /** Strict wire validation, completed before the service can perform IO. */
 final class OrderInput {
@@ -110,6 +119,104 @@ final class OrderInput {
         if (!uri.getQueryParameters().isEmpty()) {
             throw invalid();
         }
+    }
+
+    ListingQuery listingQuery(UriInfo uri) {
+        requireValidQueryEncoding(uri.getRequestUri().getRawQuery());
+        MultivaluedMap<String, String> query = uri.getQueryParameters();
+        if (!Set.of("region", "productId", "productName", "sort", "limit", "afterCreatedAt", "afterOrderId")
+                .containsAll(query.keySet())) {
+            throw invalid();
+        }
+        String region = singleQuery(query, "region", true);
+        if (!Set.of("US", "EU", "ASIA").contains(region)) {
+            throw invalid();
+        }
+        String product = singleQuery(query, "productId", false);
+        String productName = OrderListingService.normalizeProductName(singleQuery(query, "productName", false));
+        if (product != null && productName != null) {
+            throw invalid();
+        }
+        String sort = singleQuery(query, "sort", false);
+        String limit = singleQuery(query, "limit", false);
+        String createdAt = singleQuery(query, "afterCreatedAt", false);
+        String orderId = singleQuery(query, "afterOrderId", false);
+        try {
+            int pageSize = 25;
+            if (limit != null) {
+                if (!limit.matches("[1-9][0-9]{0,2}")) {
+                    throw invalid();
+                }
+                pageSize = Integer.parseInt(limit);
+                if (pageSize > 100) {
+                    throw invalid();
+                }
+            }
+            if ((createdAt == null) != (orderId == null)) {
+                throw invalid();
+            }
+            OrderCursor after = null;
+            if (createdAt != null) {
+                if (!createdAt.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?Z")) {
+                    throw invalid();
+                }
+                OffsetDateTime timestamp = OffsetDateTime.parse(createdAt);
+                if (timestamp.getYear() < 1) {
+                    throw invalid();
+                }
+                after = new OrderCursor(timestamp.toInstant(), id(orderId));
+            }
+            return new ListingQuery(region, product == null ? null : id(product), productName,
+                    sort == null ? SortDirection.DESC : SortDirection.valueOf(sort), pageSize, after);
+        } catch (IllegalArgumentException | java.time.DateTimeException failure) {
+            throw invalid();
+        }
+    }
+
+    private void requireValidQueryEncoding(String rawQuery) {
+        if (rawQuery == null) {
+            return;
+        }
+        byte[] bytes = new byte[rawQuery.length()];
+        for (int offset = 0; offset < rawQuery.length(); ) {
+            if (rawQuery.charAt(offset) != '%') {
+                offset++;
+                continue;
+            }
+            int count = 0;
+            while (offset < rawQuery.length() && rawQuery.charAt(offset) == '%') {
+                if (offset + 2 >= rawQuery.length()) {
+                    throw invalid();
+                }
+                int high = Character.digit(rawQuery.charAt(offset + 1), 16);
+                int low = Character.digit(rawQuery.charAt(offset + 2), 16);
+                if (high < 0 || low < 0) {
+                    throw invalid();
+                }
+                bytes[count++] = (byte) (high * 16 + low);
+                offset += 3;
+            }
+            try {
+                StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                        .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes, 0, count));
+            } catch (CharacterCodingException failure) {
+                throw invalid();
+            }
+        }
+    }
+
+    private String singleQuery(MultivaluedMap<String, String> query, String name, boolean required) {
+        List<String> values = query.get(name);
+        if (values == null && !required) {
+            return null;
+        }
+        if (values == null || values.size() != 1 || values.getFirst() == null) {
+            throw invalid();
+        }
+        return values.getFirst();
+    }
+
+    record ListingQuery(String region, Long productId, String productName, SortDirection sort, int limit, OrderCursor after) {
     }
 
     void requireJsonMediaType(List<String> types) {

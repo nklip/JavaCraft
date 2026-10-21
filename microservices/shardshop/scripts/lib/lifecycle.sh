@@ -37,6 +37,78 @@ require_tools() {
     done
 }
 
+# Own only this invocation's forwards; stopping them never stops the lab.
+page_access_cleanup() {
+    trap '' INT TERM
+    local pid
+    for pid in "${forward_pids[@]}"; do kill "$pid" 2>/dev/null || true; done
+    for pid in "${forward_pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+    rm -rf -- "$forward_state"
+}
+
+page_access() {
+    local service port index status deadline ready
+    local services=(product order) ports=(18080 18081)
+    forward_pids=()
+    forward_state=$(mktemp -d)
+    trap page_access_cleanup EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    for index in 0 1; do
+        service=${services[$index]}
+        port=${ports[$index]}
+        kubectl --context "$context" -n shardshop port-forward --address 127.0.0.1 \
+            "service/shardshop-$service" "$port:8080" > >(
+                # Stream diagnostics rather than retaining a session-sized log.
+                # The reader exits when kubectl closes its output pipe.
+                while IFS= read -r line; do
+                    printf '[%s] %s\n' "$service" "$line"
+                    [[ "$line" != 'Forwarding from '* ]] || : >"$forward_state/$service-ready"
+                done
+            ) 2>&1 &
+        forward_pids+=("$!")
+    done
+    deadline=$((SECONDS + 15))
+    while :; do
+        ready=true
+        for index in 0 1; do
+            service=${services[$index]}
+            if ! kill -0 "${forward_pids[$index]}" 2>/dev/null; then
+                status=0
+                wait "${forward_pids[$index]}" || status=$?
+                echo "ShardShop $service forwarding stopped (exit $status); stopping both local tunnels. The lab remains running." >&2
+                # Access requires two live tunnels, even after a clean CLI exit.
+                [[ "$status" != 0 ]] || status=1
+                return "$status"
+            fi
+            [[ -f "$forward_state/$service-ready" ]] || ready=false
+        done
+        [[ "$ready" == true ]] && break
+        if (( SECONDS >= deadline )); then
+            echo 'ShardShop forwarding did not become ready within 15 seconds; stopping both local tunnels. The lab remains running.' >&2
+            return 1
+        fi
+        sleep 0.1
+    done
+    echo 'Product page: http://127.0.0.1:18080/products/'
+    echo 'Order page: http://127.0.0.1:18081/orders/'
+    echo 'Keep this terminal open. Ctrl+C stops both tunnels only; use scripts/down.sh to stop the cluster.'
+    # Bash 3 (the macOS default) has no wait -n. Poll both children so either
+    # tunnel's failure promptly terminates its sibling, including after startup.
+    while :; do
+        for index in 0 1; do
+            if ! kill -0 "${forward_pids[$index]}" 2>/dev/null; then
+                status=0
+                wait "${forward_pids[$index]}" || status=$?
+                echo "ShardShop ${services[$index]} forwarding stopped (exit $status); stopping both local tunnels. The lab remains running." >&2
+                [[ "$status" != 0 ]] || status=1
+                return "$status"
+            fi
+        done
+        sleep 0.1
+    done
+}
+
 k() { kubectl --context "$context" --request-timeout=10s -n shardshop "$@"; }
 
 provision_rabbitmq_credentials() {

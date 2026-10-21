@@ -3,6 +3,7 @@
 [Back to ShardShop](../README.md) ·
 [Architecture](../ARCHITECTURE.md#4-product-generation-and-read-load) ·
 [OpenAPI contract](src/main/resources/contracts/openapi.yaml) ·
+[Order service](../shardshop-order/README.md) ·
 [Implementation plan](../PLAN.md) · [Changelog](../CHANGELOG.md)
 
 `shardshop-product` is the seller and product catalog service of ShardShop.
@@ -42,15 +43,20 @@ The webpage shows the products of one region with their stock, price and earning
    bash microservices/shardshop/scripts/up.sh
    ```
 
-2. Wait for the kubectl message `Forwarding from`. After a successful
-   deployment, `up.sh` starts this port-forward in the foreground:
+2. Wait for `up.sh` to print both page URLs. After deployment and acceptance,
+   it starts and supervises both localhost tunnels:
 
-   ```bash
-   kubectl --context kind-shardshop -n shardshop port-forward service/shardshop-product 18080:8080
-   ```
+   | Page | Local port | Service port |
+   |---|---|---|
+   | [Products](http://127.0.0.1:18080/products/) | 18080 | product 8080 |
+   | [Orders](http://127.0.0.1:18081/orders/) | 18081 | order 8080 |
 
 3. Open <http://127.0.0.1:18080/products/>.
-4. Keep the terminal open while you use the webpage.
+4. Keep the terminal open while you use either webpage.
+
+Both local ports must be available. A forwarding startup failure is reported;
+`up.sh` stops the tunnels it started and leaves the deployed lab running.
+Free the occupied port and rerun `up.sh` to deploy and open both pages.
 
 The controls below the products are **First · Previous · Page N · Next · Last**.
 First returns to page 1 of the selected region. Last follows the remaining pages
@@ -66,15 +72,17 @@ the page once with **Cmd+Shift+R** on macOS or **Ctrl+Shift+R** on Windows/Linux
 This discards the old HTML that browsers were previously allowed to retain for
 24 hours; the updated page also uses new asset URLs to bypass old CSS/JavaScript.
 
-**Tunnel:**
+**Tunnels:**
 
-- **Scope:** The tunnel binds only to localhost.
-- **Stop the tunnel:** Press Ctrl+C. The cluster and the workloads continue to
-  run.
-- **Stop the lab:** Run `scripts/down.sh`.
-- **Second terminal:** `up.sh` releases its deployment lock before the
-  port-forward starts. Thus, `down.sh` or a new deployment can run in a second
+- **Scope:** Both tunnels bind only to `127.0.0.1`.
+- **Stop the tunnels:** Press Ctrl+C. Both forwards started by this invocation
+  stop; the cluster and workloads continue to run.
+- **Stop the lab:** Run `bash microservices/shardshop/scripts/down.sh`.
+- **Second terminal:** `up.sh` releases its deployment lock before both
+  port-forwards start. Thus, `down.sh` or a new deployment can run in a second
   terminal.
+- **Forwarding failure:** If either tunnel exits, `up.sh` reports its exit and
+  stops the other tunnel. Exiting `up.sh` cleans up both owned processes.
 
 ## 2. Seller and product provider
 

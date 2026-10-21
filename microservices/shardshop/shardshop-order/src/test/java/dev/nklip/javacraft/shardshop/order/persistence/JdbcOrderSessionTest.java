@@ -4,12 +4,18 @@ import dev.nklip.javacraft.shardshop.common.jdbc.DatabasePhases;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderFailure;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 import static dev.nklip.javacraft.shardshop.order.ordering.OrderModel.*;
@@ -48,6 +54,99 @@ class JdbcOrderSessionTest {
         verify(timeouts).setString(2, "2000");
         verify(connection).prepareStatement("SELECT pg_advisory_xact_lock(?)");
         verify(statement).setLong(1, 4321);
+    }
+
+    @ParameterizedTest
+    @EnumSource(SortDirection.class)
+    void filteredKeysetBoundsOrdersBeforeJoiningAllItemsAndRetainsMicrosecondCursor(SortDirection sort) throws SQLException {
+        Instant timestamp = Instant.parse("2026-10-21T10:20:30.123456Z");
+        var after = new OrderCursor(timestamp, 9007199254740993L);
+        assertEquals(List.of(), session.orders("US", Long.MAX_VALUE, null, sort, 26, after));
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(connection, times(2)).prepareStatement(sql.capture());
+        String listing = sql.getAllValues().getLast();
+        assertTrue(listing.contains("JOIN ordering.buyers b ON b.buyer_id = o.buyer_id"));
+        assertTrue(listing.contains("WHERE b.region = ? AND EXISTS (SELECT 1 FROM ordering.order_items matched "
+                + "WHERE matched.order_id = o.order_id AND matched.product_id = ?)"));
+        assertTrue(listing.contains("AND (o.created_at, o.order_id) " + (sort == SortDirection.ASC ? ">" : "<") + " (?, ?)"));
+        assertTrue(listing.contains("ORDER BY o.created_at " + sort + ", o.order_id " + sort + " LIMIT ?)"));
+        assertTrue(listing.endsWith("ORDER BY p.created_at " + sort + ", p.order_id " + sort + ", i.item_position ASC"));
+        verify(statement).setString(1, "US");
+        verify(statement).setLong(2, Long.MAX_VALUE);
+        verify(statement).setObject(3, timestamp.atOffset(ZoneOffset.UTC));
+        verify(statement).setLong(4, 9007199254740993L);
+        verify(statement).setInt(5, 26);
+    }
+
+    @Test
+    void unfilteredFirstPageHasNoProductOrCursorCondition() throws SQLException {
+        assertEquals(List.of(), session.orders("EU", null, null, SortDirection.DESC, 101, null));
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(connection, times(2)).prepareStatement(sql.capture());
+        String listing = sql.getAllValues().getLast();
+        assertFalse(listing.contains("matched"));
+        assertFalse(listing.contains("AND (o.created_at, o.order_id)"));
+        verify(statement).setString(1, "EU");
+        verify(statement).setInt(2, 101);
+    }
+
+    @ParameterizedTest
+    @EnumSource(SortDirection.class)
+    void nameFilterUsesBoundLiteralSubstringInsideExistsBeforeItemJoin(SortDirection sort) throws SQLException {
+        String name = "MiXeD %_' OR TRUE -- 🚀";
+        Instant timestamp = Instant.parse("2026-10-21T10:20:30.123456Z");
+        assertEquals(List.of(), session.orders("US", null, name, sort, 26, new OrderCursor(timestamp, 41)));
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(connection, times(2)).prepareStatement(sql.capture());
+        String listing = sql.getAllValues().getLast();
+        assertTrue(listing.contains("WHERE b.region = ? AND EXISTS (SELECT 1 FROM ordering.order_items matched "
+                + "WHERE matched.order_id = o.order_id AND strpos(lower(matched.product_name), lower(?)) > 0)"));
+        assertTrue(listing.contains("b.name AS buyer_name"));
+        assertTrue(listing.contains("SELECT p.*, i.product_id, i.product_name, i.quantity"));
+        assertFalse(listing.contains(name));
+        assertFalse(listing.contains("ILIKE"));
+        assertFalse(listing.contains("matched.product_id = ?"));
+        verify(statement).setString(1, "US");
+        verify(statement).setString(2, name);
+        verify(statement).setObject(3, timestamp.atOffset(ZoneOffset.UTC));
+        verify(statement).setLong(4, 41);
+        verify(statement).setInt(5, 26);
+    }
+
+    @Test
+    void reconstructsEachOrderOnceWithAllItemsInStoredPositionOrder() throws SQLException {
+        OffsetDateTime timestamp = OffsetDateTime.parse("2026-10-21T10:20:30.123456Z");
+        when(rows.next()).thenReturn(true, true, true, false);
+        when(rows.getLong("order_id")).thenReturn(10L, 10L, 20L);
+        when(rows.getLong("buyer_id")).thenReturn(31L);
+        when(rows.getString("buyer_name")).thenReturn("Stored Buyer Name");
+        when(rows.getLong("product_id")).thenReturn(21L, 22L, 21L);
+        when(rows.getString("product_name")).thenReturn("Saved second product", "Saved first product", "Saved second product");
+        when(rows.getInt("quantity")).thenReturn(2, 3, 1);
+        when(rows.getObject("created_at", OffsetDateTime.class)).thenReturn(timestamp);
+        when(rows.getString("status")).thenReturn("CANCELLED");
+        when(rows.getString("cancellation_reason")).thenReturn("OUT_OF_STOCK");
+        when(rows.getString("currency")).thenReturn("USD");
+        when(rows.getBigDecimal("total_amount")).thenReturn(new BigDecimal("39.90"));
+
+        List<ListedOrder> result = session.orders("US", 21L, null, SortDirection.ASC, 26, null);
+
+        assertEquals(List.of(
+                new ListedOrder(10, 31, "Stored Buyer Name", timestamp.toInstant(), "CANCELLED", "OUT_OF_STOCK", new BigDecimal("39.90"), "USD",
+                        List.of(new ListedItem(21, "Saved second product", 2), new ListedItem(22, "Saved first product", 3))),
+                new ListedOrder(20, 31, "Stored Buyer Name", timestamp.toInstant(), "CANCELLED", "OUT_OF_STOCK", new BigDecimal("39.90"), "USD",
+                        List.of(new ListedItem(21, "Saved second product", 1)))), result);
+    }
+
+    @Test
+    void listingSqlFailureReturnsOnlyTheStableStoreFailure() throws SQLException {
+        when(statement.executeQuery()).thenThrow(new SQLException("sensitive payload"));
+        OrderFailure failure = assertThrows(OrderFailure.class,
+                () -> session.orders("US", null, null, SortDirection.DESC, 26, null));
+        assertEquals(OrderFailure.Reason.ORDER_STORE_UNAVAILABLE, failure.reason());
+        assertNull(failure.getCause());
     }
 
     @Test
