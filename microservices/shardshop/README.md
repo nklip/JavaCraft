@@ -3,7 +3,8 @@
 [Architecture](ARCHITECTURE.md) · [Implementation plan](PLAN.md) ·
 [Version policy](VERSIONS.md) · [Artifact lock](versions.lock.yaml) ·
 [Changelog](CHANGELOG.md) · [Product service](shardshop-product/README.md) ·
-[Order service](shardshop-order/README.md)
+[Order service](shardshop-order/README.md) ·
+[Workload control](shardshop-core/workload-control/README.md)
 
 All six applications use **Quarkus 3.40.1** in JVM mode on Java 25.
 Product now runs the seller/product HTTP API from step 3.6. The product seeder
@@ -19,7 +20,9 @@ and observes deterministic orders through HTTP. The [regional product page](shar
 from step 4.10 displays created products, stock, prices and confirmed earnings.
 The [regional order page](shardshop-order/README.md#1-regional-order-webpage)
 from step 4.11 lists orders by buyer region with an optional product filter and
-creation-date sorting.
+creation-date sorting. The [workload control pages](shardshop-core/workload-control/README.md)
+from step 4.13 change the live rate of the order producer, the product reader and an
+interactive product seeder, and show their backend traffic.
 Step 3.5 provides the workload-owned
 dataset definitions. Maven module tests need no Docker or
 Kubernetes; chart rendering and release orchestration tests require `helm` and
@@ -42,9 +45,11 @@ k3s API server.
 | `shardshop-workload/shardshop-product-reader` | `dev.nklip.javacraft.shardshop.workload.reader.ProductReaderApplication` |
 | `shardshop-workload/shardshop-order-producer` | `dev.nklip.javacraft.shardshop.workload.producer.OrderProducerApplication` |
 
-The ShardShop parent has six children and eleven Java modules: six applications,
-four library JARs and the test-only `shardshop-testing` module. `shardshop-core`
-aggregates `common`, `idgen` and `sharding`.
+The ShardShop parent has six children and twelve Java modules: six applications,
+five library JARs and the test-only `shardshop-testing` module. `shardshop-core`
+aggregates `common`, `idgen`, `sharding` and `workload-control`. Only the three
+workload applications use `shardshop-workload-control`, the live traffic control
+of step 4.13.
 Common provides canonical ID parsing, SHA-256 and bounded JSON HTTP transport;
 it contains no dataset definitions or service wire models. Only product/order
 use idgen and sharding; their plain domain classes and Quarkus configuration
@@ -281,8 +286,11 @@ failure type. Then the seeder exits with code 1. Log lines contain no response p
 | `shardshop.seeder.max-attempts` | `5` | Attempts for each request, 1–10 |
 | `shardshop.seeder.retry-backoff` | `500ms` | First delay. Each failed attempt doubles it |
 | `shardshop.seeder.max-retry-backoff` | `5s` | Maximum delay |
+| `shardshop.seeder.request-rate` | `100` | Outgoing HTTP requests per second, including repeated attempts, 0–1000; positive for the Job |
+| `shardshop.seeder.interactive` | `false` | `true` serves the [control page](shardshop-core/workload-control/README.md) and seeds only on operator request |
 
 With the defaults, one request stops after a maximum of approximately 33 seconds.
+At 100 requests/s, the 1,056 requests of a complete run take approximately 11 seconds.
 The Job deadline of 300 seconds limits the complete run. Environment
 variables such as `SHARDSHOP_SEEDER_PRODUCT_URL` also set these properties.
 `--check-startup` validates the configuration and exits without HTTP requests.
@@ -326,8 +334,9 @@ the load starts.
 
 After the lookups, the workers read randomly selected products with
 `GET /api/v1/sellers/{sellerId}/products/{productId}`. One shared schedule gives
-the request starts a fixed total rate. After a stall, the reader does not send the
-missed requests later. Each response must keep the issued IDs and the dataset
+the request starts one total rate. After a stall, the reader does not send the
+missed requests later. The [reader control page](shardshop-core/workload-control/README.md)
+changes this rate, and pauses and resumes the reads, while the reader runs. Each response must keep the issued IDs and the dataset
 payload; only the stock can change.
 
 The reader sends HTTP requests with the classic Apache HttpClient 5 client,
@@ -378,14 +387,15 @@ connections are in use, `pending` reads wait for a connection, and `available`
 connections are open and free. The level is INFO when all reads are `OK`, and
 WARN when they are not. At SIGTERM, the reader stops its workers and writes one
 `Product reads, total` line as the last report. The deadline of each read limits
-this stop. Log lines contain no response payloads. The reader has no HTTP server,
-thus workload packages still contain no Vert.x or Netty runtime.
+this stop. Log lines contain no response payloads. Since step 4.13, the reader serves
+its control page and API on port 8080 with Quarkus REST; product reads still use
+Apache HttpClient 5.
 
 | Property | Default | Purpose |
 |---|---|---|
 | `shardshop.reader.product-url` | None. Startup fails without it | Base URL of the product Service |
 | `shardshop.reader.catalog-version` | `catalog-v2` | Dataset version. Other versions fail before HTTP |
-| `shardshop.reader.request-rate` | `200` | Request starts per second for all workers, 1–10000 |
+| `shardshop.reader.request-rate` | `200` | Initial request starts per second for all workers, 0–10000 with at most three decimals; the control page changes the live rate |
 | `shardshop.reader.workers` | `16` | Concurrent workers, from the number of connections to 256 |
 | `shardshop.reader.connections` | `16` | HTTP/1.1 connections, 1–64 |
 | `shardshop.reader.connect-timeout` | `2s` | Connection deadline. It cannot be longer than the request deadline |
@@ -446,17 +456,19 @@ sources, migrate and deploy with one `up.sh` invocation:
 bash microservices/shardshop/scripts/up.sh
 ```
 
-After successful deployment and acceptance, `up.sh` exits. Open both webpages
+After successful deployment and acceptance, `up.sh` exits. Open the five webpages
 with the separate command:
 
 ```bash
 bash microservices/shardshop/scripts/webpages.sh
 ```
 
-It replaces listeners on the two local page ports and prints both URLs. Keep
-the terminal open; Ctrl+C closes its tunnels and leaves the workloads running.
-See the [product page guide](shardshop-product/README.md#1-regional-product-webpage)
-and [order page guide](shardshop-order/README.md#1-regional-order-webpage)
+It replaces listeners on the five local page ports 18080–18084 and prints all
+URLs: products, orders, and the order producer, product reader and product seeder
+control pages. Keep the terminal open; Ctrl+C closes its tunnels and leaves the
+workloads running. See the [product page guide](shardshop-product/README.md#1-regional-product-webpage),
+[order page guide](shardshop-order/README.md#1-regional-order-webpage) and
+[workload control guide](shardshop-core/workload-control/README.md#1-workload-control-webpages)
 for startup prerequisites and tunnel lifecycle.
 
 `up.sh` resolves the ShardShop POM from its own location and runs the full
@@ -622,7 +634,12 @@ The seeder and the reader get only the product URL
 `http://shardshop-product.shardshop.svc:8080` in `SHARDSHOP_SEEDER_PRODUCT_URL` and
 `SHARDSHOP_READER_PRODUCT_URL`. They have no API token, no Secret, no database
 setting and no Service variables. The reader Deployment uses the `Recreate`
-strategy, thus a maximum of one reader runs.
+strategy, thus a maximum of one reader runs. Since step 4.13, the reader, the order
+producer and the interactive seeder Deployment `shardshop-product-seeder-control`
+open port 8080 for their [control pages](shardshop-core/workload-control/README.md).
+A ClusterIP Service with the same name as each Deployment selects its pod, and a TCP
+readiness probe reports the open port. The interactive seeder uses the seeder
+budget below; the bootstrap Job serves no HTTP.
 
 The resource budgets come from measurements on the lab on 2026-10-09. At 200
 reads/s, each product pod used approximately 10% of one core and 310 MiB of
@@ -630,6 +647,9 @@ anonymous memory for its two JVMs. The reader used 7% of one core and 148 MiB.
 Since step 3.11, each product pod runs one JVM. On 2026-10-13, at approximately 190
 reads/s and a few minutes after a pod replacement, each product pod used 17–23% of
 one core and 268 MiB of anonymous memory. The budgets stay the same.
+On 2026-10-22, with the step 4.13 control HTTP server, the container working sets
+were 207 MiB for the reader, 179 MiB for the order producer and 163 MiB for the
+interactive seeder, inside their limits; the budgets stay the same.
 With a 1-CPU limit, the JVM starts were throttled for many seconds, and the reader's
 startup lookups failed. Thus each container has a 2-CPU limit.
 
@@ -950,7 +970,9 @@ HTTP 503 with capped backoff and jitter. Other HTTP errors, invalid JSON and
 inconsistent response identities fail the run. Retries preserve the same keys,
 allocated IDs and exact item payload. HTTP 202 must carry a pending order status;
 HTTP 200 from PUT must carry a terminal status. The producer polls pending orders
-until `CONFIRMED` or `CANCELLED`, then waits before advancing to the next ordinal.
+until `CONFIRMED` or `CANCELLED`, and only then allocates the next ordinal at the
+next paced start. The [producer control page](shardshop-core/workload-control/README.md)
+changes the rate of new order starts, and pauses and resumes them, while the producer runs.
 The complete allocation/submission/polling phase has one deadline, including all
 attempts and waits. Exhaustion exits with code 1; shutdown interrupts outstanding
 HTTP work. `--check-startup` validates configuration without HTTP requests, and an
@@ -959,9 +981,9 @@ example `Order producer failed: Order completion deadline exceeded (ordinal 3,
 buyer <buyerId>, order <orderId>, last status PENDING_LEDGER)`.
 
 A restart replays earlier ordinals with the same coordinates and recovers their
-saved orders before reaching new work. This needs no local progress database. An
-order that was already terminal before its PUT gets no order interval, thus the
-catch-up costs one allocation and one PUT for each finished order. In a probe, 15
+saved orders before reaching new work. This needs no local progress database. The
+replay is not paced, thus the catch-up costs one allocation and one PUT for each
+finished order; Pause also holds the replay. In a probe, 15
 finished orders took less than one second. The log reports
 `Order producer recovered <count> finished orders before ordinal <ordinal>`, and the
 progress lines count recovered orders separately. A new independent
@@ -981,12 +1003,13 @@ in a sustained run.
 | `connect-timeout`, `request-timeout` | `2s`, `5s` | Connection and complete HTTP-attempt limits |
 | `startup-deadline` | `5m` | Complete budget for each of catalog and buyer setup; maximum 5m |
 | `order-deadline` | `60s` | Allocation through terminal status; maximum 10m |
-| `order-interval`, `poll-interval` | `1s`, `250ms` | Delay after a terminal order of this process and between pending status reads |
+| `order-rate` | `0.5` | Initial new order starts per second, 0–100 with at most three decimals; one order is in flight |
+| `poll-interval` | `250ms` | Delay between pending status reads |
 | `max-attempts` | `5` | At most 1–10 attempts per ordinary HTTP operation |
 | `retry-backoff`, `max-retry-backoff` | `100ms`, `2s` | Exponential base/cap, with 50–100% jitter; cap at most 30s |
 
 All durations must be positive. Connection timeout is at most 30s, request timeout
-and order interval at most 1m, and poll interval at most 30s. The producer logs
+at most 1m, and poll interval at most 30s. The producer logs
 startup counts and periodic outcome counts without buyer profiles or HTTP bodies.
 
 With product and order reachable at the configured URLs, launch the packaged

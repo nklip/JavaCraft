@@ -1,5 +1,7 @@
 package dev.nklip.javacraft.shardshop.workload.reader.load;
 
+import dev.nklip.javacraft.shardshop.workload.control.ControlStatus;
+import dev.nklip.javacraft.shardshop.workload.control.WorkloadControl;
 import dev.nklip.javacraft.shardshop.workload.dataset.CatalogDataset;
 import dev.nklip.javacraft.shardshop.workload.reader.catalog.ReaderDatasets;
 import dev.nklip.javacraft.shardshop.workload.reader.catalog.ReaderDatasets.ProductDescriptor;
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
+import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.InetAddress;
 import java.net.ServerSocket;
@@ -48,7 +51,6 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.spy;
 
 class ProductReaderTest {
-    private static final Pause SLEEP = TimeUnit.NANOSECONDS::sleep;
     private static final PoolStats NO_POOL = new PoolStats(0, 0, 0, 0);
 
     private final List<LogRecord> logs = new CopyOnWriteArrayList<>();
@@ -72,6 +74,7 @@ class ProductReaderTest {
     private FakeProductServer product;
     private ProductRequests requests;
     private ReaderMetrics metrics;
+    private WorkloadControl control;
     private ProductReader reader;
 
     @BeforeEach
@@ -120,6 +123,69 @@ class ProductReaderTest {
     }
 
     @Test
+    void liveRateChangesPauseAndResumeApplyToTheRunningWorkersAtOnce() throws Exception {
+        reader = reader(2, 4, 20, Duration.ofSeconds(30), Duration.ofSeconds(5));
+        assertEquals("WAITING", control.status().state());
+        ProductReader.Catalog catalog = reader.resolve();
+        assertEquals("WAITING", control.status().state(), "Catalog lookups are startup traffic, not paced reads");
+        reader.start(catalog, failures::incrementAndGet);
+        assertEquals("RUNNING", control.status().state());
+        awaitUntil(() -> product.reads.get() >= 5);
+
+        control.pause();
+        awaitUntil(() -> control.status().state().equals("PAUSED"));
+        int paused = product.reads.get();
+        Thread.sleep(300);
+        assertEquals(paused, product.reads.get(), "No read starts while paused");
+
+        control.rate(new BigDecimal("400"));
+        Thread.sleep(300);
+        assertEquals(paused, product.reads.get(), "A rate change keeps the pause");
+        long resumed = System.nanoTime();
+        control.resume();
+        awaitUntil(() -> product.reads.get() >= paused + 100);
+        double seconds = (System.nanoTime() - resumed) / 1e9;
+        assertTrue(seconds < 1.0, "100 reads at 400/s took " + seconds + " s");
+        assertTrue(product.reads.get() - paused <= 2 + 400 * (System.nanoTime() - resumed) / 1e9,
+                "Resume sends no burst of missed reads");
+
+        control.rate(BigDecimal.ZERO);
+        awaitUntil(() -> control.status().state().equals("PAUSED"));
+        int stopped = product.reads.get();
+        Thread.sleep(300);
+        assertEquals(stopped, product.reads.get(), "Rate zero stops new reads");
+        assertEquals(0, failures.get());
+    }
+
+    @Test
+    void countsEachReadAndEachFailedReadAsBackendTraffic() throws Exception {
+        reader = reader(1, 1, 50, Duration.ofSeconds(30), Duration.ofMillis(300));
+        reader.start(reader.resolve(), failures::incrementAndGet);
+        awaitUntil(() -> outcomes(Outcome.OK) >= 2);
+        product.readDelayMillis = 2_000;
+        awaitUntil(() -> outcomes(Outcome.DEADLINE) >= 2);
+        reader.stop();
+        ControlStatus status = control.status();
+        ControlStatus.TrafficCategory traffic = status.traffic().getFirst();
+        long recorded = metrics.total(NO_POOL).requests();
+        // Stop can interrupt one sent read before its result is recorded; catalog lookups are not paced reads.
+        assertEquals(List.of("reads"), status.traffic().stream().map(ControlStatus.TrafficCategory::category).toList());
+        assertTrue(traffic.requests() == recorded || traffic.requests() == recorded + 1, traffic + " " + recorded);
+        assertEquals(0, traffic.retries());
+        assertEquals(outcomes(Outcome.DEADLINE), traffic.errors());
+        assertEquals(traffic.requests(), status.starts());
+    }
+
+    @Test
+    void aFailedWorkerShowsTheFailedState() throws Exception {
+        reader = reader(1, 1, 50, Duration.ofMillis(200), Duration.ofSeconds(5));
+        reader.start(reader.resolve(), failures::incrementAndGet);
+        requests.close();
+        awaitUntil(reader::failed);
+        assertEquals("FAILED", control.status().state());
+    }
+
+    @Test
     void recurringReportsRetainCatalogEvidenceAfterStartupLogsAreDiscarded() throws Exception {
         reader = reader(1, 1, 50, Duration.ofSeconds(30), Duration.ofSeconds(5));
         reader.start(reader.resolve(), failures::incrementAndGet);
@@ -141,7 +207,7 @@ class ProductReaderTest {
                 Duration.ofMillis(10))));
         metrics = new ReaderMetrics(System::nanoTime);
         reader = new ProductReader(new ReaderDatasets(CatalogDataset.VERSION), requests,
-                new RatePacer(50, System::nanoTime, SLEEP), metrics, 1, Duration.ofSeconds(1), System::nanoTime, random);
+                control(50, 1), metrics, 1, Duration.ofSeconds(1), System::nanoTime, random);
         ProductReader.Catalog first = reader.resolve();
         String firstResolution = messages().getFirst();
         doAnswer(invocation -> {
@@ -288,7 +354,7 @@ class ProductReaderTest {
                 Duration.ofSeconds(5), Duration.ofSeconds(30), Duration.ofSeconds(10), 2, Duration.ofMillis(10)));
         metrics = new ReaderMetrics(System::nanoTime);
         reader = new ProductReader(new ReaderDatasets(CatalogDataset.VERSION), requests,
-                new RatePacer(50, System::nanoTime, SLEEP), metrics, 1, Duration.ofSeconds(1), System::nanoTime, random);
+                control(50, 1), metrics, 1, Duration.ofSeconds(1), System::nanoTime, random);
         CatalogNotReadyException failure = assertThrows(CatalogNotReadyException.class, reader::resolve);
         assertEquals("Look up seller catalog-v2.US.seller.1 failed with TRANSPORT", failure.getMessage());
     }
@@ -394,7 +460,7 @@ class ProductReaderTest {
         ProductReader valid = reader(2, 2, 50, Duration.ofSeconds(30), Duration.ofSeconds(5));
         valid.stop();
         ReaderDatasets datasets = new ReaderDatasets(CatalogDataset.VERSION);
-        RatePacer pacer = new RatePacer(50, System::nanoTime, SLEEP);
+        WorkloadControl pacer = control(50, 2);
         try (ProductRequests twoConnections = new ProductRequests(new ProductRequests.Settings(product.url(), 2,
                 Duration.ofMillis(200), Duration.ofSeconds(5), Duration.ofSeconds(30), Duration.ofSeconds(10), 3,
                 Duration.ofMillis(10)))) {
@@ -414,8 +480,14 @@ class ProductReaderTest {
                 Duration.ofMillis(200), deadline, lifetime, Duration.ofSeconds(10), 3, Duration.ofMillis(10)));
         metrics = new ReaderMetrics(System::nanoTime);
         return new ProductReader(new ReaderDatasets(CatalogDataset.VERSION), requests,
-                new RatePacer(rate, System::nanoTime, SLEEP), metrics, workers, Duration.ofSeconds(1),
-                System::nanoTime, random);
+                control(rate, workers), metrics, workers, Duration.ofSeconds(1), System::nanoTime, random);
+    }
+
+    private WorkloadControl control(int rate, int workers) {
+        control = new WorkloadControl(new WorkloadControl.Settings("product-reader", "product read starts/s",
+                BigDecimal.valueOf(rate), new BigDecimal("10000"), BigDecimal.TEN, workers, List.of(ProductReader.READS)),
+                WorkloadControl.Phase.WAITING);
+        return control;
     }
 
     private long outcomes(Outcome outcome) {

@@ -135,6 +135,12 @@
                 <type>test-jar</type>
                 <scope>test</scope>
             </dependency>
+            <!-- Live traffic control is packaged only by workload applications. -->
+            <dependency>
+                <groupId>dev.nklip.javacraft</groupId>
+                <artifactId>shardshop-workload-control</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <!-- Dataset definitions are packaged only by workload applications. -->
             <dependency>
                 <groupId>dev.nklip.javacraft</groupId>
@@ -442,9 +448,10 @@
                                 <bannedDependencies>
                                     <excludes>
                                         <exclude>dev.nklip.javacraft:shardshop-datasets</exclude>
+                                        <exclude>dev.nklip.javacraft:shardshop-workload-control</exclude>
                                     </excludes>
                                     <searchTransitive>false</searchTransitive>
-                                    <message>Dataset definitions belong exclusively to workload modules.</message>
+                                    <message>Dataset definitions and traffic control belong exclusively to workload modules.</message>
                                 </bannedDependencies>
                             </rules>
                         </configuration>
@@ -458,9 +465,10 @@
                                 <bannedDependencies>
                                     <excludes>
                                         <exclude>dev.nklip.javacraft:shardshop-datasets</exclude>
+                                        <exclude>dev.nklip.javacraft:shardshop-workload-control</exclude>
                                     </excludes>
                                     <searchTransitive>true</searchTransitive>
-                                    <message>Dataset definitions belong exclusively to workload modules.</message>
+                                    <message>Dataset definitions and traffic control belong exclusively to workload modules.</message>
                                 </bannedDependencies>
                             </rules>
                         </configuration>

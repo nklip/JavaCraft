@@ -1,10 +1,13 @@
 package dev.nklip.javacraft.shardshop.workload.producer.load;
 
+import dev.nklip.javacraft.shardshop.workload.control.WorkloadControl;
 import dev.nklip.javacraft.shardshop.workload.producer.CurrencySelector;
 import dev.nklip.javacraft.shardshop.workload.producer.plan.OrderPlanner;
 import org.jboss.logging.Logger;
 
+import java.math.BigDecimal;
 import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -16,27 +19,34 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * One ordered workload stream. Restart reconstructs ordinal zero and recovers every earlier allocation; finished
- * ordinals need no order interval, thus the stream reaches new work after a few HTTP calls per finished order.
+ * One ordered workload stream with one order in flight. Restart reconstructs ordinal zero and recovers every earlier
+ * allocation; finished ordinals are not paced, thus the stream reaches new work after a few HTTP calls per finished
+ * order. The live control paces the allocations of new orders and can pause them: the order in flight is observed
+ * until it is terminal first.
  */
 public final class OrderProducer {
+    /** Upper bound of the target rate in new order starts per second. */
+    public static final BigDecimal MAX_ORDER_RATE = new BigDecimal("100");
     private static final Logger LOG = Logger.getLogger(OrderProducer.class);
     private final OrderWorkload workload;
     private final Settings settings;
-    private final RetryPolicy.Pause pace;
+    private final WorkloadControl control;
     private final AtomicBoolean failed = new AtomicBoolean();
     private volatile boolean stopped;
     private Thread controller;
     private ExecutorService phases;
 
-    public OrderProducer(OrderWorkload workload, Settings settings) {
-        this(workload, settings, Thread::sleep);
-    }
-
-    OrderProducer(OrderWorkload workload, Settings settings, RetryPolicy.Pause pace) {
+    public OrderProducer(OrderWorkload workload, Settings settings, WorkloadControl control) {
         this.workload = Objects.requireNonNull(workload);
         this.settings = Objects.requireNonNull(settings);
-        this.pace = Objects.requireNonNull(pace);
+        this.control = Objects.requireNonNull(control);
+    }
+
+    /** The control settings of the producer: new order starts per second, one order in flight. */
+    public static WorkloadControl.Settings controlSettings(BigDecimal orderRate) {
+        return new WorkloadControl.Settings("order-producer", "new order starts/s", orderRate, MAX_ORDER_RATE,
+                new BigDecimal("0.1"), 1, List.of(OrderWorkload.STARTUP, OrderWorkload.ALLOCATION,
+                OrderWorkload.SUBMISSION, OrderWorkload.POLLING));
     }
 
     public synchronized void start(Runnable onFailure) {
@@ -58,15 +68,29 @@ public final class OrderProducer {
             OrderPlanner planner = workload.planner(settings.runName(), settings.rejectedOrderPercent(), buyers, products);
             long sellerCount = products.stream().map(product -> product.sellerId()).distinct().count();
             LOG.infof("Order producer ready: sellers=%d products=%d buyers=%d", sellerCount, products.size(), buyers.size());
+            control.phase(WorkloadControl.Phase.ACTIVE);
             long confirmed = 0;
             long cancelled = 0;
             long recovered = 0;
             boolean caughtUp = false;
             for (long ordinal = 0; !stopped; ordinal++) {
                 long current = ordinal;
-                var progress = new OrderWorkload.Progress();
+                // A replayed ordinal is not a new order, thus only Pause holds it. The first new order of a replay
+                // did not wait either; it starts the paced schedule.
+                boolean replaying = !caughtUp;
+                if (replaying) {
+                    control.awaitOpen();
+                } else {
+                    control.awaitStart();
+                }
+                var progress = new OrderWorkload.Progress(() -> {
+                    control.started();
+                    if (replaying) {
+                        control.markStart();
+                    }
+                });
                 OrderWorkload.Completion outcome;
-                try {
+                try (WorkloadControl.Operation ignored = control.begin()) {
                     outcome = timed("Order completion", settings.orderDeadline(),
                             () -> workload.complete(planner, settings.runName(), current, progress));
                 } catch (ProducerException failure) {
@@ -93,11 +117,6 @@ public final class OrderProducer {
                 if (current == Long.MAX_VALUE) {
                     throw new ProducerException("Order request ordinals exhausted", null);
                 }
-                // The interval paces orders that were pending at their PUT. A restart recovers finished ordinals
-                // without a wait.
-                if (!outcome.recovered()) {
-                    pace.sleep(settings.orderInterval());
-                }
             }
         } catch (InterruptedException interruption) {
             Thread.currentThread().interrupt();
@@ -119,6 +138,7 @@ public final class OrderProducer {
 
     private void fail(String reason, Runnable onFailure) {
         failed.set(true);
+        control.phase(WorkloadControl.Phase.FAILED);
         LOG.error("Order producer failed: " + reason);
         onFailure.run();
     }
@@ -167,12 +187,10 @@ public final class OrderProducer {
         }
     }
 
-    public record Settings(String runName, int rejectedOrderPercent, Duration orderInterval,
-                           Duration orderDeadline, Duration startupDeadline) {
+    public record Settings(String runName, int rejectedOrderPercent, Duration orderDeadline, Duration startupDeadline) {
         public Settings {
             OrderPlanner.validateRunName(runName);
             new CurrencySelector(rejectedOrderPercent);
-            positiveBounded(orderInterval, Duration.ofMinutes(1));
             positiveBounded(orderDeadline, Duration.ofMinutes(10));
             positiveBounded(startupDeadline, Duration.ofMinutes(5));
         }

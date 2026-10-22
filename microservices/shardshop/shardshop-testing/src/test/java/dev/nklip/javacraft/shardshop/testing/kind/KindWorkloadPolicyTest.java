@@ -97,7 +97,11 @@ final class KindWorkloadPolicyTest {
                 "SHARDSHOP_SEEDER_REQUEST_TIMEOUT", "5s",
                 "SHARDSHOP_SEEDER_MAX_ATTEMPTS", "5",
                 "SHARDSHOP_SEEDER_RETRY_BACKOFF", "500ms",
-                "SHARDSHOP_SEEDER_MAX_RETRY_BACKOFF", "5s"))) {
+                "SHARDSHOP_SEEDER_MAX_RETRY_BACKOFF", "5s",
+                "SHARDSHOP_SEEDER_REQUEST_RATE", "12.5",
+                "SHARDSHOP_SEEDER_INTERACTIVE", "true"), Map.of(
+                "SHARDSHOP_PRODUCER_ORDER_RATE", "0.5",
+                "SHARDSHOP_PRODUCER_POLL_INTERVAL", "250ms"))) {
             ObjectNode valid = spec();
             ObjectNode workload = (ObjectNode) valid.path("containers").get(0);
             ArrayNode env = workload.putArray("env");
@@ -105,6 +109,19 @@ final class KindWorkloadPolicyTest {
             workload.putArray("args");
             workload.putArray("command");
             assertDoesNotThrow(() -> KindDeployment.httpOnly(valid));
+        }
+    }
+
+    @Test
+    void rejectsRateAndModeValuesOutsideTheirLiteralForms() {
+        for (String[] setting : new String[][]{{"SHARDSHOP_PRODUCER_ORDER_RATE", "-1"}, {"SHARDSHOP_PRODUCER_ORDER_RATE", "1e3"},
+                {"SHARDSHOP_PRODUCER_ORDER_RATE", "0.0001"}, {"SHARDSHOP_SEEDER_REQUEST_RATE", "${RATE}"},
+                {"SHARDSHOP_SEEDER_REQUEST_RATE", "01"}, {"SHARDSHOP_SEEDER_INTERACTIVE", "false"},
+                {"SHARDSHOP_SEEDER_INTERACTIVE", "${MODE}"}, {"SHARDSHOP_PRODUCER_ORDER_INTERVAL", "1s"}}) {
+            ObjectNode invalid = spec();
+            ((ArrayNode) invalid.path("containers").get(0).path("env")).addObject()
+                    .put("name", setting[0]).put("value", setting[1]);
+            assertThrows(IOException.class, () -> KindDeployment.httpOnly(invalid), String.join("=", setting));
         }
     }
 

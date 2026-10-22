@@ -4,6 +4,7 @@ import dev.nklip.javacraft.shardshop.workload.dataset.CatalogDataset;
 import io.smallrye.config.ConfigMapping;
 import io.smallrye.config.WithDefault;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Duration;
 
@@ -31,4 +32,19 @@ public interface SeederConfiguration {
 
     @WithDefault("5s")
     Duration maxRetryBackoff();
+
+    /**
+     * Initial outgoing HTTP requests per second, including creation, verification and repeated attempts; 0..1000 with
+     * at most three decimals. The bootstrap Job requires a positive rate. The control page of the interactive mode
+     * changes the live rate; a restart returns to this value.
+     */
+    @WithDefault("100")
+    BigDecimal requestRate();
+
+    /**
+     * False: the finite bootstrap Job seeds once and exits, without HTTP serving. True: the process serves the
+     * control page and starts one finite seed run at a time on operator request, until it stops.
+     */
+    @WithDefault("false")
+    boolean interactive();
 }

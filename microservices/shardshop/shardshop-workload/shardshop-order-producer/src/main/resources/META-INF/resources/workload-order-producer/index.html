@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Workload Order Producer · ShardShop</title>
+  <link rel="stylesheet" href="/workload-control/control.css?v=1">
+  <script src="/workload-control/control.js?v=1" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to traffic control</a>
+  <header class="site-header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">s</span> ShardShop</div>
+    <span class="workspace-label">WORKLOAD CONTROL</span>
+    <span class="live-control"><span aria-hidden="true"></span> Live control</span>
+  </header>
+  <main id="main" data-workload="order-producer" data-api="/api/v1/order-producer/control">
+    <div class="page-heading">
+      <p class="eyebrow">TRAFFIC CONTROL</p>
+      <h1>Workload Order Producer</h1>
+      <p class="intro">New orders per second from the order producer, with its backend traffic by purpose.</p>
+    </div>
+    <section class="panel" aria-label="Workload Order Producer traffic">
+      <form id="rate-form" class="toolbar" novalidate>
+        <div class="rate-control">
+          <label for="rate">Target rate <span class="unit">(new order starts/s)</span></label>
+          <div class="rate-actions">
+            <button id="decrease" class="step-button" type="button" aria-label="Decrease the target rate by one step">−</button>
+            <input id="rate" name="rate" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" aria-describedby="rate-help rate-error">
+            <button id="increase" class="step-button" type="button" aria-label="Increase the target rate by one step">+</button>
+            <button id="apply" type="submit">Apply</button>
+          </div>
+          <span class="control-help"><span id="rate-help">0 to 100 new order starts/s; 0 stops new orders.</span> <span id="rate-error" class="field-error" role="alert"></span></span>
+        </div>
+        <div class="pause-control">
+          <span class="control-label">New orders</span>
+          <div class="pause-actions">
+            <button id="pause" type="button">Pause</button>
+            <button id="resume" type="button">Resume</button>
+          </div>
+          <span id="updated" class="control-help" role="status">Not yet loaded</span>
+        </div>
+      </form>
+      <div class="panel-heading">
+        <h2>Current traffic <span id="state-badge" class="state-badge">Loading</span></h2>
+        <span id="revision" class="revision">Setting revision —</span>
+      </div>
+      <dl class="metrics">
+        <div><dt>Effective target</dt><dd id="effective">—</dd></div>
+        <div><dt>Achieved rate</dt><dd id="achieved">—</dd></div>
+        <div><dt>In flight</dt><dd id="in-flight">—</dd></div>
+        <div><dt>Backend requests</dt><dd id="requests">—</dd></div>
+        <div><dt>Backend errors</dt><dd id="errors">—</dd></div>
+      </dl>
+      <p id="limit" class="notice" hidden></p>
+      <div id="message" class="message" role="status" hidden></div>
+      <div id="announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+      <div id="results" aria-busy="true">
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Backend HTTP traffic by purpose">
+          <table>
+            <caption class="sr-only">Backend HTTP requests by purpose since the process started. Retries and errors are parts of the requests.</caption>
+            <thead><tr>
+              <th scope="col">Purpose</th>
+              <th scope="col" class="numeric">Requests</th>
+              <th scope="col" class="numeric">Retries</th>
+              <th scope="col" class="numeric">Errors</th>
+            </tr></thead>
+            <tbody id="traffic"></tbody>
+          </table>
+        </div>
+        <div id="state" class="state">
+          <span id="state-icon" class="state-icon" aria-hidden="true">↻</span>
+          <h3 id="state-title">Loading the workload status</h3>
+          <p id="state-description">Getting the current setting and traffic.</p>
+        </div>
+      </div>
+    </section>
+    <aside class="data-note" aria-label="About these figures">
+      <span class="info-icon" aria-hidden="true">i</span>
+      <div>
+        <h2>About this control</h2>
+        <ul>
+          <li><strong>Rate</strong> counts new orders. Allocation, submission, status polling, retries and startup traffic are separate rows below.</li>
+          <li><strong>One order</strong> is in flight at a time: when orders take longer than the target interval, a notice shows the reachable rate.</li>
+          <li><strong>Setting</strong> lives in the workload process. Refreshing or closing this page keeps it; a process restart restores the default rate, unpaused.</li>
+          <li><strong>Pause</strong> lets the operations in flight finish within their deadlines; zero also stops new work. A change never sends missed work later.</li>
+          <li><strong>Pause</strong> finishes observing the current order before it stops new allocations. Run name, ordinals, IDs, retry keys and currencies do not change.</li>
+        </ul>
+      </div>
+    </aside>
+    <footer>ShardShop <span aria-hidden="true">/</span> Workload Order Producer traffic control</footer>
+    <noscript><p class="noscript">Enable JavaScript to control the workload order producer.</p></noscript>
+  </main>
+</body>
+</html>

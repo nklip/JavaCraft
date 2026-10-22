@@ -4,6 +4,7 @@ import dev.nklip.javacraft.shardshop.workload.dataset.CatalogDataset;
 import io.smallrye.config.ConfigMapping;
 import io.smallrye.config.WithDefault;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Duration;
 
@@ -16,9 +17,12 @@ public interface ReaderConfiguration {
     @WithDefault(CatalogDataset.VERSION)
     String catalogVersion();
 
-    /** Total request starts per second for all workers, 1..10000. */
+    /**
+     * Initial total read starts per second for all workers, 0..10000 with at most three decimals; zero starts paused.
+     * The control page changes the live rate; a restart returns to this value.
+     */
     @WithDefault("200")
-    int requestRate();
+    BigDecimal requestRate();
 
     /** Concurrent workers, from the number of connections to 256. */
     @WithDefault("16")

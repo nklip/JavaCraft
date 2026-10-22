@@ -3900,3 +3900,120 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegrati
 
 This change has not been deployed to the running lab. The next `scripts/up.sh`
 build and rollout starts the versioned stream; historical orders remain unchanged.
+
+## Step 4.13
+
+**2026-10-22:** the order producer, the product reader and the product seeder each
+serve a dedicated control webpage (Workload Order Producer at
+`/workload-order-producer/`, Workload Product Reader at `/workload-product-reader/` and
+Workload Product Seeder at `/workload-product-seeder/`) and a workload-owned control/status API under
+`/api/v1/<workload>/control`. The new `shardshop-core/workload-control` library holds
+the shared adjustable pacer, the control state, the REST resource, the error
+mappers, the [contract](shardshop-core/workload-control/src/main/resources/contracts/openapi.yaml)
+and one page script and stylesheet. A Maven Enforcer rule keeps it, like the
+datasets, inside the workload modules. The user selected the extension of the
+custom step 3.8 pacer over Guava `RateLimiter` and Bucket4j.
+
+- **Controls:** a numeric target rate with −/+ steps, Apply, Pause and Resume
+  change only the receiving process at once. Units: new order starts/s (producer,
+  default 0.5, maximum 100), product read starts/s across all workers (reader,
+  200, 10,000) and outgoing HTTP requests/s including creation, verification and
+  retries (seeder, 100, 1,000). The server rejects non-finite, negative, too precise
+  or too large rates and malformed bodies with `400` and keeps the previous
+  setting; each accepted update is atomic and increments a revision.
+- **Pacing:** one schedule per process; a change or Resume wakes waiting callers
+  and never sends missed starts. Zero stops new work like Pause. Pause drains the
+  operation in flight within its existing deadline and retry budget; the producer
+  observes its current order until it is terminal. The producer replay after a
+  restart is not paced, but Pause holds it. The producer's `order-interval` setting
+  is replaced by `order-rate`; the default keeps the earlier ~0.5 orders/s.
+- **Status:** state (`WAITING`, `IDLE`, `RUNNING`, `PAUSING`, `PAUSED`, `COMPLETED`,
+  `FAILED`), effective target, achieved rate of the last 10 seconds, operations in
+  flight, and backend requests, retries and errors by purpose. The producer
+  separates startup, allocation, submission and polling. A concurrency notice
+  shows the reachable rate when the work in flight cannot reach the target.
+- **Seeder modes:** the bootstrap Job is unchanged and serves no HTTP
+  (`quarkus.http.host-enabled=false`). The new `shardshop-product-seeder-control`
+  Deployment runs the same image with `SHARDSHOP_SEEDER_INTERACTIVE=true` and
+  starts one finite run at a time on request (`409 RUN_ACTIVE` otherwise).
+- **Deployment and access:** ClusterIP Services and TCP readiness probes for the
+  reader, the producer and the interactive seeder; `KindRelease` now also accepts
+  the three Services and the new Deployment, and the workload policy accepts the
+  new rate and mode settings. `webpages.sh` opens five tunnels (18080–18084) and
+  prints all URLs. The settings live in the process: each `up.sh` restores the
+  defaults.
+
+Validation:
+
+- Module tests pass: 63 in `shardshop-workload-control` (pacer timing with a
+  controlled clock, wake-up of reserved starts, zero, interruption, state machine,
+  validation, 64 concurrent updates, request parsing and the contract against the
+  written JSON), reader 84, producer 141 and seeder 61. The 95 selected
+  `shardshop-testing` unit tests pass, including 26 startup-script, 21 release,
+  20 Helm and 10 workload-policy tests.
+- All 12 Node checks of the shared page script pass against the three shipped
+  pages. Three temporary script mutations (four decimals accepted, out-of-order
+  status rendered, unapplied input replaced by a poll) each failed exactly the
+  check that guards them.
+- `WorkloadControl.feature` passes its three PostgreSQL scenarios in 119 s:
+  reader 50→200→10 reads/s, Pause, Resume without a burst, zero, nine invalid
+  bodies, 20 concurrent updates and restart defaults; producer pacing at 2 and
+  1 orders/s, the one-order limit at 50, Pause with an order in flight, consecutive
+  ordinals and isolation from the reader; interactive seeder at 50 requests/s,
+  Pause, `409`, two complete runs with 1,056 requests each, the stored digest and
+  an unchanged catalog. Every control response matches the contract. The first
+  seeder draft expected 200 requests/s; one request in flight with ~7 ms product
+  creations reaches only ~140/s, which the scenario now asserts as the limit.
+- The existing reader, seeder, producer and product/order page features pass
+  (18 scenarios, 342 s).
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-core/workload-control -am test
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-workload/shardshop-product-reader,shardshop-workload/shardshop-order-producer,shardshop-workload/shardshop-product-seeder test
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@workload-control'
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@product-reader or @product-seeder or @order-producer or @product-browser or @order-browser'
+node microservices/shardshop/shardshop-testing/src/test/resources/browser/workload-control-page.test.cjs \
+  microservices/shardshop/shardshop-core/workload-control/src/main/resources/META-INF/resources/workload-control/control.js \
+  microservices/shardshop/shardshop-workload/shardshop-order-producer/src/main/resources/META-INF/resources/workload-order-producer/index.html \
+  microservices/shardshop/shardshop-workload/shardshop-product-reader/src/main/resources/META-INF/resources/workload-product-reader/index.html \
+  microservices/shardshop/shardshop-workload/shardshop-product-seeder/src/main/resources/META-INF/resources/workload-product-seeder/index.html
+bash -n microservices/shardshop/scripts/up.sh microservices/shardshop/scripts/webpages.sh microservices/shardshop/scripts/lib/lifecycle.sh
+git diff --check
+```
+
+Live acceptance:
+
+- `up.sh` resumed the stopped lab and passed in 14 minutes: the clean build with
+  1,838 module tests, the image gates, the lifecycle gates, migrations, application
+  release revision 2 and all five final acceptance scenarios. All six Deployments,
+  including `shardshop-product-seeder-control`, became ready.
+- `webpages.sh` printed the five URLs. In the browser, each control page showed
+  its live state; the page rejected `12.3456` without a request.
+- Producer, measured as new allocations in the shard databases: 0.500/s at the
+  default; 0.816/s at target 2, where the page showed the one-order limit (1.33 s
+  per order through the live saga, at most 0.75/s); `PAUSED` with 0 allocations in
+  30 s; 0.487/s after the page restored 0.5.
+- Reader, measured with product's `/q/metrics` request counters: 203/s at the
+  default, 506/s at 500, 0 in 20 s while paused, 202/s after the page restored 200.
+- Interactive seeder: a run at 20 requests/s, Pause at operation 910 of 1,056 with
+  no seeder request at product for 16 s, Resume at 10/s (5.1 product lookups/s at
+  product), then `COMPLETED` with 1,056 requests and no error. Product answered all
+  151 seller and 201 product POSTs with `200` and none with `201`; the run digest
+  equals the bootstrap Job digest `9ef74a31…`. The page restored the default 100.
+- Each revision counted only its own updates (producer 4, reader 4, seeder 5).
+  Working sets: reader 207 MiB, producer 179 MiB, interactive seeder 163 MiB.
+- SIGTERM to `webpages.sh` removed all five tunnels and listeners; the workloads
+  continued. (A background job of the tool shell ignores SIGINT at entry; the
+  script tests cover Ctrl+C.) `down.sh` returned the four retained nodes to their
+  earlier stopped state.
+
+```bash
+bash microservices/shardshop/scripts/up.sh
+bash microservices/shardshop/scripts/webpages.sh
+curl -s http://127.0.0.1:18083/api/v1/product-reader/control
+bash microservices/shardshop/scripts/down.sh
+```

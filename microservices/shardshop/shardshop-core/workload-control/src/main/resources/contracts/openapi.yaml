@@ -1,0 +1,464 @@
+openapi: 3.1.1
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+info:
+  title: ShardShop Workload Control API
+  version: 1.0.0
+  description: |
+    Contract owned by shardshop-workload-control (step 4.13). The order producer,
+    product reader and product seeder each serve this API under their own root
+    path, together with their control page. A request changes only the workload
+    that receives it.
+
+    The rate unit is workload-specific and the status names it: product read
+    starts per second across all reader workers, new order starts per second for
+    the producer, and outgoing HTTP requests per second for the seeder, including
+    creation, verification and repeated attempts. Rates are JSON numbers from 0
+    to the documented maximum (reader 10000, producer 100, seeder 1000) with at
+    most three decimal places. Zero stops new work. An invalid update returns 400
+    and leaves the previous setting unchanged. Updates are atomic; each accepted
+    update increments revision. A rate change or Resume takes effect at once and
+    never sends missed starts later.
+
+    Pause keeps targetRate and sets effectiveRate to 0. The operations in flight
+    finish within their existing HTTP deadlines and retry budgets: the state is
+    PAUSING until they end, then PAUSED. The producer finishes observing its
+    current order before it pauses new allocations.
+
+    The setting lives in the workload process. A browser refresh or closure keeps
+    it; a process restart restores the configured default rate, unpaused. The
+    control changes no dataset version, run name, ordinal progress,
+    service-issued ID, retry key or currency selection. The API has no
+    authentication; it is reachable only inside the cluster and through local
+    port forwarding (scripts/webpages.sh).
+servers:
+  - url: /api/v1/order-producer
+    description: Order producer
+  - url: /api/v1/product-reader
+    description: Product reader
+  - url: /api/v1/product-seeder
+    description: Interactive product seeder; the bootstrap Job serves no HTTP
+tags:
+  - name: Control
+paths:
+  /control:
+    get:
+      tags: [Control]
+      operationId: getControlStatus
+      summary: Current setting, lifecycle state and measured traffic
+      description: |
+        Reads only process memory and sends no backend request. achievedRate
+        counts the workload's starts in the last 10 seconds. traffic counts all
+        backend HTTP requests since process start by purpose; retries and errors
+        are parts of requests.
+      responses:
+        '200':
+          description: The current status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlStatus'
+              example:
+                workload: order-producer
+                unit: new order starts/s
+                state: RUNNING
+                targetRate: 2
+                paused: false
+                effectiveRate: 2
+                defaultRate: 0.5
+                maximumRate: 100
+                rateStep: 0.1
+                achievedRate: 0.81
+                starts: 412
+                inFlight: 1
+                requests: 4307
+                errors: 2
+                traffic:
+                  - category: startup
+                    requests: 3352
+                    retries: 1
+                    errors: 1
+                  - category: allocation
+                    requests: 413
+                    retries: 0
+                    errors: 0
+                  - category: submission
+                    requests: 413
+                    retries: 1
+                    errors: 1
+                  - category: polling
+                    requests: 129
+                    retries: 0
+                    errors: 0
+                limit:
+                  code: CONCURRENCY
+                  concurrency: 1
+                  meanOperationSeconds: 1.234
+                  achievableRate: 0.81
+                run: null
+                revision: 3
+  /control/rate:
+    put:
+      tags: [Control]
+      operationId: setControlRate
+      summary: Set the target rate
+      description: |
+        Zero stops new work like Pause, without changing paused. The response is
+        the status after this update.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RateUpdate'
+            example:
+              rate: 2.5
+      responses:
+        '200':
+          description: The status after the update.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlStatus'
+              example:
+                workload: product-reader
+                unit: product read starts/s
+                state: RUNNING
+                targetRate: 2.5
+                paused: false
+                effectiveRate: 2.5
+                defaultRate: 200
+                maximumRate: 10000
+                rateStep: 10
+                achievedRate: 199.6
+                starts: 120345
+                inFlight: 1
+                requests: 120346
+                errors: 0
+                traffic:
+                  - category: reads
+                    requests: 120346
+                    retries: 0
+                    errors: 0
+                limit: null
+                run: null
+                revision: 1
+        '400':
+          description: The body or the rate is invalid; the previous setting is unchanged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_RATE
+                message: Rate must be a number from 0 to the maximum rate with at most three decimal places. The previous setting is unchanged.
+  /control/pause:
+    post:
+      tags: [Control]
+      operationId: pauseWorkload
+      summary: Stop new work after the operations in flight
+      responses:
+        '200':
+          description: The status after the update.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlStatus'
+              example:
+                workload: product-seeder
+                unit: HTTP requests/s
+                state: PAUSING
+                targetRate: 100
+                paused: true
+                effectiveRate: 0
+                defaultRate: 100
+                maximumRate: 1000
+                rateStep: 10
+                achievedRate: 97.3
+                starts: 640
+                inFlight: 1
+                requests: 640
+                errors: 0
+                traffic:
+                  - category: creation
+                    requests: 352
+                    retries: 0
+                    errors: 0
+                  - category: verification
+                    requests: 288
+                    retries: 0
+                    errors: 0
+                limit: null
+                run:
+                  number: 1
+                  state: RUNNING
+                  startedAt: '2026-10-22T10:15:30.123Z'
+                  finishedAt: null
+                  completedOperations: 639
+                  plannedOperations: 1056
+                  summary: null
+                  error: null
+                revision: 1
+  /control/resume:
+    post:
+      tags: [Control]
+      operationId: resumeWorkload
+      summary: Continue at the target rate
+      responses:
+        '200':
+          description: The status after the update.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlStatus'
+              example:
+                workload: product-reader
+                unit: product read starts/s
+                state: RUNNING
+                targetRate: 200
+                paused: false
+                effectiveRate: 200
+                defaultRate: 200
+                maximumRate: 10000
+                rateStep: 10
+                achievedRate: 0
+                starts: 5000
+                inFlight: 0
+                requests: 5000
+                errors: 0
+                traffic:
+                  - category: reads
+                    requests: 5000
+                    retries: 0
+                    errors: 0
+                limit: null
+                run: null
+                revision: 2
+  /control/runs:
+    post:
+      tags: [Control]
+      operationId: startSeedRun
+      summary: Start one finite seed run (interactive seeder only)
+      description: |
+        Starts a run of the configured catalog dataset with the existing creation
+        keys and payloads, then verifies every entity by ID and by key. A rerun
+        recovers the same IDs without duplicates and changes no stock or profit.
+        The run uses the current rate and pause setting. Each attempt keeps its
+        HTTP timeout and retry budget; the run itself has no deadline, thus a
+        paused run waits until Resume. The order producer and the reader return
+        404.
+      responses:
+        '202':
+          description: The run started; the status shows its progress.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlStatus'
+              example:
+                workload: product-seeder
+                unit: HTTP requests/s
+                state: RUNNING
+                targetRate: 100
+                paused: false
+                effectiveRate: 100
+                defaultRate: 100
+                maximumRate: 1000
+                rateStep: 10
+                achievedRate: 0
+                starts: 0
+                inFlight: 0
+                requests: 0
+                errors: 0
+                traffic:
+                  - category: creation
+                    requests: 0
+                    retries: 0
+                    errors: 0
+                  - category: verification
+                    requests: 0
+                    retries: 0
+                    errors: 0
+                limit: null
+                run:
+                  number: 1
+                  state: RUNNING
+                  startedAt: '2026-10-22T10:15:30.123Z'
+                  finishedAt: null
+                  completedOperations: 0
+                  plannedOperations: 1056
+                  summary: null
+                  error: null
+                revision: 0
+        '409':
+          description: A run is in progress; only one run at a time.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: RUN_ACTIVE
+                message: A seed run is already in progress.
+components:
+  schemas:
+    Rate:
+      type: number
+      minimum: 0
+      maximum: 10000
+      description: A rate in the unit of the workload; the workload's maximumRate applies.
+    RateUpdate:
+      type: object
+      additionalProperties: false
+      required: [rate]
+      properties:
+        rate:
+          $ref: '#/components/schemas/Rate'
+    Count:
+      type: integer
+      minimum: 0
+      maximum: 9223372036854775807
+    ControlStatus:
+      type: object
+      additionalProperties: false
+      required: [workload, unit, state, targetRate, paused, effectiveRate, defaultRate, maximumRate, rateStep,
+                 achievedRate, starts, inFlight, requests, errors, traffic, limit, run, revision]
+      properties:
+        workload:
+          type: string
+          enum: [order-producer, product-reader, product-seeder]
+        unit:
+          type: string
+          enum: [new order starts/s, product read starts/s, HTTP requests/s]
+        state:
+          type: string
+          enum: [IDLE, WAITING, RUNNING, PAUSING, PAUSED, COMPLETED, FAILED]
+          description: |
+            IDLE before the first seed run; WAITING during the startup catalog
+            gate or buyer creation; RUNNING, PAUSING or PAUSED while paced work is
+            active; COMPLETED after a successful seed run; FAILED after a failure.
+        targetRate:
+          $ref: '#/components/schemas/Rate'
+        paused:
+          type: boolean
+        effectiveRate:
+          $ref: '#/components/schemas/Rate'
+        defaultRate:
+          $ref: '#/components/schemas/Rate'
+        maximumRate:
+          $ref: '#/components/schemas/Rate'
+        rateStep:
+          $ref: '#/components/schemas/Rate'
+        achievedRate:
+          type: number
+          minimum: 0
+          description: Starts per second in the last 10 seconds, in the workload's unit.
+        starts:
+          $ref: '#/components/schemas/Count'
+        inFlight:
+          type: integer
+          minimum: 0
+          maximum: 256
+        requests:
+          $ref: '#/components/schemas/Count'
+        errors:
+          $ref: '#/components/schemas/Count'
+        traffic:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/TrafficCategory'
+        limit:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/Limit'
+        run:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/Run'
+        revision:
+          $ref: '#/components/schemas/Count'
+    TrafficCategory:
+      type: object
+      additionalProperties: false
+      required: [category, requests, retries, errors]
+      properties:
+        category:
+          type: string
+          enum: [startup, allocation, submission, polling, reads, creation, verification]
+          description: |
+            Producer startup is catalog lookups and buyer creation; allocation,
+            submission and polling serve orders. Seeder creation and verification
+            include their retries.
+        requests:
+          $ref: '#/components/schemas/Count'
+        retries:
+          $ref: '#/components/schemas/Count'
+        errors:
+          $ref: '#/components/schemas/Count'
+    Limit:
+      type: object
+      additionalProperties: false
+      required: [code, concurrency, meanOperationSeconds, achievableRate]
+      description: |
+        The operations in flight cannot reach the effective target: concurrency
+        divided by the mean operation time of the last 10 seconds is lower. The
+        producer has one order in flight, the seeder one request, and the reader
+        one read per worker.
+      properties:
+        code:
+          type: string
+          enum: [CONCURRENCY]
+        concurrency:
+          type: integer
+          minimum: 1
+          maximum: 256
+        meanOperationSeconds:
+          type: number
+          exclusiveMinimum: 0
+        achievableRate:
+          type: number
+          exclusiveMinimum: 0
+    Run:
+      type: object
+      additionalProperties: false
+      required: [number, state, startedAt, finishedAt, completedOperations, plannedOperations, summary, error]
+      properties:
+        number:
+          type: integer
+          minimum: 1
+        state:
+          type: string
+          enum: [RUNNING, COMPLETED, FAILED]
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          oneOf:
+            - type: 'null'
+            - type: string
+              format: date-time
+        completedOperations:
+          $ref: '#/components/schemas/Count'
+        plannedOperations:
+          $ref: '#/components/schemas/Count'
+        summary:
+          description: The seeder's summary line with the key-to-ID digest after success.
+          oneOf:
+            - type: 'null'
+            - type: string
+              minLength: 1
+        error:
+          description: The failed operation and status after a failure, without payloads.
+          oneOf:
+            - type: 'null'
+            - type: string
+              minLength: 1
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [INVALID_REQUEST, INVALID_RATE, RUN_ACTIVE]
+        message:
+          type: string
+          minLength: 1

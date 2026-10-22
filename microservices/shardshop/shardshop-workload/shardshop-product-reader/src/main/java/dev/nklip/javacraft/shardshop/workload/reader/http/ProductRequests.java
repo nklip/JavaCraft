@@ -56,6 +56,12 @@ public final class ProductRequests implements AutoCloseable {
     private final ScheduledThreadPoolExecutor deadlines;
 
     public ProductRequests(Settings settings) {
+        this(settings, () -> { });
+    }
+
+    /** {@code retried} runs before each repeated attempt, after a failure without an HTTP response. */
+    public ProductRequests(Settings settings, Runnable retried) {
+        Objects.requireNonNull(retried);
         this.productUrl = settings.productUrl();
         this.deadlineMillis = settings.requestDeadline().toMillis();
         Timeout deadline = Timeout.of(settings.requestDeadline());
@@ -76,7 +82,7 @@ public final class ProductRequests implements AutoCloseable {
                         .setConnectionRequestTimeout(deadline)
                         .setResponseTimeout(deadline)
                         .build())
-                .setRetryStrategy(new RetryWithoutResponse(settings.maxAttempts() - 1, settings.retryInterval()))
+                .setRetryStrategy(new RetryWithoutResponse(settings.maxAttempts() - 1, settings.retryInterval(), retried))
                 .disableRedirectHandling()
                 .disableCookieManagement()
                 .disableAuthCaching()
@@ -161,12 +167,23 @@ public final class ProductRequests implements AutoCloseable {
      */
     private static final class RetryWithoutResponse extends DefaultHttpRequestRetryStrategy {
         private final TimeValue interval;
+        private final Runnable retried;
 
-        RetryWithoutResponse(int maxRetries, Duration interval) {
+        RetryWithoutResponse(int maxRetries, Duration interval, Runnable retried) {
             // Timeouts and cancels are InterruptedIOExceptions: they end at the deadline.
             super(maxRetries, TimeValue.of(interval), List.<Class<? extends IOException>>of(
                     InterruptedIOException.class, UnknownHostException.class, SSLException.class), List.of());
             this.interval = TimeValue.of(interval);
+            this.retried = retried;
+        }
+
+        @Override
+        public boolean retryRequest(HttpRequest request, IOException exception, int execCount, HttpContext context) {
+            boolean retry = super.retryRequest(request, exception, execCount, context);
+            if (retry) {
+                retried.run();
+            }
+            return retry;
         }
 
         @Override

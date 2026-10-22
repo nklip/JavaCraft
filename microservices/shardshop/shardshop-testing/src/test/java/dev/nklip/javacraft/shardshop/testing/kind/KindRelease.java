@@ -24,7 +24,11 @@ public final class KindRelease {
     private static final String READER = "shardshop-product-reader";
     private static final String ORDER = "shardshop-order";
     private static final String PRODUCER = "shardshop-order-producer";
-    private static final List<String> DEPLOYMENTS = List.of(PRODUCT, READER, ORDER, "shardshop-ledger", PRODUCER);
+    private static final String SEEDER_CONTROL = "shardshop-product-seeder-control";
+    private static final List<String> DEPLOYMENTS = List.of(PRODUCT, READER, ORDER, "shardshop-ledger", PRODUCER,
+            SEEDER_CONTROL);
+    /** The two provider APIs and the three workload control pages (step 4.13). */
+    private static final List<String> SERVICES = List.of(PRODUCT, ORDER, READER, PRODUCER, SEEDER_CONTROL);
     private static final String SEEDER_ANNOTATION = "shardshop.javacraft/seeder-job";
     private static final ObjectMapper JSON = new ObjectMapper();
     private final KindLab lab;
@@ -94,7 +98,7 @@ public final class KindRelease {
         JsonNode successful = currentSeederPod(reader, job, desiredSeeder, revision, seeders);
         currentSeeder(reader, job, desiredSeeder, revision, seeders, runtimeIndexes(List.of(successful), desiredSeeder));
         seederReference(deployments.get(PRODUCER), revision);
-        for (String name : List.of(PRODUCT, ORDER)) {
+        for (String name : SERVICES) {
             service(named(desired, "Service", name), resource("service", name),
                     KindLab.items(resourceList("endpointslices", "kubernetes.io/service-name=" + name)), activePods.get(name));
         }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Replace local page tunnels and serve both webpages from the running lab.
+# Replace local page tunnels and serve all five webpages from the running lab.
 set -euo pipefail
 
 [[ $# == 0 ]] || { echo 'Usage: webpages.sh' >&2; exit 1; }

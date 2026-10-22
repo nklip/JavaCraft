@@ -2,6 +2,7 @@ package dev.nklip.javacraft.shardshop.workload.producer.load;
 
 import dev.nklip.javacraft.shardshop.common.HttpResponseException;
 import dev.nklip.javacraft.shardshop.common.JsonResponses;
+import dev.nklip.javacraft.shardshop.workload.control.WorkloadControl;
 import dev.nklip.javacraft.shardshop.workload.dataset.BuyerDataset;
 import dev.nklip.javacraft.shardshop.workload.dataset.CatalogDataset;
 import dev.nklip.javacraft.shardshop.workload.producer.ProducerDatasets.CreatedBuyer;
@@ -10,11 +11,16 @@ import dev.nklip.javacraft.shardshop.workload.producer.http.OrderStatus;
 import dev.nklip.javacraft.shardshop.workload.producer.plan.OrderPlanner;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
 final class WorkloadFixtures {
+    static WorkloadControl control(String orderRate) {
+        return new WorkloadControl(OrderProducer.controlSettings(new BigDecimal(orderRate)), WorkloadControl.Phase.WAITING);
+    }
+
     static HttpResponseException httpFailure(int status, String code) {
         try {
             JsonResponses.decode(status, ("{\"code\":\"" + code + "\"}").getBytes(StandardCharsets.UTF_8),

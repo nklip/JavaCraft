@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.workload.seeder.load;
 
 import dev.nklip.javacraft.shardshop.common.HttpResponseException;
+import dev.nklip.javacraft.shardshop.workload.control.WorkloadControl;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -8,16 +9,20 @@ import java.util.Objects;
 
 /**
  * Repeats one idempotent request after a transport failure or a 503 response, with capped exponential backoff.
- * Other HTTP statuses and invalid responses fail at once.
+ * Other HTTP statuses and invalid responses fail at once. Each attempt waits for its start in the live paced schedule
+ * and counts as one outgoing request of its traffic category.
  */
 public final class RetryPolicy {
     private final int maxAttempts;
     private final Duration initialBackoff;
     private final Duration maxBackoff;
     private final Pause pause;
+    private final WorkloadControl control;
 
-    public RetryPolicy(int maxAttempts, Duration initialBackoff, Duration maxBackoff, Pause pause) {
+    public RetryPolicy(int maxAttempts, Duration initialBackoff, Duration maxBackoff, Pause pause,
+                       WorkloadControl control) {
         this.pause = Objects.requireNonNull(pause);
+        this.control = Objects.requireNonNull(control);
         if (maxAttempts < 1 || maxAttempts > 10 || initialBackoff.isNegative() || initialBackoff.isZero()
                 || maxBackoff.compareTo(initialBackoff) < 0) {
             throw new IllegalArgumentException("Invalid seeder retry configuration");
@@ -27,11 +32,12 @@ public final class RetryPolicy {
         this.maxBackoff = maxBackoff;
     }
 
-    public <T> T call(String operation, Request<T> request) throws SeedingException, InterruptedException {
+    public <T> T call(String category, String operation, Request<T> request)
+            throws SeedingException, InterruptedException {
         Duration delay = initialBackoff;
         for (int attempt = 1; ; attempt++) {
             try {
-                return request.send();
+                return send(category, attempt > 1, request);
             } catch (HttpResponseException failure) {
                 if (failure.statusCode() != 503 || attempt == maxAttempts) {
                     throw failed(operation, attempt, failure);
@@ -48,6 +54,18 @@ public final class RetryPolicy {
             if (delay.compareTo(maxBackoff) > 0) {
                 delay = maxBackoff;
             }
+        }
+    }
+
+    private <T> T send(String category, boolean retry, Request<T> request) throws IOException, InterruptedException {
+        control.awaitStart();
+        control.started();
+        control.traffic().sent(category, retry);
+        try (WorkloadControl.Operation ignored = control.begin()) {
+            return request.send();
+        } catch (IOException | IllegalArgumentException failure) {
+            control.traffic().failed(category);
+            throw failure;
         }
     }
 

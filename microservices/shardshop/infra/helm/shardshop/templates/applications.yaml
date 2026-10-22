@@ -5,6 +5,7 @@
 {{- if or (eq .Values.render "applications") $hook }}
 {{- $product := required "render=applications requires images.product" .Values.images.product }}
 {{- $reader := required "render=applications requires images.product-reader" (index .Values.images "product-reader") }}
+{{- $controlSeeder := required "render=applications requires images.product-seeder" (index .Values.images "product-seeder") }}
 # Quarkus reads config/application.properties in the working directory of the product JVM.
 # All shards share the product_app login; its password stays in the product-app Secret.
 apiVersion: v1
@@ -124,6 +125,24 @@ spec:
           emptyDir:
             sizeLimit: 64Mi
 ---
+# The reader's control page and API (step 4.13); it changes the live read rate of this pod only.
+apiVersion: v1
+kind: Service
+metadata:
+  name: shardshop-product-reader
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/name: shardshop-product-reader
+    app.kubernetes.io/part-of: shardshop
+spec:
+  selector:
+    app.kubernetes.io/name: shardshop-product-reader
+  sessionAffinity: None
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -170,8 +189,94 @@ spec:
             - name: {{ $name }}
               value: {{ $value | quote }}
             {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+          # Quarkus opens the control port at startup, also while the reader waits for the catalog.
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 2
           resources:
             {{- toYaml .Values.productReader.resources | nindent 12 }}
+          {{- include "shardshop.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+# The interactive mode of the seeder image (step 4.13): it serves its control page and starts one finite seed run
+# at a time on operator request. The bootstrap Job below still seeds each release and gates the deployment.
+apiVersion: v1
+kind: Service
+metadata:
+  name: shardshop-product-seeder-control
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/name: shardshop-product-seeder-control
+    app.kubernetes.io/part-of: shardshop
+spec:
+  selector:
+    app.kubernetes.io/name: shardshop-product-seeder-control
+  sessionAffinity: None
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shardshop-product-seeder-control
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/name: shardshop-product-seeder-control
+    app.kubernetes.io/part-of: shardshop
+spec:
+  # One process keeps the run state and the live setting; a restart restores the configured defaults.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: shardshop-product-seeder-control
+  template:
+    metadata:
+      {{- if .Values.restartToken }}
+      annotations:
+        shardshop.javacraft/restart: {{ .Values.restartToken | quote }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: shardshop-product-seeder-control
+        app.kubernetes.io/part-of: shardshop
+    spec:
+      {{- include "shardshop.workloadPod" . | nindent 6 }}
+      containers:
+        - name: seeder
+          image: {{ $controlSeeder }}
+          env:
+            - name: SHARDSHOP_SEEDER_PRODUCT_URL
+              value: {{ $productUrl | quote }}
+            - name: SHARDSHOP_SEEDER_CATALOG_VERSION
+              value: {{ .Values.datasetVersion | quote }}
+            - name: SHARDSHOP_SEEDER_INTERACTIVE
+              value: "true"
+            {{- range $name, $value := .Values.productSeeder.configuration }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 2
+          resources:
+            {{- toYaml .Values.productSeeder.resources | nindent 12 }}
           {{- include "shardshop.containerSecurity" . | nindent 10 }}
           volumeMounts:
             - name: tmp

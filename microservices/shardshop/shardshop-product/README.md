@@ -43,27 +43,33 @@ The webpage shows the products of one region with their stock, price and earning
    bash microservices/shardshop/scripts/up.sh
    ```
 
-2. Open access to both webpages:
+2. Open access to the webpages:
 
    ```bash
    bash microservices/shardshop/scripts/webpages.sh
    ```
 
-   Wait for `webpages.sh` to print both URLs. It starts and supervises both
-   localhost tunnels:
+   Wait for `webpages.sh` to print all five URLs. It starts and supervises one
+   localhost tunnel for each page:
 
    | Page | Local port | Service port |
    |---|---|---|
    | [Products](http://127.0.0.1:18080/products/) | 18080 | product 8080 |
    | [Orders](http://127.0.0.1:18081/orders/) | 18081 | order 8080 |
+   | [Workload Order Producer](http://127.0.0.1:18082/workload-order-producer/) | 18082 | order-producer 8080 |
+   | [Workload Product Reader](http://127.0.0.1:18083/workload-product-reader/) | 18083 | product-reader 8080 |
+   | [Workload Product Seeder](http://127.0.0.1:18084/workload-product-seeder/) | 18084 | product-seeder-control 8080 |
+
+   The last three pages control the workload traffic; see the
+   [workload control guide](../shardshop-core/workload-control/README.md#1-workload-control-webpages).
 
 3. Open <http://127.0.0.1:18080/products/>.
-4. Keep the terminal open while you use either webpage.
+4. Keep the terminal open while you use the webpages.
 
 `webpages.sh` takes no arguments and requires only `kubectl` and `lsof`.
-It stops existing listeners on ports 18080 and 18081, sends TERM first, waits
-up to five seconds, then sends KILL to remaining listeners. Both ports must be
-released before it opens the tunnels. Run the same command whenever you need
+It stops existing listeners on ports 18080–18084, sends TERM first, waits
+up to five seconds, then sends KILL to remaining listeners. All five ports must
+be released before it opens the tunnels. Run the same command whenever you need
 to reopen access; it does not rebuild or restart applications.
 A forwarding failure stops the tunnels started by this invocation and leaves
 the deployed lab running.
@@ -84,15 +90,14 @@ This discards the old HTML that browsers were previously allowed to retain for
 
 **Tunnels:**
 
-- **Scope:** Both tunnels bind only to `127.0.0.1`.
-- **Stop the tunnels:** Press Ctrl+C. Both forwards started by this invocation
+- **Scope:** All tunnels bind only to `127.0.0.1`.
+- **Stop the tunnels:** Press Ctrl+C. All forwards started by this invocation
   stop; the cluster and workloads continue to run.
 - **Stop the lab:** Run `bash microservices/shardshop/scripts/down.sh`.
-- **Second terminal:** `up.sh` releases its deployment lock before both
-  port-forwards start. Thus, `down.sh` or a new deployment can run in a second
-  terminal.
-- **Forwarding failure:** If either tunnel exits, `up.sh` reports its exit and
-  stops the other tunnel. Exiting `up.sh` cleans up both owned processes.
+- **Second terminal:** `webpages.sh` holds no deployment lock. Thus, `down.sh`
+  or a new deployment can run in a second terminal.
+- **Forwarding failure:** If a tunnel exits, `webpages.sh` reports its exit and
+  stops the other tunnels. Exiting `webpages.sh` cleans up all owned processes.
 
 ## 2. Seller and product provider
 

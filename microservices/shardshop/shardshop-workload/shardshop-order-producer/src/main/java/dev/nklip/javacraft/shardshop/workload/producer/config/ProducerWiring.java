@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.workload.producer.config;
 
 import dev.nklip.javacraft.shardshop.common.JsonHttpClient;
+import dev.nklip.javacraft.shardshop.workload.control.WorkloadControl;
 import dev.nklip.javacraft.shardshop.workload.producer.ProducerDatasets;
 import dev.nklip.javacraft.shardshop.workload.producer.http.OrderRequests;
 import dev.nklip.javacraft.shardshop.workload.producer.load.OrderProducer;
@@ -32,19 +33,29 @@ public class ProducerWiring {
 
     @Produces
     @Singleton
-    OrderProducer producer(ProducerConfiguration config, HttpClient http) {
+    WorkloadControl control(ProducerConfiguration config) {
+        try {
+            return new WorkloadControl(OrderProducer.controlSettings(config.orderRate()), WorkloadControl.Phase.WAITING);
+        } catch (IllegalArgumentException invalid) {
+            throw new IllegalArgumentException("shardshop.producer.order-rate must be 0..100 with at most three decimals");
+        }
+    }
+
+    @Produces
+    @Singleton
+    OrderProducer producer(ProducerConfiguration config, HttpClient http, WorkloadControl control) {
         var settings = new OrderProducer.Settings(config.runName(), config.rejectedOrderPercent(),
-                config.orderInterval(), config.orderDeadline(), config.startupDeadline());
+                config.orderDeadline(), config.startupDeadline());
         OrderProducer.Settings.positiveBounded(config.requestTimeout(), Duration.ofMinutes(1));
         OrderProducer.Settings.positiveBounded(config.pollInterval(), Duration.ofSeconds(30));
         JsonHttpClient product = new JsonHttpClient(http, config.productUrl(), config.requestTimeout());
         JsonHttpClient order = new JsonHttpClient(http, config.orderUrl(), config.requestTimeout());
         DoubleSupplier random = () -> ThreadLocalRandom.current().nextDouble();
         var retry = new RetryPolicy(config.maxAttempts(), config.retryBackoff(), config.maxRetryBackoff(),
-                Thread::sleep, random);
+                Thread::sleep, random, control.traffic());
         var workload = new OrderWorkload(new ProducerDatasets(product, config.catalogVersion(), order,
                 config.buyerVersion()), new OrderRequests(order), retry, Thread::sleep, random, config.pollInterval());
-        created = new OrderProducer(workload, settings);
+        created = new OrderProducer(workload, settings, control);
         return created;
     }
 

@@ -25,6 +25,8 @@ final class KindWorkloadPolicy {
     // SmallRye accepts seconds, unit suffixes and ISO-8601 durations. The applications validate ranges and
     // relationships between settings; this allowlist excludes configuration expressions and connection strings.
     private static final Pattern DURATION = Pattern.compile("[+-]?[0-9]+(?:\\.[0-9]+)?(?:ms|[smhd])?");
+    /** Initial rates: 0 or a positive decimal with at most three fractional digits, without sign or exponent. */
+    private static final Pattern RATE = Pattern.compile("(0|[1-9][0-9]{0,4})(\\.[0-9]{1,3})?");
 
     private KindWorkloadPolicy() { }
 
@@ -84,7 +86,11 @@ final class KindWorkloadPolicy {
                     "HTTP-only producer requires a literal durable run identity");
         } else if (name.equals("SHARDSHOP_PRODUCER_REJECTED_ORDER_PERCENT") || name.equals("SHARDSHOP_PRODUCER_MAX_ATTEMPTS")) {
             require(value.matches(name.endsWith("REJECTED_ORDER_PERCENT") ? "-1|[0-9]+" : "[0-9]+"), "HTTP-only producer has a nonnumeric selection/retry setting");
-        } else if (name.matches("SHARDSHOP_PRODUCER_(CONNECT_TIMEOUT|REQUEST_TIMEOUT|ORDER_INTERVAL|POLL_INTERVAL|ORDER_DEADLINE|STARTUP_DEADLINE|RETRY_BACKOFF|MAX_RETRY_BACKOFF)")) {
+        } else if (name.equals("SHARDSHOP_PRODUCER_ORDER_RATE") || name.equals("SHARDSHOP_SEEDER_REQUEST_RATE")) {
+            require(RATE.matcher(value).matches(), "HTTP-only workload has an invalid initial rate");
+        } else if (name.equals("SHARDSHOP_SEEDER_INTERACTIVE")) {
+            require(value.equals("true"), "HTTP-only seeder has an invalid interactive mode");
+        } else if (name.matches("SHARDSHOP_PRODUCER_(CONNECT_TIMEOUT|REQUEST_TIMEOUT|POLL_INTERVAL|ORDER_DEADLINE|STARTUP_DEADLINE|RETRY_BACKOFF|MAX_RETRY_BACKOFF)")) {
             require(durationValue(value), "HTTP-only producer has invalid HTTP duration setting");
         } else if (INTEGER_SETTINGS.contains(name)) {
             require(value.matches("[+-]?[0-9]+"), "HTTP-only workload has a nonnumeric HTTP setting");

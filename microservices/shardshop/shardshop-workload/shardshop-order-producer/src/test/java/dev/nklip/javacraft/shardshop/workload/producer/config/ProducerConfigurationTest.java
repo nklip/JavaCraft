@@ -20,29 +20,46 @@ class ProducerConfigurationTest {
         assertEquals(-1, config.rejectedOrderPercent());
         assertEquals(Duration.ofSeconds(60), config.orderDeadline());
         assertEquals(Duration.ofMinutes(5), config.startupDeadline());
-        var producer = new ProducerWiring().producer(config, mock(HttpClient.class));
+        var wiring = new ProducerWiring();
+        var control = wiring.control(config);
+        assertEquals("0.5", control.status().targetRate().toPlainString());
+        assertEquals("WAITING", control.status().state());
+        var producer = wiring.producer(config, mock(HttpClient.class), control);
         producer.stop();
         assertFalse(producer.failed());
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"shardshop.producer.order-interval", "shardshop.producer.poll-interval",
+    @ValueSource(strings = {"-1", "100.001", "0.0001", "1E+3"})
+    void invalidOrderRatesFailAtStartup(String rate) {
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> new ProducerWiring().control(config("shardshop.producer.order-rate", rate)));
+        assertEquals("shardshop.producer.order-rate must be 0..100 with at most three decimals", failure.getMessage());
+        assertEquals("0", new ProducerWiring().control(config("shardshop.producer.order-rate", "0.000"))
+                .status().targetRate().toPlainString(), "Zero starts paused");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"shardshop.producer.poll-interval",
             "shardshop.producer.order-deadline", "shardshop.producer.startup-deadline", "shardshop.producer.request-timeout"})
     void zeroDurationsFailBeforeHttp(String key) {
-        assertThrows(IllegalArgumentException.class, () -> new ProducerWiring().producer(config(key, "0s"), mock()));
+        var config = config(key, "0s");
+        assertThrows(IllegalArgumentException.class, () -> new ProducerWiring().producer(config, mock(),
+                new ProducerWiring().control(config)));
     }
 
     @Test
     void invalidRunNamesVersionsAndRetrySettingsFailBeforeHttp() {
         for (String runName : new String[]{"", " ", "\u00a0", "\u0085", "x\0y", "\ud800", "x".repeat(201)}) {
             assertThrows(IllegalArgumentException.class, () -> new OrderProducer.Settings(runName, 10,
-                    Duration.ofSeconds(1), Duration.ofSeconds(60), Duration.ofMinutes(5)));
+                    Duration.ofSeconds(60), Duration.ofMinutes(5)));
         }
         for (String[] entry : new String[][]{{"catalog-version", "missing"}, {"buyer-version", "missing"},
                 {"rejected-order-percent", "101"}, {"max-attempts", "0"}, {"retry-backoff", "0s"},
                 {"max-retry-backoff", "1ms"}, {"product-url", "http://host/?query"}}) {
-            assertThrows(IllegalArgumentException.class, () -> new ProducerWiring().producer(
-                    config("shardshop.producer." + entry[0], entry[1]), mock()));
+            var config = config("shardshop.producer." + entry[0], entry[1]);
+            assertThrows(IllegalArgumentException.class, () -> new ProducerWiring().producer(config, mock(),
+                    new ProducerWiring().control(config)));
         }
     }
 

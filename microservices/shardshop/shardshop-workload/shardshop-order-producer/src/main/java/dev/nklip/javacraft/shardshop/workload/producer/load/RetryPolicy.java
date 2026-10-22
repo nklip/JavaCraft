@@ -2,6 +2,7 @@ package dev.nklip.javacraft.shardshop.workload.producer.load;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import dev.nklip.javacraft.shardshop.common.HttpResponseException;
+import dev.nklip.javacraft.shardshop.workload.control.Traffic;
 
 import java.io.IOException;
 import java.nio.charset.CharacterCodingException;
@@ -9,15 +10,20 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.function.DoubleSupplier;
 
-/** Retries only transport failures and 503s; the enclosing phase bounds the complete operation. */
+/**
+ * Retries only transport failures and 503s; the enclosing phase bounds the complete operation. Each attempt counts as
+ * one backend request of its traffic category.
+ */
 public final class RetryPolicy {
     private final int attempts;
     private final Duration initial;
     private final Duration maximum;
     private final Pause pause;
     private final DoubleSupplier random;
+    private final Traffic traffic;
 
-    public RetryPolicy(int attempts, Duration initial, Duration maximum, Pause pause, DoubleSupplier random) {
+    public RetryPolicy(int attempts, Duration initial, Duration maximum, Pause pause, DoubleSupplier random,
+                       Traffic traffic) {
         if (attempts < 1 || attempts > 10 || initial.isZero() || initial.isNegative()
                 || maximum.compareTo(initial) < 0 || maximum.compareTo(Duration.ofSeconds(30)) > 0) {
             throw new IllegalArgumentException("Invalid producer retry configuration");
@@ -27,13 +33,15 @@ public final class RetryPolicy {
         this.maximum = maximum;
         this.pause = Objects.requireNonNull(pause);
         this.random = Objects.requireNonNull(random);
+        this.traffic = Objects.requireNonNull(traffic);
     }
 
-    public <T> T call(String operation, Request<T> request) throws ProducerException, InterruptedException {
+    public <T> T call(String category, String operation, Request<T> request)
+            throws ProducerException, InterruptedException {
         Duration backoff = initial;
         for (int attempt = 1; ; attempt++) {
             try {
-                return request.send();
+                return once(category, attempt > 1, request);
             } catch (HttpResponseException failure) {
                 if (failure.statusCode() != 503 || attempt == attempts) {
                     throw failed(operation, failure);
@@ -49,6 +57,21 @@ public final class RetryPolicy {
             }
             pause.sleep(jitter(backoff));
             backoff = backoff.multipliedBy(2).compareTo(maximum) > 0 ? maximum : backoff.multipliedBy(2);
+        }
+    }
+
+    /** Sends one counted attempt without a retry. */
+    public <T> T once(String category, Request<T> request) throws IOException, InterruptedException {
+        return once(category, false, request);
+    }
+
+    private <T> T once(String category, boolean retry, Request<T> request) throws IOException, InterruptedException {
+        traffic.sent(category, retry);
+        try {
+            return request.send();
+        } catch (IOException | IllegalArgumentException failure) {
+            traffic.failed(category);
+            throw failure;
         }
     }
 

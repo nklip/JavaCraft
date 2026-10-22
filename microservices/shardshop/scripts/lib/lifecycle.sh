@@ -37,11 +37,18 @@ require_tools() {
     done
 }
 
-# Inspect both ports before returning any PIDs, so an inspection error cannot
+# webpages.sh owns these local page ports. Index i of each list belongs to one
+# page: the provider pages, then the workload control pages of step 4.13.
+page_ports=(18080 18081 18082 18083 18084)
+page_services=(product order order-producer product-reader product-seeder-control)
+page_paths=(products orders workload-order-producer workload-product-reader workload-product-seeder)
+page_titles=('Product page' 'Order page' 'Workload Order Producer page' 'Workload Product Reader page' 'Workload Product Seeder page')
+
+# Inspect all ports before returning any PIDs, so an inspection error cannot
 # turn into a partial cleanup. Only listening processes are selected.
 page_listener_pids() {
     local port output status pid pids=
-    for port in 18080 18081; do
+    for port in "${page_ports[@]}"; do
         if output=$(lsof -t -nP -iTCP:"$port" -sTCP:LISTEN 2>&1); then
             for pid in $output; do
                 [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || {
@@ -62,13 +69,13 @@ page_listener_pids() {
     [[ -z "$pids" ]] || printf '%s' "$pids" | sort -u
 }
 
-# webpages.sh owns these local page ports. Clear old forwards or other listeners
-# before opening new tunnels. Only the discovered listener PIDs are signalled.
+# Clear old forwards or other listeners before opening new tunnels. Only the
+# discovered listener PIDs are signalled.
 page_access_clear_ports() {
     local pids pid deadline
     pids=$(page_listener_pids) || return 1
     [[ -n "$pids" ]] || return 0
-    echo 'Clearing local page ports 18080 and 18081.'
+    echo 'Clearing local page ports 18080-18084.'
     for pid in $pids; do
         echo "Stopping listener PID $pid (TERM)."
         kill -TERM "$pid" 2>/dev/null || true
@@ -90,7 +97,7 @@ page_access_clear_ports() {
         pids=$(page_listener_pids) || return 1
         [[ -n "$pids" ]] || return 0
         if (( SECONDS >= deadline )); then
-            echo "Unable to release local ports 18080/18081; listener PIDs: $pids. Startup stopped." >&2
+            echo "Unable to release local ports 18080-18084; listener PIDs: $pids. Startup stopped." >&2
             return 1
         fi
         sleep 0.1
@@ -106,12 +113,27 @@ page_access_cleanup() {
     rm -rf -- "$forward_state"
 }
 
+# Returns the exit status of a stopped forward, or 0 while all forwards run.
+page_forward_stopped() {
+    local index status
+    for index in "${!page_services[@]}"; do
+        if ! kill -0 "${forward_pids[$index]}" 2>/dev/null; then
+            status=0
+            wait "${forward_pids[$index]}" || status=$?
+            echo "ShardShop ${page_services[$index]} forwarding stopped (exit $status); stopping all local tunnels. The lab remains running." >&2
+            # Access requires every live tunnel, even after a clean CLI exit.
+            [[ "$status" != 0 ]] || status=1
+            return "$status"
+        fi
+    done
+    return 0
+}
+
 page_access() {
-    local service port index status deadline ready pids
-    local services=(product order) ports=(18080 18081)
+    local service index status deadline ready pids
     pids=$(page_listener_pids) || return 1
     if [[ -n "$pids" ]]; then
-        echo "Local page ports became occupied (PIDs: $pids). Run scripts/webpages.sh again to reopen both pages. The lab remains running." >&2
+        echo "Local page ports became occupied (PIDs: $pids). Run scripts/webpages.sh again to reopen all pages. The lab remains running." >&2
         return 1
     fi
     forward_pids=()
@@ -119,11 +141,10 @@ page_access() {
     trap page_access_cleanup EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
-    for index in 0 1; do
-        service=${services[$index]}
-        port=${ports[$index]}
+    for index in "${!page_services[@]}"; do
+        service=${page_services[$index]}
         kubectl --context "$context" -n shardshop port-forward --address 127.0.0.1 \
-            "service/shardshop-$service" "$port:8080" > >(
+            "service/shardshop-$service" "${page_ports[$index]}:8080" > >(
                 # Stream diagnostics rather than retaining a session-sized log.
                 # The reader exits when kubectl closes its output pipe.
                 while IFS= read -r line; do
@@ -135,41 +156,26 @@ page_access() {
     done
     deadline=$((SECONDS + 15))
     while :; do
+        page_forward_stopped || return
         ready=true
-        for index in 0 1; do
-            service=${services[$index]}
-            if ! kill -0 "${forward_pids[$index]}" 2>/dev/null; then
-                status=0
-                wait "${forward_pids[$index]}" || status=$?
-                echo "ShardShop $service forwarding stopped (exit $status); stopping both local tunnels. The lab remains running." >&2
-                # Access requires two live tunnels, even after a clean CLI exit.
-                [[ "$status" != 0 ]] || status=1
-                return "$status"
-            fi
+        for service in "${page_services[@]}"; do
             [[ -f "$forward_state/$service-ready" ]] || ready=false
         done
         [[ "$ready" == true ]] && break
         if (( SECONDS >= deadline )); then
-            echo 'ShardShop forwarding did not become ready within 15 seconds; stopping both local tunnels. The lab remains running.' >&2
+            echo 'ShardShop forwarding did not become ready within 15 seconds; stopping all local tunnels. The lab remains running.' >&2
             return 1
         fi
         sleep 0.1
     done
-    echo 'Product page: http://127.0.0.1:18080/products/'
-    echo 'Order page: http://127.0.0.1:18081/orders/'
-    echo 'Keep this terminal open. Ctrl+C stops both tunnels only; use scripts/down.sh to stop the cluster.'
-    # Bash 3 (the macOS default) has no wait -n. Poll both children so either
-    # tunnel's failure promptly terminates its sibling, including after startup.
+    for index in "${!page_services[@]}"; do
+        echo "${page_titles[$index]}: http://127.0.0.1:${page_ports[$index]}/${page_paths[$index]}/"
+    done
+    echo 'Keep this terminal open. Ctrl+C stops all tunnels only; use scripts/down.sh to stop the cluster.'
+    # Bash 3 (the macOS default) has no wait -n. Poll all children so a failed
+    # tunnel promptly terminates its siblings, including after startup.
     while :; do
-        for index in 0 1; do
-            if ! kill -0 "${forward_pids[$index]}" 2>/dev/null; then
-                status=0
-                wait "${forward_pids[$index]}" || status=$?
-                echo "ShardShop ${services[$index]} forwarding stopped (exit $status); stopping both local tunnels. The lab remains running." >&2
-                [[ "$status" != 0 ]] || status=1
-                return "$status"
-            fi
-        done
+        page_forward_stopped || return
         sleep 0.1
     done
 }

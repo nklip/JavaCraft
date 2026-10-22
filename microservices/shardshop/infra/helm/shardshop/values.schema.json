@@ -120,6 +120,10 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "SHARDSHOP_SEEDER_REQUEST_RATE": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)([.][0-9]{1,3})?$"
+            },
             "SHARDSHOP_SEEDER_MAX_ATTEMPTS": {
               "type": "string",
               "pattern": "^[+]?[0-9]+$"
@@ -393,9 +397,9 @@
               "type": "string",
               "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
             },
-            "SHARDSHOP_PRODUCER_ORDER_INTERVAL": {
+            "SHARDSHOP_PRODUCER_ORDER_RATE": {
               "type": "string",
-              "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+              "pattern": "^(0|[1-9][0-9]*)([.][0-9]{1,3})?$"
             },
             "SHARDSHOP_PRODUCER_POLL_INTERVAL": {
               "type": "string",

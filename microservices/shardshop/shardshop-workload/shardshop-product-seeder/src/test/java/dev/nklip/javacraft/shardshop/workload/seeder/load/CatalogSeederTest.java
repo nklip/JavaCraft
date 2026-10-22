@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.nklip.javacraft.shardshop.common.JsonHttpClient;
+import dev.nklip.javacraft.shardshop.workload.control.ControlStatus;
+import dev.nklip.javacraft.shardshop.workload.control.WorkloadControl;
 import dev.nklip.javacraft.shardshop.workload.dataset.CatalogDataset;
 import dev.nklip.javacraft.shardshop.workload.seeder.catalog.RequestBodies;
 import dev.nklip.javacraft.shardshop.workload.seeder.catalog.SeederDatasets;
@@ -62,9 +64,10 @@ class CatalogSeederTest {
     private final HttpClient http = mock(HttpClient.class);
     private final RetryPolicy.Pause pause = mock();
     private final CatalogDataset catalog = new CatalogDataset(CatalogDataset.VERSION);
+    private final WorkloadControl control = RetryPolicyTest.control("1000");
     private final CatalogSeeder seeder = new CatalogSeeder(new SeederDatasets(
             new JsonHttpClient(http, URI.create("http://product:8080"), Duration.ofSeconds(5)), CatalogDataset.VERSION),
-            new RetryPolicy(3, Duration.ofMillis(100), Duration.ofMillis(150), pause));
+            new RetryPolicy(3, Duration.ofMillis(100), Duration.ofMillis(150), pause, control));
     // The answered HttpClient keeps creation scopes like product: region/key for sellers, sellerId/key for products.
     private final Map<String, Stored> stored = new LinkedHashMap<>();
     private final Map<String, Deque<Fault>> faults = new HashMap<>();
@@ -79,7 +82,12 @@ class CatalogSeederTest {
 
     @Test
     void seedsEveryRegionalEntityAndRecoversTheSameIdsOnARepeatedRun() throws Exception {
-        SeedReport first = seeder.seed();
+        List<String> completed = new ArrayList<>();
+        assertEquals(1056, seeder.plannedOperations());
+        SeedReport first = seeder.seed(() -> completed.add("operation"));
+        assertEquals(1056, completed.size(), "One creation and two verifications for each entity");
+        assertEquals(List.of(new ControlStatus.TrafficCategory("creation", 352, 0, 0),
+                new ControlStatus.TrafficCategory("verification", 704, 0, 0)), control.status().traffic());
         assertEquals("Seeded and verified catalog-v2 [US 50 sellers, 50 products {USD=50}; "
                 + "EU 50 sellers, 100 products {EUR=50, GBP=50}; ASIA 51 sellers, 51 products {CNY=32, KRW=4, JPY=14, VND=1}], "
                 + "key-to-ID SHA-256 " + first.mappingDigest(), first.summary());

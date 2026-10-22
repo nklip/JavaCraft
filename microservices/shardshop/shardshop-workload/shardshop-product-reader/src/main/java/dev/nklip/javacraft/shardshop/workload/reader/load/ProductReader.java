@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.workload.reader.load;
 
 import dev.nklip.javacraft.shardshop.common.Sha256;
+import dev.nklip.javacraft.shardshop.workload.control.WorkloadControl;
 import dev.nklip.javacraft.shardshop.workload.reader.catalog.ReaderDatasets;
 import dev.nklip.javacraft.shardshop.workload.reader.catalog.ReaderDatasets.ProductDescriptor;
 import dev.nklip.javacraft.shardshop.workload.reader.catalog.ReaderDatasets.SellerDescriptor;
@@ -36,19 +37,22 @@ import java.util.random.RandomGenerator;
 
 /**
  * Resolves the catalog through product lookups by creation key. Then a fixed number of workers read randomly
- * selected products by their issued IDs at one total rate until {@link #stop()}. Each report interval logs the
- * request, latency, error and pool metrics: INFO when all reads succeeded, otherwise WARN.
+ * selected products by their issued IDs at one total rate until {@link #stop()}. The live control sets that rate and
+ * can pause new reads. Each report interval logs the request, latency, error and pool metrics: INFO when all reads
+ * succeeded, otherwise WARN.
  */
 public final class ProductReader {
     private static final Logger LOG = Logger.getLogger(ProductReader.class);
     private static final Duration STOP_TIMEOUT = Duration.ofSeconds(10);
+    /** The traffic category of all reads and their repeated attempts. */
+    public static final String READS = "reads";
     /** Outcomes that a later resolution can change: a missing entity, or an unavailable, slow or absent product. */
     private static final Set<Outcome> NOT_READY = EnumSet.of(Outcome.NOT_FOUND, Outcome.UNAVAILABLE,
             Outcome.REPLICA_UNAVAILABLE, Outcome.DEADLINE, Outcome.TRANSPORT);
 
     private final ReaderDatasets datasets;
     private final ProductRequests requests;
-    private final RatePacer pacer;
+    private final WorkloadControl control;
     private final ReaderMetrics metrics;
     private final int workers;
     private final Duration reportInterval;
@@ -61,11 +65,12 @@ public final class ProductReader {
     private boolean started;
     private boolean stopped;
 
-    public ProductReader(ReaderDatasets datasets, ProductRequests requests, RatePacer pacer, ReaderMetrics metrics,
-                         int workers, Duration reportInterval, LongSupplier nanoTime, RandomGenerator random) {
+    public ProductReader(ReaderDatasets datasets, ProductRequests requests, WorkloadControl control,
+                         ReaderMetrics metrics, int workers, Duration reportInterval, LongSupplier nanoTime,
+                         RandomGenerator random) {
         this.datasets = Objects.requireNonNull(datasets);
         this.requests = Objects.requireNonNull(requests);
-        this.pacer = Objects.requireNonNull(pacer);
+        this.control = Objects.requireNonNull(control);
         this.metrics = Objects.requireNonNull(metrics);
         if (workers < requests.maxConnections() || workers > 256 || reportInterval.compareTo(Duration.ofSeconds(1)) < 0) {
             throw new IllegalArgumentException("Invalid reader worker configuration");
@@ -118,6 +123,7 @@ public final class ProductReader {
                 return;
             }
             startedCatalog = catalog;
+            control.phase(WorkloadControl.Phase.ACTIVE);
             metrics.begin();
             scheduler = Executors.newSingleThreadScheduledExecutor(
                     Thread.ofPlatform().name("product-reader-report").daemon().factory());
@@ -127,7 +133,7 @@ public final class ProductReader {
                 executor.submit(() -> read(catalog.targets, onFailure));
             }
         }
-        LOG.info("Reading at " + pacer.requestsPerSecond() + " requests/s with " + workers + " workers and "
+        LOG.info("Reading at " + control.status().targetRate().toPlainString() + " requests/s with " + workers + " workers and "
                 + requests.maxConnections() + " connections");
     }
 
@@ -248,16 +254,25 @@ public final class ProductReader {
     private void read(List<Target> targets, Runnable onFailure) {
         try {
             while (!Thread.currentThread().isInterrupted()) {
-                pacer.await();
+                control.awaitStart();
+                control.started();
                 Target target = targets.get(random.nextInt(targets.size()));
                 long started = nanoTime.getAsLong();
-                ReadResult<ProductDescriptor> result = requests.get(target.read());
+                ReadResult<ProductDescriptor> result;
+                try (WorkloadControl.Operation ignored = control.begin()) {
+                    control.traffic().sent(READS, false);
+                    result = requests.get(target.read());
+                }
+                if (result.outcome() != Outcome.OK) {
+                    control.traffic().failed(READS);
+                }
                 metrics.record(target.region(), result, nanoTime.getAsLong() - started);
             }
         } catch (InterruptedException stopping) {
             // stop() interrupts the workers.
         } catch (RuntimeException failure) {
             if (failed.compareAndSet(false, true)) {
+                control.phase(WorkloadControl.Phase.FAILED);
                 LOG.error("A product reader worker failed", failure);
                 onFailure.run();
             }

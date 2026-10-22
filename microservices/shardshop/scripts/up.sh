@@ -100,4 +100,4 @@ done <"$work/builds.tsv"
 helmfile -f "$work/helmfile.yaml.gotmpl" -l stage=application sync --skip-deps --skip-needs
 echo 'ShardShop deployment verified: current images, seeded catalog, routing, reader traffic and order saga outcomes; workloads remain running.'
 
-echo 'Run scripts/webpages.sh to open the product and order webpages.'
+echo 'Run scripts/webpages.sh to open the product, order and workload control webpages.'

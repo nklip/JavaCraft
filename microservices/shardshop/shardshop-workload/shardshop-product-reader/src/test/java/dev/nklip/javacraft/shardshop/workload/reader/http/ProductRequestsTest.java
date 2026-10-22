@@ -43,6 +43,7 @@ class ProductRequestsTest {
 
     private final ExecutorService serverThreads = Executors.newCachedThreadPool();
     private final Set<InetSocketAddress> connections = ConcurrentHashMap.newKeySet();
+    private final AtomicInteger retried = new AtomicInteger();
     private final AtomicInteger received = new AtomicInteger();
     private final Deque<Answer> answers = new ConcurrentLinkedDeque<>();
     private final List<ProductRequests> clients = new ArrayList<>();
@@ -125,6 +126,7 @@ class ProductRequestsTest {
         assertTrue(System.nanoTime() - started >= TimeUnit.MILLISECONDS.toNanos(200), "Two 100 ms intervals expected");
         assertEquals(3, received.get());
         assertEquals(3, connections.size());
+        assertEquals(2, retried.get(), "Each repeated attempt is reported once");
     }
 
     @Test
@@ -135,6 +137,7 @@ class ProductRequestsTest {
         ProductRequests requests = client(1, Duration.ofSeconds(5), Duration.ofSeconds(30), Duration.ofSeconds(10), 3);
         assertEquals(ReadResult.failed(Outcome.TRANSPORT), requests.get(READ));
         assertEquals(3, received.get());
+        assertEquals(2, retried.get());
         int closedPort;
         try (ServerSocket socket = new ServerSocket(0)) {
             closedPort = socket.getLocalPort();
@@ -253,7 +256,7 @@ class ProductRequestsTest {
         return track(new ProductRequests(new ProductRequests.Settings(
                 URI.create("http://127.0.0.1:" + server.getAddress().getPort()), connections,
                 Duration.ofMillis(Math.min(200, deadline.toMillis())), deadline, lifetime, idle, attempts,
-                Duration.ofMillis(100))));
+                Duration.ofMillis(100)), retried::incrementAndGet));
     }
 
     private ProductRequests track(ProductRequests requests) {

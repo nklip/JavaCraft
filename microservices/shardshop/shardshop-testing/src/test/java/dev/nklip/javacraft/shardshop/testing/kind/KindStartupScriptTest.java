@@ -18,6 +18,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Run the production lifecycle scripts with real chart snapshots and isolated native-command fixtures. */
 class KindStartupScriptTest {
+    /** The local ports and Service names of scripts/webpages.sh, in the same order. */
+    private static final List<Integer> PAGE_PORTS = List.of(18080, 18081, 18082, 18083, 18084);
+    private static final List<String> PAGE_SERVICES = List.of("product", "order", "order-producer", "product-reader",
+            "product-seeder-control");
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String NODES = "shardshop-control-plane\nshardshop-worker\nshardshop-worker2\nshardshop-worker3\n";
     @TempDir Path temporary;
@@ -102,8 +106,8 @@ class KindStartupScriptTest {
                 set -eu
                 printf 'lsof %s\n' "$*" >> "$FIXTURE/events"
                 [[ "$(cat "$FIXTURE/failure")" != port-inspection ]] || exit 2
-                case "$*" in '-t -nP -iTCP:18080 -sTCP:LISTEN'|'-t -nP -iTCP:18081 -sTCP:LISTEN') ;; *) exit 99;; esac
-                for port in 18080 18081; do
+                case "$*" in '-t -nP -iTCP:1808'[0-4]' -sTCP:LISTEN') ;; *) exit 99;; esac
+                for port in 18080 18081 18082 18083 18084; do
                   if [[ " $* " == *" -iTCP:$port "* && -f "$FIXTURE/occupied-$port" ]]; then
                     pid=$(cat "$FIXTURE/occupied-$port")
                     if kill -0 "$pid" 2>/dev/null; then printf '%s\\n' "$pid"; exit 0; fi
@@ -124,7 +128,9 @@ class KindStartupScriptTest {
                     fi
                     [[ ! -e "$TMPDIR/shardshop-up.lock" ]] || exit 76
                     if [[ -f "$FIXTURE/snapshot" ]]; then [[ ! -e "$(cat "$FIXTURE/snapshot")" ]] || exit 76; fi
-                    case "$*" in *service/shardshop-product*) service=product;; *) service=order;; esac
+                    arguments="$*"
+                    service=${arguments#*service/shardshop-}
+                    service=${service%% *}
                     echo $$ > "$FIXTURE/forward-pid-$service"
                     [[ "$(cat "$FIXTURE/failure")" != "port-forward-$service" ]] || exit 77
                     echo 'Forwarding from 127.0.0.1'
@@ -438,15 +444,19 @@ class KindStartupScriptTest {
     }
 
     @Test
-    void webpagesOpensBothPageForwards() throws Exception {
+    void webpagesOpensAllPageForwards() throws Exception {
         Result result = run("webpages.sh");
         assertPageSessionEnded(result);
-        assertEquals(List.of(
-                        "kubectl --context kind-shardshop -n shardshop port-forward --address 127.0.0.1 service/shardshop-order 18081:8080",
-                        "kubectl --context kind-shardshop -n shardshop port-forward --address 127.0.0.1 service/shardshop-product 18080:8080"),
+        String forward = "kubectl --context kind-shardshop -n shardshop port-forward --address 127.0.0.1 service/shardshop-";
+        assertEquals(List.of(forward + "order 18081:8080", forward + "order-producer 18082:8080",
+                        forward + "product 18080:8080", forward + "product-reader 18083:8080",
+                        forward + "product-seeder-control 18084:8080"),
                 events().stream().filter(line -> line.contains(" port-forward ")).sorted().toList());
-        assertTrue(result.output().contains("http://127.0.0.1:18080/products/"), result.output());
-        assertTrue(result.output().contains("http://127.0.0.1:18081/orders/"), result.output());
+        for (String url : List.of("http://127.0.0.1:18080/products/", "http://127.0.0.1:18081/orders/",
+                "http://127.0.0.1:18082/workload-order-producer/", "http://127.0.0.1:18083/workload-product-reader/",
+                "http://127.0.0.1:18084/workload-product-seeder/")) {
+            assertTrue(result.output().contains(url), result.output());
+        }
         assertForwardsStopped();
         assertTemporaryFilesCleaned();
     }
@@ -456,8 +466,9 @@ class KindStartupScriptTest {
         state("nodes", NODES);
         Process unrelated = new ProcessBuilder("/bin/sleep", "60").start();
         try {
-            for (List<Integer> ports : List.of(List.of(18080), List.of(18081), List.of(18080, 18081))) {
-                for (int port : List.of(18080, 18081)) Files.deleteIfExists(temporary.resolve("occupied-" + port));
+            for (List<Integer> ports : List.of(List.of(18080), List.of(18081), List.of(18084), List.of(18080, 18081),
+                    PAGE_PORTS)) {
+                for (int port : PAGE_PORTS) Files.deleteIfExists(temporary.resolve("occupied-" + port));
                 List<Process> owners = new ArrayList<>();
                 try {
                     for (int port : ports) {
@@ -529,7 +540,7 @@ class KindStartupScriptTest {
         try (Running up = start("webpages.sh")) {
             awaitForwarding(up);
             assertTrue(up.process().isAlive());
-            assertEquals(2, events().stream().filter(line -> line.contains(" port-forward ")).count());
+            assertEquals(5, events().stream().filter(line -> line.contains(" port-forward ")).count());
             assertTrue(forwardPids().stream().allMatch(pid -> ProcessHandle.of(pid).orElseThrow().isAlive()));
             assertWebpagesPreservedLab();
             Process signal = new ProcessBuilder("/bin/kill", "-TERM", Long.toString(up.process().pid())).start();
@@ -548,11 +559,11 @@ class KindStartupScriptTest {
     }
 
     @Test
-    void webpagesStartupFailureReapsBothTunnelsAndPreservesTheLab() throws Exception {
+    void webpagesStartupFailureReapsAllTunnelsAndPreservesTheLab() throws Exception {
         state("nodes", NODES);
         state("block-forward", "");
         state("secret-retained", "retained credentials");
-        for (String service : List.of("product", "order")) {
+        for (String service : PAGE_SERVICES) {
             state("failure", "port-forward-" + service);
             Result result = run("webpages.sh");
             assertEquals(77, result.exit(), result.output());
@@ -595,12 +606,12 @@ class KindStartupScriptTest {
             state("nodes", NODES);
             state("running", "true");
             state("block-forward", "");
-            for (String service : List.of("product", "order")) Files.deleteIfExists(temporary.resolve("forward-pid-" + service));
+            for (String service : PAGE_SERVICES) Files.deleteIfExists(temporary.resolve("forward-pid-" + service));
             try (Running up = start("webpages.sh")) {
                 awaitForwarding(up);
                 assertTrue(up.process().isAlive());
                 assertTrue(forwardPids().stream().allMatch(pid -> ProcessHandle.of(pid).orElseThrow().isAlive()),
-                        "Both tunnels must run under the foreground owner");
+                        "All tunnels must run under the foreground owner");
                 assertFalse(Files.exists(lock()), "Webpage forwarding must not retain the lifecycle lock");
                 Process kill = new ProcessBuilder("/bin/kill", "-" + signal, Long.toString(up.process().pid())).start();
                 try {
@@ -632,7 +643,7 @@ class KindStartupScriptTest {
     }
 
     @Test
-    void forwardingFailureAfterStartupStopsBothTunnels() throws Exception {
+    void forwardingFailureAfterStartupStopsAllTunnels() throws Exception {
         state("nodes", NODES);
         state("block-forward", "");
         state("failure", "forward-exit-order");
@@ -652,20 +663,23 @@ class KindStartupScriptTest {
     }
 
     private List<Long> forwardPids() throws IOException {
-        return List.of(Long.parseLong(Files.readString(temporary.resolve("forward-pid-product")).trim()),
-                Long.parseLong(Files.readString(temporary.resolve("forward-pid-order")).trim()));
+        List<Long> pids = new ArrayList<>();
+        for (String service : PAGE_SERVICES) {
+            pids.add(Long.parseLong(Files.readString(temporary.resolve("forward-pid-" + service)).trim()));
+        }
+        return pids;
     }
 
     private void assertForwardsStopped() throws IOException {
         assertTrue(forwardPids().stream().noneMatch(pid -> ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)),
-                "Both invocation-owned tunnels must be reaped");
+                "All invocation-owned tunnels must be reaped");
     }
 
     private void awaitForwarding(Running up) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (!Files.readString(up.output()).contains("Order page:") && up.process().isAlive()
+        while (!Files.readString(up.output()).contains("Keep this terminal open") && up.process().isAlive()
                 && System.nanoTime() < deadline) Thread.sleep(20);
-        assertTrue(Files.readString(up.output()).contains("Order page:"), Files.readString(up.output()));
+        assertTrue(Files.readString(up.output()).contains("Keep this terminal open"), Files.readString(up.output()));
     }
 
     private void assertInvocationCleaned() throws IOException {

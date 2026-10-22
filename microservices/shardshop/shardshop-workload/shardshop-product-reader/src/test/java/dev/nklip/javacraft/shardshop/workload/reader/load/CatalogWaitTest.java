@@ -1,5 +1,6 @@
 package dev.nklip.javacraft.shardshop.workload.reader.load;
 
+import dev.nklip.javacraft.shardshop.workload.control.WorkloadControl;
 import dev.nklip.javacraft.shardshop.workload.dataset.CatalogDataset;
 import dev.nklip.javacraft.shardshop.workload.reader.catalog.ReaderDatasets;
 import dev.nklip.javacraft.shardshop.workload.reader.config.CatalogWait;
@@ -13,7 +14,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
@@ -48,7 +51,9 @@ class CatalogWaitTest {
                 Duration.ofMillis(200), Duration.ofSeconds(5), Duration.ofSeconds(30), Duration.ofSeconds(10), 3,
                 Duration.ofMillis(10)));
         reader = new ProductReader(new ReaderDatasets(CatalogDataset.VERSION), requests,
-                new RatePacer(50, System::nanoTime, TimeUnit.NANOSECONDS::sleep), new ReaderMetrics(System::nanoTime),
+                new WorkloadControl(new WorkloadControl.Settings("product-reader", "product read starts/s",
+                        new BigDecimal("50"), new BigDecimal("10000"), BigDecimal.TEN, 2, List.of(ProductReader.READS)),
+                        WorkloadControl.Phase.WAITING), new ReaderMetrics(System::nanoTime),
                 2, Duration.ofSeconds(1), System::nanoTime, new Random(7)::nextLong);
     }
 

@@ -25,6 +25,11 @@ import java.util.function.DoubleSupplier;
 
 /** HTTP-only phases. The caller supplies an interruptible deadline for each complete phase. */
 public final class OrderWorkload {
+    /** Catalog lookups and buyer creation. */
+    public static final String STARTUP = "startup";
+    public static final String ALLOCATION = "allocation";
+    public static final String SUBMISSION = "submission";
+    public static final String POLLING = "polling";
     private static final Logger LOG = Logger.getLogger(OrderWorkload.class);
     private final ProducerDatasets datasets;
     private final OrderRequests orders;
@@ -72,7 +77,7 @@ public final class OrderWorkload {
         var sellerIds = new HashSet<String>();
         var productIds = new HashSet<String>();
         for (var definition : datasets.sellers()) {
-            SellerDescriptor seller = datasets.lookupSeller(definition);
+            SellerDescriptor seller = retry.once(STARTUP, () -> datasets.lookupSeller(definition));
             if (!sellerIds.add(seller.sellerId())) {
                 throw new IllegalArgumentException("Catalog seller IDs are not unique");
             }
@@ -80,7 +85,8 @@ public final class OrderWorkload {
         }
         List<ProductDescriptor> products = new ArrayList<>();
         for (var definition : datasets.products()) {
-            ProductDescriptor product = datasets.lookupProduct(definition, sellers.get(definition.sellerKey()));
+            SellerDescriptor seller = sellers.get(definition.sellerKey());
+            ProductDescriptor product = retry.once(STARTUP, () -> datasets.lookupProduct(definition, seller));
             if (!productIds.add(product.productId())) {
                 throw new IllegalArgumentException("Catalog product IDs are not unique");
             }
@@ -93,7 +99,7 @@ public final class OrderWorkload {
         List<CreatedBuyer> buyers = new ArrayList<>();
         var ids = new HashSet<String>();
         for (var definition : datasets.buyers()) {
-            CreatedBuyer buyer = retry.call("Buyer creation", () -> datasets.createBuyer(definition));
+            CreatedBuyer buyer = retry.call(STARTUP, "Buyer creation", () -> datasets.createBuyer(definition));
             if (!ids.add(buyer.buyerId())) {
                 throw new ProducerException("Buyer response IDs are not unique", null);
             }
@@ -113,17 +119,21 @@ public final class OrderWorkload {
             throws ProducerException, InterruptedException {
         String buyerId = planner.buyer(ordinal).buyerId();
         progress.buyer(buyerId);
-        String orderId = retry.call("Order allocation", () -> orders.allocate(buyerId, planner.allocationRunName(), ordinal));
+        String orderId = retry.call(ALLOCATION, "Order allocation",
+                () -> orders.allocate(buyerId, planner.allocationRunName(), ordinal));
         progress.order(orderId);
         PlannedOrder order = planner.plan(ordinal, orderId);
         // Construct once. Every retry sends the same IDs, currency, item order and quantities.
-        OrderStatus status = retry.call("Order submission", () -> orders.submit(order));
+        OrderStatus status = retry.call(SUBMISSION, "Order submission", () -> orders.submit(order));
         // Order accepts a new order as pending, thus a terminal first answer is an order from before this process.
         boolean recovered = status.terminal();
         progress.status(status.status());
+        if (!recovered) {
+            progress.accept();
+        }
         while (!status.terminal()) {
             pause.sleep(pollInterval);
-            status = retry.call("Order status", () -> orders.status(buyerId, orderId));
+            status = retry.call(POLLING, "Order status", () -> orders.status(buyerId, orderId));
             progress.status(status.status());
         }
         return new Completion(status, recovered);
@@ -136,11 +146,27 @@ public final class OrderWorkload {
         }
     }
 
-    /** The last known state of the ordinal in progress, for the failure line. One phase thread writes it. */
+    /**
+     * The last known state of the ordinal in progress, for the failure line. One phase thread writes it.
+     * {@code accepted} runs when order accepts the ordinal as a new order of this process.
+     */
     public static final class Progress {
+        private final Runnable accepted;
         private volatile String buyerId;
         private volatile String orderId;
         private volatile String status;
+
+        public Progress() {
+            this(() -> { });
+        }
+
+        public Progress(Runnable accepted) {
+            this.accepted = Objects.requireNonNull(accepted);
+        }
+
+        void accept() {
+            accepted.run();
+        }
 
         void buyer(String value) {
             buyerId = value;

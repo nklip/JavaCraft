@@ -40,6 +40,11 @@
             <groupId>dev.nklip.javacraft</groupId>
             <artifactId>shardshop-common</artifactId>
         </dependency>
+        <!-- The live rate control, its REST resource and the shared page assets. -->
+        <dependency>
+            <groupId>dev.nklip.javacraft</groupId>
+            <artifactId>shardshop-workload-control</artifactId>
+        </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-arc</artifactId>

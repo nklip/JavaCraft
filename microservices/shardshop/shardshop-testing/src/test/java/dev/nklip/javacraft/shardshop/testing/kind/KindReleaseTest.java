@@ -369,7 +369,8 @@ class KindReleaseTest {
     private static ReleaseFixture release() throws IOException, InterruptedException {
         Map<String, JsonNode> live = new HashMap<>();
         List<JsonNode> desired = new ArrayList<>();
-        for (String application : List.of("product", "product-reader", "order", "ledger", "order-producer")) {
+        for (String application : List.of("product", "product-reader", "order", "ledger", "order-producer",
+                "product-seeder-control")) {
             Deployment deployment = deployment(application, application.equals("product") ? 2 : 1);
             desired.add(deployment.desired());
             live.put("get deployment shardshop-" + application + " -o json", deployment.live());
@@ -387,7 +388,7 @@ class KindReleaseTest {
                 desired.add(config);
                 live.put("get configmap shardshop-" + application + "-config -o json", config.deepCopy());
             }
-            if (List.of("product", "order").contains(application)) {
+            if (!application.equals("ledger")) {
                 ObjectNode service = service(application);
                 desired.add(service);
                 live.put("get service shardshop-" + application + " -o json", service.deepCopy());
@@ -472,6 +473,24 @@ class KindReleaseTest {
         object(wrongOrderSelector.resource("service", "shardshop-order").path("spec").path("selector"))
                 .put("app.kubernetes.io/name", "shardshop-product");
         assertThrows(IOException.class, wrongOrderSelector::verify);
+    }
+
+    @Test
+    void releaseRequiresEachWorkloadControlServiceAndTheInteractiveSeeder() throws Exception {
+        for (String application : List.of("product-reader", "order-producer", "product-seeder-control")) {
+            ReleaseFixture missingEndpoint = release();
+            missingEndpoint.live().put("get endpointslices -l kubernetes.io/service-name=shardshop-" + application
+                    + " -o json", json("{\"items\":[]}"));
+            assertThrows(IOException.class, missingEndpoint::verify, application);
+            ReleaseFixture wrongSelector = release();
+            object(wrongSelector.resource("service", "shardshop-" + application).path("spec").path("selector"))
+                    .put("app.kubernetes.io/name", "shardshop-product-seeder");
+            assertThrows(IOException.class, wrongSelector::verify, application);
+        }
+        ReleaseFixture oldSeederControl = release();
+        object(oldSeederControl.resource("deployment", "shardshop-product-seeder-control").path("status"))
+                .put("observedGeneration", 2);
+        assertThrows(IOException.class, oldSeederControl::verify);
     }
 
 }

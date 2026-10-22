@@ -138,7 +138,7 @@ After readiness/image delivery, Helmfile syncs `shardshop-migrations` and
 `shardshop-application` in dependency order. Each revision runs ordered Flyway
 hooks and idempotent seeding. Flyway's actual history is authoritative; no completed
 Job cache suppresses validation. Every `up.sh` deployment changes a shared restart
-annotation on all five application Deployment templates through Helm, triggering replacement
+annotation on all six application Deployment templates through Helm, triggering replacement
 followed by the seeding and acceptance gates even for unchanged code. Each new
 product or order JVM consumes a fresh, non-reusable generator slot; a normal
 rollout of two product replicas and one order replica uses at least three slots.
@@ -151,13 +151,14 @@ logs; after TTL cleanup, standalone workload checks require a fresh `up.sh` run.
 
 After the deployment gates succeed, `up.sh` releases its deployment lock and
 exits. Both `up.sh` and `webpages.sh` accept no arguments. The separate
-`webpages.sh` serves local access through two owned `kubectl port-forward` processes: product
-at `http://127.0.0.1:18080/products/` and order at
-`http://127.0.0.1:18081/orders/`. Both bind to localhost. Exiting or interrupting
-the script closes both tunnels without stopping workloads; a failed tunnel
-ends the access session and reports the failure. Cluster shutdown remains the
+`webpages.sh` serves local access through five owned `kubectl port-forward` processes: product
+at `http://127.0.0.1:18080/products/`, order at `http://127.0.0.1:18081/orders/`, and
+the [workload control pages](#workload-traffic-control-step-413) of the order producer,
+product reader and interactive seeder at ports 18082, 18083 and 18084. All bind to
+localhost. Exiting or interrupting the script closes all its tunnels without stopping
+workloads; a failed tunnel ends the access session and reports the failure. Cluster shutdown remains the
 responsibility of `down.sh`.
-`webpages.sh` uses `lsof` to find processes listening on ports 18080 and 18081 and stops
+`webpages.sh` uses `lsof` to find processes listening on ports 18080–18084 and stops
 them before opening tunnels: TERM, a five-second grace period, then KILL for remaining
 listeners. It requires the ports to be released within two further seconds.
 A second inspection before opening tunnels catches newly occupied ports and
@@ -220,11 +221,13 @@ This design embeds Debezium Engine in the existing order relay so it can retain
 the publication bookkeeping and mandatory-routing protocol defined below;
 Kafka and a separate Debezium Server deployment are not required.
 
-There are six top-level Maven modules and eleven Java modules: six deployable
-applications, four library JARs and the test-only `shardshop-testing` module.
+There are six top-level Maven modules and twelve Java modules: six deployable
+applications, five library JARs and the test-only `shardshop-testing` module.
 `shardshop-testing` has no main classes and no runtime dependency on another module;
 its Cucumber scenarios start the packaged applications (step 3.10). `shardshop-core` is a POM parent and aggregator
-for `common`, `idgen` and `sharding`. The workload module is a POM aggregator
+for `common`, `idgen`, `sharding` and `workload-control`. Only the three workload
+applications use `shardshop-workload-control`; Maven Enforcer rejects it, like the
+datasets, in every other module ([traffic control](#workload-traffic-control-step-413)). The workload module is a POM aggregator
 containing three applications and the ID-free `shardshop-datasets` library;
 product, order and ledger are the other three
 applications. The `shardshop-common` artifact provides shared validation and
@@ -248,18 +251,18 @@ they never generate, derive, or allocate them locally.
 
 | # | Module | Responsibility | Initial deployment | Database access |
 |---|---|---|---|---|
-| 1 | `shardshop-workload` | Aggregate the three workload applications below | No aggregator pod; one seeder Job and two load Deployments | None: no tables, migrations, or database credentials |
+| 1 | `shardshop-workload` | Aggregate the three workload applications below | No aggregator pod; one seeder Job, two load Deployments and one interactive seeder Deployment | None: no tables, migrations, or database credentials |
 | 2 | `shardshop-product` | Accept seller and product creation and product reader HTTP requests | Two identical product service pods behind one Kubernetes Service | Creates and reads sellers and products in schema `catalog` of the shared sharded PostgreSQL deployment |
 | 3 | `shardshop-order` | Accept buyer and order HTTP requests, coordinate the saga including stock reservation, and relay captured order-outbox inserts to RabbitMQ | One stateless order service pod initially | Buyers, orders, items, saga state, inbox, outbox, and CDC offsets in schema `ordering`; reads sellers and products and writes stock reservations and product stock in `catalog` |
 | 4 | `shardshop-ledger` | Consume ledger commands and persist order ledger records | One ledger consumer pod plus a separate PostgreSQL pod initially | Schema `ledger` in a dedicated ledger database: entries, decisions, permanent result bindings, inbox, outbox, and command quarantine |
-| 5 | `shardshop-core` | Aggregate `common` (canonical-ID parsing, UTF-8 SHA-256 and the bounded JSON HTTP client), `idgen` (bounded Snowflake generation) and `sharding` (seller/buyer routing); idgen and sharding own their SmallRye/CDI wiring (section 3) | No aggregator pod; common is inside all six applications, idgen and sharding are inside product/order | None |
+| 5 | `shardshop-core` | Aggregate `common` (canonical-ID parsing, UTF-8 SHA-256 and the bounded JSON HTTP client), `idgen` (bounded Snowflake generation), `sharding` (seller/buyer routing) and `workload-control` (live workload pacing, control API and page assets); idgen and sharding own their SmallRye/CDI wiring (section 3) | No aggregator pod; common is inside all six applications, idgen and sharding are inside product/order, workload-control is inside the three workloads | None |
 | 6 | `shardshop-testing` | Cucumber integration scenarios that start the packaged applications against a PostgreSQL test container and a k3s Kubernetes API server | Not deployed; runs only in Maven builds with `-Pintegration` | Its own test databases, migrated by Flyway with the lab's roles |
 
 Module 1 contains exactly three independently runnable submodules:
 
 | Submodule | Workload | Deployment |
 |---|---|---|
-| `shardshop-product-seeder` | Seed a fixed dataset of sellers and their products through module 2 over HTTP | Its own Job pod; exits when seeding completes |
+| `shardshop-product-seeder` | Seed a fixed dataset of sellers and their products through module 2 over HTTP | Its own Job pod; exits when seeding completes. The same image also runs as one interactive Deployment pod that seeds only on operator request |
 | `shardshop-product-reader` | Generate many concurrent product reads through module 2 to load the database | Its own Deployment with one pod |
 | `shardshop-order-producer` | Create its buyers, generate their orders, submit them to module 3 over HTTP, and observe their status | Its own Deployment with one pod |
 
@@ -267,7 +270,8 @@ Each workload app uses local ID-free dataset definitions, IDs returned by
 product/order APIs, and bounded in-memory business state. Workloads have no ID generator, Snowflake
 dependency, generator allocation or allocator permissions. They have no
 direct SQL connections or persistent tables, including inbox/outbox tables. Each
-has its own request rate, concurrency limit, and resource budget. The pure `shardshop-datasets` library under `shardshop-workload` contains all
+has its own request rate, concurrency limit, and resource budget; step 4.13 makes the
+rate a live setting of each process. The pure `shardshop-datasets` library under `shardshop-workload` contains all
 dataset definitions. It fixes payloads and creation retry keys, never entity IDs.
 Only workload applications depend on it; service/core modules contain no datasets.
 A retry repeats the original creation key/payload and recovers the same
@@ -309,7 +313,8 @@ Dataset definitions and service-side creation follow section 3.
    producer run until the scenario controller scales them to zero. Each new run
    gets a new Helm-revision seeder Job on each deployment invocation while
    startup replaces workload pods even when their build is unchanged. Explicit temporary seeder
-   runs remain available through Maven workload drills. If the dataset is already complete, a workload can
+   runs remain available through Maven workload drills and through the
+   interactive seeder's [control page](#workload-traffic-control-step-413). If the dataset is already complete, a workload can
    continue its load before
    the Job of its run completes, because the seeder sends the same keys and
    payloads again. Workloads do not generate run IDs.
@@ -351,9 +356,10 @@ item selections separate from the prior `catalog-v2:balanced` stream. Historical
 orders are untouched, and explicit USD/EUR drill namespaces remain unchanged.
 A restart reconstructs and replays earlier ordinals through the same allocation and
 PUT APIs before advancing. This deliberately trades
-restart catch-up time for no workload-owned progress store. An ordinal that was
-terminal before its PUT gets no order interval; only the orders that the process
-submits or observes as pending are paced.
+restart catch-up time for no workload-owned progress store. The replay is not
+paced, but Pause holds it. From the first order that this process submits as new,
+the [live control](#workload-traffic-control-step-413) paces the allocation of each
+new order at the target rate of new order starts per second.
 
 One complete deadline bounds allocation, submission, retries and terminal polling
 for each ordinal (60 seconds by default). Transport failures and HTTP 503 use
@@ -365,6 +371,63 @@ commands are in the [producer runbook](README.md#order-producer-step-48).
 Module 2 also handles seller and product creation so the product seeder can populate the
 shared database through an application API. Module 4 includes a consumer process:
 the ledger database itself does not consume RabbitMQ messages.
+
+### Workload traffic control (step 4.13)
+
+The order producer, the product reader and the product seeder each serve a dedicated
+webpage and a workload-owned control/status API on port 8080 with Quarkus REST. The
+shared `shardshop-workload-control` library contains the pacer, the control state,
+the REST resource, the error mappers and one page script and stylesheet; each
+workload contains its own page markup: Workload Order Producer at
+`/workload-order-producer/`, Workload Product Reader at `/workload-product-reader/` and
+Workload Product Seeder at `/workload-product-seeder/`. Its REST root `/api/v1/<workload>` names the workload, thus a
+later gateway can route each API separately. The
+[control contract](shardshop-core/workload-control/src/main/resources/contracts/openapi.yaml)
+defines `GET /control`, `PUT /control/rate`, `POST /control/pause`,
+`POST /control/resume` and, for the seeder only, `POST /control/runs`.
+
+| Workload | Unit of the rate | Default | Maximum | Operations in flight |
+|---|---|---:|---:|---|
+| Order producer | New order starts per second | 0.5 | 100 | One order, from allocation to terminal status |
+| Product reader | Product read starts per second across all workers | 200 | 10,000 | One read per worker |
+| Product seeder | Outgoing HTTP requests per second, including creation, verification and retries | 100 | 1,000 | One request |
+
+The server validates a rate as a finite JSON number from zero to the maximum with
+at most three decimal places; an invalid update returns `400` and changes nothing.
+Each accepted update is atomic and increments a revision. Zero stops new work like
+Pause; Pause keeps the target for Resume. One schedule spaces the starts of a
+process. A change wakes waiting callers at once, and the next start comes one new
+interval after the last start or at once. Missed starts are never sent later, thus
+a rate change or a Resume causes no burst. The setting lives only in the process:
+a browser refresh keeps it, and a process restart (for example each `up.sh` run)
+restores the configured defaults.
+
+Pause drains the bounded operation in flight. Reads and seeder requests keep their
+HTTP deadlines, bounded attempts and backoff. The producer keeps its one order in
+flight, observes it until it is terminal and then allocates no new ordinal; its
+complete-order deadline does not include the pause. The control changes no dataset
+version, run name, ordinal progress, service-issued ID, retry key or currency
+selection. The workloads keep their Java-owned catalog gates and lifecycle, and
+they have no database credentials or Kubernetes API access.
+
+The status shows the lifecycle state (`WAITING`, `IDLE`, `RUNNING`, `PAUSING`,
+`PAUSED`, `COMPLETED` or `FAILED`), the effective target, the achieved rate of the
+last 10 seconds and the operations in flight. It counts backend HTTP requests,
+retries and errors by purpose. The producer separates its startup traffic (catalog
+lookups and buyer creation) from allocation, submission and polling, and its rate
+counts only orders that order accepts as new. When concurrency divided by the mean
+operation time of the last 10 seconds is below the effective target, the status
+names this limit; for the producer, this is the single order in flight.
+
+The seeder has two modes of one application. The default finite bootstrap Job seeds
+each release, serves no HTTP and keeps the deployment completion gate. The
+`shardshop-product-seeder-control` Deployment runs the interactive mode: it serves
+its page while it is idle or completed, and it starts one operator-requested finite
+run at a time (`409 RUN_ACTIVE` otherwise). A run repeats the dataset keys and
+payloads, thus it recovers the same IDs without duplicates and changes no stock or
+profit. A run has no deadline of its own; a paused run waits, and a pod restart
+stops it. The control API has no authentication. It is reachable only inside the
+cluster and through `webpages.sh`; step 7.5 adds authenticated routes.
 
 ### Shared utilities and shard routing
 

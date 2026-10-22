@@ -5,6 +5,7 @@ import dev.nklip.javacraft.shardshop.workload.dataset.CatalogDataset;
 import io.smallrye.config.ConfigMapping;
 import io.smallrye.config.WithDefault;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Duration;
 
@@ -26,8 +27,12 @@ public interface ProducerConfiguration {
     Duration connectTimeout();
     @WithDefault("5s")
     Duration requestTimeout();
-    @WithDefault("1s")
-    Duration orderInterval();
+    /**
+     * Initial new order starts per second, 0..100 with at most three decimals; zero starts paused. One order is in
+     * flight at a time. The control page changes the live rate; a restart returns to this value.
+     */
+    @WithDefault("0.5")
+    BigDecimal orderRate();
     @WithDefault("250ms")
     Duration pollInterval();
     /** Complete allocation, submission, retries and terminal polling budget for one ordinal. */

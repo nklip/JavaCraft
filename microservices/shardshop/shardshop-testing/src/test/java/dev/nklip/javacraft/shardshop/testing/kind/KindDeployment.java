@@ -51,6 +51,10 @@ public final class KindDeployment {
                 "The product reader must already have one running ready pod; deploy the workload first");
         JsonNode reader = readers.getFirst();
         httpOnly(reader.path("spec"));
+        List<JsonNode> seederControls = pods("app.kubernetes.io/name=shardshop-product-seeder-control");
+        require(seederControls.size() == 1 && ready(seederControls.getFirst()),
+                "The interactive product seeder must already have one ready pod");
+        httpOnly(seederControls.getFirst().path("spec"));
         String jobName = seederJobName(readerDeployment, reader);
         JsonNode job = resource("job", jobName);
         require(completed(job), "The deployed release needs a successful seeder Job before workload checks");

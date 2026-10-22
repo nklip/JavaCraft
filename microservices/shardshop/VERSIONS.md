@@ -1110,3 +1110,22 @@ it had no runtime dependencies. `jackson-databind` stays in its test scope. The 
 reader and producer packages already contained both artifacts: on **2026-10-21** their
 `quarkus-app-dependencies.txt` lists were identical before and after this step. No
 artifact or version is added.
+
+## Step 4.13 workload control dependencies
+
+On **2026-10-22**, the three workloads gained the new reactor library
+`shardshop-workload-control`, which declares the platform-managed
+`io.quarkus:quarkus-rest-jackson` **3.40.1** for the control API and page. The
+workload packages now contain the Quarkus REST, Vert.x **4.5.34** and Netty
+**4.1.139.Final** runtime that [step 3.6](#step-36-provider-dependencies) qualified
+for product. The `quarkus-app-dependencies.txt` lists grow from **66 to 132**
+(reader), **47 to 120** (producer) and **47 to 120** (seeder) artifacts; no artifact
+is removed. Every added artifact except `shardshop-workload-control` itself already
+ships in the product, order or ledger package of the same build, thus no
+coordinate or version is new and the existing review dates apply. The step 3.8
+statement that workload packages contain no Vert.x or Netty no longer applies.
+The seeder Job disables its HTTP listener (`quarkus.http.host-enabled=false`);
+only the interactive seeder, the reader and the producer listen on port 8080.
+The control pacer is custom code by the user's choice on 2026-10-22: Guava
+`RateLimiter` stores one second of permits (a burst after Resume), sleeps
+uninterruptibly and has no zero rate; Bucket4j is not in the Quarkus platform.

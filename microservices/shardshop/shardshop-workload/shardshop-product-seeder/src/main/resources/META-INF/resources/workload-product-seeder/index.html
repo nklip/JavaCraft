@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Workload Product Seeder · ShardShop</title>
+  <link rel="stylesheet" href="/workload-control/control.css?v=1">
+  <script src="/workload-control/control.js?v=1" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to traffic control</a>
+  <header class="site-header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">s</span> ShardShop</div>
+    <span class="workspace-label">WORKLOAD CONTROL</span>
+    <span class="live-control"><span aria-hidden="true"></span> Live control</span>
+  </header>
+  <main id="main" data-workload="product-seeder" data-api="/api/v1/product-seeder/control">
+    <div class="page-heading">
+      <p class="eyebrow">TRAFFIC CONTROL</p>
+      <h1>Workload Product Seeder</h1>
+      <p class="intro">Outgoing HTTP requests per second of operator-started seed runs, including creation and verification.</p>
+    </div>
+    <section class="panel" aria-label="Workload Product Seeder traffic">
+      <form id="rate-form" class="toolbar" novalidate>
+        <div class="rate-control">
+          <label for="rate">Target rate <span class="unit">(HTTP requests/s)</span></label>
+          <div class="rate-actions">
+            <button id="decrease" class="step-button" type="button" aria-label="Decrease the target rate by one step">−</button>
+            <input id="rate" name="rate" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" aria-describedby="rate-help rate-error">
+            <button id="increase" class="step-button" type="button" aria-label="Increase the target rate by one step">+</button>
+            <button id="apply" type="submit">Apply</button>
+          </div>
+          <span class="control-help"><span id="rate-help">0 to 1,000 HTTP requests/s; 0 stops new requests.</span> <span id="rate-error" class="field-error" role="alert"></span></span>
+        </div>
+        <div class="pause-control">
+          <span class="control-label">New requests</span>
+          <div class="pause-actions">
+            <button id="pause" type="button">Pause</button>
+            <button id="resume" type="button">Resume</button>
+          </div>
+          <span id="updated" class="control-help" role="status">Not yet loaded</span>
+        </div>
+      </form>
+      <div class="panel-heading">
+        <h2>Current traffic <span id="state-badge" class="state-badge">Loading</span></h2>
+        <span id="revision" class="revision">Setting revision —</span>
+      </div>
+      <dl class="metrics">
+        <div><dt>Effective target</dt><dd id="effective">—</dd></div>
+        <div><dt>Achieved rate</dt><dd id="achieved">—</dd></div>
+        <div><dt>In flight</dt><dd id="in-flight">—</dd></div>
+        <div><dt>Backend requests</dt><dd id="requests">—</dd></div>
+        <div><dt>Backend errors</dt><dd id="errors">—</dd></div>
+      </dl>
+      <p id="limit" class="notice" hidden></p>
+      <div id="message" class="message" role="status" hidden></div>
+      <div id="announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+      <div id="results" aria-busy="true">
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Backend HTTP traffic by purpose">
+          <table>
+            <caption class="sr-only">Backend HTTP requests by purpose since the process started. Retries and errors are parts of the requests.</caption>
+            <thead><tr>
+              <th scope="col">Purpose</th>
+              <th scope="col" class="numeric">Requests</th>
+              <th scope="col" class="numeric">Retries</th>
+              <th scope="col" class="numeric">Errors</th>
+            </tr></thead>
+            <tbody id="traffic"></tbody>
+          </table>
+        </div>
+        <div id="state" class="state">
+          <span id="state-icon" class="state-icon" aria-hidden="true">↻</span>
+          <h3 id="state-title">Loading the workload status</h3>
+          <p id="state-description">Getting the current setting and traffic.</p>
+        </div>
+      </div>
+    </section>
+    <section class="panel" aria-label="Seed runs">
+      <div class="toolbar">
+        <div class="run-control">
+          <span class="control-label">Seed run</span>
+          <div class="pause-actions">
+            <button id="run-start" type="button">Start seed run</button>
+          </div>
+          <span class="control-help">One run at a time. A rerun sends the same keys and payloads and recovers the same IDs.</span>
+        </div>
+      </div>
+      <dl class="run-details">
+        <div><dt>Run</dt><dd id="run-number">—</dd></div>
+        <div><dt>Result</dt><dd id="run-state">—</dd></div>
+        <div><dt>Progress</dt><dd id="run-progress">—</dd></div>
+        <div><dt>Started → finished (UTC)</dt><dd id="run-times">—</dd></div>
+        <div class="run-result"><dt>Summary</dt><dd id="run-result">—</dd></div>
+      </dl>
+    </section>
+    <aside class="data-note" aria-label="About these figures">
+      <span class="info-icon" aria-hidden="true">i</span>
+      <div>
+        <h2>About this control</h2>
+        <ul>
+          <li><strong>Rate</strong> counts every outgoing HTTP request, including repeated attempts, creation and verification.</li>
+          <li><strong>Runs</strong> reuse the dataset keys and payloads: a rerun creates no duplicates and changes no stock or earnings. The bootstrap Job of each deployment is separate.</li>
+          <li><strong>Setting</strong> lives in the workload process. Refreshing or closing this page keeps it; a process restart restores the default rate, unpaused.</li>
+          <li><strong>Pause</strong> lets the operations in flight finish within their deadlines; zero also stops new work. A change never sends missed work later.</li>
+          <li><strong>Timeouts</strong> apply to each HTTP attempt; a paused run has no deadline and waits for Resume.</li>
+        </ul>
+      </div>
+    </aside>
+    <footer>ShardShop <span aria-hidden="true">/</span> Workload Product Seeder traffic control</footer>
+    <noscript><p class="noscript">Enable JavaScript to control the workload product seeder.</p></noscript>
+  </main>
+</body>
+</html>

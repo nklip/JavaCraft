@@ -1,6 +1,8 @@
 package dev.nklip.javacraft.shardshop.workload.producer.load;
 
 import com.fasterxml.jackson.core.JsonParseException;
+import dev.nklip.javacraft.shardshop.workload.control.ControlStatus;
+import dev.nklip.javacraft.shardshop.workload.control.WorkloadControl;
 import dev.nklip.javacraft.shardshop.workload.dataset.BuyerDataset;
 import dev.nklip.javacraft.shardshop.workload.dataset.CatalogDataset;
 import dev.nklip.javacraft.shardshop.workload.producer.ProducerDatasets;
@@ -21,7 +23,9 @@ class OrderWorkloadTest {
     private final ProducerDatasets datasets = mock();
     private final OrderRequests orders = mock();
     private final List<Duration> waits = new ArrayList<>();
-    private final RetryPolicy retry = new RetryPolicy(3, Duration.ofMillis(100), Duration.ofSeconds(2), waits::add, () -> 0);
+    private final WorkloadControl control = WorkloadFixtures.control("1");
+    private final RetryPolicy retry = new RetryPolicy(3, Duration.ofMillis(100), Duration.ofSeconds(2), waits::add, () -> 0,
+            control.traffic());
     private final OrderWorkload workload = new OrderWorkload(datasets, orders, retry, waits::add, () -> 0,
             Duration.ofMillis(250));
 
@@ -35,9 +39,15 @@ class OrderWorkloadTest {
                 .thenReturn(WorkloadFixtures.status("PENDING_STOCK"));
         when(orders.status(buyer, order)).thenReturn(WorkloadFixtures.status("PENDING_LEDGER"))
                 .thenThrow(new IOException()).thenReturn(WorkloadFixtures.status("CANCELLED"));
-        var progress = new OrderWorkload.Progress();
+        List<String> accepted = new ArrayList<>();
+        var progress = new OrderWorkload.Progress(() -> accepted.add("accepted"));
         var completion = workload.complete(planner, "stable", 0, progress);
         assertEquals("CANCELLED", completion.status().status());
+        assertEquals(List.of("accepted"), accepted, "A pending first answer is one new order");
+        assertEquals(List.of(new ControlStatus.TrafficCategory("startup", 0, 0, 0),
+                new ControlStatus.TrafficCategory("allocation", 2, 1, 1),
+                new ControlStatus.TrafficCategory("submission", 2, 1, 1),
+                new ControlStatus.TrafficCategory("polling", 3, 1, 1)), control.status().traffic());
         assertFalse(completion.recovered(), "A pending first answer is work of this process");
         assertEquals("ordinal 0, buyer " + buyer + ", order " + order + ", last status CANCELLED", progress.describe(0));
         verify(orders, times(2)).allocate(buyer, planner.allocationRunName(), 0);
@@ -55,9 +65,11 @@ class OrderWorkloadTest {
         var planner = WorkloadFixtures.planner("stable", 10);
         when(orders.allocate(anyString(), eq(planner.allocationRunName()), eq(0L))).thenReturn("880803840000004254");
         when(orders.submit(any())).thenReturn(WorkloadFixtures.status("CONFIRMED"));
-        var completion = workload.complete(planner, "stable", 0, new OrderWorkload.Progress());
+        List<String> accepted = new ArrayList<>();
+        var completion = workload.complete(planner, "stable", 0, new OrderWorkload.Progress(() -> accepted.add("new")));
         assertEquals("CONFIRMED", completion.status().status());
         assertTrue(completion.recovered(), "A terminal first answer is an order from before this process");
+        assertEquals(List.of(), accepted, "A recovered order is not a new order");
         verify(orders, never()).status(anyString(), anyString());
         assertTrue(waits.isEmpty());
     }
@@ -71,6 +83,8 @@ class OrderWorkloadTest {
         assertThrows(ProducerException.class, workload::resolveCatalog);
         assertEquals(List.of(Duration.ofSeconds(1)), waits);
         verifyNoInteractions(orders);
+        assertEquals(new ControlStatus.TrafficCategory("startup", 2, 0, 2), control.status().traffic().getFirst(),
+                "Each catalog lookup is one startup request");
         waits.clear();
         doThrow(new JsonParseException(null, "private response")).when(datasets).lookupSeller(definition);
         assertThrows(ProducerException.class, workload::resolveCatalog);

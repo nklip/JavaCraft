@@ -1347,6 +1347,14 @@ maven:
       io.netty:netty-codec-http: {"version":"4.1.139.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http/4.1.139.Final/netty-codec-http-4.1.139.Final.jar","sha256":"627cfdac2cd5dbd8a33af85977fb81fa6b46f0c00389ab4c8677a415f0f85480","published_checksum":{"algorithm":"sha1","value":"f52d30aeadc0af8c0d1cad9970e5a9c5df62bdd1","url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http/4.1.139.Final/netty-codec-http-4.1.139.Final.jar.sha1"}}
       io.netty:netty-codec-http2: {"version":"4.1.139.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http2/4.1.139.Final/netty-codec-http2-4.1.139.Final.jar","sha256":"4cb8bc95386112f3a9da935272781d577d9e70ca4c56cf0eef603a45e9526e02","published_checksum":{"algorithm":"sha1","value":"7b86d21a5578c431d2ccf898f22b444a38a4c0b2","url":"https://repo.maven.apache.org/maven2/io/netty/netty-codec-http2/4.1.139.Final/netty-codec-http2-4.1.139.Final.jar.sha1"}}
       io.netty:netty-handler: {"version":"4.1.139.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/netty/netty-handler/4.1.139.Final/netty-handler-4.1.139.Final.jar","sha256":"ff85f00781b956d618b20f33da076c839a5e43e0084108b07bab0c19737168ec","published_checksum":{"algorithm":"sha1","value":"436b4a15bb2fe4608996a08b6d69b22f075286a4","url":"https://repo.maven.apache.org/maven2/io/netty/netty-handler/4.1.139.Final/netty-handler-4.1.139.Final.jar.sha1"}}
+  step_4_13_workload_control_dependencies:
+    checked_on: '2026-10-22'
+    platform: io.quarkus.platform:quarkus-bom:3.40.1
+    scope: The reactor library shardshop-workload-control (pacer, control state, control REST resource, page assets) declares quarkus-rest-jackson; only the reader, producer and seeder use it
+    verification: quarkus-app-dependencies.txt of HEAD 5fe9b900 and the step 4.13 build; reader 66 to 132, producer 47 to 120, seeder 47 to 120 artifacts, none removed. Each added artifact except shardshop-workload-control is already in the product, order or ledger package of the same build
+    runtime: Quarkus REST 3.40.1, Vert.x 4.5.34 and Netty 4.1.139.Final as in step_3_6_provider_dependencies; the seeder Job disables its HTTP listener
+    pacer: Custom RatePacer (no stored permits, live rate change, zero rate, interruptible); Guava RateLimiter and Bucket4j were rejected on 2026-10-22
+    artifacts: No new third-party artifact; hashes are in step_3_6_provider_dependencies and the platform snapshot
   step_4_6_shared_rabbitmq_publisher:
     checked_on: '2026-10-18'
     rabbitmq_client: 5.37.0

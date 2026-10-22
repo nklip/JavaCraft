@@ -82,7 +82,8 @@ product:
 
 productSeeder:
   ttlSecondsAfterFinished: 86400
-  # Literal HTTP client environment settings from the schema allowlist.
+  # Literal HTTP client and initial rate settings from the schema allowlist, for the bootstrap Job and the
+  # interactive seeder. SHARDSHOP_SEEDER_REQUEST_RATE (default 100 requests/s) must stay positive for the Job.
   configuration: {}
   resources:
     requests:

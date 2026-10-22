@@ -208,6 +208,24 @@ spec:
           emptyDir:
             sizeLimit: 64Mi
 ---
+# The producer's control page and API (step 4.13); it changes the live order rate of this pod only.
+apiVersion: v1
+kind: Service
+metadata:
+  name: shardshop-order-producer
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/name: shardshop-order-producer
+    app.kubernetes.io/part-of: shardshop
+spec:
+  selector:
+    app.kubernetes.io/name: shardshop-order-producer
+  sessionAffinity: None
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -257,6 +275,14 @@ spec:
             - name: {{ $name }}
               value: {{ $value | quote }}
             {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+          # Quarkus opens the control port at startup, also while the producer waits for the catalog.
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 2
           resources:
             {{- toYaml .Values.orderProducer.resources | nindent 12 }}
           {{- include "shardshop.containerSecurity" . | nindent 10 }}

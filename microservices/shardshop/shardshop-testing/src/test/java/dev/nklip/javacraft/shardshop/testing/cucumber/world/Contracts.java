@@ -7,7 +7,7 @@ import io.vertx.core.json.JsonObject;
 import java.nio.file.Path;
 
 /**
- * The contracts of product, order and ledger, read once from the source tree. The scenarios load no application
+ * The contracts of product, order, ledger and the workload control API, read once from the source tree. The scenarios load no application
  * classes, thus they read the same files that each owning module checks in its unit tests. A ContractDocument is
  * safe for concurrent clients.
  */
@@ -19,6 +19,9 @@ public final class Contracts {
             "record-order.schema.json"));
     public static final ContractDocument LEDGER_RESULT = ContractDocument.messageSchema(file("shardshop-ledger",
             "ledger-result.schema.json"));
+    /** The control API that the order producer, the reader and the interactive seeder serve (step 4.13). */
+    public static final ContractDocument WORKLOAD_CONTROL_API = ContractDocument.openApi(file(
+            "shardshop-core/workload-control", "openapi.yaml"));
 
     private Contracts() {
     }
