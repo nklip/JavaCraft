@@ -21,7 +21,7 @@ non-root.
 with 100% line coverage from an empty Maven cache; the build passes on JDK 25 and
 26 and rejects JDK 21.
 
-**Commands:** the per-application loop in the [README](README.md#build-and-run);
+**Commands:** the per-application loop in the [README](RUNBOOK.md#build-and-run);
 `mvn -B -ntp -f microservices/shardshop/pom.xml validate`.
 
 ## Step 0.3
@@ -32,7 +32,7 @@ overrides and test-image digests, with no prereleases.
 [VERSIONS.md](VERSIONS.md#step-03-verification-record) has the detailed record.
 
 **Commands:** `mvn -B -ntp -f microservices/shardshop/pom.xml -Pintegration,audit clean verify`
-([README](README.md#dependency-and-test-validation)).
+([README](RUNBOOK.md#dependency-and-test-validation)).
 
 ## Step 0.4
 
@@ -50,7 +50,7 @@ version-policy exception. All six packages start as a non-root user on the pinne
 JRE. **2026-10-06:** the builds have no warnings, and a review removed the unused
 application Mockito dependencies.
 
-**Commands:** the [README build loop](README.md#build-and-run) with
+**Commands:** the [README build loop](RUNBOOK.md#build-and-run) with
 `-Pintegration,audit`; [qualification evidence](VERSIONS.md#step-05-verification-record).
 
 ## Step 1.1
@@ -125,7 +125,7 @@ or functions.
 
 **Commands:** `bash microservices/shardshop/scripts/up.sh`;
 `bash microservices/shardshop/scripts/migrate.sh` (reruns apply zero migrations);
-see the [runbook](README.md#database-schemas-and-migrations-step-23).
+see the [runbook](database/RUNBOOK.md#database-schemas-and-migrations).
 
 ## Step 2.4
 
@@ -156,7 +156,7 @@ identities and credential hashes did not change.
 **Commands:** `bash microservices/shardshop/scripts/up.sh`;
 `bash microservices/shardshop/scripts/migrate.sh` (twice);
 `bash microservices/shardshop/scripts/verify-topology.sh --routing-only`; see the
-[runbook](README.md#ordering-schema-and-catalog-access-step-25).
+[runbook](database/RUNBOOK.md#ordering-schema-and-catalog-access).
 
 ## Step 2.6
 
@@ -174,7 +174,7 @@ did not run ShellCheck.
 `bash microservices/shardshop/scripts/migrate.sh` (twice);
 `bash microservices/shardshop/scripts/render.sh migration ledger-db ledger`;
 `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order,shardshop-ledger -am verify`;
-see the [runbook](README.md#ledger-schema-and-replay-records-step-26).
+see the [runbook](database/RUNBOOK.md#ledger-schema-and-replay-records).
 
 ## Step 3.1
 
@@ -187,7 +187,7 @@ fixture IDs with ID-free POSTs and service-issued IDs ([step 3.5](#step-35)).
 because only an existing buyer has allocations. `verify-contracts.py` passes again
 with 63 inline examples, 51 response examples and 424 boundary cases.
 
-**Commands:** [contract validation](README.md#http-and-message-contracts-step-31);
+**Commands:** [contract validation](shardshop-core/RUNBOOK.md#http-and-message-contracts);
 `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-order,shardshop-ledger -am -Pintegration clean verify`.
 
 ## Step 3.2
@@ -197,7 +197,7 @@ All affected builds pass 186 unit/startup tests and 10 packaged routing tests,
 without warnings, with 100% line and branch coverage. Audit graphs confirm the
 dependency boundaries, and all six packaged applications contain the common JAR.
 
-**Command:** [six-application audit](README.md#dependency-and-test-validation).
+**Command:** [six-application audit](RUNBOOK.md#dependency-and-test-validation).
 
 ## Step 3.3
 
@@ -213,7 +213,7 @@ dependencies. The idgen and sharding dependency graphs stay independent. The
 scenario 10 library checks pass.
 
 **Commands:** `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-order -am clean verify`;
-[six-application audit](README.md#dependency-and-test-validation).
+[six-application audit](RUNBOOK.md#dependency-and-test-validation).
 
 ## Step 3.4
 
@@ -229,7 +229,7 @@ original registry UID.
 **Commands:** `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-order -am clean verify`;
 `bash microservices/shardshop/scripts/verify-generator-allocation.sh`;
 `bash microservices/shardshop/scripts/up.sh`;
-[lifecycle and launch runbook](README.md#generator-allocation-at-jvm-startup-steps-34-and-311).
+[lifecycle and launch runbook](shardshop-core/idgen/RUNBOOK.md#generator-allocation-at-jvm-startup).
 
 ## Step 3.5
 
@@ -241,8 +241,8 @@ direct, optional and transitive dependency probes reject it outside workloads. T
 fixture check passes for all 150 seller, 300 product and 3000 buyer creation
 payloads.
 
-**Commands:** [six-application audit](README.md#dependency-and-test-validation);
-[dataset check](README.md#workload-owned-datasets-and-service-issued-ids-step-35).
+**Commands:** [six-application audit](RUNBOOK.md#dependency-and-test-validation);
+[dataset check](shardshop-workload/shardshop-datasets/RUNBOOK.md#workload-owned-datasets-and-service-issued-ids).
 
 ## Step 3.6
 
@@ -265,7 +265,7 @@ until step 4.6. The allocation drill passed with `--check-startup`, consumed
 exactly four slots (high-water 8 → 12), and kept the registry UID, the routing and
 all 14 Cluster/PVC identities. Its temporary pods and images were removed.
 
-**Commands:** [provider and lab runbook](README.md#seller-and-product-provider-step-36).
+**Commands:** [provider and lab runbook](shardshop-product/RUNBOOK.md#seller-and-product-provider).
 
 ## Step 3.7
 
@@ -279,7 +279,7 @@ seconds. The seeder POM and its dependencies are unchanged (147 SBOM components)
 The step did not use the kind lab, because product deployment and the seeder Job
 are step 3.9.
 
-**Commands:** [seeder runbook](README.md#product-seeder-step-37).
+**Commands:** [seeder runbook](shardshop-workload/shardshop-product-seeder/RUNBOOK.md).
 
 ## Step 3.8
 
@@ -303,7 +303,7 @@ during the restarts; 12629 reads in total. A previous run showed that, at 200
 requests/s on loopback, the pool kept 5 connections after the first lifetime. The
 step did not use the kind lab.
 
-**Commands:** [reader runbook](README.md#product-reader-step-38).
+**Commands:** [reader runbook](shardshop-workload/shardshop-product-reader/RUNBOOK.md).
 
 ## Step 3.9
 
@@ -409,7 +409,7 @@ replacement. Each report interval that the check examined had only `OK` reads, a
   181–200/s. The node starts moved the high-water mark from 33 to 38. The `deploy.sh`
   runs did not restart product.
 
-**Commands:** [deployment runbook](README.md#product-deployment-and-seeding-gate-step-39).
+**Commands:** [deployment runbook](infra/RUNBOOK.md#deploy-with-upsh).
 
 ## Step 3.10
 
@@ -490,7 +490,7 @@ container ([details](VERSIONS.md#step-310-integration-test-dependencies)).
 
 The step did not use the kind lab.
 
-**Commands:** [integration tests](README.md#integration-tests-with-testcontainers-step-310).
+**Commands:** [integration tests](shardshop-testing/RUNBOOK.md#integration-tests-with-testcontainers).
 
 ## Step 3.11
 
@@ -635,7 +635,7 @@ Lab run after the fixes:
 (only `product` after the fixes);
 `bash microservices/shardshop/scripts/deploy.sh step311-deploy` (`step311-fix` after the fixes);
 `python3 -B microservices/shardshop/scripts/verify-product-workload.py`;
-[generator runbook](README.md#generator-allocation-at-jvm-startup-steps-34-and-311).
+[generator runbook](shardshop-core/idgen/RUNBOOK.md#generator-allocation-at-jvm-startup).
 
 ## Step 3.12
 
@@ -760,7 +760,7 @@ Central's SHA-1 files, and OSV listed no advisories for them on 2026-10-13.
 **Commands:** `mvn -B -ntp -f microservices/shardshop/pom.xml -Pintegration,audit clean verify`;
 `bash microservices/shardshop/scripts/build-application-images.sh flyway`;
 `bash microservices/shardshop/scripts/migrate.sh`;
-[contract checks](README.md#contract-checks-step-312).
+[contract checks](shardshop-core/RUNBOOK.md#contract-checks).
 
 ## Step 3.13
 
@@ -2113,7 +2113,7 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegrati
 ```
 
 For a fresh checkout, add `-am` to the first two commands as the
-[runbook](README.md#buyer-and-order-acceptance-step-41) shows. The order runtime
+[runbook](shardshop-order/RUNBOOK.md#buyer-and-order-provider) shows. The order runtime
 is HTTP/1.1: the provider test's HTTP/2-preferring client negotiates HTTP/1.1,
 while HTTP/2 qualification remains step 6.5. The HTTP limit is ten seconds,
 covering the two three-second database phases and a two-to-three-second shared
@@ -4161,3 +4161,237 @@ load generator are stopped. `bash microservices/shardshop/scripts/down.sh` retur
 the retained lab to its original stopped state; all four kind node containers are
 stopped and ports 18080–18085/18181–18182 have no listeners. `git diff --check`
 passes; no SQL file or applied migration changed.
+
+
+## Step 4.15
+
+**2026-10-23:** simplified the root architecture into four high-level areas:
+system architecture, runtime topology, regional sharding and measured performance.
+The system-design SVGs in the sibling `Anki/system design/` directory informed
+the level of abstraction; diagrams remain editable **Mermaid in Markdown**, as
+requested. No SVG asset is retained.
+
+Deep contracts moved to 16 owning `ARCHITECTURE.md` files: product, order, ledger,
+core and its four libraries, workloads and its four submodules, database,
+infrastructure and testing. The overview and module guides provide navigation;
+existing links and numerical section references now lead to the owning designs.
+All eleven acceptance scenarios retain their requirements and stable scenario
+anchors. Implemented behavior and future reconciliation, retention, failover,
+restore and AWS requirements remain distinct. Operational commands stay in
+runbooks and dated evidence stays here. No Java, deployment defaults, SQL or
+applied migrations changed.
+
+### Topology and measurement conditions
+
+The current Helm shape is nine application pods, nine shared PostgreSQL pods,
+one ledger PostgreSQL pod and one RabbitMQ pod: **20 in `shardshop`**. Live
+inventory found all 36 running pods ready: those 20, one CNPG operator, 14 in
+`kube-system` and one local-path provisioner. Five retained completed Job pods
+were excluded. The kind lab has four node containers; these are not extra pods.
+
+The stopped retained lab was resumed with the existing lifecycle helper and DNS
+guard, without rebuilding or redeploying. The read test used the existing two
+product HTTP replicas, primary reads, one reader with 16 workers/16 HTTP
+connections and no product cache. The host has 16 GB physical memory; Docker has
+12 CPUs and 13,580,972,032 bytes (12.65 GiB) memory. A host snapshot during the run
+showed 20,669 MiB swap used. Kubernetes Metrics API was unavailable, so this run
+makes no per-pod CPU-saturation claim.
+
+The producer was paused and drained within the bounded wait: zero in-flight and
+non-terminal orders, zero new orders; its preceding requests were historical
+replay. The interactive seeder stayed idle. Startup/reconnect errors during node
+resumption are outside the measurement windows. Product reads sampled the 201
+catalog products uniformly: 50 US, 100 EU and 51 ASIA, so equal per-shard traffic
+would be an incorrect assumption.
+
+### Read capacity
+
+The [measurement protocol](shardshop-testing/ARCHITECTURE.md#capacity-measurement)
+was fixed before the probe: at least 30 seconds warmup, then three complete
+30-second reports; each must deliver at least 95% of target, have only `OK`
+outcomes, and client p95 below 100 ms. A phase is bounded to 150 seconds. Reports
+ending before 60 seconds after a rate update were discarded to exclude mixed
+windows. The bounded ladder stopped at the first failure and tested one midpoint.
+
+| Target reads/s | Three observed windows, reads/s | Mean reads/s | Window p95, ms | Result |
+|---:|---|---:|---|---|
+| 500 | 489.0 / 485.0 / 487.0 | 487.02 | 6 / 14 / 8 | Pass |
+| 1,000 | 950.7 / 965.8 / 972.9 | 963.16 | 10 / 7 / 6 | Pass |
+| 2,000 | 1,901.3 / 1,841.1 / 1,831.3 | 1,857.90 | 5 / 9 / 9 | Fail: two windows below 1,900/s |
+| 1,500 | 1,437.0 / 1,448.8 / 1,417.4 | 1,434.43 | 5 / 5 / 8 | Fail: final window below 1,425/s |
+
+Every measured read in all four phases returned `OK`. Mean rates use request
+counts divided by the summed reported interval seconds; rates and durations in
+the logs are rounded. At the highest passing target, **86,684 successful reads
+in 90 reported seconds** give **963.16/s**. Its per-window p99 values were
+40/26/24 ms and maximum latencies 203/139/128 ms. Measured shard totals were:
+
+| Shard | Requests | Requests/s |
+|---|---:|---:|
+| US / shard-a | 21,577 | 239.74 |
+| EU / shard-b | 43,169 | 479.66 |
+| ASIA / shard-c | 21,938 | 243.76 |
+
+The passing point is a **verified lower bound**, not the product/database maximum.
+The higher phases served more reads but did not supply the requested rate within
+tolerance. Low p95 and no errors do not prove which host/generator/service resource
+caused that undersupply. At target 2,000 one pool snapshot used all 16 connections;
+other snapshots used one or three, and no pending pool request was captured.
+These snapshots do not measure peak occupancy. The 10,000/s control bound was not
+reached or qualified. A saturation maximum needs stronger independent load
+generation and host headroom; peak reads and writes were not tested together.
+The [raw interval evidence](shardshop-testing/evidence/2026-10-23-read-capacity.json)
+retains successful and failing phases, regional counters, latency and pool values.
+
+### Order capacity interpretation
+
+The unchanged deployment reuses the final [step 4.14](#step-414) order evidence:
+20-second warmup, 90–130-second holds, four submitters, two observers and a
+100-order bound, with product reads targeting 200/s concurrently. Target 30/s
+accepted 29.4547 new orders/s, confirmed 28.1103/s and cancelled 1.5555/s. Final
+rolling write p95 was 93.732 ms, saga p95 2,158.506 ms; pending/profit/outbox ranges
+were 36–84 / 3–73 / 14–28. Target 40/s filled the combined 200-order bound and
+failed to sustain the requested pace. The serial stock worker, finite stock and
+host contention limit interpretation of that saturation attempt. Confirmed and
+cancelled rates are reported separately because cancellations skip ledger work.
+
+The equal buyer-region schedule gives a **derived** 9.82 accepted new orders/s
+per buyer shard. Allocation plus submission imply about 58.91 write API requests/s
+total or 19.64/s per buyer shard. Neither is SQL writes/s or IOPS; stock and profit
+also touch seller shards, and ledger work uses its separate database. The
+allocation-only single-home-shard burst of 829.34 requests/s lasted less than a
+second and is not full-order sustainable throughput.
+
+### Validation and restoration
+
+Commands from the repository root:
+
+```bash
+bash -c 'set -euo pipefail
+source microservices/shardshop/scripts/lib/lifecycle.sh
+lifecycle_init
+snapshot_configuration
+nodes=$(kind get nodes --name "$cluster_name")
+resume_cluster
+verify_dns'
+bash microservices/shardshop/scripts/webpages.sh
+python3 /tmp/shardshop-415-read-capacity.py
+kubectl --context kind-shardshop get pods --all-namespaces -o json
+python3 /tmp/shardshop-415-doc-links.py
+git diff --check
+```
+
+The bounded Python probe is an ephemeral orchestrator of the existing control
+HTTP endpoints and Java reader log reports; the versioned [runbook](shardshop-testing/RUNBOOK.md#capacity-measurement)
+and protocol contain the reproducible settings, commands and acceptance rules.
+The resume/DNS guard passed. The probe completed all four phases and restored
+reader 200/s and producer 0.5/s, both unpaused; the idle seeder remained 100/s.
+No new Maven build was required for this documentation-only change. Step 4.14
+verification is reused as historical evidence, not claimed as rerun here.
+
+Helm rendering also passed with the pinned operator chart and current kind values:
+
+```bash
+helm template cnpg microservices/shardshop/infra/helm/cnpg/cloudnative-pg-0.29.1.tgz \
+  --namespace cnpg-system --values microservices/shardshop/infra/helm/cnpg/values.yaml \
+  > /tmp/shardshop-415-cnpg-render.yaml
+helm template shardshop microservices/shardshop/infra/helm/shardshop --namespace shardshop \
+  --values microservices/shardshop/infra/helm/shardshop/kind-values.yaml \
+  --values microservices/shardshop/infra/shards.yaml \
+  > /tmp/shardshop-415-infrastructure-render.yaml
+helm template shardshop microservices/shardshop/infra/helm/shardshop --namespace shardshop \
+  --values microservices/shardshop/infra/helm/shardshop/kind-values.yaml \
+  --values microservices/shardshop/infra/shards.yaml \
+  --values /tmp/shardshop-415-counting-values.yaml \
+  > /tmp/shardshop-415-application-render.yaml
+```
+
+The temporary application counting values selected `render: applications` and
+schema-valid placeholder image digests (64 zeroes) for all six application
+images; nothing was deployed or pulled. The renders match the live counts:
+nine application pods, ten PostgreSQL instances, one broker and one operator,
+excluding system pods and transient Jobs.
+
+Final documentation validation passed: all 593 local Markdown links resolve;
+all original nonblank source ranges have an owning detailed document, and the
+eleven acceptance scenario bodies match the source after removing added anchors.
+Markdown fences are balanced and `git diff --check` passes. The root architecture
+contains only four high-level areas plus navigation; the Mermaid overview was
+reviewed for component counts and flow direction.
+
+The task-owned `webpages.sh` received SIGTERM and removed its five tunnels.
+`bash microservices/shardshop/scripts/down.sh` succeeded. `docker inspect` reports
+all four retained `shardshop` nodes `exited`, and `lsof` confirms no listeners on
+ports 18080–18084. The lab is back in its original stopped state.
+
+### Step 4.15 documentation review
+
+**2026-10-23:** a separate review validated the step 4.15 result and then
+restructured all 17 architecture documents for readability. No Java, SQL, chart,
+deployment default or lab state changed, and the stopped lab was not started.
+
+The review confirmed the step 4.15 claims:
+
+- The raw read evidence gives 86,684 successful reads in 90 reported seconds
+  (963.16/s) and the regional rates US 239.74/s, EU 479.66/s and ASIA 243.76/s.
+  The order rates match the final step 4.14 table.
+- An offline Helm render with schema-valid placeholder digests gives nine
+  application pods and 11 database and broker pods: 20 pods in `shardshop`.
+- Every sentence of the former root architecture has an owning document. The
+  moved role matrix now matches `R__catalog_grants.sql`, which grants
+  `catalog_reserver` the profit writes that the former text denied.
+
+The review found and fixed these defects:
+
+- The database layer listed only catalog V1–V2, ordering V1 and ledger V1. A
+  schema-version table now lists catalog V1–V6, ordering V1–V7 and ledger V1–V2.
+- The order design showed one order process. Its process table and sequence
+  diagrams now show the separate HTTP and saga processes of step 4.14.
+- The seeder design described a `404` retry of verification reads as current
+  behavior. The seeder retries only transport failures and `503`, thus the design
+  now marks that retry as planned in step 6.1.
+- The core design kept the currency policy in the order producer. `CurrencyPolicy`
+  is in common; only the buyer-region currency mix is in the producer.
+- Module documents kept the section numbers and "Module 1–4" labels of the former
+  single document, skipped heading levels and carried step numbers in headings.
+  PLAN section 6 referred to the removed "ARCHITECTURE.md sections 4, 5 and 6".
+- The capacity runbook had `curl` commands with collapsed line continuations.
+
+Each module document now starts with a navigation path, a summary, its ownership
+and its status. Tables and lists replace long paragraphs for tool ownership, the
+lab lifecycle, the deployment pipeline, ports, process roles, ledger tables,
+endpoints, the Snowflake layout, the currency mix and scenario coverage. Planned
+behavior has a **Status** or **Planned** note. The overview adds a component
+table, an order-flow sequence diagram, a cross-shard diagram, a classification of
+capacity figures and a map of all 16 detailed documents. Links to changed anchors
+in PLAN, README and the module READMEs now use the new anchors.
+
+Results: all 639 local ShardShop Markdown links and anchors resolve; the eleven
+scenario bodies are byte-identical to step 4.15; all 13 Mermaid diagrams parse and
+render with Mermaid 11.4.1; the fences are balanced and `git diff --check` passes.
+The one-off link, sentence-ownership and Mermaid checks are ephemeral helpers and
+are not versioned. The Helm renders used the step 4.15 commands above.
+
+### Step 4.15 README and runbook split
+
+**2026-10-23:** each README now contains only how to start the lab or the
+application, and which monitors exist. All other README content moved into a
+`RUNBOOK.md` beside it, with the owners of the architecture documents:
+infrastructure, database, product, order, ledger, core and its libraries,
+workloads, the three workload applications, datasets and verification. The moved
+text keeps its wording, except that step history left it; this changelog keeps that
+history. The three workload applications gained their own README.
+
+The READMEs list these monitors: the five webpages, the workload status API,
+product `/q/metrics`, order `/internal/order/write-metrics`, the log lines of each
+application, the RabbitMQ management UI, cluster, migration and publication status,
+and the test reports. The management UI command (a port forward to
+`shardshop-rabbitmq` port 15672, login `shardshop-admin`) is new; it was not run,
+because the lab stayed stopped. The repository `AGENTS.md` now tells agents to read
+a module's `RUNBOOK.md` as well as its README.
+
+All 720 local ShardShop Markdown links and anchors resolve, including the redirected
+links in PLAN, CHANGELOG, VERSIONS and the architecture documents. A sentence
+comparison with the former READMEs found no lost requirement: only step history,
+former navigation lines, pointers to removed sections and repeated start steps were
+removed. No Java, SQL, chart, deployment default or lab state changed.

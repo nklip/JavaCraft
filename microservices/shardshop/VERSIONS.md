@@ -329,7 +329,7 @@ The step 3.2 SBOMs contained 14 components for common, 11 for routing, 142 for p
 and 141 for ledger/seeder/reader/producer (including test dependencies).
 Every packaged application contains the common JAR. At step 3.2 common had only
 Jackson at runtime; ledger and workloads contain neither sharding nor Snowflake.
-The exact build command is in [README](README.md#id-validation-and-currency-selection-step-32).
+The exact build command is in [README](shardshop-core/common/RUNBOOK.md#id-validation).
 
 ### Step 3.5 workload dataset dependencies
 
@@ -348,7 +348,7 @@ The new clients use tree decoding without polymorphic binding. On **2026-10-07**
 the Databind and annotations artifacts in the lock's `step_3_5_workload_dependencies`
 matched Maven Central's published SHA-1 checksums; independent SHA-256 values
 are recorded there. Review these families with the platform by **2026-11-04**.
-The [step 3.5 audit command](README.md#workload-owned-datasets-and-service-issued-ids-step-35)
+The [step 3.5 audit command](shardshop-workload/shardshop-datasets/RUNBOOK.md#workload-owned-datasets-and-service-issued-ids)
 rebuilds all six applications because common changed.
 
 The catalog-v1 and buyers-v1 datasets kept the library free of runtime dependencies until
@@ -374,7 +374,7 @@ The product reader adds the platform-managed Apache HttpClient **5.6.4** (classi
 API) with HttpCore **5.4.3** and HttpCore H2 **5.4.3**. Its SLF4J API resolves to
 the platform's **2.0.18** and logs through JBoss Log Manager. The JDK HTTP client
 has no setting for a connection limit or a connection lifetime, which the
-[HTTP connection policy](ARCHITECTURE.md#http-connection-policy) requires. Only the
+[HTTP connection policy](shardshop-workload/shardshop-product-reader/ARCHITECTURE.md#http-connection-policy) requires. Only the
 reader uses this client; the seeder and the order producer keep the JDK client in
 common. No Vert.x or Netty runtime enters a workload package.
 
@@ -570,9 +570,9 @@ dependencies in unauthorized consumers, including ledger and workloads. An isola
 optional-idgen consumer fails the direct dependency rule. Idgen's own isolation
 rules reject common and sharding through direct, optional and transitive
 dependencies; all six negative fixtures fail at the expected rule. The
-[test JVM option reproduction](README.md#dependency-and-test-validation) records why the core
+[test JVM option reproduction](RUNBOOK.md#dependency-and-test-validation) records why the core
 Quarkus tests retain `--add-opens`. Commands are in the
-[step 3.3 runbook](README.md#bounded-snowflake-generation-step-33).
+[step 3.3 runbook](shardshop-core/idgen/RUNBOOK.md#bounded-snowflake-generation).
 
 Step 3.4 adds JDK-only allocation/launcher code to the same idgen JAR, with no new
 Java dependencies or artifact pins. Its Java 25 instance entrypoint is tested
@@ -582,7 +582,7 @@ Kubernetes **1.36.4** lab. The temporary container drill copies kubectl from the
 locked kind node image into the locked Canonical OpenJDK 25 JRE image; both source
 digests remain unchanged. That image exists only for verification and does not
 replace the final service image qualification in steps 3.9/4.9. The
-[runbook](README.md#generator-allocation-at-jvm-startup-steps-34-and-311) records
+[runbook](shardshop-core/idgen/RUNBOOK.md#generator-allocation-at-jvm-startup) records
 the scoped Maven and live verification commands. Step 3.11 replaced the launcher, the
 kubectl calls and the drill with a reservation in the application JVM
 ([dependencies](#step-311-generator-allocation-dependencies)).
@@ -823,7 +823,7 @@ and integration runs cover only ShardShop, never the repository root reactor.
 
 ### Step 0.3 verification record
 
-See the [module commands](README.md#dependency-and-test-validation). On
+See the [module commands](RUNBOOK.md#dependency-and-test-validation). On
 2026-09-28 the ShardShop build passed its 20 unit tests on JDK 25 and 26; there are
 no integration tests yet. Its `-Paudit` reports show that in all six applications
 the effective POMs match the lock's 17 plugin pins, plugin dependency overrides
@@ -837,7 +837,7 @@ Boot BOM. No business behavior, containers or unrelated reactor builds were adde
 ### Step 0.5 verification record
 
 On **2026-10-04**, all six applications independently passed the following command
-from the repository root (product shown; repeat for each application path in the README):
+from the repository root (product shown; repeat for each application path in the [runbook](RUNBOOK.md#build-and-run)):
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-product -am -Pintegration,audit clean verify
