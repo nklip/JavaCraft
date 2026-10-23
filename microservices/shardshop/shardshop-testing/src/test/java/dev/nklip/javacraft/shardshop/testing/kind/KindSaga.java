@@ -41,21 +41,25 @@ public final class KindSaga {
     KindSaga(KindLab lab) { this.lab = lab; deployment = new KindDeployment(lab); }
 
     public void deployed() throws IOException, InterruptedException {
-        for (String application : List.of("order", "ledger", "order-producer")) {
+        var generators = new ArrayList<>(deployment.readyProducts());
+        for (String application : List.of("order", "order-saga", "ledger", "order-producer")) {
             String name = "shardshop-" + application;
             JsonNode resource = deployment.resource("deployment", name);
-            require(resource.path("spec").path("replicas").asInt() == 1
-                    && resource.path("status").path("readyReplicas").asInt() == 1
-                    && resource.path("status").path("updatedReplicas").asInt() == 1
+            int count = application.equals("order") ? 2 : 1;
+            deploymentShape(application, resource);
+            require(resource.path("status").path("readyReplicas").asInt() == count
+                    && resource.path("status").path("updatedReplicas").asInt() == count
                     && resource.path("status").path("observedGeneration").asLong(-1)
-                    >= resource.path("metadata").path("generation").asLong(), name + " needs one ready current replica");
-            JsonNode pod = pod(application);
-            require(pod.path("status").path("phase").asText().equals("Running"), name + " is not running");
-            if (application.equals("order-producer")) KindDeployment.httpOnly(pod.path("spec"));
+                    >= resource.path("metadata").path("generation").asLong(), name + " needs " + count + " ready current replicas");
+            List<JsonNode> pods = readyPods(application);
+            require(pods.size() == count, name + " has an unexpected ready pod count");
+            for (JsonNode pod : pods) {
+                require(pod.path("status").path("phase").asText().equals("Running"), name + " is not running");
+                if (application.equals("order-producer")) KindDeployment.httpOnly(pod.path("spec"));
+                if (application.equals("order") || application.equals("order-saga")) generators.add(KindDeployment.name(pod));
+            }
         }
         JsonNode config = deployment.resource("configmap", "shardshop-snowflake-generators");
-        var generators = new ArrayList<>(deployment.readyProducts());
-        generators.add(KindDeployment.name(pod("order")));
         deployment.generators(generators,
                 KindDeployment.highWater(config.path("data").path("highWaterMark").asText()));
         lab.await("persisted CDC offsets on every ordering primary", Duration.ofSeconds(120), () -> {
@@ -167,9 +171,27 @@ public final class KindSaga {
         });
     }
 
-    JsonNode pod(String application) throws IOException, InterruptedException {
-        List<JsonNode> pods = deployment.pods("app.kubernetes.io/name=shardshop-" + application).stream()
+    static void deploymentShape(String application, JsonNode resource) throws IOException {
+        int count = application.equals("order") ? 2 : 1;
+        require(resource.path("spec").path("replicas").asInt() == count, application + " needs " + count + " replicas");
+        if (application.equals("order") || application.equals("order-saga")) {
+            String mode = application.equals("order") ? "http" : "saga";
+            String strategy = application.equals("order") ? "RollingUpdate" : "Recreate";
+            require(resource.at("/spec/strategy/type").asText().equals(strategy), application + " needs " + strategy);
+            String configured = "";
+            for (JsonNode variable : resource.at("/spec/template/spec/containers/0/env"))
+                if (variable.path("name").asText().equals("SHARDSHOP_ORDER_PROCESS")) configured = variable.path("value").asText();
+            require(configured.equals(mode), application + " must select the " + mode + " process");
+        }
+    }
+
+    List<JsonNode> readyPods(String application) throws IOException, InterruptedException {
+        return deployment.pods("app.kubernetes.io/name=shardshop-" + application).stream()
                 .filter(KindDeployment::ready).toList();
+    }
+
+    JsonNode pod(String application) throws IOException, InterruptedException {
+        List<JsonNode> pods = readyPods(application);
         require(pods.size() == 1, "Expected one ready " + application + " pod");
         return pods.getFirst();
     }

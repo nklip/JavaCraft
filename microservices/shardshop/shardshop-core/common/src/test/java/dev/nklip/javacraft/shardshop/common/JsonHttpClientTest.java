@@ -10,6 +10,7 @@ import org.mockito.ArgumentCaptor;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
@@ -18,6 +19,7 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -115,6 +117,23 @@ class JsonHttpClientTest {
         reply(201, "{\"orderId\":\"9007199254740993\"}");
         assertThrows(IOException.class, () -> client.put("/order", payload,
                 (status, node) -> { throw new AssertionError("Decoder must not run"); }));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"true", "false"})
+    void exposesReplayMetadataWithTheAcceptedPutBody(String replay) throws Exception {
+        HttpResponse<byte[]> response = mock();
+        when(response.statusCode()).thenReturn(202);
+        when(response.headers()).thenReturn(HttpHeaders.of(Map.of("Idempotent-Replay", List.of(replay)),
+                (name, value) -> true));
+        when(response.body()).thenReturn("{\"orderId\":\"9007199254740993\"}".getBytes(StandardCharsets.UTF_8));
+        when(http.sendAsync(any(HttpRequest.class), org.mockito.ArgumentMatchers.<HttpResponse.BodyHandler<byte[]>>any()))
+                .thenReturn(CompletableFuture.completedFuture(response));
+        assertEquals("202:" + replay + ":9007199254740993", client.putDetailed("/order", payload,
+                (metadata, node) -> metadata.statusCode() + ":"
+                        + metadata.headers().firstValue("idempotent-replay").orElseThrow() + ":"
+                        + JsonFields.id(node, "orderId")));
+        verify(http).sendAsync(any(HttpRequest.class), any());
     }
 
     @ParameterizedTest

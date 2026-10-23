@@ -47,6 +47,11 @@ public final class OrderRequests {
     }
 
     public OrderStatus submit(PlannedOrder order) throws IOException, InterruptedException {
+        return submitWithReplay(order).status();
+    }
+
+    /** The replay flag also identifies an existing pending order, unlike its HTTP status alone. */
+    public Submission submitWithReplay(PlannedOrder order) throws IOException, InterruptedException {
         Objects.requireNonNull(order);
         String path = path(order.buyerId(), order.orderId());
         if (!CurrencyPolicy.SUPPORTED_CURRENCIES.contains(order.currency()) || order.items().isEmpty()
@@ -67,14 +72,36 @@ public final class OrderRequests {
         }
         ObjectNode payload = JsonNodeFactory.instance.objectNode().put("currency", order.currency());
         payload.set("items", items);
-        return http.put(path, payload, (status, response) -> {
-            OrderStatus decoded = decodeStatus(response, order.buyerId(), order.orderId());
-            if ((status == 202 && decoded.terminal()) || (status == 200 && !decoded.terminal())) {
-                throw new IllegalArgumentException("Order status does not match HTTP response");
-            }
-            return decoded;
-        });
+        try {
+            return http.putDetailed(path, payload, (metadata, response) -> {
+                int status = metadata.statusCode();
+                OrderStatus decoded = decodeStatus(response, order.buyerId(), order.orderId());
+                if ((status == 202 && decoded.terminal()) || (status == 200 && !decoded.terminal())) {
+                    throw new IllegalArgumentException("Order status does not match HTTP response");
+                }
+                String replay = metadata.headers().firstValue("Idempotent-Replay").orElse(null);
+                if (replay == null) {
+                    throw new MissingReplayMetadata();
+                }
+                if (!"true".equals(replay) && !"false".equals(replay)) {
+                    throw new IllegalArgumentException("Missing or invalid order replay metadata");
+                }
+                boolean recovered = Boolean.parseBoolean(replay);
+                if (decoded.terminal() && !recovered) {
+                    throw new IllegalArgumentException("A terminal order must be a replay");
+                }
+                return new Submission(decoded, recovered);
+            });
+        } catch (MissingReplayMetadata missing) {
+            // An older HTTP replica can still answer during rollout. Repeating this PUT is idempotent and keeps
+            // the existing attempt/deadline limits, without guessing whether the saved order was recovered.
+            throw new IOException("Order replay metadata unavailable", missing);
+        }
     }
+
+    private static final class MissingReplayMetadata extends IllegalArgumentException { }
+
+    public record Submission(OrderStatus status, boolean replayed) { }
 
     public OrderStatus status(String buyerId, String orderId) throws IOException, InterruptedException {
         String path = path(buyerId, orderId);

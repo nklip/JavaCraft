@@ -21,7 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ShardRoutingStartupIT {
 
-    private static final String VALID_ROUTING = "shardshop.routing.shards=shard-b,shard-a\n"
+    private static final String VALID_ROUTING = "shardshop.order.process=saga\n"
+            + "shardshop.routing.shards=shard-b,shard-a\n"
             + "shardshop.routing.regions=EU,US\n";
     /** Normal starts enable CDC, which needs a replication password for each routing shard and a broker password. */
     private static final String VALID = VALID_ROUTING
@@ -36,6 +37,20 @@ class ShardRoutingStartupIT {
     @Test
     void startsWithAnExternalRoutingSnapshot() throws Exception {
         assertEquals(0, launch(VALID), output());
+    }
+
+    @Test
+    void httpProcessStartsWithoutAnySagaCredentials() throws Exception {
+        assertEquals(0, launch("shardshop.routing.shards=shard-a,shard-b\n"
+                + "shardshop.routing.regions=US,EU\n"), output());
+    }
+
+    @Test
+    void invalidProcessFailsBeforeGeneratorReservation() throws Exception {
+        assertNotEquals(0, launch(VALID + "shardshop.order.process=combined\n", null, null,
+                reservationWithoutCaFile()));
+        assertTrue(output().contains("shardshop.order.process"), output());
+        assertFalse(output().contains("Kubernetes API access is not configured correctly"), output());
     }
 
     @Test

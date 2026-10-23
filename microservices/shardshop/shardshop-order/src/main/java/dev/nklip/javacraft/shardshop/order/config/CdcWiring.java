@@ -25,7 +25,7 @@ public class CdcWiring {
         var shards = new ArrayList<OrderCdcRelay.ShardSettings>();
         var broker = config.broker();
         // This producer runs before the generator reservation, so a pod without its CDC Secret burns no ID.
-        if (config.enabled()) {
+        if (order.process() == OrderConfiguration.Process.SAGA && config.enabled()) {
             for (var shard : topology.shards()) {
                 String name = shard.clusterName();
                 Endpoint application = primary.get(name);

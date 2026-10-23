@@ -101,6 +101,9 @@ final class KindWorkloadPolicyTest {
                 "SHARDSHOP_SEEDER_REQUEST_RATE", "12.5",
                 "SHARDSHOP_SEEDER_INTERACTIVE", "true"), Map.of(
                 "SHARDSHOP_PRODUCER_ORDER_RATE", "0.5",
+                "SHARDSHOP_PRODUCER_SUBMISSION_CONCURRENCY", "4",
+                "SHARDSHOP_PRODUCER_OBSERVER_CONCURRENCY", "2",
+                "SHARDSHOP_PRODUCER_MAX_NON_TERMINAL_ORDERS", "100",
                 "SHARDSHOP_PRODUCER_POLL_INTERVAL", "250ms"))) {
             ObjectNode valid = spec();
             ObjectNode workload = (ObjectNode) valid.path("containers").get(0);

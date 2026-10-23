@@ -9,12 +9,14 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Flow;
 
@@ -149,6 +151,25 @@ class OrderRequestsTest {
         assertThrows(IllegalArgumentException.class, () -> requests.submit(planned));
     }
 
+    @Test
+    void reportsReplayedPendingOrdersAndRejectsMissingOrInvalidReplayMetadata() throws Exception {
+        var planned = new PlannedOrder(BUYER, ORDER, "USD", List.of(
+                new PlannedOrder.Item("9007199254740995", "9007199254740997", 1)));
+        reply(202, status("PENDING_LEDGER", null), "true");
+        assertEquals(new OrderRequests.Submission(new OrderStatus(BUYER, ORDER, "PENDING_LEDGER", PATH, null), true),
+                requests.submitWithReplay(planned));
+        reply(202, status("PENDING_STOCK", null), "false");
+        assertFalse(requests.submitWithReplay(planned).replayed());
+        reply(202, status("PENDING_STOCK", null), null);
+        assertThrows(java.io.IOException.class, () -> requests.submitWithReplay(planned));
+        for (String invalid : new String[]{"TRUE", "yes", ""}) {
+            reply(202, status("PENDING_STOCK", null), invalid);
+            assertThrows(IllegalArgumentException.class, () -> requests.submitWithReplay(planned));
+        }
+        reply(200, status("CONFIRMED", null), "false");
+        assertThrows(IllegalArgumentException.class, () -> requests.submitWithReplay(planned));
+    }
+
     private static String status(String state, String reason) {
         return "{\"buyerId\":\"" + BUYER + "\",\"orderId\":\"" + ORDER + "\",\"status\":\""
                 + state + "\",\"statusUrl\":\"" + PATH + "\""
@@ -156,7 +177,13 @@ class OrderRequestsTest {
     }
 
     private void reply(int status, String body) {
+        reply(status, body, status == 200 ? "true" : "false");
+    }
+
+    private void reply(int status, String body, String replay) {
         HttpResponse<byte[]> response = mock();
+        when(response.headers()).thenReturn(HttpHeaders.of(replay == null ? Map.of()
+                : Map.of("Idempotent-Replay", List.of(replay)), (name, value) -> true));
         when(response.statusCode()).thenReturn(status);
         when(response.body()).thenReturn(body.getBytes(StandardCharsets.UTF_8));
         when(http.sendAsync(any(HttpRequest.class), org.mockito.ArgumentMatchers.<HttpResponse.BodyHandler<byte[]>>any()))

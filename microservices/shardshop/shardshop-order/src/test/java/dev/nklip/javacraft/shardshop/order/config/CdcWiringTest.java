@@ -22,6 +22,7 @@ class CdcWiringTest {
 
     @BeforeEach
     void broker() {
+        when(order.process()).thenReturn(OrderConfiguration.Process.SAGA);
         var broker = mock(CdcConfiguration.Broker.class);
         when(config.broker()).thenReturn(broker);
         when(broker.host()).thenReturn("broker");
@@ -94,6 +95,18 @@ class CdcWiringTest {
 
     @Test
     void disabledRelayHasNoReadersAndNeedsNoCredentials() {
+        when(config.broker().password()).thenReturn(Optional.empty());
+        try (var construction = mockConstruction(OrderCdcRelay.class, (relay, context) ->
+                assertEquals(List.of(), context.arguments().getFirst()))) {
+            wiring.relay(config, order, topology);
+            assertEquals(1, construction.constructed().size());
+        }
+    }
+
+    @Test
+    void httpProcessNeverCreatesReadersEvenWhenCdcIsEnabledWithoutCredentials() {
+        when(order.process()).thenReturn(OrderConfiguration.Process.HTTP);
+        when(config.enabled()).thenReturn(true);
         when(config.broker().password()).thenReturn(Optional.empty());
         try (var construction = mockConstruction(OrderCdcRelay.class, (relay, context) ->
                 assertEquals(List.of(), context.arguments().getFirst()))) {

@@ -10,6 +10,13 @@
 The buyer's immutable home region determines where an order is stored; products
 may come from sellers in any region.
 
+The same image runs two processes selected by `shardshop.order.process`: `http`
+(the default) serves APIs and pages; `saga` runs stock reservation, compensation,
+seller-profit posting, CDC command publication and ledger-result consumption. The
+HTTP Deployment has two replicas with `RollingUpdate`; `shardshop-order-saga` has
+one replica with `Recreate` to prevent overlapping CDC slot owners. Each JVM reserves
+its own generator slot. HTTP replicas run no background saga loops.
+
 | Task | Component |
 |---|---|
 | Create buyers and allocate buyer/order/message IDs | **Order** |
@@ -261,7 +268,7 @@ HTTP/2 is disabled until its qualification in step 6.5.
 | `shardshop.order.max-id-candidates` | `1024` | Buyer ID placement attempts, 1–65536 |
 | `shardshop.order.catalog-concurrency` | `4` | Concurrent catalog lookups per request, 1–64 |
 | `shardshop.order.catalog-deadline` | `3s` | Shared catalog deadline, 2–3 s; leaves room for the one-second pool acquisition bound |
-| `shardshop.order.stock.enabled` | `true` | Run the stock coordinator; tests can isolate HTTP acceptance with `false` |
+| `shardshop.order.stock.enabled` | `true` | Run the stock coordinator in the saga process; `false` isolates other saga components in tests |
 | `shardshop.order.stock.poll-interval` | `250ms` | Delay between scans, 100 ms–30 s |
 | `shardshop.order.stock.lease` | `30s` | Durable per-saga ownership, renewed before each catalog phase; 10 s–5 min |
 | `shardshop.order.stock.batch-size` | `8` | Maximum sagas processed per shard per scan, 1–100 |
@@ -308,7 +315,7 @@ not changed by these checks.
 
 <sub>[Back to contents](#contents)</sub>
 
-After HTTP acceptance commits, the order process polls each buyer shard for
+After HTTP acceptance commits, the saga process polls each buyer shard for
 `PENDING_STOCK` sagas and cancelled sagas with unfinished releases. It claims a
 durable versioned lease in a short transaction, then reserves each seller shard's
 items in ascending product-ID order. Reservation insertion and conditional stock
@@ -395,7 +402,7 @@ shardshop.order.cdc.broker.password=${RABBITMQ_ORDER_PASSWORD}
 shardshop.order.cdc.broker.timeout=5s
 ```
 
-When CDC is enabled, startup fails before the generator reservation unless every
+When CDC is enabled in the saga process, startup fails before the generator reservation unless every
 routing shard has `shardshop.order.cdc.connections.<shard>.password` and the broker
 has `shardshop.order.cdc.broker.password`. The error names the property, never a value.
 Replication credentials only
@@ -428,7 +435,7 @@ Reconcile the retained
 outbox and permanent saga/ledger state before an operator-directed resnapshot;
 do not clear the marker or choose `trust_slot` to bypass recovery.
 
-CDC is enabled by default on normal order starts. `--check-startup` starts no
+CDC is enabled by default in the saga process. HTTP processes never start it. `--check-startup` starts no
 workers, but it checks the CDC credentials. Tests can set
 `shardshop.order.cdc.enabled=false` to isolate HTTP or stock behavior. The step 4.9 application release gives order
 these passwords as `secretKeyRef` environment variables.
@@ -516,7 +523,7 @@ logs `Profit posting resumed for <shard>`. A blocked intent logs
 `Profit intent blocked for order <orderId>, item <position> on <home shard>: <reason>; investigate the durable intent`.
 Order IDs appear without digit grouping, thus a search for an ID finds the line.
 
-Normal startup enables both workers. `--check-startup` validates their settings
+The saga process enables both workers by default. `--check-startup` validates their settings
 without consuming or posting. Configure them independently:
 
 ```properties
@@ -525,6 +532,11 @@ shardshop.order.profit.enabled=true
 shardshop.order.profit.poll-interval=250ms
 shardshop.order.profit.batch-size=8
 ```
+
+The lab chart overrides profit polling to `100ms` and the batch to `32` per
+buyer shard. The earlier `250ms`/`8` settings accumulated profit intents at
+30 orders/s even while orders reached `CONFIRMED`. Posting remains serial and
+idempotent; these settings change only its bounded polling schedule.
 
 The consumer shares the `shardshop.order.cdc.broker.*` connection settings and
 credentials with CDC; it can run when CDC is disabled. Profit polling allows

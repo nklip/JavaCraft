@@ -35,9 +35,9 @@ public class ProducerWiring {
     @Singleton
     WorkloadControl control(ProducerConfiguration config) {
         try {
-            return new WorkloadControl(OrderProducer.controlSettings(config.orderRate()), WorkloadControl.Phase.WAITING);
+            return new WorkloadControl(OrderProducer.controlSettings(config.orderRate(), config.submissionConcurrency()), WorkloadControl.Phase.WAITING);
         } catch (IllegalArgumentException invalid) {
-            throw new IllegalArgumentException("shardshop.producer.order-rate must be 0..100 with at most three decimals");
+            throw new IllegalArgumentException("shardshop.producer.order-rate must be 0..30 with at most three decimals");
         }
     }
 
@@ -45,7 +45,8 @@ public class ProducerWiring {
     @Singleton
     OrderProducer producer(ProducerConfiguration config, HttpClient http, WorkloadControl control) {
         var settings = new OrderProducer.Settings(config.runName(), config.rejectedOrderPercent(),
-                config.orderDeadline(), config.startupDeadline());
+                config.orderDeadline(), config.startupDeadline(), config.submissionConcurrency(),
+                config.observerConcurrency(), config.maxNonTerminalOrders());
         OrderProducer.Settings.positiveBounded(config.requestTimeout(), Duration.ofMinutes(1));
         OrderProducer.Settings.positiveBounded(config.pollInterval(), Duration.ofSeconds(30));
         JsonHttpClient product = new JsonHttpClient(http, config.productUrl(), config.requestTimeout());

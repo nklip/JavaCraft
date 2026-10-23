@@ -124,6 +124,35 @@ class OrderServiceTest {
     }
 
     @Test
+    void reportsNewAndReplayedWritesWithoutAdditionalStatusReads() {
+        Creation<Order> fresh = service.putOrderWithOutcome(1, 2, payload);
+        assertTrue(fresh.created());
+        int lookups = store.lookups.get();
+        Creation<Order> replay = service.putOrderWithOutcome(1, 2, payload);
+        assertFalse(replay.created());
+        assertEquals(fresh.entity(), replay.entity());
+        assertEquals(lookups, store.lookups.get());
+        assertEquals(1, store.insertions);
+    }
+
+    @Test
+    void concurrentIdenticalWritesReportExactlyOneFreshCommit() throws Exception {
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var futures = java.util.stream.IntStream.range(0, 24)
+                    .mapToObj(ignored -> executor.submit(() -> service.putOrderWithOutcome(1, 2, payload))).toList();
+            int created = 0;
+            for (var future : futures) {
+                if (future.get(3, TimeUnit.SECONDS).created()) {
+                    created++;
+                }
+            }
+            assertEquals(1, created);
+            assertEquals(1, store.insertions);
+            verify(generator, times(2)).nextId();
+        }
+    }
+
+    @Test
     void acceptanceSnapshotsPricesCostsAndPreservesItemOrderAcrossRegions() {
         var creation = new OrderCreation("EUR", List.of(new OrderItem(11, 21, 3), new OrderItem(12, 22, 2)));
         store.lookup = item -> Optional.of(product(item, "EUR", item.productId() == 21 ? "19.95" : "0.01", "12.50"));

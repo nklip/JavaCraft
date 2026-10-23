@@ -275,10 +275,11 @@ final class JdbcOrderSession implements OrderStore.Session {
                 statement.setBigDecimal(5, order.totalAmount());
                 requireRows(statement.executeUpdate());
             }
-            for (ItemSnapshot item : items) {
-                try (PreparedStatement statement = prepare("INSERT INTO ordering.order_items(order_id, "
-                        + "item_position, seller_id, product_id, quantity, product_name, unit_price, unit_cost, currency) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+            // One prepared statement and one batch avoid a timeout/configuration round trip for every item.
+            try (PreparedStatement statement = prepare("INSERT INTO ordering.order_items(order_id, "
+                    + "item_position, seller_id, product_id, quantity, product_name, unit_price, unit_cost, currency) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                for (ItemSnapshot item : items) {
                     statement.setLong(1, order.orderId());
                     statement.setInt(2, item.position());
                     statement.setLong(3, item.sellerId());
@@ -288,7 +289,16 @@ final class JdbcOrderSession implements OrderStore.Session {
                     statement.setBigDecimal(7, item.unitPrice());
                     statement.setBigDecimal(8, item.unitCost());
                     statement.setString(9, item.currency());
-                    requireRows(statement.executeUpdate());
+                    statement.addBatch();
+                }
+                int[] counts = statement.executeBatch();
+                if (counts.length != items.size()) {
+                    throw new SQLException("Incomplete order item batch");
+                }
+                for (int count : counts) {
+                    if (count != java.sql.Statement.SUCCESS_NO_INFO) {
+                        requireRows(count);
+                    }
                 }
             }
             try (PreparedStatement statement = prepare("INSERT INTO ordering.order_sagas(saga_id, order_id, "

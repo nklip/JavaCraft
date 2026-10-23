@@ -35,13 +35,18 @@ class OrderWorkloadTest {
         String buyer = "9007199254740993";
         String order = "880803840000004254";
         when(orders.allocate(buyer, planner.allocationRunName(), 0)).thenThrow(new IOException()).thenReturn(order);
-        when(orders.submit(any())).thenThrow(WorkloadFixtures.httpFailure(503, "ORDER_STORE_UNAVAILABLE"))
-                .thenReturn(WorkloadFixtures.status("PENDING_STOCK"));
+        when(orders.submitWithReplay(any())).thenThrow(WorkloadFixtures.httpFailure(503, "ORDER_STORE_UNAVAILABLE"))
+                .thenReturn(new OrderRequests.Submission(WorkloadFixtures.status("PENDING_STOCK"), false));
         when(orders.status(buyer, order)).thenReturn(WorkloadFixtures.status("PENDING_LEDGER"))
                 .thenThrow(new IOException()).thenReturn(WorkloadFixtures.status("CANCELLED"));
         List<String> accepted = new ArrayList<>();
         var progress = new OrderWorkload.Progress(() -> accepted.add("accepted"));
-        var completion = workload.complete(planner, "stable", 0, progress);
+        var written = workload.write(planner, "stable", 0, progress);
+        assertEquals("PENDING_STOCK", written.status().status(), "Writing returns without waiting for the saga");
+        verify(orders, never()).status(anyString(), anyString());
+        var observed = workload.observe(written.status(), progress);
+        assertEquals("PENDING_LEDGER", observed.status());
+        var completion = new OrderWorkload.Completion(workload.observe(observed, progress), written.recovered());
         assertEquals("CANCELLED", completion.status().status());
         assertEquals(List.of("accepted"), accepted, "A pending first answer is one new order");
         assertEquals(List.of(new ControlStatus.TrafficCategory("startup", 0, 0, 0),
@@ -52,26 +57,41 @@ class OrderWorkloadTest {
         assertEquals("ordinal 0, buyer " + buyer + ", order " + order + ", last status CANCELLED", progress.describe(0));
         verify(orders, times(2)).allocate(buyer, planner.allocationRunName(), 0);
         ArgumentCaptor<PlannedOrder> sent = ArgumentCaptor.forClass(PlannedOrder.class);
-        verify(orders, times(2)).submit(sent.capture());
+        verify(orders, times(2)).submitWithReplay(sent.capture());
         assertSame(sent.getAllValues().getFirst(), sent.getAllValues().getLast());
         assertEquals(order, sent.getValue().orderId());
         assertEquals("USD", sent.getValue().currency());
         assertEquals(3, sent.getValue().items().size());
-        assertEquals(2, waits.stream().filter(Duration.ofMillis(250)::equals).count());
+        assertEquals(0, waits.stream().filter(Duration.ofMillis(250)::equals).count(),
+                "The observer scheduler owns polling intervals");
     }
 
     @Test
     void aRecoveredTerminalPutNeedsNoPollingOrNewAllocation() throws Exception {
         var planner = WorkloadFixtures.planner("stable", 10);
         when(orders.allocate(anyString(), eq(planner.allocationRunName()), eq(0L))).thenReturn("880803840000004254");
-        when(orders.submit(any())).thenReturn(WorkloadFixtures.status("CONFIRMED"));
+        when(orders.submitWithReplay(any())).thenReturn(new OrderRequests.Submission(WorkloadFixtures.status("CONFIRMED"), true));
         List<String> accepted = new ArrayList<>();
-        var completion = workload.complete(planner, "stable", 0, new OrderWorkload.Progress(() -> accepted.add("new")));
+        var completion = workload.write(planner, "stable", 0, new OrderWorkload.Progress(() -> accepted.add("new")));
         assertEquals("CONFIRMED", completion.status().status());
         assertTrue(completion.recovered(), "A terminal first answer is an order from before this process");
         assertEquals(List.of(), accepted, "A recovered order is not a new order");
         verify(orders, never()).status(anyString(), anyString());
         assertTrue(waits.isEmpty());
+    }
+
+    @Test
+    void replayedPendingOrdersAreRecoveredAndStillNeedIndependentObservation() throws Exception {
+        var planner = WorkloadFixtures.planner("stable", 10);
+        when(orders.allocate(anyString(), anyString(), anyLong())).thenReturn("880803840000004254");
+        when(orders.submitWithReplay(any())).thenReturn(
+                new OrderRequests.Submission(WorkloadFixtures.status("PENDING_LEDGER"), true));
+        List<String> accepted = new ArrayList<>();
+        var written = workload.write(planner, "stable", 0, new OrderWorkload.Progress(() -> accepted.add("new")));
+        assertTrue(written.recovered());
+        assertFalse(written.status().terminal());
+        assertTrue(accepted.isEmpty());
+        verify(orders, never()).status(anyString(), anyString());
     }
 
     @Test

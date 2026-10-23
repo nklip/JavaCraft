@@ -219,7 +219,7 @@ class JdbcOrderSessionTest {
         when(connection.prepareStatement(startsWith("INSERT INTO ordering.order_items("))).thenReturn(item);
         when(connection.prepareStatement(startsWith("INSERT INTO ordering.order_sagas("))).thenReturn(saga);
         when(order.executeUpdate()).thenReturn(1);
-        when(item.executeUpdate()).thenReturn(1);
+        when(item.executeBatch()).thenReturn(new int[]{1});
         when(saga.executeUpdate()).thenReturn(1);
         session.insertOrder(new Order(31, 41, "fp", "USD", new BigDecimal("39.90"), "PENDING_STOCK", null),
                 List.of(new ItemSnapshot(0, 51, 61, 2, "Product", new BigDecimal("19.95"),
@@ -228,10 +228,30 @@ class JdbcOrderSessionTest {
         verify(item).setBigDecimal(7, new BigDecimal("19.95"));
         verify(item).setBigDecimal(8, new BigDecimal("12.50"));
         verify(item).setString(9, "USD");
+        verify(item).addBatch();
+        verify(item).executeBatch();
         verify(saga).setLong(1, 71);
         verify(saga).setLong(3, 81);
         verify(connection, never()).prepareStatement(contains("outbox"));
         verify(connection, never()).commit();
+    }
+
+    @Test
+    void incompleteItemBatchFailsBeforeSagaCreation() throws SQLException {
+        PreparedStatement order = mock();
+        PreparedStatement item = mock();
+        when(connection.prepareStatement(startsWith("INSERT INTO ordering.orders("))).thenReturn(order);
+        when(connection.prepareStatement(startsWith("INSERT INTO ordering.order_items("))).thenReturn(item);
+        when(order.executeUpdate()).thenReturn(1);
+        for (int[] counts : List.of(new int[]{}, new int[]{0}, new int[]{java.sql.Statement.EXECUTE_FAILED})) {
+            when(item.executeBatch()).thenReturn(counts);
+            assertEquals(OrderFailure.Reason.ORDER_STORE_UNAVAILABLE, assertThrows(OrderFailure.class,
+                    () -> session.insertOrder(new Order(31, 41, "fp", "USD", new BigDecimal("39.90"),
+                                    "PENDING_STOCK", null),
+                            List.of(new ItemSnapshot(0, 51, 61, 2, "Product", new BigDecimal("19.95"),
+                                    new BigDecimal("12.50"), "USD")), 71, 81)).reason());
+        }
+        verify(connection, never()).prepareStatement(startsWith("INSERT INTO ordering.order_sagas("));
     }
 
     @Test

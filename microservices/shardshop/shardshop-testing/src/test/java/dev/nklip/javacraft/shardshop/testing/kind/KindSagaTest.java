@@ -86,6 +86,23 @@ final class KindSagaTest {
         assertEquals("9223372036854775807", KindSaga.id("9223372036854775807"));
     }
 
+    @Test void httpAndSagaDeploymentRolesCannotBeSwappedOrScaledIntoOverlappingReaders() throws Exception {
+        var http = KindLab.parse("""
+                {"spec":{"replicas":2,"strategy":{"type":"RollingUpdate"},"template":{"spec":{"containers":[
+                {"env":[{"name":"SHARDSHOP_ORDER_PROCESS","value":"http"}]}]}}}}
+                """);
+        var saga = KindLab.parse("""
+                {"spec":{"replicas":1,"strategy":{"type":"Recreate"},"template":{"spec":{"containers":[
+                {"env":[{"name":"SHARDSHOP_ORDER_PROCESS","value":"saga"}]}]}}}}
+                """);
+        KindSaga.deploymentShape("order", http);
+        KindSaga.deploymentShape("order-saga", saga);
+        assertThrows(IOException.class, () -> KindSaga.deploymentShape("order", saga));
+        assertThrows(IOException.class, () -> KindSaga.deploymentShape("order-saga", http));
+        ((com.fasterxml.jackson.databind.node.ObjectNode) saga.path("spec")).put("replicas", 2);
+        assertThrows(IOException.class, () -> KindSaga.deploymentShape("order-saga", saga));
+    }
+
     @Test void cdcReplacementMustChangeBothJvmAndWorker() throws Exception {
         var before = KindLab.parse("{\"metadata\":{\"uid\":\"old\"},\"spec\":{\"nodeName\":\"worker-a\"}}");
         var moved = KindLab.parse("{\"metadata\":{\"uid\":\"new\"},\"spec\":{\"nodeName\":\"worker-b\"}}");

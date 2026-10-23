@@ -111,19 +111,24 @@ public final class OrderService {
     }
 
     public Order putOrder(long buyerId, long orderId, OrderCreation creation) {
+        return putOrderWithOutcome(buyerId, orderId, creation).entity();
+    }
+
+    /** Reports durable replay without a second status read or a race with the saga. */
+    public Creation<Order> putOrderWithOutcome(long buyerId, long orderId, OrderCreation creation) {
         validate(buyerId, orderId, creation);
         String fingerprint = fingerprint(buyerId, orderId, creation);
         Shard home = router.route(buyerId);
         Optional<Order> previous = store.write(home, session -> checkedOrder(session, buyerId, orderId, fingerprint));
         if (previous.isPresent()) {
-            return previous.orElseThrow();
+            return new Creation<>(previous.orElseThrow(), false);
         }
 
         CatalogOutcome outcome = catalog(creation);
         return store.write(home, session -> {
             Optional<Order> concurrent = checkedOrder(session, buyerId, orderId, fingerprint);
             if (concurrent.isPresent()) {
-                return concurrent.orElseThrow();
+                return new Creation<>(concurrent.orElseThrow(), false);
             }
             if (outcome.failure() != null) {
                 throw new OrderFailure(outcome.failure());
@@ -134,7 +139,7 @@ public final class OrderService {
             long commandId = nextId();
             Order order = new Order(buyerId, orderId, fingerprint, creation.currency(), total, "PENDING_STOCK", null);
             session.insertOrder(order, items, sagaId, commandId);
-            return order;
+            return new Creation<>(order, true);
         });
     }
 
@@ -161,6 +166,24 @@ public final class OrderService {
     }
 
     private CatalogOutcome catalog(OrderCreation creation) {
+        // The usual single-item request needs no executor, futures or extra virtual threads.
+        // The store already enforces the acquisition/query deadline on its bounded database worker.
+        if (creation.items().size() == 1) {
+            OrderItem item = creation.items().getFirst();
+            long started = System.nanoTime();
+            Optional<Product> product;
+            try {
+                product = store.product(router.route(item.sellerId()), item.sellerId(), item.productId(),
+                        Duration.ofNanos(catalogDeadlineNanos));
+            } catch (RuntimeException unavailable) {
+                return new CatalogOutcome(List.of(), CATALOG_UNAVAILABLE);
+            }
+            if (System.nanoTime() - started >= catalogDeadlineNanos) {
+                return new CatalogOutcome(List.of(), CATALOG_UNAVAILABLE);
+            }
+            return product.isEmpty() ? new CatalogOutcome(List.of(), PRODUCT_NOT_FOUND)
+                    : validateCatalog(creation, List.of(product.orElseThrow()));
+        }
         long deadline = System.nanoTime() + catalogDeadlineNanos;
         // shutdownNow is deliberate: executor.close() would wait past the request deadline for stuck IO.
         var executor = Executors.newFixedThreadPool(catalogConcurrency, Thread.ofVirtual().factory());
@@ -213,6 +236,10 @@ public final class OrderService {
         if (missing) {
             return new CatalogOutcome(List.of(), PRODUCT_NOT_FOUND);
         }
+        return validateCatalog(creation, products);
+    }
+
+    private CatalogOutcome validateCatalog(OrderCreation creation, List<Product> products) {
         if (products.stream().map(Product::currency).distinct().count() > 1) {
             return new CatalogOutcome(List.of(), MIXED_CURRENCIES);
         }

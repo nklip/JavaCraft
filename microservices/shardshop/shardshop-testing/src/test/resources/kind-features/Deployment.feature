@@ -12,5 +12,5 @@ Feature: Deployed kind product workload
 
   @kind-saga
   Scenario: The deployed saga resumes durable capture and completes its own scoped orders
-    Then order, ledger and the HTTP-only producer are deployed with durable CDC offsets
+    Then two order HTTP replicas, the saga, ledger and HTTP-only producer are deployed with durable CDC offsets
     And the gate's own USD and EUR orders are confirmed with ledger, stock and seller profit effects

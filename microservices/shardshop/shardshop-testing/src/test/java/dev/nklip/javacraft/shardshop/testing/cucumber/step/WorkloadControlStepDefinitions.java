@@ -264,11 +264,11 @@ public class WorkloadControlStepDefinitions {
         });
     }
 
-    @When("the SQL confirmer pauses and the order-producer is paused with an order in flight")
+    @When("the SQL confirmer pauses and the order-producer is paused with a pending saga")
     public void pauseWithOrderInFlight() throws Exception {
         confirming.set(false);
-        await("order-producer", Duration.ofSeconds(10), "one order in flight",
-                status -> status.path("inFlight").asInt() == 1);
+        await("order-producer", Duration.ofSeconds(10), "a pending saga",
+                status -> status.path("producer").path("nonTerminalBacklog").asInt() > 0);
         paused("order-producer");
     }
 
@@ -277,20 +277,30 @@ public class WorkloadControlStepDefinitions {
         confirming.set(true);
     }
 
-    @Then("the order-producer shows PAUSING with 1 operation in flight and allocates no new ordinal for {int} seconds")
+    @Then("the order-producer pauses its submissions but observes pending sagas for {int} seconds")
     public void pausingWithOrderInFlight(int seconds) throws Exception {
-        JsonNode status = status("order-producer");
-        assertEquals("PAUSING", status.path("state").asText());
-        assertEquals(1, status.path("inFlight").asInt());
+        JsonNode status = await("order-producer", Duration.ofSeconds(10), "drained submissions",
+                current -> current.path("state").asText().equals("PAUSED"));
+        assertEquals(0, status.path("inFlight").asInt());
+        assertTrue(status.path("producer").path("nonTerminalBacklog").asInt() > 0);
         long allocations = category(status, "allocation").path("requests").asLong();
         int ordinals = ordinals(confirmedRun).size();
         Thread.sleep(seconds * 1000L);
         JsonNode later = status("order-producer");
-        assertEquals("PAUSING", later.path("state").asText(), "The pending order is still observed");
+        assertEquals("PAUSED", later.path("state").asText(), "The pending order is still observed while writes pause");
         assertEquals(allocations, category(later, "allocation").path("requests").asLong());
         assertEquals(ordinals, ordinals(confirmedRun).size(), "No new allocation while pausing");
         assertTrue(category(later, "polling").path("requests").asLong() > category(status, "polling").path("requests").asLong(),
-                "The producer keeps observing its order in flight");
+                "The independent observer keeps polling pending sagas");
+    }
+
+    @Then("the order-producer observer drains the backlog while submissions remain paused")
+    public void observerDrainsWhilePaused() throws Exception {
+        JsonNode status = await("order-producer", Duration.ofSeconds(10), "terminal observation while paused",
+                current -> current.path("producer").path("nonTerminalBacklog").asInt() == 0
+                        && current.path("state").asText().equals("PAUSED"));
+        assertEquals("PAUSED", status.path("state").asText());
+        assertEquals(0, status.path("inFlight").asInt());
     }
 
     @Then("the {word} shows the concurrency limit {int} below the target")

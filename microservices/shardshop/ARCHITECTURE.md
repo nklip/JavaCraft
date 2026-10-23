@@ -138,10 +138,11 @@ After readiness/image delivery, Helmfile syncs `shardshop-migrations` and
 `shardshop-application` in dependency order. Each revision runs ordered Flyway
 hooks and idempotent seeding. Flyway's actual history is authoritative; no completed
 Job cache suppresses validation. Every `up.sh` deployment changes a shared restart
-annotation on all six application Deployment templates through Helm, triggering replacement
+annotation on all application Deployment templates through Helm, triggering replacement
 followed by the seeding and acceptance gates even for unchanged code. Each new
 product or order JVM consumes a fresh, non-reusable generator slot; a normal
-rollout of two product replicas and one order replica uses at least three slots.
+rollout of two product replicas, two order HTTP replicas and one saga replica uses
+at least five slots.
 Product's pod checksum is SHA-256 of
 the full rendered `application.properties`, sharing the mounted file's named
 template and static defaults. Image/resource/workload settings are direct template
@@ -253,7 +254,7 @@ they never generate, derive, or allocate them locally.
 |---|---|---|---|---|
 | 1 | `shardshop-workload` | Aggregate the three workload applications below | No aggregator pod; one seeder Job, two load Deployments and one interactive seeder Deployment | None: no tables, migrations, or database credentials |
 | 2 | `shardshop-product` | Accept seller and product creation and product reader HTTP requests | Two identical product service pods behind one Kubernetes Service | Creates and reads sellers and products in schema `catalog` of the shared sharded PostgreSQL deployment |
-| 3 | `shardshop-order` | Accept buyer and order HTTP requests, coordinate the saga including stock reservation, and relay captured order-outbox inserts to RabbitMQ | One stateless order service pod initially | Buyers, orders, items, saga state, inbox, outbox, and CDC offsets in schema `ordering`; reads sellers and products and writes stock reservations and product stock in `catalog` |
+| 3 | `shardshop-order` | Accept buyer and order HTTP requests, coordinate the saga including stock reservation, and relay captured order-outbox inserts to RabbitMQ | Two stateless HTTP pods and one separate saga pod | Buyers, orders, items, saga state, inbox, outbox, and CDC offsets in schema `ordering`; reads sellers and products and writes stock reservations and product stock in `catalog` |
 | 4 | `shardshop-ledger` | Consume ledger commands and persist order ledger records | One ledger consumer pod plus a separate PostgreSQL pod initially | Schema `ledger` in a dedicated ledger database: entries, decisions, permanent result bindings, inbox, outbox, and command quarantine |
 | 5 | `shardshop-core` | Aggregate `common` (canonical-ID parsing, UTF-8 SHA-256 and the bounded JSON HTTP client), `idgen` (bounded Snowflake generation), `sharding` (seller/buyer routing) and `workload-control` (live workload pacing, control API and page assets); idgen and sharding own their SmallRye/CDI wiring (section 3) | No aggregator pod; common is inside all six applications, idgen and sharding are inside product/order, workload-control is inside the three workloads | None |
 | 6 | `shardshop-testing` | Cucumber integration scenarios that start the packaged applications against a PostgreSQL test container and a k3s Kubernetes API server | Not deployed; runs only in Maven builds with `-Pintegration` | Its own test databases, migrated by Flyway with the lab's roles |
@@ -332,7 +333,7 @@ changing the product-pricing policy or cross-region purchase eligibility. An exp
 from the allocated order ID. A rejection test must also apply its own temporary
 ledger allowlist. EUR is accepted normally.
 
-Step 4.8 implements a single in-flight order stream. It resolves the full catalog,
+Steps 4.8 and 4.14 implement a bounded concurrent order stream. It resolves the full catalog,
 creates or recovers all buyers, then starts at ordinal zero for its required
 configured run name. Normal traffic interleaves US, EU and ASIA buyers. Each region
 has a 900-order cycle with currency counts in USD/EUR/GBP/CNY/KRW/JPY/VND order:
@@ -356,16 +357,20 @@ item selections separate from the prior `catalog-v2:balanced` stream. Historical
 orders are untouched, and explicit USD/EUR drill namespaces remain unchanged.
 A restart reconstructs and replays earlier ordinals through the same allocation and
 PUT APIs before advancing. This deliberately trades
-restart catch-up time for no workload-owned progress store. The replay is not
-paced, but Pause holds it. From the first order that this process submits as new,
-the [live control](#workload-traffic-control-step-413) paces the allocation of each
-new order at the target rate of new order starts per second.
+restart catch-up time for no workload-owned progress store. Replay is paced from ordinal zero with the same bounded concurrency and immutable
+identities; Pause stops new submissions while the independent observer continues.
+Each submission owns allocation and PUT, then releases its slot without waiting for
+the saga. Defaults are four submission slots (maximum 12), two observer slots
+(maximum 12) and 100 non-terminal orders including outstanding submissions (maximum
+10,000). Fair bounded polling observes accepted pending orders. A full non-terminal
+window applies backpressure until the saga catches up. The PUT
+`Idempotent-Replay` header classifies recovered orders without a GET probe; recovered
+pending orders remain observed and recovered counts stay separate from new outcomes.
 
 One complete deadline bounds allocation, submission, retries and terminal polling
 for each ordinal (60 seconds by default). Transport failures and HTTP 503 use
 bounded attempts and jittered backoff; validation errors fail immediately. A
-failed phase stops the producer for restart without advancing its ordinal.
-Only terminal status permits the next order. Configuration and operational
+failed phase stops the producer for restart. Configuration and operational
 commands are in the [producer runbook](README.md#order-producer-step-48).
 
 Module 2 also handles seller and product creation so the product seeder can populate the
@@ -388,7 +393,7 @@ defines `GET /control`, `PUT /control/rate`, `POST /control/pause`,
 
 | Workload | Unit of the rate | Default | Maximum | Operations in flight |
 |---|---|---:|---:|---|
-| Order producer | New order starts per second | 0.5 | 100 | One order, from allocation to terminal status |
+| Order producer | New order starts per second | 0.5 | 30 | Four submissions and two independent status polls by default |
 | Product reader | Product read starts per second across all workers | 200 | 10,000 | One read per worker |
 | Product seeder | Outgoing HTTP requests per second, including creation, verification and retries | 100 | 1,000 | One request |
 
@@ -403,9 +408,8 @@ a browser refresh keeps it, and a process restart (for example each `up.sh` run)
 restores the configured defaults.
 
 Pause drains the bounded operation in flight. Reads and seeder requests keep their
-HTTP deadlines, bounded attempts and backoff. The producer keeps its one order in
-flight, observes it until it is terminal and then allocates no new ordinal; its
-complete-order deadline does not include the pause. The control changes no dataset
+HTTP deadlines, bounded attempts and backoff. The producer drains current submissions and allocates no new ordinal; its observer
+continues to terminal status, including while paused. The control changes no dataset
 version, run name, ordinal progress, service-issued ID, retry key or currency
 selection. The workloads keep their Java-owned catalog gates and lifecycle, and
 they have no database credentials or Kubernetes API access.
@@ -417,7 +421,16 @@ retries and errors by purpose. The producer separates its startup traffic (catal
 lookups and buyer creation) from allocation, submission and polling, and its rate
 counts only orders that order accepts as new. When concurrency divided by the mean
 operation time of the last 10 seconds is below the effective target, the status
-names this limit; for the producer, this is the single order in flight.
+names this limit. The producer also reports its configured concurrency, backlog,
+backpressure, recovered/new terminal counts and write/saga latency samples, mean and
+p95 over the last 1,024 new orders. The 30 starts/s cap follows the
+[step 4.14 lab measurements](CHANGELOG.md#step-414): 29.45 new orders/s with bounded
+order, outbox and profit backlogs and a final rolling write p95 of 93.73 ms. At
+target 10/s, write p95 was 91.42 ms. Four submission slots were sufficient; the
+maximum of 12 matches one HTTP JVM's aggregate pool budget of four connections per
+shard. Requests may wait up to one second for a pool connection before `503`, so
+HTTP concurrency can exceed 12 during short bursts. Retained finite stock and
+host contention limit what these measurements establish; the default stays 0.5/s.
 
 The seeder has two modes of one application. The default finite bootstrap Job seeds
 each release, serves no HTTP and keeps the deployment completion gate. The
@@ -591,8 +604,8 @@ flowchart LR
 
     subgraph M3["Module 3: order service"]
         OS["Order Kubernetes Service"]
-        O["Order pod: HTTP API and saga coordinator"]
-        CDC["Order pod: Debezium CDC relay<br/>one reader per shard"]
+        O["Order HTTP pods 1 and 2"]
+        CDC["Order saga pod: stock/profit workers, results<br/>Debezium CDC: one reader per shard"]
         OS --> O
     end
 
@@ -610,27 +623,28 @@ flowchart LR
     OP -->|"HTTP order creation and status"| OS
     P1 -->|"SQL: products"| PG
     P2 -->|"SQL: products"| PG
-    O -->|"SQL: products, orders, saga tables"| PG
+    O -->|"SQL: buyers, orders, saga rows"| PG
+    CDC -->|"SQL: stock, profit, saga tables"| PG
     PG -->|"Committed order-outbox inserts via WAL"| CDC
     CDC -->|"RecordOrder command"| MQ
     CDC -->|"Mark confirmed publication"| PG
     MQ -->|"RecordOrder delivery"| L
     L -->|"LedgerRecorded or LedgerRejected"| MQ
-    MQ -->|"Saga result delivery"| O
+    MQ -->|"Saga result delivery"| CDC
 ```
 
-After seeding, six application pods run: one reader, one order producer, two
-product pods, one order pod, and one ledger consumer pod. The product seeder's
-completed Job pod is separate and consumes no ongoing application CPU. The diagram
-shows both lifecycle phases. The nine shared PostgreSQL pods, one ledger PostgreSQL
-pod, **one RabbitMQ broker pod**, and operator/system pods are additional. The
-order CDC relay runs inside the order service process; the ledger's result-outbox
-relay continues to poll its own database. The order pod stays stateless: each
-shard's CDC offsets live in that shard's database.
+After seeding, nine application pods run: one reader, one order producer, two
+product pods, two order HTTP pods, one order saga pod, one ledger consumer pod and
+one interactive seeder pod. The completed bootstrap seeder Job is separate.
+The nine shared PostgreSQL pods, one ledger PostgreSQL pod, one RabbitMQ broker
+pod and operator/system pods are additional. CDC offsets live in each shard database.
+The ledger's result-outbox relay polls its own database.
 
-Step 4.9 adds the three saga application images to the existing Skaffold build
-and Helm application release. The single order Deployment uses `Recreate` to
-avoid overlapping CDC owners. The producer's configured run name stays independent
+Both order Deployments use one image. `shardshop.order.process` selects `http`
+(default) or `saga`. HTTP uses `RollingUpdate` with two replicas; saga uses one
+replica and `Recreate`. Only saga owns stock/profit workers, the CDC relay and
+result consumption. Every JVM reserves its own generator slot. The producer's configured run name stays
+independent
 of Helm revisions and startup restart tokens. Normal deployment acceptance does not
 examine producer orders. It creates one USD and one EUR order for its own buyer,
 sellers and products, and checks their durable saga effects. Since step 4.12, the
@@ -638,10 +652,18 @@ normal seven-currency ledger policy must confirm both orders; the gate changes n
 deployment or workload setting. These gate entities use fixed `kind-saga-gate-v2.*`
 creation keys, thus later runs recover the same IDs.
 The opt-in `kind-saga-drill` owns duplicate delivery, policy-change replay, two
-orders for the same stock and cross-worker order replacement. It restores temporary
-deployment settings through the shared drill guard. The lab has one order replica
+orders for the same stock and cross-worker saga replacement. Its three scenarios
+also cover HTTP rollout preserving the saga pod/CDC active PIDs and saga restart
+while writes continue. It restores temporary
+deployment settings through the shared drill guard. The lab has one saga replica
 with one stock worker thread, thus it reserves stock in sequence; step 4.2 tests
 competing stock coordinators.
+
+The lab's serial profit worker polls every 100 ms with at most 32 intents per
+buyer shard. The standalone defaults remain 250 ms and eight intents. Capacity
+checks include unapplied profit intents as well as non-terminal orders and
+unpublished commands: confirmation can precede seller-profit posting, so a flat
+order backlog alone does not establish sustainable throughput.
 
 Both product pods are stateless and interchangeable. They use the same shard
 mapping and database constraints; pod-local state must not determine correctness.
@@ -1163,8 +1185,8 @@ cross-shard transaction assembly.
   in the order service's IO layer, with bounded buffers and a batch consumer
   that explicitly controls record completion. Keep one active reader per shard:
   PostgreSQL allows only one active consumer per replication slot, and the
-  initial single order pod uses a non-overlapping replacement strategy. Scaling
-  order pods requires explicit per-shard ownership, such as a Kubernetes Lease;
+  single saga pod uses `Recreate`. Scaling
+  saga pods requires explicit per-shard ownership, such as a Kubernetes Lease;
   the offsets are already shared through each shard's database.
 - On first start, take a consistent snapshot of retained outbox rows and then
   stream WAL; on restart, resume the saved offsets. Handle snapshot (`r`) and

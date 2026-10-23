@@ -33,7 +33,7 @@ Feature: Live traffic control of the packaged workloads
     And the product-reader shows revision 0, unpaused
 
   @order-producer
-  Scenario: The producer paces new orders, drains its order in flight on Pause and changes only its own traffic
+  Scenario: The producer paces concurrent writes, observes sagas while paused and changes only its own traffic
     Given the order producer has migrated regional primaries and packaged providers
     When the seeder runs
     Then the seeder exits with code 0 and logs the summary "US 50 sellers, 50 products {USD=50}; EU 50 sellers, 100 products {EUR=50, GBP=50}; ASIA 51 sellers, 51 products {CNY=32, KRW=4, JPY=14, VND=1}"
@@ -42,16 +42,19 @@ Feature: Live traffic control of the packaged workloads
     And the reader starts with an initial rate of 20
     Then the order-producer control shows RUNNING at a target of 2 "new order starts/s" within 360 seconds
     And the order-producer starts 1.5 to 2.2 new orders per second
-    When the order-producer target rate becomes 50
-    Then the order-producer shows the concurrency limit 1 below the target
+    When the order-producer target rate becomes 10
+    Then the order-producer starts 7 to 11 new orders per second
     When the order-producer target rate becomes 1
     Then the order-producer starts 0.7 to 1.1 new orders per second
-    When the SQL confirmer pauses and the order-producer is paused with an order in flight
-    Then the order-producer shows PAUSING with 1 operation in flight and allocates no new ordinal for 2 seconds
+    When the SQL confirmer pauses and the order-producer is paused with a pending saga
+    Then the order-producer pauses its submissions but observes pending sagas for 2 seconds
     When the SQL confirmer resumes
-    Then the order-producer shows PAUSED within 10 seconds and sends no request for 2 seconds
+    Then the order-producer observer drains the backlog while submissions remain paused
+    And the order-producer shows PAUSED within 10 seconds and sends no request for 2 seconds
     When the order-producer resumes
     Then the order-producer starts 0.7 to 1.1 new orders per second
+    When the order-producer is paused
+    Then the order-producer observer drains the backlog while submissions remain paused
     And the run "control-acceptance" has consecutive ordinals from 0 with one allocation each
     And the product-reader shows revision 0, unpaused
     And the product-reader sends 15 to 22 "reads" requests per second

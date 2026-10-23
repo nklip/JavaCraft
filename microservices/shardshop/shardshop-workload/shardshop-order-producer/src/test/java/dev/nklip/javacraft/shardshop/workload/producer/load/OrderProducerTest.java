@@ -12,10 +12,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
-import java.util.logging.Handler;
-import java.util.logging.Level;
-import java.util.logging.LogRecord;
-import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -23,9 +19,8 @@ import static org.mockito.Mockito.*;
 @Timeout(10)
 class OrderProducerTest {
     private final OrderWorkload workload = mock();
-    private final OrderProducer.Settings settings = new OrderProducer.Settings("stable", 10,
-            Duration.ofMillis(200), Duration.ofMillis(200));
-    private final WorkloadControl control = WorkloadFixtures.control("100");
+    private final WorkloadControl control = new WorkloadControl(OrderProducer.controlSettings(new BigDecimal("30"), 2),
+            WorkloadControl.Phase.WAITING);
 
     @Test
     void startupDeadlineInterruptsHttpWorkAndNeverStartsOrderLoad() throws Exception {
@@ -35,19 +30,19 @@ class OrderProducerTest {
             try {
                 new CountDownLatch(1).await();
                 return List.of();
-            } catch (InterruptedException failure) {
+            } finally {
                 interrupted.countDown();
-                throw failure;
             }
         });
-        OrderProducer producer = new OrderProducer(workload, settings, control);
+        var producer = new OrderProducer(workload, settings(Duration.ofMillis(200), 2, 1, 4), control);
         try {
             producer.start(failed::countDown);
             assertTrue(failed.await(3, TimeUnit.SECONDS));
             assertTrue(interrupted.await(3, TimeUnit.SECONDS));
             assertTrue(producer.failed());
+            assertEquals("FAILED", control.status().state());
             verify(workload, never()).createBuyers();
-            verify(workload, never()).complete(any(), anyString(), anyLong(), any());
+            verify(workload, never()).write(any(), anyString(), anyLong(), any());
         } finally {
             producer.stop();
         }
@@ -66,8 +61,7 @@ class OrderProducerTest {
                 interrupted.countDown();
             }
         });
-        var producer = new OrderProducer(workload, new OrderProducer.Settings("stable", 10,
-                Duration.ofSeconds(30), Duration.ofMinutes(1)), control);
+        var producer = new OrderProducer(workload, settings(Duration.ofSeconds(5), 2, 1, 4), control);
         AtomicInteger failures = new AtomicInteger();
         try {
             producer.start(failures::incrementAndGet);
@@ -81,17 +75,16 @@ class OrderProducerTest {
     }
 
     @Test
-    void advancesOnlyCompletedOrdinalsAndStopsAtTheCompleteOrderDeadline() throws Exception {
+    void shutdownCancelsAnActiveWriteAndObserverWithoutReportingFailure() throws Exception {
         stubStartup();
-        List<Long> ordinals = new CopyOnWriteArrayList<>();
-        CountDownLatch interrupted = new CountDownLatch(1);
-        CountDownLatch failed = new CountDownLatch(1);
-        when(workload.complete(any(), eq("stable"), anyLong(), any())).thenAnswer(call -> {
-            long ordinal = call.getArgument(2);
-            ordinals.add(ordinal);
-            if (ordinal == 0) {
-                return WorkloadFixtures.completion("CONFIRMED");
+        CountDownLatch entered = new CountDownLatch(2);
+        CountDownLatch interrupted = new CountDownLatch(2);
+        when(workload.write(any(), anyString(), anyLong(), any())).thenAnswer(call -> {
+            if ((long) call.getArgument(2) == 0) {
+                ((OrderWorkload.Progress) call.getArgument(3)).accept();
+                return WorkloadFixtures.completion("PENDING_LEDGER");
             }
+            entered.countDown();
             try {
                 new CountDownLatch(1).await();
                 return null;
@@ -99,16 +92,27 @@ class OrderProducerTest {
                 interrupted.countDown();
             }
         });
-        var producer = new OrderProducer(workload, settings, control);
+        when(workload.observe(any(), any())).thenAnswer(call -> {
+            entered.countDown();
+            try {
+                new CountDownLatch(1).await();
+                return null;
+            } finally {
+                interrupted.countDown();
+            }
+        });
+        AtomicInteger failures = new AtomicInteger();
+        var producer = new OrderProducer(workload, settings(Duration.ofSeconds(5), 1, 1, 2), control);
         try {
-            producer.start(failed::countDown);
-            assertTrue(failed.await(3, TimeUnit.SECONDS));
-            assertTrue(interrupted.await(3, TimeUnit.SECONDS));
-            assertEquals(List.of(0L, 1L), ordinals);
-            assertTrue(producer.failed());
+            producer.start(failures::incrementAndGet);
+            assertTrue(entered.await(3, TimeUnit.SECONDS));
         } finally {
             producer.stop();
         }
+        assertTrue(interrupted.await(3, TimeUnit.SECONDS));
+        awaitUntil(() -> control.status().inFlight() == 0);
+        assertFalse(producer.failed());
+        assertEquals(0, failures.get());
     }
 
     @Test
@@ -116,78 +120,77 @@ class OrderProducerTest {
         when(workload.resolveCatalog()).thenReturn(WorkloadFixtures.products());
         when(workload.createBuyers()).thenThrow(new ProducerException("Buyer creation failed: HTTP 409", null));
         CountDownLatch failed = new CountDownLatch(1);
-        var producer = new OrderProducer(workload, settings, control);
+        var producer = new OrderProducer(workload, settings(Duration.ofSeconds(5), 2, 1, 4), control);
         try {
             producer.start(failed::countDown);
             assertTrue(failed.await(3, TimeUnit.SECONDS));
             assertTrue(producer.failed());
-            verify(workload, never()).complete(any(), anyString(), anyLong(), any());
+            verify(workload, never()).write(any(), anyString(), anyLong(), any());
         } finally {
             producer.stop();
         }
     }
 
-    /**
-     * A restart recovers finished ordinals without pacing; the first new order starts the paced schedule, thus the next
-     * new order waits one interval after it.
-     */
     @Test
-    void recoveredOrdinalsAreNotPacedButNewOrdersAre() throws Exception {
+    void boundsWritesAndObserversIndependentlyAndBackpressureStopsNewOrdinals() throws Exception {
         stubStartup();
-        when(workload.complete(any(), eq("stable"), anyLong(), any())).thenAnswer(call -> {
-            boolean recovered = (long) call.getArgument(2) < 3;
-            if (!recovered) {
-                ((OrderWorkload.Progress) call.getArgument(3)).accept();
-            }
-            return new OrderWorkload.Completion(WorkloadFixtures.status("CONFIRMED"), recovered);
-        });
-        control.rate(new BigDecimal("0.01"));
-        List<String> info = new CopyOnWriteArrayList<>();
-        var producer = new OrderProducer(workload, settings, control);
-        try (var log = capture(Level.INFO, info)) {
-            producer.start(() -> { });
-            awaitUntil(() -> mockingDetails(workload).getInvocations().stream()
-                    .filter(call -> call.getMethod().getName().equals("complete")).count() == 4);
-            Thread.sleep(300);
-            verify(workload, times(4)).complete(any(), eq("stable"), anyLong(), any());
-            assertTrue(info.contains("Order producer recovered 3 finished orders before ordinal 3"), info.toString());
-            assertEquals("RUNNING", control.status().state());
-            assertEquals(1, control.status().starts(), "Only the accepted new order counts as a start");
-        } finally {
-            producer.stop();
-        }
-        assertFalse(producer.failed());
-    }
-
-    @Test
-    void pauseObservesTheOrderInFlightUntilTerminalThenStopsNewAllocations() throws Exception {
-        stubStartup();
-        CountDownLatch inFlight = new CountDownLatch(1);
-        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch firstWrites = new CountDownLatch(2);
+        CountDownLatch releaseWrites = new CountDownLatch(1);
+        CountDownLatch observerEntered = new CountDownLatch(1);
+        CountDownLatch releaseObserver = new CountDownLatch(1);
+        AtomicInteger writing = new AtomicInteger();
+        AtomicInteger maximumWrites = new AtomicInteger();
+        AtomicInteger observing = new AtomicInteger();
+        AtomicInteger maximumObservers = new AtomicInteger();
         List<Long> ordinals = new CopyOnWriteArrayList<>();
-        when(workload.complete(any(), eq("stable"), anyLong(), any())).thenAnswer(call -> {
+        when(workload.write(any(), eq("stable"), anyLong(), any())).thenAnswer(call -> {
             long ordinal = call.getArgument(2);
             ordinals.add(ordinal);
-            ((OrderWorkload.Progress) call.getArgument(3)).accept();
-            if (ordinal == 0) {
-                inFlight.countDown();
-                release.await();
+            int active = writing.incrementAndGet();
+            maximumWrites.accumulateAndGet(active, Math::max);
+            try {
+                if (ordinal < 2) {
+                    firstWrites.countDown();
+                    releaseWrites.await();
+                }
+                ((OrderWorkload.Progress) call.getArgument(3)).accept();
+                return WorkloadFixtures.completion("PENDING_STOCK");
+            } finally {
+                writing.decrementAndGet();
             }
-            return WorkloadFixtures.completion("CONFIRMED");
         });
-        var producer = new OrderProducer(workload, settings, control);
+        when(workload.observe(any(), any())).thenAnswer(call -> {
+            maximumObservers.accumulateAndGet(observing.incrementAndGet(), Math::max);
+            try {
+                observerEntered.countDown();
+                releaseObserver.await();
+                return WorkloadFixtures.status("CONFIRMED");
+            } finally {
+                observing.decrementAndGet();
+            }
+        });
+        var producer = new OrderProducer(workload, settings(Duration.ofSeconds(5), 2, 1, 4), control);
         try {
-            producer.start(() -> { });
-            assertTrue(inFlight.await(3, TimeUnit.SECONDS));
-            assertEquals("PAUSING", control.pause().state(), "The order in flight is observed first");
-            assertEquals(1, control.status().inFlight());
-            release.countDown();
-            awaitUntil(() -> control.status().state().equals("PAUSED"));
-            Thread.sleep(300);
-            assertEquals(List.of(0L), ordinals, "No new allocation while paused");
-            control.resume();
-            awaitUntil(() -> ordinals.size() >= 3);
-            assertEquals(List.of(0L, 1L, 2L), ordinals.subList(0, 3), "Resume continues the same ordinals");
+            producer.start(() -> fail("Unexpected producer failure"));
+            assertTrue(firstWrites.await(3, TimeUnit.SECONDS));
+            assertEquals(2, control.status().inFlight());
+            assertEquals(2, ordinals.size(), "Only the bounded window may allocate before a write finishes");
+            releaseWrites.countDown();
+            assertTrue(observerEntered.await(3, TimeUnit.SECONDS));
+            awaitUntil(() -> control.status().producer().nonTerminalBacklog() == 4 && control.status().inFlight() == 0);
+            assertEquals(List.of(0L, 1L, 2L, 3L), ordinals.stream().sorted().toList());
+            assertTrue(control.status().producer().backpressured());
+            assertEquals(4, control.status().starts(), "Observer latency does not stop submissions before the backlog bound");
+            assertEquals(2, maximumWrites.get());
+            assertEquals(1, maximumObservers.get());
+            assertEquals("PAUSED", control.pause().state(), "Only writes drain on Pause; the observer still runs");
+            releaseObserver.countDown();
+            awaitUntil(() -> control.status().producer().nonTerminalBacklog() == 0);
+            assertEquals(4, ordinals.size(), "Pause keeps new writes held after backpressure clears");
+            assertEquals(4, control.status().producer().confirmedOrders());
+            assertEquals(4, control.status().producer().writeLatency().samples());
+            assertEquals(4, control.status().producer().sagaLatency().samples());
+            assertFalse(control.status().producer().backpressured());
         } finally {
             producer.stop();
         }
@@ -195,73 +198,208 @@ class OrderProducerTest {
     }
 
     @Test
-    void newOrdersFollowTheLiveRateWithoutABurst() throws Exception {
+    void aSlowStatusRequestDoesNotHoldTheOtherObserverOrTheSubmissionWindow() throws Exception {
         stubStartup();
-        List<Long> starts = new CopyOnWriteArrayList<>();
-        when(workload.complete(any(), eq("stable"), anyLong(), any())).thenAnswer(call -> {
-            starts.add(System.nanoTime());
+        CountDownLatch slow = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch otherObserved = new CountDownLatch(3);
+        AtomicInteger active = new AtomicInteger();
+        AtomicInteger maximum = new AtomicInteger();
+        when(workload.write(any(), anyString(), anyLong(), any())).thenAnswer(call -> {
+            long ordinal = call.getArgument(2);
+            if (ordinal == 3) control.pause();
             ((OrderWorkload.Progress) call.getArgument(3)).accept();
-            return WorkloadFixtures.completion("CONFIRMED");
+            var status = new dev.nklip.javacraft.shardshop.workload.producer.http.OrderStatus(
+                    "9007199254740993", Long.toString(1000 + ordinal), "PENDING_STOCK", "unused", null);
+            return new OrderWorkload.Completion(status, false);
         });
-        control.rate(new BigDecimal("20"));
-        var producer = new OrderProducer(workload, settings, control);
+        when(workload.observe(any(), any())).thenAnswer(call -> {
+            var previous = (dev.nklip.javacraft.shardshop.workload.producer.http.OrderStatus) call.getArgument(0);
+            maximum.accumulateAndGet(active.incrementAndGet(), Math::max);
+            try {
+                if (previous.orderId().equals("1000")) {
+                    slow.countDown();
+                    release.await();
+                } else {
+                    otherObserved.countDown();
+                }
+                return WorkloadFixtures.status("CONFIRMED");
+            } finally {
+                active.decrementAndGet();
+            }
+        });
+        var producer = new OrderProducer(workload, settings(Duration.ofSeconds(5), 2, 2, 4), control);
         try {
-            producer.start(() -> { });
-            awaitUntil(() -> starts.size() >= 10);
-            control.rate(BigDecimal.ZERO);
-            awaitUntil(() -> control.status().state().equals("PAUSED"));
-            int stopped = starts.size();
-            Thread.sleep(300);
-            assertEquals(stopped, starts.size(), "Rate zero stops new orders");
-            control.rate(new BigDecimal("5"));
-            awaitUntil(() -> starts.size() >= stopped + 3);
+            producer.start(() -> fail("Unexpected producer failure"));
+            assertTrue(slow.await(3, TimeUnit.SECONDS));
+            assertTrue(otherObserved.await(3, TimeUnit.SECONDS));
+            awaitUntil(() -> control.status().producer().nonTerminalBacklog() == 1);
+            assertEquals(2, maximum.get());
+            assertEquals("PAUSED", control.status().state());
+            assertEquals(4, control.status().starts());
+            assertEquals(3, control.status().producer().confirmedOrders());
+            release.countDown();
+            awaitUntil(() -> control.status().producer().nonTerminalBacklog() == 0);
+            assertEquals(4, control.status().producer().confirmedOrders());
         } finally {
             producer.stop();
         }
-        // The schedule spaces the starts exactly; thread scheduling can move one observed start by a few ms.
-        for (int index = 1; index < 10; index++) {
-            long gap = starts.get(index) - starts.get(index - 1);
-            assertTrue(gap >= TimeUnit.MILLISECONDS.toNanos(30), "Starts at 20/s keep 50 ms gaps: " + gap);
-        }
-        long nine = starts.get(9) - starts.getFirst();
-        assertTrue(nine >= TimeUnit.MILLISECONDS.toNanos(430), "Nine intervals at 20/s: " + nine);
-        int resumed = starts.size() - 3;
-        long slow = starts.get(resumed + 2) - starts.get(resumed + 1);
-        assertTrue(slow >= TimeUnit.MILLISECONDS.toNanos(190), "Starts at 5/s keep 200 ms gaps: " + slow);
     }
 
-    /** The same ordinal stops every restart, thus the failure line names it, its order and its last status. */
     @Test
-    void deadlineFailureNamesTheOrdinalOrderAndLastStatus() throws Exception {
+    void pauseDrainsWritesAndContinuesObservingThenResumeKeepsDenseOrdinals() throws Exception {
         stubStartup();
-        when(workload.complete(any(), eq("stable"), anyLong(), any())).thenAnswer(call -> {
-            if ((long) call.getArgument(2) == 0) {
-                return WorkloadFixtures.completion("CONFIRMED");
+        CountDownLatch writing = new CountDownLatch(1);
+        CountDownLatch releaseWrite = new CountDownLatch(1);
+        CountDownLatch observed = new CountDownLatch(1);
+        CountDownLatch resumed = new CountDownLatch(1);
+        List<Long> ordinals = new CopyOnWriteArrayList<>();
+        when(workload.write(any(), eq("stable"), anyLong(), any())).thenAnswer(call -> {
+            long ordinal = call.getArgument(2);
+            ordinals.add(ordinal);
+            if (ordinal == 0) {
+                writing.countDown();
+                releaseWrite.await();
+            } else {
+                control.pause();
+                resumed.countDown();
             }
+            ((OrderWorkload.Progress) call.getArgument(3)).accept();
+            return WorkloadFixtures.completion("PENDING_LEDGER");
+        });
+        when(workload.observe(any(), any())).thenAnswer(call -> {
+            observed.countDown();
+            return WorkloadFixtures.status("CONFIRMED");
+        });
+        var producer = new OrderProducer(workload, settings(Duration.ofSeconds(5), 1, 1, 1), control);
+        try {
+            producer.start(() -> fail("Unexpected producer failure"));
+            assertTrue(writing.await(3, TimeUnit.SECONDS));
+            assertEquals("PAUSING", control.pause().state());
+            releaseWrite.countDown();
+            assertTrue(observed.await(3, TimeUnit.SECONDS), "The observer is not paused");
+            awaitUntil(() -> control.status().state().equals("PAUSED"));
+            assertEquals(List.of(0L), ordinals);
+            control.resume();
+            assertTrue(resumed.await(3, TimeUnit.SECONDS));
+            assertEquals(List.of(0L, 1L), ordinals);
+        } finally {
+            producer.stop();
+        }
+        assertFalse(producer.failed());
+    }
+
+    @Test
+    void restartReplaysFromZeroAndRecoversPendingOrdersWithoutCountingNewStartsOrLatencies() throws Exception {
+        stubStartup();
+        List<Long> ordinals = new CopyOnWriteArrayList<>();
+        when(workload.write(any(), eq("stable"), anyLong(), any())).thenAnswer(call -> {
+            long ordinal = call.getArgument(2);
+            ordinals.add(ordinal);
+            if (ordinal < 2) {
+                return new OrderWorkload.Completion(WorkloadFixtures.status(
+                        ordinal == 0 ? "PENDING_LEDGER" : "CONFIRMED"), true);
+            }
+            control.pause();
+            ((OrderWorkload.Progress) call.getArgument(3)).accept();
+            return WorkloadFixtures.completion("CONFIRMED");
+        });
+        when(workload.observe(any(), any())).thenReturn(WorkloadFixtures.status("CONFIRMED"));
+        var producer = new OrderProducer(workload, settings(Duration.ofSeconds(5), 2, 1, 4), control);
+        try {
+            producer.start(() -> fail("Unexpected producer failure"));
+            awaitUntil(() -> control.status().state().equals("PAUSED")
+                    && control.status().producer().nonTerminalBacklog() == 0);
+            assertEquals(List.of(0L, 1L, 2L), ordinals.stream().sorted().toList());
+            assertEquals(2, control.status().producer().recoveredOrders());
+            assertEquals(1, control.status().starts());
+            assertEquals(1, control.status().producer().confirmedOrders());
+            assertEquals(1, control.status().producer().writeLatency().samples());
+            assertEquals(1, control.status().producer().sagaLatency().samples());
+            verify(workload).observe(any(), any());
+        } finally {
+            producer.stop();
+        }
+        assertFalse(producer.failed());
+    }
+
+    @Test
+    void deadlineFailsOnceEvenWhenTheObserverIsBlockedAndNamesThePendingOrdinal() throws Exception {
+        stubStartup();
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch interrupted = new CountDownLatch(1);
+        CountDownLatch failed = new CountDownLatch(1);
+        AtomicInteger failures = new AtomicInteger();
+        when(workload.write(any(), anyString(), anyLong(), any())).thenAnswer(call -> {
             OrderWorkload.Progress progress = call.getArgument(3);
             progress.buyer("9007199254740993");
             progress.order("880803840000004254");
             progress.status("PENDING_LEDGER");
-            new CountDownLatch(1).await();
-            return null;
+            progress.accept();
+            return WorkloadFixtures.completion("PENDING_LEDGER");
         });
-        List<String> errors = new CopyOnWriteArrayList<>();
-        CountDownLatch failed = new CountDownLatch(1);
-        var producer = new OrderProducer(workload, settings, control);
-        try (var log = capture(Level.SEVERE, errors)) {
-            producer.start(failed::countDown);
+        when(workload.observe(any(), any())).thenAnswer(call -> {
+            entered.countDown();
+            try {
+                new CountDownLatch(1).await();
+                return null;
+            } finally {
+                interrupted.countDown();
+            }
+        });
+        var producer = new OrderProducer(workload, settings(Duration.ofMillis(300), 1, 1, 1), control);
+        try {
+            producer.start(() -> { failures.incrementAndGet(); failed.countDown(); });
+            assertTrue(entered.await(3, TimeUnit.SECONDS));
             assertTrue(failed.await(3, TimeUnit.SECONDS));
+            assertTrue(interrupted.await(3, TimeUnit.SECONDS));
+            assertEquals("FAILED", control.status().state());
+            assertTrue(producer.failed());
+            assertEquals(1, failures.get());
+            assertEquals(1, control.status().starts());
         } finally {
             producer.stop();
         }
-        assertEquals(List.of("Order producer failed: Order completion deadline exceeded (ordinal 1, buyer "
-                + "9007199254740993, order 880803840000004254, last status PENDING_LEDGER)"), errors);
+    }
+
+    @Test
+    void liveRatePacesReplayAndNewStartsWithoutCatchupBurst() throws Exception {
+        stubStartup();
+        List<Long> starts = new CopyOnWriteArrayList<>();
+        CountDownLatch six = new CountDownLatch(6);
+        control.rate(new BigDecimal("20"));
+        when(workload.write(any(), anyString(), anyLong(), any())).thenAnswer(call -> {
+            starts.add(System.nanoTime());
+            six.countDown();
+            if ((long) call.getArgument(2) == 5) {
+                control.pause();
+            }
+            ((OrderWorkload.Progress) call.getArgument(3)).accept();
+            return WorkloadFixtures.completion("CONFIRMED");
+        });
+        var producer = new OrderProducer(workload, settings(Duration.ofSeconds(5), 2, 1, 4), control);
+        try {
+            producer.start(() -> fail("Unexpected producer failure"));
+            assertTrue(six.await(3, TimeUnit.SECONDS));
+            awaitUntil(() -> control.status().state().equals("PAUSED"));
+            assertEquals(6, starts.size());
+            assertTrue(starts.getLast() - starts.getFirst() >= TimeUnit.MILLISECONDS.toNanos(230),
+                    "Five paced intervals at 20 starts/s take at least 250 ms, allowing scheduling jitter");
+            assertEquals(6, control.status().starts());
+        } finally {
+            producer.stop();
+        }
     }
 
     private void stubStartup() throws Exception {
         when(workload.resolveCatalog()).thenReturn(WorkloadFixtures.products());
         when(workload.createBuyers()).thenReturn(WorkloadFixtures.buyers());
         when(workload.planner(eq("stable"), eq(10), any(), any())).thenReturn(WorkloadFixtures.planner("stable", 10));
+        when(workload.pollInterval()).thenReturn(Duration.ofMillis(10));
+    }
+
+    private static OrderProducer.Settings settings(Duration deadline, int writes, int observers, int backlog) {
+        return new OrderProducer.Settings("stable", 10, deadline, deadline, writes, observers, backlog);
     }
 
     private static void awaitUntil(BooleanSupplier condition) throws InterruptedException {
@@ -270,35 +408,5 @@ class OrderProducerTest {
             assertTrue(System.nanoTime() - deadline < 0, "Condition not reached within 5 seconds");
             Thread.sleep(10);
         }
-    }
-
-    /** Collects the messages of one exact level from the producer logger until closed. */
-    private static AutoCloseable capture(Level level, List<String> messages) {
-        Logger log = Logger.getLogger(OrderProducer.class.getName());
-        Handler handler = new Handler() {
-            @Override
-            public void publish(LogRecord record) {
-                if (record.getLevel().intValue() == level.intValue()) {
-                    // The producer logs printf-style patterns through JBoss Logging.
-                    Object[] parameters = record.getParameters();
-                    messages.add(parameters == null || parameters.length == 0 ? record.getMessage()
-                            : String.format(record.getMessage(), parameters));
-                }
-            }
-
-            @Override
-            public void flush() {
-            }
-
-            @Override
-            public void close() {
-            }
-        };
-        log.addHandler(handler);
-        log.setUseParentHandlers(false);
-        return () -> {
-            log.removeHandler(handler);
-            log.setUseParentHandlers(true);
-        };
     }
 }

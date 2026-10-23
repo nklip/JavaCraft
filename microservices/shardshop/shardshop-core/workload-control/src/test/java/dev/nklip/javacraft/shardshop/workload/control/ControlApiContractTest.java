@@ -61,7 +61,9 @@ class ControlApiContractTest {
         assertDocumented(new ControlStatus("order-producer", "new order starts/s", "RUNNING", BigDecimal.TEN, false,
                 BigDecimal.TEN, new BigDecimal("0.5"), new BigDecimal("100"), new BigDecimal("0.1"), new BigDecimal("0.812"),
                 3, 1, 9, 0, List.of(new ControlStatus.TrafficCategory("startup", 9, 0, 0)),
-                new ControlStatus.Limit("CONCURRENCY", 1, new BigDecimal("1.231"), new BigDecimal("0.812")), null, 4));
+                new ControlStatus.Limit("CONCURRENCY", 1, new BigDecimal("1.231"), new BigDecimal("0.812")), null, new ControlStatus.Producer(4, 2, 100, 100, true, 9, 7, 1,
+                        new ControlStatus.Latency(8, BigDecimal.TEN, new BigDecimal("19.2")),
+                        new ControlStatus.Latency(8, new BigDecimal("30"), new BigDecimal("42"))), 4));
     }
 
     @Test

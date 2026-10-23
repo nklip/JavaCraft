@@ -369,9 +369,9 @@ class KindReleaseTest {
     private static ReleaseFixture release() throws IOException, InterruptedException {
         Map<String, JsonNode> live = new HashMap<>();
         List<JsonNode> desired = new ArrayList<>();
-        for (String application : List.of("product", "product-reader", "order", "ledger", "order-producer",
+        for (String application : List.of("product", "product-reader", "order", "order-saga", "ledger", "order-producer",
                 "product-seeder-control")) {
-            Deployment deployment = deployment(application, application.equals("product") ? 2 : 1);
+            Deployment deployment = deployment(application, List.of("product", "order").contains(application) ? 2 : 1);
             desired.add(deployment.desired());
             live.put("get deployment shardshop-" + application + " -o json", deployment.live());
             live.put("get pods -l app.kubernetes.io/name=shardshop-" + application + " -o json",
@@ -388,7 +388,7 @@ class KindReleaseTest {
                 desired.add(config);
                 live.put("get configmap shardshop-" + application + "-config -o json", config.deepCopy());
             }
-            if (!application.equals("ledger")) {
+            if (!List.of("ledger", "order-saga").contains(application)) {
                 ObjectNode service = service(application);
                 desired.add(service);
                 live.put("get service shardshop-" + application + " -o json", service.deepCopy());

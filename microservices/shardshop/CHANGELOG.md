@@ -4017,3 +4017,147 @@ bash microservices/shardshop/scripts/webpages.sh
 curl -s http://127.0.0.1:18083/api/v1/product-reader/control
 bash microservices/shardshop/scripts/down.sh
 ```
+
+## Step 4.14
+
+**2026-10-23:** implemented concurrent order writes and a separate saga process.
+The final live deployment and capacity evidence is recorded below.
+
+- **Producer:** allocation and PUT share a bounded submission window (default 4,
+  maximum 12); an independent fair observer polls pending orders (default 2,
+  maximum 12). The outstanding-order limit (default 100, maximum 10,000) applies
+  backpressure before another submission starts. Dense deterministic ordinals,
+  allocation identities, retry payloads and currency selection survive concurrency.
+  Restart replays from zero with the same pacing and bounds, counts recovered
+  orders separately and observes pending recoveries. At the default 0.5 starts/s,
+  history recovery is slower than the earlier unpaced replay; this preserves the
+  request budgets and prevents a restart burst. Pause drains submissions while
+  observation continues. The default remains 0.5 starts/s.
+- **Processes:** one order image selects `shardshop.order.process=http|saga`
+  (default `http`). Two HTTP replicas use `RollingUpdate`; one saga replica uses
+  `Recreate` and owns stock/profit workers, CDC publication and result consumption.
+  Each JVM reserves its own generator slot. Helm, release observers and kind gates
+  recognize the separate Deployment. The three saga drill scenarios cover business
+  invariants, HTTP rollout preserving the saga pod and CDC active PIDs, and saga
+  restart while writes continue.
+- **Write path and status:** PUT's `Idempotent-Replay` response header classifies
+  recovery without a GET probe. Order resolves each catalog product once and
+  batches item inserts. Producer status and its page show concurrency, backlog,
+  backpressure, recovered and terminal counts, and write/saga latency. Per-JVM
+  `/internal/order/write-metrics` reports allocation and PUT request counts, errors
+  and rolling latency; query both HTTP pods to assess the deployment.
+
+Validation:
+
+- The broad reactor verification passed 1,858 unit/startup checks and all 56
+  selected packaged scenarios; the later producer run passed all four selected
+  scenarios and ten policy tests. Logs: `/tmp/shardshop-414-integration.log` and
+  `/tmp/shardshop-414-producer-integration.log`.
+- The final `up.sh` run passed 1,863 unit/startup checks, image gates and all five
+  acceptance scenarios. Log: `/tmp/shardshop-414-up-final.log`.
+- Final CDC/process integration passed 17 selected scenarios plus 10 policy tests;
+  log: `/tmp/shardshop-414-cdc-integration-final.log`.
+- The order module passes all 350 unit tests with `mvn -pl microservices/shardshop/shardshop-order test`.
+  The CDC shutdown regression fails before the fix in `/tmp/shardshop-cdc-regression-before.log`.
+
+Commands from the repository root:
+
+```bash
+bash microservices/shardshop/scripts/up.sh
+mvn -pl microservices/shardshop/shardshop-order test
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@order-producer or @workload-control or @order-processes or @stock-reservation or @cdc-relay or @order-results or @order-api or @contracts'
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify \
+  -Dtest=KindWorkloadPolicyTest '-Dcucumber.filter.tags=@order-producer'
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify \
+  -Dtest=KindWorkloadPolicyTest '-Dcucumber.filter.tags=@cdc-relay or @order-processes'
+```
+
+Initial live acceptance and tuning:
+
+- `up.sh` passed the clean build (1,859 unit/startup checks), image gates, retained
+  cluster checks and all five final acceptance scenarios. A transient Docker Scout
+  Java database download failed before cluster mutation; retry passed with the
+  existing advisory gates unchanged.
+- With the original profit batch of eight per shard and 250 ms poll, 20 starts/s
+  achieved 20.06 new and confirmed orders/s, a final rolling write p95 of 44.69 ms,
+  saga p95 of 1,776.54 ms, and 8–45 pending profit credits. At target 30, throughput
+  was 29.76 new and 29.74 confirmed orders/s, but profit credits grew from 387 to
+  4,223 in 130 s. Confirmed status alone therefore did not establish sustainable
+  throughput. The chart now uses the existing serial profit worker with a bounded
+  batch of 32 and a 100 ms poll; 23 Helm rendering tests and the configuration-only
+  release's five acceptance checks pass.
+- A later load run under heavy host contention exposed an existing CDC shutdown
+  defect: after a database connection timeout, interrupting Debezium cleanup left
+  its replication stream active and prevented shard-a from restarting. The new
+  regression failed before the fix for that interruption. Shutdown now closes and
+  joins the engine while retaining ownership; a latch wakes retry backoff without
+  interrupting cleanup. All 350 order tests, including three shutdown regressions,
+  pass. The failed producer bounded pending orders at 100 and enforced its deadline;
+  a saga replacement drained those retained orders, and the producer restarted at
+  its configured 0.5/s.
+
+Final measured phases used a 20-second warmup and approximately ten-second
+sampling. Interval rates use first/last cumulative counters; latency values are
+rolling-window p95 at the last sample (1,024 new orders for the producer, 4,096
+requests per HTTP endpoint/JVM). HTTP windows can include earlier phases and
+replay. Early samples at 10/s exceeded 100 ms while earlier slow requests remained
+in the producer window; the final window below covers the warmed run.
+
+| target | interval | new/s | confirmed/s | cancelled/s | terminal/s | write p95 | saga p95 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 10/s | 129.977 s | 9.7787 | 9.5171 | 0.3539 | 9.8710 | 91.420 ms | 1,789.633 ms |
+| 30/s | 90.003 s | 29.4547 | 28.1103 | 1.5555 | 29.6658 | 93.732 ms | 2,158.506 ms |
+
+Final per-pod HTTP rolling p95 (PUT/allocation) was 27.064/32.114 ms and
+23.931/17.354 ms at 10/s, then 43.440/35.307 ms and 39.624/27.859 ms at 30/s.
+Aggregate pending/profit/outbox first→last and min–max were 21→9, 3→3, 11→3
+and 7–21, 0–9, 2–11 at 10/s; 46→36, 21→27, 22→28 and 36–84, 3–73, 14–28
+at 30/s.
+
+The saturation probe (main 30/s plus temporary local producer 10/s) achieved
+22.67885 new/s, 21.47879 confirmed/s and 1.733415 cancelled/s; the window filled
+at 200 and ended at 152, with saga latency reaching about 15 s. Thus 30/s is the
+highest verified rate, not a universal maximum: host contention and finite stock
+affect the result. The host had 12 Docker CPU, 12.65 GiB Docker memory, 16 GB
+physical memory and about 19 GB swap after IntelliJ stopped.
+
+Allocation-only burst capacity was 409.38/637.91/829.34 requests/s at concurrency
+4/12/24, with 80/240/480 HTTP 201 responses and p95 15.250/29.984/44.938 ms.
+A controlled pool-bound probe (four connections per shard, one-second acquisition
+wait, 24 concurrent requests) held the allocation tables in transactions for
+approximately 1.5 seconds and rolled them back. It returned 12 HTTP 201 and
+12 HTTP 503 responses, verifying bounded pool acquisition rather than an immediate
+rejection of every request beyond 12 concurrent clients.
+The one-off probes were `python3 /tmp/shardshop-414-final-measure.py`,
+`python3 /tmp/shardshop-414-saturation.py`, `python3 /tmp/shardshop-414-capacity.py`
+and `python3 /tmp/shardshop-414-pool-bound.py`; helpers and JSON are ephemeral and
+not versioned. Rates were restored to 0.5/s and the temporary producer drained and
+stopped. Stock after the 10/s and 30/s phases included KRW 40 and VND 0, so these are finite-inventory
+observations rather than unconstrained capacity claims. No SQL functions, triggers
+or data reset were used.
+
+All three kind recovery drills passed in 2 min 20 s: duplicate/rejection replay and
+same-stock races preserve permanent effects; CDC resumes on another worker while
+the HTTP replicas commit orders; and an HTTP rollout preserves the saga pod and
+all active CDC slot PIDs. Log: `/tmp/shardshop-414-kind-drills.log`. The command used
+the rendered snapshot of the current chart and kind values:
+
+```bash
+task_snapshot=$(cat /tmp/shardshop-414-kind-snapshot-path)
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+  -Dit.test=KindIT -Dshardshop.kind.tags=kind-saga-drill \
+  -Dshardshop.kind.snapshot="$task_snapshot"
+bash microservices/shardshop/scripts/webpages.sh
+```
+
+The final browser check displays the 30/s bound, submission and backlog fields,
+backpressure, separate write/saga latency and recovered-order count. After the
+drills, the producer is running at 0.5/s and replaying history; the reader remains
+at 200/s and the interactive seeder idle at 100/s. All are unpaused. No replay
+completion is claimed at the default rate. Task-owned tunnels and the temporary
+load generator are stopped. `bash microservices/shardshop/scripts/down.sh` returned
+the retained lab to its original stopped state; all four kind node containers are
+stopped and ports 18080–18085/18181–18182 have no listeners. `git diff --check`
+passes; no SQL file or applied migration changed.

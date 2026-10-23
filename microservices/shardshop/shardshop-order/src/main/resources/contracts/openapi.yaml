@@ -5,6 +5,7 @@ info:
   version: 1.0.0
   description: |
     Contract introduced in PLAN step 3.1; HTTP providers implemented in step 4.1.
+    The http process serves this API; the separate saga process serves only management endpoints.
     Workloads own dataset definitions and submit creation payloads. Order generates
     buyer IDs and owns durable order allocations. Clients retain returned IDs
     unchanged and keep their own DTOs. No public operation accepts a shard selector.
@@ -276,6 +277,9 @@ paths:
         '202':
           description: Committed new or existing pending order; poll the status URL
           headers:
+            Idempotent-Replay:
+              description: True when an identical existing order was reused, false when this request inserted it
+              schema: {type: boolean}
             Location:
               description: Same relative status URL as the response body's statusUrl
               schema: {type: string, format: uri-reference}
@@ -293,6 +297,10 @@ paths:
                 statusUrl: /api/v1/buyers/21380884070404097/orders/100925016375300096
         '200':
           description: An identical retry found an existing terminal decision
+          headers:
+            Idempotent-Replay:
+              description: Always true for an existing terminal order
+              schema: {type: boolean, const: true}
           content:
             application/json:
               schema:

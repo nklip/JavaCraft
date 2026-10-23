@@ -32,6 +32,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -97,6 +101,50 @@ public final class OrderResultsStepDefinitions {
         order.stop();
         product.stop();
         if (ledgerDatabase != null) postgres.dropDatabase(ledgerDatabase);
+    }
+
+    @Then("HTTP accepts concurrent retries while the saga is stopped and its restart completes each order once")
+    public void separateSagaRestart() throws Exception {
+        for (var shard : shards.all()) postgres.createOrderPublication(shard.database());
+        order.enableCdc(broker);
+        startWorkers(true);
+        startLedger("USD");
+        order.stopSaga();
+        var request = request(1, us, asia);
+        List<String> ids = new ArrayList<>();
+        for (int index = 0; index < 8; index++) ids.add(allocate());
+        try (var executor = Executors.newFixedThreadPool(8)) {
+            CountDownLatch start = new CountDownLatch(1);
+            List<Future<RawHttp.Response>> writes = new ArrayList<>();
+            for (String id : ids) {
+                for (int retry = 0; retry < 2; retry++) writes.add(executor.submit(() -> {
+                    start.await();
+                    return http("PUT", path(id), null, request);
+                }));
+            }
+            start.countDown();
+            for (var write : writes) assertEquals("PENDING_STOCK",
+                    body(write.get(20, TimeUnit.SECONDS), 202).path("status").asText());
+        }
+        assertEquals(8, scalar(home(), "SELECT count(*) FROM ordering.orders"));
+        assertEquals(8, scalar(home(), "SELECT count(*) FROM ordering.order_sagas"));
+        assertEquals(0, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_operations"),
+                "The HTTP process must not run any saga worker");
+        order.restartSaga();
+        for (String id : ids) {
+            awaitStatus(id, "CONFIRMED");
+            await("one profit credit for each item", () -> credits(us, id) == 1 && credits(asia, id) == 1);
+            assertEquals(1, scalar(ledgerDatabase,
+                    "SELECT count(*) FROM ledger.ledger_operations WHERE order_id=" + id));
+            assertEquals(1, scalar(ledgerDatabase,
+                    "SELECT count(*) FROM ledger.ledger_entries WHERE order_id=" + id));
+            assertEquals("CONFIRMED", body(http("PUT", path(id), null, request), 200).path("status").asText());
+        }
+        for (var fixture : List.of(us, asia)) {
+            assertEquals(2, scalar(shards.ofSeller(fixture.seller().id()),
+                    "SELECT stock FROM catalog.products WHERE product_id=" + fixture.id()));
+        }
+        assertEquals(8, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_operations"));
     }
 
     @Then("all seven currencies confirm cross-region purchases with exact profits and immutable legacy retries")

@@ -111,29 +111,31 @@ class OrderProviderTest {
     void returnsPendingOrTerminalStatusAndCancellationContract(String status) throws Exception {
         String reason = "CANCELLED".equals(status) ? "OUT_OF_STOCK" : null;
         Order order = new Order(BUYER_ID, ORDER_ID, "fingerprint", "EUR", new BigDecimal("39.90"), status, reason);
-        when(service.putOrder(anyLong(), anyLong(), any())).thenReturn(order);
+        when(service.putOrderWithOutcome(anyLong(), anyLong(), any())).thenReturn(new Creation<>(order, status.equals("PENDING_STOCK")));
         when(service.order(BUYER_ID, ORDER_ID)).thenReturn(order);
         HttpResponse<String> result = send("PUT", ORDER, ORDER_BODY.formatted("2e0"));
         String operation = "#/paths/~1api~1v1~1buyers~1{buyerId}~1orders~1{orderId}/put/responses/";
         JsonObject body = response(result, order.pending() ? 202 : 200,
                 operation + (order.pending() ? "202" : "200") + "/content/application~1json/schema");
         assertEquals(ORDER, body.getString("statusUrl"));
+        assertEquals(Boolean.toString(!status.equals("PENDING_STOCK")),
+                result.headers().firstValue("Idempotent-Replay").orElseThrow());
         if (order.pending()) {
             assertEquals(ORDER, result.headers().firstValue("Location").orElseThrow());
         }
         assertEquals(reason, body.getString("cancellationReason"));
         assertEquals("CANCELLED".equals(status), body.containsKey("cancellationReason"));
         assertEquals(body, response(send("GET", ORDER, null), 200, "#/components/schemas/OrderStatus"));
-        verify(service).putOrder(BUYER_ID, ORDER_ID,
+        verify(service).putOrderWithOutcome(BUYER_ID, ORDER_ID,
                 new OrderCreation("EUR", List.of(new OrderItem(BUYER_ID, ORDER_ID, 2))));
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"2", "2.0", "2e0", "2.000000000000000000000"})
     void quantitiesNormalizeExactlyBeforeReachingService(String quantity) throws Exception {
-        when(service.putOrder(anyLong(), anyLong(), any())).thenThrow(new OrderFailure(OrderFailure.Reason.ORDER_STORE_UNAVAILABLE));
+        when(service.putOrderWithOutcome(anyLong(), anyLong(), any())).thenThrow(new OrderFailure(OrderFailure.Reason.ORDER_STORE_UNAVAILABLE));
         response(send("PUT", ORDER, ORDER_BODY.formatted(quantity)), 503, "#/components/schemas/Error");
-        verify(service).putOrder(BUYER_ID, ORDER_ID,
+        verify(service).putOrderWithOutcome(BUYER_ID, ORDER_ID,
                 new OrderCreation("EUR", List.of(new OrderItem(BUYER_ID, ORDER_ID, 2))));
     }
 
@@ -188,7 +190,7 @@ class OrderProviderTest {
             "ORDER_RECONCILIATION_REQUIRED,409", "PRODUCT_NOT_FOUND,422", "MIXED_CURRENCIES,422", "CURRENCY_MISMATCH,422", "PRODUCT_CURRENCY_POLICY,422",
             "ORDER_STORE_UNAVAILABLE,503", "CATALOG_UNAVAILABLE,503", "ID_GENERATION_UNAVAILABLE,503"})
     void mapsTypedFailuresToStableCodes(String code, int status) throws Exception {
-        when(service.putOrder(anyLong(), anyLong(), any())).thenThrow(new OrderFailure(OrderFailure.Reason.valueOf(code)));
+        when(service.putOrderWithOutcome(anyLong(), anyLong(), any())).thenThrow(new OrderFailure(OrderFailure.Reason.valueOf(code)));
         assertEquals(code, response(send("PUT", ORDER, ORDER_BODY.formatted("1")), status,
                 "#/components/schemas/Error").getString("code"));
     }

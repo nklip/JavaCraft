@@ -38,40 +38,49 @@ spec:
       port: 8080
       targetPort: http
 ---
+# Both process roles use the same image and existing order allocator permissions.
+# Only the singleton saga owns shard CDC slots; HTTP rolls independently with no unavailable replicas.
+{{- range $process := list (dict "name" "order" "mode" "http" "replicas" 2 "strategy" "RollingUpdate") (dict "name" "order-saga" "mode" "saga" "replicas" 1 "strategy" "Recreate") }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: shardshop-order
-  namespace: {{ .Release.Namespace | quote }}
+  name: shardshop-{{ $process.name }}
+  namespace: {{ $.Release.Namespace | quote }}
   labels:
-    app.kubernetes.io/name: shardshop-order
+    app.kubernetes.io/name: shardshop-{{ $process.name }}
     app.kubernetes.io/part-of: shardshop
 spec:
-  # One JVM supervises one CDC reader per shard. Do not overlap readers during a rollout.
-  replicas: 1
+  replicas: {{ $process.replicas }}
   strategy:
-    type: Recreate
+    type: {{ $process.strategy }}
+    {{- if eq $process.mode "http" }}
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+    {{- end }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: shardshop-order
+      app.kubernetes.io/name: shardshop-{{ $process.name }}
   template:
     metadata:
       annotations:
-        shardshop.javacraft/configuration: {{ include "shardshop.orderConfiguration" . | sha256sum | quote }}
-        {{- if .Values.restartToken }}
-        shardshop.javacraft/restart: {{ .Values.restartToken | quote }}
+        shardshop.javacraft/configuration: {{ include "shardshop.orderConfiguration" $ | sha256sum | quote }}
+        {{- if $.Values.restartToken }}
+        shardshop.javacraft/restart: {{ $.Values.restartToken | quote }}
         {{- end }}
       labels:
-        app.kubernetes.io/name: shardshop-order
+        app.kubernetes.io/name: shardshop-{{ $process.name }}
         app.kubernetes.io/part-of: shardshop
     spec:
       serviceAccountName: shardshop-order
       enableServiceLinks: false
-      {{- include "shardshop.podSecurity" . | nindent 6 }}
+      {{- include "shardshop.podSecurity" $ | nindent 6 }}
       containers:
         - name: order
           image: {{ $order }}
           env:
+            - name: SHARDSHOP_ORDER_PROCESS
+              value: {{ $process.mode | quote }}
             - name: SHARDSHOP_ID_REGISTRY_UID
               valueFrom:
                 configMapKeyRef:
@@ -100,8 +109,8 @@ spec:
               port: http
             periodSeconds: 2
           resources:
-            {{- toYaml .Values.order.resources | nindent 12 }}
-          {{- include "shardshop.containerSecurity" . | nindent 10 }}
+            {{- toYaml $.Values.order.resources | nindent 12 }}
+          {{- include "shardshop.containerSecurity" $ | nindent 10 }}
           volumeMounts:
             - name: routing
               mountPath: /etc/shardshop/routing
@@ -124,7 +133,7 @@ spec:
         - name: order-ca
           projected:
             sources:
-              {{- range .Values.shards }}
+              {{- range $.Values.shards }}
               - secret:
                   name: {{ .name }}-ca
                   items:
@@ -138,6 +147,7 @@ spec:
           emptyDir:
             sizeLimit: 64Mi
 ---
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

@@ -167,7 +167,7 @@ class JdbcOrderStoreTest {
         when(connection.prepareStatement(startsWith("INSERT INTO ordering.order_items("))).thenReturn(item);
         when(connection.prepareStatement(startsWith("INSERT INTO ordering.order_sagas("))).thenReturn(saga);
         when(order.executeUpdate()).thenReturn(1);
-        when(item.executeUpdate()).thenReturn(1);
+        when(item.executeBatch()).thenReturn(new int[]{1});
         when(saga.executeUpdate()).thenThrow(new SQLException("unique command"));
         assertEquals(OrderFailure.Reason.ORDER_STORE_UNAVAILABLE, assertThrows(OrderFailure.class,
                 () -> store.write(SHARD, session -> {
@@ -178,7 +178,8 @@ class JdbcOrderStoreTest {
                     return null;
                 })).reason());
         verify(order).executeUpdate();
-        verify(item).executeUpdate();
+        verify(item).executeBatch();
+        verify(saga).executeUpdate();
         verify(connection).rollback();
         verify(connection, never()).commit();
     }

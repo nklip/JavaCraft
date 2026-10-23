@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
@@ -19,6 +20,8 @@ import java.util.function.Function;
 
 /** Bounded JSON HTTP transport with caller-owned request payloads and response decoding. */
 public final class JsonHttpClient {
+    /** Accepted response metadata, available without a second service request. */
+    public record Response(int statusCode, HttpHeaders headers) { }
     private final HttpClient http;
     private final URI baseUri;
     private final Duration timeout;
@@ -70,12 +73,19 @@ public final class JsonHttpClient {
     /** PUT with access to the accepted HTTP status for validating the response body's state. */
     public <T> T put(String path, JsonNode payload, BiFunction<Integer, JsonNode, T> decoder)
             throws IOException, InterruptedException {
+        Objects.requireNonNull(decoder);
+        return putDetailed(path, payload, (response, body) -> decoder.apply(response.statusCode(), body));
+    }
+
+    /** PUT with accepted status and headers, for durable idempotency replay metadata. */
+    public <T> T putDetailed(String path, JsonNode payload, BiFunction<Response, JsonNode, T> decoder)
+            throws IOException, InterruptedException {
         Objects.requireNonNull(payload);
         Objects.requireNonNull(decoder);
         HttpRequest request = request(path).header("Content-Type", "application/json")
                 .PUT(HttpRequest.BodyPublishers.ofString(payload.toString())).build();
         HttpResponse<byte[]> response = receive(request);
-        return decode(response, 202, body -> decoder.apply(response.statusCode(), body));
+        return decode(response, 202, body -> decoder.apply(new Response(response.statusCode(), response.headers()), body));
     }
 
     public <T> T get(String path, Function<JsonNode, T> decoder) throws IOException, InterruptedException {

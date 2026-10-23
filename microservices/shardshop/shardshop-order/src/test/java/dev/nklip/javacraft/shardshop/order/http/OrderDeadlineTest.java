@@ -43,7 +43,7 @@ class OrderDeadlineTest {
     private final HttpConnection connection = mock(HttpConnection.class);
     private final ArgumentCaptor<Handler<Long>> timer = ArgumentCaptor.captor();
     private final ArgumentCaptor<Handler<AsyncResult<Void>>> end = ArgumentCaptor.captor();
-    private final OrderDeadline deadline = new OrderDeadline(vertx, context, MemorySize.of(262144));
+    private final OrderDeadline deadline = new OrderDeadline(vertx, context, MemorySize.of(262144), new OrderWriteMetrics());
 
     @BeforeEach
     void prepareRequest() {

@@ -1,5 +1,7 @@
 package dev.nklip.javacraft.shardshop.testing.cucumber.step;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.CatalogDatabase;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.PackagedApplication;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.ShardShopFiles;
@@ -19,6 +21,9 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -42,6 +47,9 @@ public final class OrderProducerStepDefinitions {
     private static final List<String> NORMAL_CURRENCIES = List.of("CNY", "EUR", "GBP", "JPY", "KRW", "USD", "VND");
     private static final Duration STARTUP_WAIT = Duration.ofMinutes(6);
     private static final Duration ORDER_WAIT = Duration.ofSeconds(45);
+    private static final List<String> BOUNDED_WINDOW = List.of("-Dshardshop.producer.order-rate=10",
+            "-Dshardshop.producer.submission-concurrency=4", "-Dshardshop.producer.max-non-terminal-orders=4",
+            "-Dshardshop.producer.order-deadline=120s");
 
     private final CatalogShards shards;
     private final ProductRuntime product;
@@ -51,6 +59,7 @@ public final class OrderProducerStepDefinitions {
     private OrderSnapshot eurFirst;
     private OrderResponseProxy proxy;
     private OrderResponseProxy.ReplayCalls beforeReplay;
+    private List<OrderSnapshot> pendingBeforeRestart;
     private PackagedApplication startupCheck;
 
     private record Item(String sellerId, String productId, int quantity, String currency) {
@@ -105,7 +114,7 @@ public final class OrderProducerStepDefinitions {
 
     @When("the USD order producer starts before catalog seeding")
     public void startUsd() throws Exception {
-        workloads.startProducer(USD_NAME, 0);
+        workloads.startProducer(USD_NAME, 0, BOUNDED_WINDOW);
     }
 
     @Then("it waits for the complete catalog without creating buyers or orders")
@@ -126,20 +135,22 @@ public final class OrderProducerStepDefinitions {
         });
         assertBuyerDataset();
         assertOrder(usdFirst, "USD");
-        assertEquals(1, count("ordering.order_allocations", USD_RUN));
+        awaitWindow(USD_RUN, 4);
         await(ORDER_WAIT, "Producer did not retry the hidden committed responses",
                 proxy::committedResponseRetriesObserved);
         proxy.assertCommittedResponseRecovery();
         beforeReplay = proxy.replayCalls(USD_RUN, usdFirst.buyerId(), 0, usdFirst.id());
+        pendingBeforeRestart = List.of(snapshot(USD_RUN, 0), snapshot(USD_RUN, 1),
+                snapshot(USD_RUN, 2), snapshot(USD_RUN, 3));
     }
 
     @When("the producer stops and restarts with the same run name and percentage")
     public void restartUsd() throws Exception {
         assertStopped();
-        workloads.startProducer(USD_NAME, 0);
+        workloads.startProducer(USD_NAME, 0, BOUNDED_WINDOW);
     }
 
-    @Then("its pending first order and allocation are unchanged and no second ordinal was allocated")
+    @Then("its four pending orders are recovered unchanged and the backlog blocks the next ordinal")
     public void replayUsd() throws Exception {
         await(STARTUP_WAIT, "Restart did not finish resolving catalog and buyers", () ->
                 workloads.producer().lines().stream().anyMatch(line ->
@@ -149,8 +160,13 @@ public final class OrderProducerStepDefinitions {
             return now.allocation() > beforeReplay.allocation() && now.put() > beforeReplay.put();
         });
         assertEquals(usdFirst, snapshot(USD_RUN, 0), "Replay changed the allocated ID or immutable order payload");
-        assertEquals(1, count("ordering.order_allocations", USD_RUN),
-                "Producer advanced while the first order was pending");
+        awaitWindow(USD_RUN, 4);
+        for (int ordinal = 0; ordinal < 4; ordinal++) {
+            assertEquals(pendingBeforeRestart.get(ordinal), snapshot(USD_RUN, ordinal),
+                    "Concurrent replay changed ordinal " + ordinal);
+        }
+        await(ORDER_WAIT, "Recovered pending orders were not counted separately",
+                () -> control().path("producer").path("recoveredOrders").asLong() == 4);
         assertBuyerDataset();
     }
 
@@ -159,18 +175,18 @@ public final class OrderProducerStepDefinitions {
         complete(usdFirst, "CONFIRMED", null);
     }
 
-    @Then("the producer advances to ordinal 1 only after observing the terminal order")
+    @Then("the producer submits ordinal 4 after the observer frees one backlog slot")
     public void nextUsd() throws Exception {
-        await(ORDER_WAIT, "Producer did not advance after CONFIRMED", () -> snapshot(USD_RUN, 1) != null);
+        await(ORDER_WAIT, "Producer did not advance after CONFIRMED", () -> snapshot(USD_RUN, 4) != null);
         assertEquals("CONFIRMED", snapshot(USD_RUN, 0).status());
-        assertEquals(2, count("ordering.order_allocations", USD_RUN));
-        assertOrder(snapshot(USD_RUN, 1), "USD");
+        assertEquals(5, count("ordering.order_allocations", USD_RUN));
+        assertOrder(snapshot(USD_RUN, 4), "USD");
     }
 
     @When("the producer stops and a separate EUR run starts")
     public void startEur() throws Exception {
         assertStopped();
-        workloads.startProducer(EUR_NAME, 100);
+        workloads.startProducer(EUR_NAME, 100, BOUNDED_WINDOW);
     }
 
     @Then("it submits a EUR order with three distinct items in that currency and reuses the 3000 buyers")
@@ -181,7 +197,7 @@ public final class OrderProducerStepDefinitions {
         });
         assertBuyerDataset();
         assertOrder(eurFirst, "EUR");
-        assertEquals(1, count("ordering.order_allocations", EUR_RUN));
+        awaitWindow(EUR_RUN, 4);
     }
 
     @When("the first EUR order becomes cancelled")
@@ -189,18 +205,42 @@ public final class OrderProducerStepDefinitions {
         complete(eurFirst, "CANCELLED", "UNSUPPORTED_CURRENCY");
     }
 
-    @Then("the EUR run advances to ordinal 1 only after observing the terminal order")
+    @Then("the EUR run submits ordinal 4 after observing the cancelled order")
     public void nextEur() throws Exception {
-        await(ORDER_WAIT, "EUR run did not advance after CANCELLED", () -> snapshot(EUR_RUN, 1) != null);
+        await(ORDER_WAIT, "EUR run did not advance after CANCELLED", () -> snapshot(EUR_RUN, 4) != null);
         assertEquals("CANCELLED", snapshot(EUR_RUN, 0).status());
-        assertEquals(2, count("ordering.order_allocations", EUR_RUN));
-        assertOrder(snapshot(EUR_RUN, 1), "EUR");
+        assertEquals(5, count("ordering.order_allocations", EUR_RUN));
+        assertOrder(snapshot(EUR_RUN, 4), "EUR");
         assertStopped();
+    }
+
+    private void awaitWindow(String run, int size) throws Exception {
+        await(ORDER_WAIT, "Concurrent submissions did not fill the bounded non-terminal window", () -> {
+            for (int ordinal = 0; ordinal < size; ordinal++) {
+                if (snapshot(run, ordinal) == null) return false;
+            }
+            JsonNode status = control();
+            return status.path("producer").path("backpressured").asBoolean() && status.path("inFlight").asInt() == 0;
+        });
+        JsonNode status = control();
+        assertEquals(size, status.path("producer").path("nonTerminalBacklog").asInt());
+        assertEquals(size, count("ordering.order_allocations", run), "Backpressure must bound durable allocations");
+        assertEquals(0, status.path("inFlight").asInt(), "Pending sagas must not occupy submission workers");
+    }
+
+    private JsonNode control() throws Exception {
+        try (HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()) {
+            HttpResponse<String> response = client.send(HttpRequest.newBuilder(workloads.controlUri("order-producer"))
+                    .timeout(Duration.ofSeconds(5)).GET().build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, response.statusCode());
+            return new ObjectMapper().readTree(response.body());
+        }
     }
 
     @When("the normal seven-currency order producer starts")
     public void startNormal() throws Exception {
-        workloads.startProducer(NORMAL_NAME, -1);
+        workloads.startProducer(NORMAL_NAME, -1, List.of("-Dshardshop.producer.order-rate=10",
+                "-Dshardshop.producer.order-deadline=120s"));
     }
 
     @Then("it submits accepted HTTP orders in all seven currencies with matching catalog items and regional buying preferences")

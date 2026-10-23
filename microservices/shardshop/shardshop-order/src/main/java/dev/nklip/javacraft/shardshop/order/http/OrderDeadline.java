@@ -27,10 +27,13 @@ public class OrderDeadline implements WriterInterceptor {
     private final RoutingContext routingContext;
     private final long maximumBodyBytes;
     private final OrderInput input = new OrderInput();
+    private final OrderWriteMetrics metrics;
 
     @Inject
     public OrderDeadline(Vertx vertx, RoutingContext routingContext,
-                         @ConfigProperty(name = "quarkus.http.limits.max-body-size") MemorySize maximumBodySize) {
+                         @ConfigProperty(name = "quarkus.http.limits.max-body-size") MemorySize maximumBodySize,
+                         OrderWriteMetrics metrics) {
+        this.metrics = metrics;
         this.vertx = vertx;
         this.routingContext = routingContext;
         this.maximumBodyBytes = maximumBodySize.asLongValue();
@@ -101,6 +104,9 @@ public class OrderDeadline implements WriterInterceptor {
 
     void start(RoutingContext context) {
         State state = new State();
+        long started = System.nanoTime();
+        OrderWriteMetrics.Window measurement = context.request().method() == null ? null
+                : metrics.operation(context.request().method().name(), context.normalizedPath());
         context.put(STATE_KEY, state);
         long timer = vertx.setTimer(10000, ignored -> expire(context, state));
         context.addEndHandler(ignored -> {
@@ -108,6 +114,9 @@ public class OrderDeadline implements WriterInterceptor {
                 state.finished = true;
             }
             vertx.cancelTimer(timer);
+            if (measurement != null) {
+                measurement.record(System.nanoTime() - started, context.response().getStatusCode());
+            }
         });
         context.next();
     }

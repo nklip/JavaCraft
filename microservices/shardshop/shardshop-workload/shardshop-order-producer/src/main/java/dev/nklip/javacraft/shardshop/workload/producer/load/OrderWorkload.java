@@ -115,7 +115,7 @@ public final class OrderWorkload {
                 datasets.buyerDataset());
     }
 
-    public Completion complete(OrderPlanner planner, String runName, long ordinal, Progress progress)
+    public Completion write(OrderPlanner planner, String runName, long ordinal, Progress progress)
             throws ProducerException, InterruptedException {
         String buyerId = planner.buyer(ordinal).buyerId();
         progress.buyer(buyerId);
@@ -124,22 +124,29 @@ public final class OrderWorkload {
         progress.order(orderId);
         PlannedOrder order = planner.plan(ordinal, orderId);
         // Construct once. Every retry sends the same IDs, currency, item order and quantities.
-        OrderStatus status = retry.call(SUBMISSION, "Order submission", () -> orders.submit(order));
-        // Order accepts a new order as pending, thus a terminal first answer is an order from before this process.
-        boolean recovered = status.terminal();
+        OrderRequests.Submission submission = retry.call(SUBMISSION, "Order submission", () -> orders.submitWithReplay(order));
+        OrderStatus status = submission.status();
+        boolean recovered = submission.replayed();
         progress.status(status.status());
         if (!recovered) {
             progress.accept();
         }
-        while (!status.terminal()) {
-            pause.sleep(pollInterval);
-            status = retry.call(POLLING, "Order status", () -> orders.status(buyerId, orderId));
-            progress.status(status.status());
-        }
         return new Completion(status, recovered);
     }
 
-    /** The terminal status of one ordinal; {@code recovered} means that the order was terminal before its PUT. */
+    /** One status read with the existing retry budget; scheduling and the complete deadline belong to the caller. */
+    public OrderStatus observe(OrderStatus previous, Progress progress) throws ProducerException, InterruptedException {
+        OrderStatus status = retry.call(POLLING, "Order status",
+                () -> orders.status(previous.buyerId(), previous.orderId()));
+        progress.status(status.status());
+        return status;
+    }
+
+    public Duration pollInterval() {
+        return pollInterval;
+    }
+
+    /** Latest status after PUT; recovered means the service reports an idempotent replay, terminal or pending. */
     public record Completion(OrderStatus status, boolean recovered) {
         public Completion {
             Objects.requireNonNull(status);

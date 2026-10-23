@@ -72,27 +72,26 @@ public final class KindSagaDrill {
         try (KindDrillGuard guard = new KindDrillGuard(lab).acquire()) {
             guard.run(() -> {
                 saga.deployed();
-                pauseProducer(guard);
                 buyer();
-                JsonNode original = saga.pod("order");
+                JsonNode original = saga.pod("order-saga");
                 String oldNode = original.path("spec").path("nodeName").asText();
-                JsonNode orderDeployment = deployment.resource("deployment", "shardshop-order");
-                JsonNode originalSelector = orderDeployment.at("/spec/template/spec/nodeSelector");
+                JsonNode sagaDeployment = deployment.resource("deployment", "shardshop-order-saga");
+                JsonNode originalSelector = sagaDeployment.at("/spec/template/spec/nodeSelector");
                 List<JsonNode> workers = KindLab.items(KindLab.parse(lab.kubectl("get", "nodes", "-o", "json"))).stream()
                         .filter(node -> !node.path("metadata").path("labels").has("node-role.kubernetes.io/control-plane"))
                         .filter(node -> !KindDeployment.name(node).equals(oldNode)).toList();
                 require(!workers.isEmpty(), "CDC relocation needs a different worker");
                 String target = KindDeployment.name(workers.getFirst());
-                guard.onClose("restore order placement and one ready CDC owner", () -> {
-                    lab.kubectl("scale", "deployment/shardshop-order", "--replicas=0");
-                    awaitNoOrder();
+                guard.onClose("restore saga placement and one ready CDC owner", () -> {
+                    lab.kubectl("scale", "deployment/shardshop-order-saga", "--replicas=0");
+                    awaitNoSaga();
                     selector(originalSelector);
-                    lab.kubectl("scale", "deployment/shardshop-order", "--replicas=1");
-                    awaitDeployment("order");
+                    lab.kubectl("scale", "deployment/shardshop-order-saga", "--replicas=1");
+                    awaitDeployment("order-saga");
                     return true;
                 });
-                lab.kubectl("scale", "deployment/shardshop-order", "--replicas=0");
-                awaitNoOrder();
+                lab.kubectl("scale", "deployment/shardshop-order-saga", "--replicas=0");
+                awaitNoSaga();
                 java.util.Map<String, String> history = new java.util.LinkedHashMap<>();
                 java.util.Map<String, Long> offsets = new java.util.LinkedHashMap<>();
                 for (String shard : lab.shards()) {
@@ -101,12 +100,20 @@ public final class KindSagaDrill {
                     offsets.put(shard, checkpoint(shard));
                     require(offsets.get(shard) > 0, "No persisted CDC resume position before relocation");
                 }
+                List<String> pending = new ArrayList<>();
+                try (Tunnel tunnel = new Tunnel(lab, "service/shardshop-order", 8080)) {
+                    for (int write = 0; write < 3; write++) pending.add(accept(tunnel, request("USD", product("USD"), 1)));
+                }
+                require(saga.number(home, "SELECT count(*) FROM ordering.order_sagas WHERE order_id IN ("
+                        + String.join(",", pending) + ") AND status='PENDING_STOCK'") == pending.size(),
+                        "HTTP must commit new orders while the saga process is stopped");
                 ObjectNode selected = originalSelector.isObject() ? originalSelector.deepCopy() : Json.newObject();
                 selected.put("kubernetes.io/hostname", target);
                 selector(selected);
-                lab.kubectl("scale", "deployment/shardshop-order", "--replicas=1");
-                awaitDeployment("order");
-                replacement(original, saga.pod("order"), target);
+                lab.kubectl("scale", "deployment/shardshop-order-saga", "--replicas=1");
+                awaitDeployment("order-saga");
+                replacement(original, saga.pod("order-saga"), target);
+                for (String id : pending) awaitOrder(id, "CONFIRMED");
                 for (String shard : lab.shards()) {
                     require(history.get(shard).equals(saga.sql(shard, "SELECT json_agg(s ORDER BY reader_name)::text FROM ordering.cdc_reader_state s").strip()),
                             "Replacement recreated CDC initialization history");
@@ -125,31 +132,92 @@ public final class KindSagaDrill {
         }
     }
 
-    private void awaitNoOrder() throws IOException, InterruptedException {
-        lab.await("order owner terminates before changing CDC placement", Duration.ofSeconds(90), () ->
-                deployment.pods("app.kubernetes.io/name=shardshop-order").isEmpty());
+    private void awaitNoSaga() throws IOException, InterruptedException {
+        lab.await("saga owner terminates before changing CDC placement", Duration.ofSeconds(90), () ->
+                deployment.pods("app.kubernetes.io/name=shardshop-order-saga").isEmpty());
     }
 
     private void selector(JsonNode selector) throws IOException, InterruptedException {
         ObjectNode operation = Json.newObject();
         if (selector.isMissingNode()) {
-            JsonNode current = deployment.resource("deployment", "shardshop-order").at("/spec/template/spec/nodeSelector");
+            JsonNode current = deployment.resource("deployment", "shardshop-order-saga").at("/spec/template/spec/nodeSelector");
             if (current.isMissingNode()) return;
             operation.put("op", "remove");
         } else {
             operation.put("op", "add").set("value", selector);
         }
         operation.put("path", "/spec/template/spec/nodeSelector");
-        lab.kubectl("patch", "deployment/shardshop-order", "--type=json", "-p", Json.newObject().arrayNode().add(operation).toString());
-        require(deployment.resource("deployment", "shardshop-order").at("/spec/template/spec/nodeSelector").equals(selector),
-                "Order placement patch did not preserve the requested complete selector");
+        lab.kubectl("patch", "deployment/shardshop-order-saga", "--type=json", "-p", Json.newObject().arrayNode().add(operation).toString());
+        require(deployment.resource("deployment", "shardshop-order-saga").at("/spec/template/spec/nodeSelector").equals(selector),
+                "Saga placement patch did not preserve the requested complete selector");
     }
 
     static void replacement(JsonNode before, JsonNode after, String target) throws IOException {
         require(!before.path("metadata").path("uid").equals(after.path("metadata").path("uid"))
                         && !before.path("spec").path("nodeName").equals(after.path("spec").path("nodeName"))
                         && after.path("spec").path("nodeName").asText().equals(target),
-                "Replacement order JVM must run on the explicitly selected different worker");
+                "Replacement saga JVM must run on the explicitly selected different worker");
+    }
+
+    /** HTTP replacement must leave the live saga JVM and each active logical reader unchanged. */
+    public void rolloutHttp() throws IOException, InterruptedException {
+        try (KindDrillGuard guard = new KindDrillGuard(lab).acquire()) {
+            guard.run(() -> {
+                saga.deployed();
+                buyer();
+                JsonNode owner = saga.pod("order-saga");
+                java.util.Map<String, Long> slots = new java.util.LinkedHashMap<>();
+                for (String shard : lab.shards()) slots.put(shard, activeReader(shard));
+                JsonNode before = deployment.resource("deployment", "shardshop-order");
+                JsonNode annotations = before.at("/spec/template/metadata/annotations").deepCopy();
+                guard.onClose("restore HTTP rollout annotation and two ready HTTP replicas", () -> {
+                    patchHttpAnnotations(annotations);
+                    awaitHttp();
+                    return true;
+                });
+                ObjectNode changed = annotations.isObject() ? annotations.deepCopy() : Json.newObject();
+                changed.put("shardshop.javacraft/drill", run);
+                patchHttpAnnotations(changed);
+                lab.await("HTTP rolls while its saga keeps the same live CDC slots", Duration.ofSeconds(180), () -> {
+                    require(owner.path("metadata").path("uid").equals(saga.pod("order-saga").path("metadata").path("uid")),
+                            "HTTP rollout replaced the saga owner");
+                    for (String shard : lab.shards())
+                        require(activeReader(shard) == slots.get(shard), "HTTP rollout reconnected the CDC reader on " + shard);
+                    return httpCurrent();
+                });
+                try (Tunnel tunnel = new Tunnel(lab, "service/shardshop-order", 8080)) {
+                    String id = accept(tunnel, request("USD", product("USD"), 1));
+                    awaitOrder(id, "CONFIRMED");
+                }
+                saga.invariants();
+            });
+        }
+    }
+
+    private long activeReader(String shard) throws IOException, InterruptedException {
+        String slot = "shardshop_order_" + shard.replace('-', '_');
+        long pid = saga.number(shard, "SELECT coalesce(active_pid,0) FROM pg_replication_slots WHERE slot_name=" + KindSaga.literal(slot));
+        require(pid > 0, "No active saga CDC slot on " + shard);
+        return pid;
+    }
+
+    private void patchHttpAnnotations(JsonNode annotations) throws IOException, InterruptedException {
+        ObjectNode operation = Json.newObject().put("op", annotations.isMissingNode() ? "remove" : "add")
+                .put("path", "/spec/template/metadata/annotations");
+        if (!annotations.isMissingNode()) operation.set("value", annotations);
+        lab.kubectl("patch", "deployment/shardshop-order", "--type=json", "-p", Json.newObject().arrayNode().add(operation).toString());
+    }
+
+    private boolean httpCurrent() throws IOException, InterruptedException {
+        JsonNode resource = deployment.resource("deployment", "shardshop-order");
+        JsonNode status = resource.path("status");
+        return status.path("readyReplicas").asInt() == 2 && status.path("updatedReplicas").asInt() == 2
+                && status.path("replicas").asInt() == 2 && status.path("observedGeneration").asLong(-1)
+                >= resource.path("metadata").path("generation").asLong();
+    }
+
+    private void awaitHttp() throws IOException, InterruptedException {
+        lab.await("two current ready HTTP replicas", Duration.ofSeconds(180), this::httpCurrent);
     }
 
     private long checkpoint(String shard) throws IOException, InterruptedException {

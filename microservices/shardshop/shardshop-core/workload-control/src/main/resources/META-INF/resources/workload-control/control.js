@@ -51,7 +51,16 @@
       && (data.run === null || data.run && count(data.run.number) && ["RUNNING", "COMPLETED", "FAILED"].includes(data.run.state)
         && text(data.run.startedAt) && nullableText(data.run.finishedAt) && count(data.run.completedOperations)
         && count(data.run.plannedOperations) && nullableText(data.run.summary) && nullableText(data.run.error));
-    if (!valid) throw new Error("INVALID_RESPONSE");
+    const producer = data && data.producer;
+    const latency = (value) => value && count(value.samples) && rate(value.meanMillis) && rate(value.p95Millis);
+    const validProducer = producer === undefined || producer === null || producer
+      && count(producer.submissionConcurrency) && producer.submissionConcurrency > 0
+      && count(producer.observerConcurrency) && producer.observerConcurrency > 0
+      && count(producer.maxNonTerminalOrders) && producer.maxNonTerminalOrders > 0
+      && count(producer.nonTerminalBacklog) && typeof producer.backpressured === "boolean"
+      && ["recoveredOrders", "confirmedOrders", "cancelledOrders"].every((key) => count(producer[key]))
+      && latency(producer.writeLatency) && latency(producer.sagaLatency);
+    if (!valid || !validProducer) throw new Error("INVALID_RESPONSE");
     return data;
   }
 
@@ -105,6 +114,18 @@
     setValue("requests", data.requests.toLocaleString("en-US"), "since process start");
     setValue("errors", data.errors.toLocaleString("en-US"), "failed backend requests");
     element("errors").className = data.errors > 0 ? "has-errors" : "";
+    if (element("producer-backlog") && data.producer) {
+      const producer = data.producer;
+      setValue("producer-backlog", producer.nonTerminalBacklog.toLocaleString("en-US"),
+        "maximum " + producer.maxNonTerminalOrders + " including submissions");
+      setValue("producer-backpressure", producer.backpressured ? "Waiting for the saga" : "Open",
+        producer.backpressured ? "new submissions held by the backlog bound" : "backlog capacity available");
+      setValue("producer-recovered", producer.recoveredOrders.toLocaleString("en-US"), "replayed orders, including pending");
+      for (const [id, value] of [["producer-write-latency", producer.writeLatency], ["producer-saga-latency", producer.sagaLatency]]) {
+        setValue(id, value.samples === 0 ? "—" : rate(value.p95Millis) + " ms",
+          "p95 · mean " + rate(value.meanMillis) + " ms · latest 1,024 samples");
+      }
+    }
     const limit = element("limit");
     limit.hidden = data.limit === null;
     limit.textContent = data.limit === null ? "" : "The target is above what the bounded concurrency can reach: "

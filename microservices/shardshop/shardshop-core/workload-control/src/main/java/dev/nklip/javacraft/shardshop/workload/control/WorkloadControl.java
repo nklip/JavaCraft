@@ -29,6 +29,7 @@ public final class WorkloadControl {
     private long revision;
     private Phase phase;
     private volatile Supplier<ControlStatus.Run> run = () -> null;
+    private volatile Supplier<ControlStatus.Producer> producer = () -> null;
 
     public WorkloadControl(Settings settings, Phase initial) {
         this(settings, initial, System::nanoTime, Condition::awaitNanos);
@@ -82,9 +83,29 @@ public final class WorkloadControl {
         this.run = Objects.requireNonNull(view);
     }
 
+    /** Producer-specific backlog and latency measurements. This supplier must not send backend requests. */
+    public void producer(Supplier<ControlStatus.Producer> view) {
+        this.producer = Objects.requireNonNull(view);
+    }
+
     /** Waits for the next paced start; while the effective rate is zero, waits until it becomes positive. */
     public void awaitStart() throws InterruptedException {
         pacer.await();
+    }
+
+    /**
+     * Paces and admits one operation atomically with Pause/rate updates. A Pause after admission sees it in flight;
+     * a Pause before admission holds it, even if the pacer's preceding wait has just returned.
+     */
+    public Operation awaitOperation() throws InterruptedException {
+        while (true) {
+            pacer.await();
+            synchronized (this) {
+                if (!paused && target.signum() > 0) {
+                    return begin();
+                }
+            }
+        }
     }
 
     /** Waits only while the effective rate is zero, without taking a paced start. */
@@ -139,7 +160,7 @@ public final class WorkloadControl {
         long errors = categories.stream().mapToLong(ControlStatus.TrafficCategory::errors).sum();
         return new ControlStatus(settings.workload(), settings.unit(), state, currentTarget, currentPaused, effective,
                 settings.defaultRate(), settings.maximumRate(), settings.rateStep(), decimal(window.rate()),
-                window.total(), running, requests, errors, categories, limit, run.get(), currentRevision);
+                window.total(), running, requests, errors, categories, limit, run.get(), producer.get(), currentRevision);
     }
 
     private ControlStatus changed() {

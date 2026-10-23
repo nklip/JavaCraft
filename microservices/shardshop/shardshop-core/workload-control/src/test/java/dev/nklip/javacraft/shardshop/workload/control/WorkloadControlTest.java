@@ -14,6 +14,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -69,6 +70,26 @@ class WorkloadControlTest {
         assertEquals("RUNNING", resumed.state());
         assertEquals("0.5", resumed.effectiveRate().toPlainString());
         assertEquals(2, resumed.revision());
+    }
+
+    @Test
+    void pacedAdmissionHoldsAtPauseAndIsVisibleBeforeTheNextPauseReturns() throws Exception {
+        CountDownLatch waiting = new CountDownLatch(1);
+        WorkloadControl control = new WorkloadControl(PRODUCER, WorkloadControl.Phase.ACTIVE, System::nanoTime,
+                (condition, nanos) -> { waiting.countDown(); condition.awaitNanos(nanos); });
+        control.pause();
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<WorkloadControl.Operation> admitted = executor.submit(control::awaitOperation);
+            assertTrue(waiting.await(3, TimeUnit.SECONDS));
+            assertEquals(0, control.status().inFlight());
+            assertEquals(false, admitted.isDone());
+            control.resume();
+            try (WorkloadControl.Operation operation = admitted.get(3, TimeUnit.SECONDS)) {
+                assertEquals("PAUSING", control.pause().state());
+                assertEquals(1, control.status().inFlight(), "Admission is visible atomically to Pause");
+            }
+            assertEquals("PAUSED", control.status().state());
+        }
     }
 
     @Test

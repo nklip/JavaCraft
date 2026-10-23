@@ -17,6 +17,10 @@ import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -30,19 +34,16 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 public final class OrderResponseProxy implements AutoCloseable {
     private enum Phase { BUYER, ALLOCATION, PUT }
 
-    private record Attempt(String key, byte[] request, int status, byte[] response) {
+    private record Attempt(String path, String key, byte[] request, int status, byte[] response) {
     }
 
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
     private final HttpServer server;
     private final URI backend;
     private final Map<Phase, List<Attempt>> attempts = new EnumMap<>(Phase.class);
-    private String firstAllocationCoordinate;
-    private byte[] firstAllocationPayload;
-    private int firstAllocationCalls;
-    private String firstPutPath;
-    private byte[] firstPutPayload;
-    private int firstPutCalls;
+    private final Map<String, byte[]> replayPayloads = new HashMap<>();
+    private final Map<String, Integer> replayCounts = new HashMap<>();
+    private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private boolean replayPayloadMismatch;
     private volatile Exception failure;
 
@@ -53,6 +54,7 @@ public final class OrderResponseProxy implements AutoCloseable {
         backend = URI.create("http://127.0.0.1:" + backendPort);
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", this::forward);
+        server.setExecutor(executor);
         server.start();
     }
 
@@ -80,9 +82,13 @@ public final class OrderResponseProxy implements AutoCloseable {
                     synchronized (attempts) {
                         trackReplay(phase, exchange.getRequestURI().getPath(), request);
                         List<Attempt> observed = attempts.computeIfAbsent(phase, ignored -> new ArrayList<>());
-                        if (observed.size() < 2) {
+                        String key = exchange.getRequestHeaders().getFirst("Idempotency-Key");
+                        if (observed.isEmpty() || observed.size() == 1
+                                && Objects.equals(observed.getFirst().key(), key)
+                                && observed.getFirst().path().equals(exchange.getRequestURI().getPath())
+                                && Arrays.equals(observed.getFirst().request(), request)) {
                             drop = observed.isEmpty();
-                            observed.add(new Attempt(exchange.getRequestHeaders().getFirst("Idempotency-Key"), request,
+                            observed.add(new Attempt(exchange.getRequestURI().getPath(), key, request,
                                     response.statusCode(), response.body()));
                         }
                     }
@@ -90,6 +96,8 @@ public final class OrderResponseProxy implements AutoCloseable {
                 byte[] body = drop ? "{\"code\":\"ORDER_STORE_UNAVAILABLE\"}".getBytes(StandardCharsets.UTF_8)
                         : response.body();
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
+                response.headers().firstValue("Idempotent-Replay").ifPresent(value ->
+                        exchange.getResponseHeaders().set("Idempotent-Replay", value));
                 exchange.sendResponseHeaders(drop ? 503 : response.statusCode(), body.length);
                 exchange.getResponseBody().write(body);
             } catch (InterruptedException interrupted) {
@@ -118,40 +126,30 @@ public final class OrderResponseProxy implements AutoCloseable {
         return null;
     }
 
-    /** Called under the attempts lock. Only the first allocation coordinate and PUT path are retained. */
+    /** Called under the attempts lock; concurrent ordinals may reach PUT in a different order. */
     private void trackReplay(Phase phase, String path, byte[] request) {
         if (phase == Phase.ALLOCATION) {
             var body = Json.parse(request);
             String coordinate = path + "|" + body.path("runName").asText() + "|"
                     + body.path("requestOrdinal").asText();
-            if (firstAllocationCoordinate == null) {
-                firstAllocationCoordinate = coordinate;
-                firstAllocationPayload = request.clone();
-            }
-            if (firstAllocationCoordinate.equals(coordinate)) {
-                firstAllocationCalls++;
-                replayPayloadMismatch |= !Arrays.equals(firstAllocationPayload, request);
-            }
+            trackPayload(coordinate, request);
         } else if (phase == Phase.PUT) {
-            if (firstPutPath == null) {
-                firstPutPath = path;
-                firstPutPayload = request.clone();
-            }
-            if (firstPutPath.equals(path)) {
-                firstPutCalls++;
-                replayPayloadMismatch |= !Arrays.equals(firstPutPayload, request);
-            }
+            trackPayload(path, request);
         }
+    }
+
+    private void trackPayload(String coordinate, byte[] request) {
+        byte[] previous = replayPayloads.putIfAbsent(coordinate, request.clone());
+        replayPayloadMismatch |= previous != null && !Arrays.equals(previous, request);
+        replayCounts.merge(coordinate, 1, Integer::sum);
     }
 
     public ReplayCalls replayCalls(String runName, String buyerId, long ordinal, String orderId) {
         String allocation = "/api/v1/buyers/" + buyerId + "/order-allocations|" + runName + "|" + ordinal;
         String put = "/api/v1/buyers/" + buyerId + "/orders/" + orderId;
         synchronized (attempts) {
-            assertEquals(allocation, firstAllocationCoordinate, "Tracked allocation coordinate");
-            assertEquals(put, firstPutPath, "Tracked PUT path");
             assertFalse(replayPayloadMismatch, "Restart or retry changed an allocation or PUT payload");
-            return new ReplayCalls(firstAllocationCalls, firstPutCalls);
+            return new ReplayCalls(replayCounts.getOrDefault(allocation, 0), replayCounts.getOrDefault(put, 0));
         }
     }
 
@@ -192,6 +190,7 @@ public final class OrderResponseProxy implements AutoCloseable {
         assertEquals(firstStatus, first.status(), phase + " first provider status");
         assertEquals(secondStatus, second.status(), phase + " retry provider status");
         assertEquals(first.key(), second.key(), phase + " retry key");
+        assertEquals(first.path(), second.path(), phase + " retry resource");
         assertArrayEquals(first.request(), second.request(), phase + " retry payload");
         assertEquals(Json.parse(first.response()).path(idField).asText(),
                 Json.parse(second.response()).path(idField).asText(), phase + " must recover the same issued ID");
@@ -202,6 +201,7 @@ public final class OrderResponseProxy implements AutoCloseable {
     @Override
     public void close() {
         server.stop(0);
+        executor.shutdownNow();
         client.shutdownNow();
     }
 }

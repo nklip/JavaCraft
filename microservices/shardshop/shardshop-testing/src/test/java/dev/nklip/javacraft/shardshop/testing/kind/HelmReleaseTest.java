@@ -88,6 +88,68 @@ class HelmReleaseTest {
     }
 
     @Test
+    void orderHttpRollsIndependentlyFromTheSingletonSagaUsingTheSameImageAndAllocator() throws Exception {
+        List<JsonNode> resources = render("application-release");
+        JsonNode http = named(resources, "shardshop-order");
+        JsonNode saga = named(resources, "shardshop-order-saga");
+        assertEquals(2, http.at("/spec/replicas").asInt());
+        assertEquals("RollingUpdate", http.at("/spec/strategy/type").asText());
+        assertEquals(0, http.at("/spec/strategy/rollingUpdate/maxUnavailable").asInt(-1));
+        assertEquals(1, http.at("/spec/strategy/rollingUpdate/maxSurge").asInt());
+        assertEquals(1, saga.at("/spec/replicas").asInt());
+        assertEquals("Recreate", saga.at("/spec/strategy/type").asText());
+        assertEquals("http", env(http, "SHARDSHOP_ORDER_PROCESS"));
+        assertEquals("saga", env(saga, "SHARDSHOP_ORDER_PROCESS"));
+        assertEquals(http.at("/spec/template/spec/containers/0/image"), saga.at("/spec/template/spec/containers/0/image"));
+        for (JsonNode process : List.of(http, saga)) {
+            assertEquals("shardshop-order", process.at("/spec/template/spec/serviceAccountName").asText());
+            assertEquals("shardshop-generator-identity", namedField(process.at("/spec/template/spec/containers/0/env"),
+                    "SHARDSHOP_ID_REGISTRY_UID").at("/valueFrom/configMapKeyRef/name").asText());
+        }
+        JsonNode service = resources.stream().filter(resource -> resource.path("kind").asText().equals("Service")
+                && resource.at("/metadata/name").asText().equals("shardshop-order")).findFirst().orElseThrow();
+        assertEquals("shardshop-order", service.at("/spec/selector/app.kubernetes.io~1name").asText());
+        assertTrue(resources.stream().noneMatch(resource -> resource.path("kind").asText().equals("Service")
+                && resource.at("/metadata/name").asText().equals("shardshop-order-saga")));
+    }
+
+    @Test
+    void profitPostingUsesTheMeasuredBoundedConfigurationAndRejectsUnsupportedLimits() throws Exception {
+        String configuration = named(render("application-release"), "shardshop-order-config")
+                .path("data").path("application.properties").asText();
+        assertTrue(configuration.contains("shardshop.order.profit.poll-interval=100ms\n"));
+        assertTrue(configuration.contains("shardshop.order.profit.batch-size=32\n"));
+        ObjectNode overrides = values.putObject("order").putObject("configuration");
+        for (String invalid : List.of("0", "101", "32.5")) {
+            overrides.put("shardshop.order.profit.batch-size", invalid);
+            assertRejected("application-release");
+        }
+        overrides.put("shardshop.order.profit.batch-size", "100");
+        for (String invalid : List.of("99ms", "30001ms", "31s", "invalid")) {
+            overrides.put("shardshop.order.profit.poll-interval", invalid);
+            assertRejected("application-release");
+        }
+        overrides.put("shardshop.order.profit.poll-interval", "30s");
+        render("application-release");
+    }
+
+    @Test
+    void producerConfigurationRejectsRatesAndConcurrencyAboveTheQualifiedBounds() throws Exception {
+        ObjectNode configuration = object(values.path("orderProducer")).putObject("configuration");
+        for (String invalid : List.of("30.001", "31", "100")) {
+            configuration.put("SHARDSHOP_PRODUCER_ORDER_RATE", invalid);
+            assertRejected("application-release");
+        }
+        configuration.put("SHARDSHOP_PRODUCER_ORDER_RATE", "30");
+        configuration.put("SHARDSHOP_PRODUCER_SUBMISSION_CONCURRENCY", "12");
+        configuration.put("SHARDSHOP_PRODUCER_OBSERVER_CONCURRENCY", "12");
+        configuration.put("SHARDSHOP_PRODUCER_MAX_NON_TERMINAL_ORDERS", "10000");
+        render("application-release");
+        configuration.put("SHARDSHOP_PRODUCER_SUBMISSION_CONCURRENCY", "13");
+        assertRejected("application-release");
+    }
+
+    @Test
     void releaseAcceptanceUsesTheNativeDesiredTemplatesAndIgnoresUnrelatedApiDefaults() throws Exception {
         List<JsonNode> resources = render("application-release");
         for (String name : List.of("shardshop-product", "shardshop-product-reader", "shardshop-application-seeder-1")) {

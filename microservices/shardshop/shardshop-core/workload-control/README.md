@@ -93,9 +93,27 @@ and errors of each purpose. If the work in flight cannot reach the target, a
 notice shows the reachable rate. The page, the script, the stylesheet and the API
 responses use `Cache-Control: no-store`.
 
+The producer additionally shows its non-terminal backlog, backpressure, recovered
+orders and write/saga latency. `inFlight` counts allocation + PUT submissions only.
+The nullable `producer` status object contains `submissionConcurrency`,
+`observerConcurrency`, `maxNonTerminalOrders`, `nonTerminalBacklog`, `backpressured`,
+`recoveredOrders`, `confirmedOrders`, `cancelledOrders`, `writeLatency` and `sagaLatency`.
+Writes reserve capacity before allocation, so submissions plus accepted pending
+orders stay within the backlog bound. An unused reservation while waiting on the
+pacer is excluded from backpressure. Slow status requests occupy only their bounded
+observer slots; other ready observations and submissions can continue.
+
+Both latency objects contain `samples` (lifetime count), `meanMillis` and
+`p95Millis` (nearest-rank p95 over the most recent 1,024 samples). Write latency
+measures allocation start through PUT acceptance, including retries. Saga latency
+measures allocation start through the first observed terminal status, including
+polling. Both exclude pacing/backpressure waits and recovered orders. An idempotent
+retry after a lost first PUT response is also a replay, because its original
+acceptance time cannot be established from the reply.
+
 | Workload | Page | Unit | Default | Maximum | Step | In flight |
 |---|---|---|---:|---:|---:|---|
-| Workload Order Producer | `/workload-order-producer/` | new order starts/s | 0.5 | 100 | 0.1 | 1 order |
+| Workload Order Producer | `/workload-order-producer/` | new order starts/s | 0.5 | 30 | 0.1 | 4 submissions (configurable) |
 | Workload Product Reader | `/workload-product-reader/` | product read starts/s, all workers | 200 | 10,000 | 10 | 1 read per worker (16) |
 | Workload Product Seeder | `/workload-product-seeder/` | outgoing HTTP requests/s | 100 | 1,000 | 10 | 1 request |
 
@@ -159,10 +177,14 @@ new interval after the last start, or at once if that time is past. Thus a chang
 or a Resume causes no burst.
 
 Pause holds new work only. A read, a seeder request or a producer order in flight
-finishes within its HTTP deadline and retry budget. The producer observes its
-current order until the order is terminal; then it allocates no new ordinal. The
-producer replays earlier ordinals after a restart without pacing, but Pause also
-holds the replay.
+finishes within its HTTP deadline and retry budget. The producer drains allocation + PUT submissions, while a separate bounded
+observer continues reading accepted non-terminal orders. `PAUSED` means no write
+is in flight; its backlog can remain nonzero. Restart replays ordinal zero through
+the same paced, bounded submission window. Pause and a zero rate also hold replay.
+The workload counts idempotent PUT replays separately, including pending recoveries.
+The order HTTP API emits `Idempotent-Replay: true|false`; absence during an HTTP
+rolling upgrade retries the same PUT under its ordinary attempt/deadline budget.
+A malformed header fails validation. No extra status probe is sent on the write path.
 
 A rate change does not change the dataset versions, the run name, the ordinal
 progress, the service-issued IDs, the retry keys or the currency selection. The
@@ -190,7 +212,10 @@ a run in progress; start it again after the restart.
 | Setting | Default | Meaning |
 |---|---|---|
 | `shardshop.reader.request-rate` | `200` | Initial reader rate, 0–10000; the Helm schema allows whole numbers 1–10000 for the kind workload gate |
-| `shardshop.producer.order-rate` | `0.5` | Initial new order starts per second, 0–100 |
+| `shardshop.producer.order-rate` | `0.5` | Initial new order starts per second, 0–30 |
+| `shardshop.producer.submission-concurrency` | `4` | Concurrent allocation + PUT submissions, 1–12 |
+| `shardshop.producer.observer-concurrency` | `2` | Concurrent status reads, 1–12, independent of writes |
+| `shardshop.producer.max-non-terminal-orders` | `100` | Maximum writes plus non-terminal orders, submission concurrency–10000 |
 | `shardshop.seeder.request-rate` | `100` | Initial seeder requests per second, 0–1000; positive for the bootstrap Job |
 | `shardshop.seeder.interactive` | `false` | `true` serves the control page and starts runs on request |
 

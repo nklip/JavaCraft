@@ -19,7 +19,7 @@ import java.util.StringJoiner;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-/** Packaged order HTTP provider, with runtime credentials and bounded primary pools. */
+/** Packaged HTTP provider and, when enabled, a separate saga JVM with independent generator identity and pools. */
 public final class OrderRuntime implements Disposable {
     private static final AtomicInteger GENERATORS = new AtomicInteger(500);
     private final CatalogDatabase database = CatalogDatabase.instance();
@@ -29,6 +29,8 @@ public final class OrderRuntime implements Disposable {
     private final int refusedPort = CatalogDatabase.freePort();
     private final List<PackagedApplication> applications = new ArrayList<>();
     private PackagedApplication application;
+    private PackagedApplication saga;
+    private Path configuration;
     private boolean stockEnabled;
     private RabbitMqBroker cdcBroker;
     private RabbitMqBroker resultsBroker;
@@ -40,7 +42,7 @@ public final class OrderRuntime implements Disposable {
     }
 
     public void start(Set<String> unavailableShards) throws IOException, InterruptedException {
-        Path configuration = Files.createTempFile(directory, "routing-", ".properties",
+        configuration = Files.createTempFile(directory, "routing-", ".properties",
                 PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
         StringJoiner values = new StringJoiner("\n", "", "\n");
         values.add("shardshop.routing.shards=" + shards.all().stream().map(CatalogShards.Shard::name)
@@ -78,6 +80,7 @@ public final class OrderRuntime implements Disposable {
         Files.writeString(configuration, values.toString());
         application = PackagedApplication.start("shardshop-order", directory, List.of(
                 "-Dshardshop.routing.config=" + configuration.toUri(),
+                "-Dshardshop.order.process=http",
                 "-Dshardshop.id.generator-id=" + GENERATORS.incrementAndGet(),
                 "-Dquarkus.http.host=127.0.0.1", "-Dquarkus.http.port=" + port));
         applications.add(application);
@@ -89,6 +92,7 @@ public final class OrderRuntime implements Disposable {
             try {
                 if (RawHttp.exchange(port, "GET", "/api/v1/buyers/0", List.of(), new byte[0],
                         RawHttp.Framing.NONE).status() == 400) {
+                    startSaga();
                     return;
                 }
             } catch (IOException notReady) {
@@ -128,7 +132,35 @@ public final class OrderRuntime implements Disposable {
         return port;
     }
 
+    /** Restarts only the saga; HTTP writes remain available throughout. */
+    public void restartSaga() throws IOException, InterruptedException {
+        stopSaga();
+        startSaga();
+    }
+
+    public void stopSaga() throws InterruptedException {
+        if (saga != null && saga.isAlive()) saga.stop();
+    }
+
+    private void startSaga() throws IOException, InterruptedException {
+        if (!stockEnabled && cdcBroker == null && resultsBroker == null && !profitEnabled) return;
+        saga = PackagedApplication.start("shardshop-order", directory, List.of(
+                "-Dshardshop.routing.config=" + configuration.toUri(),
+                "-Dshardshop.order.process=saga",
+                "-Dshardshop.id.generator-id=" + GENERATORS.incrementAndGet(),
+                "-Dquarkus.http.host=127.0.0.1", "-Dquarkus.http.port=0"));
+        applications.add(saga);
+        long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (!saga.isAlive()) throw new AssertionError("Saga exited during startup:\n" + saga.tail());
+            if (saga.lines().stream().anyMatch(line -> line.contains("ShardShop order process ready: saga"))) return;
+            Thread.sleep(50);
+        }
+        throw new AssertionError("Saga startup exceeded 30 seconds:\n" + saga.tail());
+    }
+
     public void stop() throws InterruptedException {
+        stopSaga();
         if (application != null && application.isAlive()) {
             application.stop();
         }

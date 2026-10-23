@@ -9,6 +9,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
@@ -18,6 +19,9 @@ class ProducerConfigurationTest {
     void defaultsAreBoundedAndCanConstructWithoutExternalServices() {
         var config = config("shardshop.producer.run-name", "stable");
         assertEquals(-1, config.rejectedOrderPercent());
+        assertEquals(4, config.submissionConcurrency());
+        assertEquals(2, config.observerConcurrency());
+        assertEquals(100, config.maxNonTerminalOrders());
         assertEquals(Duration.ofSeconds(60), config.orderDeadline());
         assertEquals(Duration.ofMinutes(5), config.startupDeadline());
         var wiring = new ProducerWiring();
@@ -30,11 +34,11 @@ class ProducerConfigurationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"-1", "100.001", "0.0001", "1E+3"})
+    @ValueSource(strings = {"-1", "30.001", "0.0001", "1E+3"})
     void invalidOrderRatesFailAtStartup(String rate) {
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                 () -> new ProducerWiring().control(config("shardshop.producer.order-rate", rate)));
-        assertEquals("shardshop.producer.order-rate must be 0..100 with at most three decimals", failure.getMessage());
+        assertEquals("shardshop.producer.order-rate must be 0..30 with at most three decimals", failure.getMessage());
         assertEquals("0", new ProducerWiring().control(config("shardshop.producer.order-rate", "0.000"))
                 .status().targetRate().toPlainString(), "Zero starts paused");
     }
@@ -44,6 +48,24 @@ class ProducerConfigurationTest {
             "shardshop.producer.order-deadline", "shardshop.producer.startup-deadline", "shardshop.producer.request-timeout"})
     void zeroDurationsFailBeforeHttp(String key) {
         var config = config(key, "0s");
+        assertThrows(IllegalArgumentException.class, () -> new ProducerWiring().producer(config, mock(),
+                new ProducerWiring().control(config)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "13"})
+    void invalidConcurrencyFailsBeforeHttp(String value) {
+        for (String key : List.of("submission-concurrency", "observer-concurrency")) {
+            var config = config("shardshop.producer." + key, value);
+            assertThrows(IllegalArgumentException.class, () -> new ProducerWiring().producer(config, mock(),
+                    new ProducerWiring().control(config)));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "3", "10001"})
+    void invalidBacklogFailsBeforeHttp(String value) {
+        var config = config("shardshop.producer.max-non-terminal-orders", value);
         assertThrows(IllegalArgumentException.class, () -> new ProducerWiring().producer(config, mock(),
                 new ProducerWiring().control(config)));
     }

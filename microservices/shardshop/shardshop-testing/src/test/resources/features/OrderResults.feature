@@ -6,6 +6,10 @@ Feature: Order applies ledger results and credits confirmed seller profit
   Background:
     Given order results use migrated regional primaries and a broker
 
+  @order-processes
+  Scenario: Concurrent HTTP writes survive a saga restart with one ledger decision per order
+    Then HTTP accepts concurrent retries while the saga is stopped and its restart completes each order once
+
   @product-browser
   Scenario: A recorded cross-shard order credits each signed item margin once
     Then a packaged ledger recording confirms a cross-shard order and credits its items once

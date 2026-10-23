@@ -2,7 +2,7 @@ openapi: 3.1.1
 jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
 info:
   title: ShardShop Workload Control API
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Contract owned by shardshop-workload-control (step 4.13). The order producer,
     product reader and product seeder each serve this API under their own root
@@ -13,7 +13,7 @@ info:
     starts per second across all reader workers, new order starts per second for
     the producer, and outgoing HTTP requests per second for the seeder, including
     creation, verification and repeated attempts. Rates are JSON numbers from 0
-    to the documented maximum (reader 10000, producer 100, seeder 1000) with at
+    to the documented maximum (reader 10000, producer 30, seeder 1000) with at
     most three decimal places. Zero stops new work. An invalid update returns 400
     and leaves the previous setting unchanged. Updates are atomic; each accepted
     update increments revision. A rate change or Resume takes effect at once and
@@ -21,8 +21,10 @@ info:
 
     Pause keeps targetRate and sets effectiveRate to 0. The operations in flight
     finish within their existing HTTP deadlines and retry budgets: the state is
-    PAUSING until they end, then PAUSED. The producer finishes observing its
-    current order before it pauses new allocations.
+    PAUSING until they end, then PAUSED. For the producer these operations are
+    allocation + PUT submissions. Its independent bounded observer continues to
+    read non-terminal orders while new submissions are paused. The producer's
+    producer object reports backlog backpressure, concurrency and latency.
 
     The setting lives in the workload process. A browser refresh or closure keeps
     it; a process restart restores the configured default rate, unpaused. The
@@ -65,7 +67,7 @@ paths:
                 paused: false
                 effectiveRate: 2
                 defaultRate: 0.5
-                maximumRate: 100
+                maximumRate: 30
                 rateStep: 0.1
                 achievedRate: 0.81
                 starts: 412
@@ -95,6 +97,7 @@ paths:
                   meanOperationSeconds: 1.234
                   achievableRate: 0.81
                 run: null
+                producer: null
                 revision: 3
   /control/rate:
     put:
@@ -141,6 +144,7 @@ paths:
                     errors: 0
                 limit: null
                 run: null
+                producer: null
                 revision: 1
         '400':
           description: The body or the rate is invalid; the previous setting is unchanged.
@@ -197,6 +201,7 @@ paths:
                   plannedOperations: 1056
                   summary: null
                   error: null
+                producer: null
                 revision: 1
   /control/resume:
     post:
@@ -232,6 +237,7 @@ paths:
                     errors: 0
                 limit: null
                 run: null
+                producer: null
                 revision: 2
   /control/runs:
     post:
@@ -287,6 +293,7 @@ paths:
                   plannedOperations: 1056
                   summary: null
                   error: null
+                producer: null
                 revision: 0
         '409':
           description: A run is in progress; only one run at a time.
@@ -319,7 +326,7 @@ components:
       type: object
       additionalProperties: false
       required: [workload, unit, state, targetRate, paused, effectiveRate, defaultRate, maximumRate, rateStep,
-                 achievedRate, starts, inFlight, requests, errors, traffic, limit, run, revision]
+                 achievedRate, starts, inFlight, requests, errors, traffic, limit, run, producer, revision]
       properties:
         workload:
           type: string
@@ -373,8 +380,75 @@ components:
           oneOf:
             - type: 'null'
             - $ref: '#/components/schemas/Run'
+        producer:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/Producer'
         revision:
           $ref: '#/components/schemas/Count'
+    Producer:
+      type: object
+      additionalProperties: false
+      required: [submissionConcurrency, observerConcurrency, maxNonTerminalOrders, nonTerminalBacklog,
+                 backpressured, recoveredOrders, confirmedOrders, cancelledOrders, writeLatency, sagaLatency]
+      description: |
+        Present for the order producer. Writes reserve outstanding capacity before
+        allocation, so writes plus accepted non-terminal orders never exceed the
+        bound. backpressured is true while these fill maxNonTerminalOrders; the
+        controller's unused reservation while awaiting pacing is excluded.
+        Recovered orders are idempotent PUT replays, including non-terminal orders;
+        a successful write whose first HTTP answer was lost can also be a replay.
+        These orders do not increment starts, confirmedOrders, cancelledOrders or
+        latency samples because their original acceptance time is unknown.
+      properties:
+        submissionConcurrency:
+          type: integer
+          minimum: 1
+          maximum: 12
+        observerConcurrency:
+          type: integer
+          minimum: 1
+          maximum: 12
+        maxNonTerminalOrders:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        nonTerminalBacklog:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        backpressured:
+          type: boolean
+        recoveredOrders:
+          $ref: '#/components/schemas/Count'
+        confirmedOrders:
+          $ref: '#/components/schemas/Count'
+        cancelledOrders:
+          $ref: '#/components/schemas/Count'
+        writeLatency:
+          $ref: '#/components/schemas/Latency'
+        sagaLatency:
+          $ref: '#/components/schemas/Latency'
+    Latency:
+      type: object
+      additionalProperties: false
+      required: [samples, meanMillis, p95Millis]
+      description: |
+        Durations in milliseconds. samples counts all samples since process start;
+        the mean and nearest-rank p95 use the most recent 1024 samples, or zero
+        before the first sample. Write latency measures allocation + PUT including
+        retries. Saga latency measures allocation start to the first observed
+        terminal status, including the write and polling interval. Pacing and
+        backpressure waits are excluded. Recovered orders are excluded.
+      properties:
+        samples:
+          $ref: '#/components/schemas/Count'
+        meanMillis:
+          type: number
+          minimum: 0
+        p95Millis:
+          type: number
+          minimum: 0
     TrafficCategory:
       type: object
       additionalProperties: false
@@ -400,8 +474,9 @@ components:
       description: |
         The operations in flight cannot reach the effective target: concurrency
         divided by the mean operation time of the last 10 seconds is lower. The
-        producer has one order in flight, the seeder one request, and the reader
-        one read per worker.
+        producer counts allocation + PUT submissions, the seeder one request,
+        and the reader one read per worker. Producer backlog backpressure is
+        reported separately in producer.backpressured.
       properties:
         code:
           type: string

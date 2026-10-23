@@ -89,7 +89,7 @@ public class OrderWiring {
     @Startup(ObserverMethod.DEFAULT_PRIORITY - 1)
     StockWorker.Settings stockSettings(OrderConfiguration config) {
         var stock = config.stock();
-        return new StockWorker.Settings(stock.enabled(), stock.pollInterval(), stock.lease(), stock.batchSize());
+        return new StockWorker.Settings(config.process() == OrderConfiguration.Process.SAGA && stock.enabled(), stock.pollInterval(), stock.lease(), stock.batchSize());
     }
 
     @Produces

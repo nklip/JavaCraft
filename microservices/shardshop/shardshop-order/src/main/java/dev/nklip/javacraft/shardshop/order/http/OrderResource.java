@@ -79,8 +79,10 @@ public class OrderResource {
         long order = input.id(orderId);
         var payload = input.order(body, headers);
         deadline.check();
-        Order result = service.putOrder(buyer, order, payload);
-        Response.ResponseBuilder response = Response.status(result.pending() ? 202 : 200).entity(orderResponse(result));
+        Creation<Order> outcome = service.putOrderWithOutcome(buyer, order, payload);
+        Order result = outcome.entity();
+        Response.ResponseBuilder response = Response.status(result.pending() ? 202 : 200).entity(orderResponse(result))
+                .header("Idempotent-Replay", !outcome.created());
         if (result.pending()) {
             response.header(HttpHeaders.LOCATION, result.statusUrl());
         }

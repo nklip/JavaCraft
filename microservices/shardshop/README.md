@@ -926,7 +926,8 @@ the paginated read API.
 
 ## Order producer (step 4.8)
 
-The producer is a continuous HTTP/1.1 workload with one order in flight. It first
+The producer is a continuous HTTP/1.1 workload with bounded concurrent order submissions
+(step 4.14). It first
 resolves every catalog seller and product by creation key and verifies the returned
 definitions. Missing entities, transport failures and HTTP 503 repeat the complete
 lookup with one-to-fifteen-second exponential backoff and jitter, for at most five
@@ -970,10 +971,14 @@ HTTP 503 with capped backoff and jitter. Other HTTP errors, invalid JSON and
 inconsistent response identities fail the run. Retries preserve the same keys,
 allocated IDs and exact item payload. HTTP 202 must carry a pending order status;
 HTTP 200 from PUT must carry a terminal status. The producer polls pending orders
-until `CONFIRMED` or `CANCELLED`, and only then allocates the next ordinal at the
-next paced start. The [producer control page](shardshop-core/workload-control/README.md)
+until `CONFIRMED` or `CANCELLED` through a separate bounded observer. Allocation
+and PUT share a submission slot; the next paced start does not wait for the saga.
+The observer polls pending orders fairly, independently of submission workers.
+The non-terminal limit reserves room for submissions as well as accepted pending orders;
+when full, it applies backpressure until terminal observations free room. The [producer control page](shardshop-core/workload-control/README.md)
 changes the rate of new order starts, and pauses and resumes them, while the producer runs.
-The complete allocation/submission/polling phase has one deadline, including all
+Pause drains current submissions and stops new starts while observation continues.
+Each order has one allocation/submission/polling deadline, including all
 attempts and waits. Exhaustion exits with code 1; shutdown interrupts outstanding
 HTTP work. `--check-startup` validates configuration without HTTP requests, and an
 invalid setting logs one error. A failed order phase names the stuck order, for
@@ -981,12 +986,11 @@ example `Order producer failed: Order completion deadline exceeded (ordinal 3,
 buyer <buyerId>, order <orderId>, last status PENDING_LEDGER)`.
 
 A restart replays earlier ordinals with the same coordinates and recovers their
-saved orders before reaching new work. This needs no local progress database. The
-replay is not paced, thus the catch-up costs one allocation and one PUT for each
-finished order; Pause also holds the replay. In a probe, 15
-finished orders took less than one second. The log reports
-`Order producer recovered <count> finished orders before ordinal <ordinal>`, and the
-progress lines count recovered orders separately. A new independent
+saved orders before reaching new work. This needs no local progress database.
+Replay uses the same pacing and bounded submission window as new work. The
+`Idempotent-Replay` PUT response header identifies recovered orders, including pending
+ones, without an extra status probe. Recovered orders are counted separately and
+pending recoveries remain under observation. A new independent
 run requires a new explicitly configured name. Do not change selection settings
 under an existing name. Normal allocation names now include `catalog-v2:regional-v1`,
 separating the new selections from earlier `catalog-v2:balanced` orders. After an
@@ -1003,10 +1007,46 @@ in a sustained run.
 | `connect-timeout`, `request-timeout` | `2s`, `5s` | Connection and complete HTTP-attempt limits |
 | `startup-deadline` | `5m` | Complete budget for each of catalog and buyer setup; maximum 5m |
 | `order-deadline` | `60s` | Allocation through terminal status; maximum 10m |
-| `order-rate` | `0.5` | Initial new order starts per second, 0–100 with at most three decimals; one order is in flight |
+| `order-rate` | `0.5` | Initial starts per second, 0–30 with at most three decimals; lab-qualified operating cap |
+| `submission-concurrency` | `4` | Allocation-plus-PUT slots, 1–12 |
+| `observer-concurrency` | `2` | Independent status polling slots, 1–12 |
+| `max-non-terminal-orders` | `100` | Backpressure limit including outstanding submissions; at least submission concurrency and at most 10,000 |
 | `poll-interval` | `250ms` | Delay between pending status reads |
 | `max-attempts` | `5` | At most 1–10 attempts per ordinary HTTP operation |
 | `retry-backoff`, `max-retry-backoff` | `100ms`, `2s` | Exponential base/cap, with 50–100% jitter; cap at most 30s |
+
+The control status `producer` object exposes `submissionConcurrency`,
+`observerConcurrency`, `maxNonTerminalOrders`, `nonTerminalBacklog`, `backpressured`,
+`recoveredOrders`, `confirmedOrders` and `cancelledOrders`. `writeLatency` measures allocation through PUT acceptance;
+`sagaLatency` measures allocation through terminal observation. Both report lifetime `samples` and rolling `meanMillis` and `p95Millis` over the
+last 1,024 new orders; replay is excluded.
+Order also exposes per-JVM `GET /internal/order/write-metrics`: `allocation` and
+`put` each report `requests`, `errors`, `sampleSize`, `p50Millis`, `p95Millis` and
+`maxMillis` over the last 4,096 completed requests, from body reading through response
+writing. Query each HTTP pod to assess both replicas. This internal endpoint uses
+the service's existing trust boundary. The 30 starts/s operating cap follows the
+[step 4.14 lab measurements](CHANGELOG.md#step-414): target 10 achieved 9.78 new
+orders/s with a final rolling write p95 of 91.42 ms; target 30 achieved 29.45/s
+with a write p95 of 93.73 ms and bounded order, outbox and profit backlogs. These
+short retained-stock runs include stock cancellations; they are not a guarantee
+for every host or an indefinitely stocked catalog. The default remains 0.5/s.
+Four submission slots were sufficient for that rate. The concurrency limit of 12
+matches one HTTP JVM's aggregate database pool budget: four connections per shard.
+Additional HTTP requests can wait up to one second for a connection before `503`;
+the pool does not reject every thirteenth concurrent request immediately.
+
+Stock is finite: `catalog-v2` starts with 1,000 units per product, 201,000 in total,
+and seeder reruns never replenish it. With the normal equal-region currency mix,
+an order requests approximately 5.85 units on average (three items of mean quantity
+two, except the one-product VND currency). Before shortages, 10 orders/s requests
+about 58.5 units/s; 30 orders/s requests about 175.6 units/s. The single VND product
+is the first expected bottleneck: its 100 orders per 2,700-order cycle consume
+about 0.074 units per overall order. Fresh VND stock lasts approximately 22.5
+minutes at 10/s, 7.5 minutes at 30/s, or 7.5 hours at the unchanged 0.5/s default.
+The four KRW products last approximately 30 minutes at 10/s. These are workload
+averages, not expiry guarantees; deterministic quantities and retained stock change
+the actual boundary. Report confirmations and stock cancellations separately in
+capacity measurements so exhausted stock does not masquerade as faster ledger work.
 
 All durations must be positive. Connection timeout is at most 30s, request timeout
 at most 1m, and poll interval at most 30s. The producer logs
@@ -1035,9 +1075,14 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pinteg
 
 ## Saga deployment and end-to-end verification (step 4.9)
 
-The application Helm release deploys two product pods and one pod each for order,
-ledger, the reader and the order producer, plus its seeder Job. Order uses
-`Recreate` so its three embedded CDC readers never overlap during a rollout.
+The application Helm release deploys two product pods, two order HTTP pods and one
+pod each for order saga, ledger, the reader, the order producer and the interactive
+seeder, plus its bootstrap seeder Job.
+The HTTP Deployment uses `RollingUpdate`; `shardshop-order-saga` uses one replica
+and `Recreate` so its three embedded CDC readers never overlap during a rollout.
+Both use the same image, selected by `shardshop.order.process=http|saga` (default
+`http`). Only saga runs stock/profit workers, CDC and the result consumer. Each
+JVM reserves its own generator slot.
 Its offsets and reader history remain in the shard databases; no pod-local volume
 holds CDC progress. Ledger consumes commands and publishes saved results against
 its separate database. Its command-mode JVM needs no HTTP Service.
@@ -1087,16 +1132,18 @@ the explicit saga drill below.
 Prepare the [verification snapshot](#kind-verification-snapshot-step-315) and run
 the explicit saga drill for duplicate delivery, permanent rejection replay after
 transport cleanup and a temporary EUR allowlist, two orders for the same stock,
-and CDC resumption after moving order to another worker:
+CDC resumption after moving saga to another worker, an HTTP rollout that preserves
+the saga pod and CDC active PIDs, and a saga restart while writes continue:
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
     -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-saga-drill
 ```
 
-The drill pauses the producer while exercising its own orders and restores the
-temporary deployment settings afterward. The lab runs one order replica with one
-stock worker thread, thus the two orders reserve stock in sequence, not in a race.
+The three drill scenarios restore temporary deployment settings afterward. The
+business-invariant scenario pauses the producer while exercising its own orders;
+the rollout and restart scenarios keep writes running. The lab has one saga replica
+with one stock worker thread, so its stock reservations run in sequence.
 The retained lab has one catalog shard per region, and each permitted currency belongs to one shard.
 Its two-item stock-failure check therefore verifies atomic rollback within that shard: an oversized
 second item leaves both stocks unchanged, with no reservation rows or profit credits. The step 4.2
@@ -2010,7 +2057,7 @@ invocation; the suite does not create or reconcile the lab.
 
 The `kind` profile defaults to `kind-deployment`, which combines `kind-topology`,
 `kind-workload` and `kind-saga`. It needs an already-migrated and deployed lab
-with all six running application pods. The saga scenario creates two scoped orders
+with all nine running application pods. The saga scenario creates two scoped orders
 for the gate's own buyer; the other scenarios only observe. With the snapshot
 above, run the default suite separately from the Testcontainers `integration`
 profile:
@@ -2062,9 +2109,9 @@ fails, the lock stays and the report identifies the remaining temporary changes.
 After an unclean process termination, ensure no drill is running, inspect the
 report and lock, restore fenced instances and wait for database/product readiness,
 then remove only the drill's temporary Jobs, SQL objects and slots before releasing
-the lock. After a saga drill, also restore one replica each of the order and order
+the lock. After a saga drill, also restore two order HTTP replicas and one replica each of the order saga and order
 producer Deployments. Remove the drill's `SHARDSHOP_LEDGER_ALLOWED_CURRENCIES` variable
-from the ledger Deployment and the drill's `nodeSelector` from the order Deployment.
+from the ledger Deployment and the drill's `nodeSelector` from the order saga Deployment.
 Helm does not remove these out-of-band additions, thus `up.sh` stops at
 `kind-drills-idle` until you release the lock. Never restore an older generator
 registry or lower `highWaterMark`.

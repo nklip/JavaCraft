@@ -10,7 +10,7 @@ public final class KindDeploymentSteps {
     @Then("both product pods receive reads and the reader reports a fresh clean interval")
     public void workload() throws IOException, InterruptedException { new KindDeployment().workload(); }
 
-    @Then("order, ledger and the HTTP-only producer are deployed with durable CDC offsets")
+    @Then("two order HTTP replicas, the saga, ledger and HTTP-only producer are deployed with durable CDC offsets")
     public void sagaDeployed() throws IOException, InterruptedException { new KindSaga().deployed(); }
 
     @Then("the gate's own USD and EUR orders are confirmed with ledger, stock and seller profit effects")

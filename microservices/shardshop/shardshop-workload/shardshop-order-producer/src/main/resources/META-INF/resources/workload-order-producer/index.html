@@ -31,7 +31,7 @@
             <button id="increase" class="step-button" type="button" aria-label="Increase the target rate by one step">+</button>
             <button id="apply" type="submit">Apply</button>
           </div>
-          <span class="control-help"><span id="rate-help">0 to 100 new order starts/s; 0 stops new orders.</span> <span id="rate-error" class="field-error" role="alert"></span></span>
+          <span class="control-help"><span id="rate-help">0 to 30 new order starts/s; 0 stops new orders.</span> <span id="rate-error" class="field-error" role="alert"></span></span>
         </div>
         <div class="pause-control">
           <span class="control-label">New orders</span>
@@ -49,9 +49,16 @@
       <dl class="metrics">
         <div><dt>Effective target</dt><dd id="effective">—</dd></div>
         <div><dt>Achieved rate</dt><dd id="achieved">—</dd></div>
-        <div><dt>In flight</dt><dd id="in-flight">—</dd></div>
+        <div><dt>Submissions in flight</dt><dd id="in-flight">—</dd></div>
         <div><dt>Backend requests</dt><dd id="requests">—</dd></div>
         <div><dt>Backend errors</dt><dd id="errors">—</dd></div>
+      </dl>
+      <dl class="metrics" aria-label="Order progress and latency">
+        <div><dt>Non-terminal backlog</dt><dd id="producer-backlog">—</dd></div>
+        <div><dt>Backpressure</dt><dd id="producer-backpressure">—</dd></div>
+        <div><dt>Write latency</dt><dd id="producer-write-latency">—</dd></div>
+        <div><dt>Saga latency</dt><dd id="producer-saga-latency">—</dd></div>
+        <div><dt>Recovered orders</dt><dd id="producer-recovered">—</dd></div>
       </dl>
       <p id="limit" class="notice" hidden></p>
       <div id="message" class="message" role="status" hidden></div>
@@ -82,10 +89,11 @@
         <h2>About this control</h2>
         <ul>
           <li><strong>Rate</strong> counts new orders. Allocation, submission, status polling, retries and startup traffic are separate rows below.</li>
-          <li><strong>One order</strong> is in flight at a time: when orders take longer than the target interval, a notice shows the reachable rate.</li>
+          <li><strong>Submissions</strong> run concurrently within the configured bound. A separate bounded observer reads pending orders, and a full backlog holds new submissions until the saga catches up.</li>
           <li><strong>Setting</strong> lives in the workload process. Refreshing or closing this page keeps it; a process restart restores the default rate, unpaused.</li>
           <li><strong>Pause</strong> lets the operations in flight finish within their deadlines; zero also stops new work. A change never sends missed work later.</li>
-          <li><strong>Pause</strong> finishes observing the current order before it stops new allocations. Run name, ordinals, IDs, retry keys and currencies do not change.</li>
+          <li><strong>Pause</strong> stops new submissions and drains the writes in flight. The observer continues until pending orders are terminal. Run name, ordinals, IDs, retry keys and currencies do not change.</li>
+          <li><strong>Latency</strong> excludes recovered orders. Write measures allocation plus PUT; saga measures allocation start to observed terminal status, including polling. Pacing and backpressure waits are excluded.</li>
         </ul>
       </div>
     </aside>

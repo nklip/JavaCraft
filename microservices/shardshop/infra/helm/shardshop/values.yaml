@@ -103,10 +103,13 @@ productReader:
       cpu: "2"
       memory: 384Mi
 
-# Initial saga budgets include three embedded Debezium readers in the order JVM.
-# Step 4.9 lab peaks: order 358 MiB, ledger 158 MiB, producer 139 MiB.
+# The HTTP and singleton saga processes use the same bounded per-pod budget.
+# The saga budget includes three embedded Debezium readers.
 order:
-  configuration: {}
+  configuration:
+    # Keep confirmed-sale profit posting bounded while draining the measured concurrent order load.
+    shardshop.order.profit.poll-interval: 100ms
+    shardshop.order.profit.batch-size: "32"
   resources:
     requests:
       cpu: 250m
@@ -134,6 +137,9 @@ orderProducer:
   runName: ""
   configuration:
     SHARDSHOP_PRODUCER_REJECTED_ORDER_PERCENT: "-1"
+    SHARDSHOP_PRODUCER_SUBMISSION_CONCURRENCY: "4"
+    SHARDSHOP_PRODUCER_OBSERVER_CONCURRENCY: "2"
+    SHARDSHOP_PRODUCER_MAX_NON_TERMINAL_ORDERS: "100"
   resources:
     requests:
       cpu: 100m

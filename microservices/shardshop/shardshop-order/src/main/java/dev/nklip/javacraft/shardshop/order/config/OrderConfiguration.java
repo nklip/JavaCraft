@@ -9,6 +9,12 @@ import java.util.Optional;
 
 @ConfigMapping(prefix = "shardshop.order")
 public interface OrderConfiguration {
+    /** Runtime selection; HTTP never starts any saga worker, even when its feature flag is enabled. */
+    @WithDefault("http")
+    Process process();
+
+    enum Process { HTTP, SAGA }
+
     @WithDefault("4")
     int maxPoolSize();
 

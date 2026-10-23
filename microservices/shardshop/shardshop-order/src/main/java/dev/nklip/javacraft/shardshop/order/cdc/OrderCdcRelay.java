@@ -14,6 +14,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -69,13 +71,43 @@ public final class OrderCdcRelay implements AutoCloseable {
         }
     }
 
+    /** Finishes engine shutdown before the caller releases the shard ownership connection. */
+    static Exception stopEngine(DebeziumEngine<?> created, Thread running) {
+        Exception closeFailure = null;
+        // An interrupted supervisor must not pass its interruption into Debezium's blocking cleanup.
+        boolean interrupted = Thread.interrupted();
+        try {
+            while (running.isAlive()) {
+                try {
+                    created.close();
+                } catch (IllegalStateException lifecycleRace) {
+                    // AsyncEmbeddedEngine rejects close during STARTING_TASKS and STOPPING. Retry after
+                    // startup, or let its ongoing shutdown finish, under the same shard ownership lock.
+                } catch (Exception failedToClose) {
+                    closeFailure = failedToClose;
+                }
+                try {
+                    // Debezium bounds task and record shutdown itself. Interrupting this thread would
+                    // cancel connector cleanup and leave its separate replication stream alive.
+                    running.join(1_000);
+                } catch (InterruptedException stop) {
+                    interrupted = true;
+                }
+            }
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        return closeFailure;
+    }
+
     private final class Reader implements Runnable {
         private final ShardSettings settings;
         private final BrokerSettings rabbit;
         private final CdcStore store;
         private final Thread supervisor;
-        private volatile DebeziumEngine<ChangeEvent<String, String>> engine;
-        private volatile Thread engineThread;
+        private final CountDownLatch stopRequested = new CountDownLatch(1);
         private volatile boolean recoveryRequired;
 
         Reader(ShardSettings settings, BrokerSettings rabbit) {
@@ -90,19 +122,9 @@ public final class OrderCdcRelay implements AutoCloseable {
         }
 
         void stop() {
-            supervisor.interrupt();
-            Thread running = engineThread;
-            if (running != null) {
-                running.interrupt();
-            }
-            DebeziumEngine<ChangeEvent<String, String>> current = engine;
-            if (current != null) {
-                try {
-                    current.close();
-                } catch (Exception ignored) {
-                    // The supervisor also closes the engine and retains its source offset.
-                }
-            }
+            // Wake retry backoff without interrupting a supervisor that may already be closing the
+            // engine. Its one-second monitoring join observes closed and enters the same cleanup path.
+            stopRequested.countDown();
         }
 
         void awaitStop() {
@@ -140,7 +162,7 @@ public final class OrderCdcRelay implements AutoCloseable {
                 }
                 if (!closed.get() && !recoveryRequired) {
                     try {
-                        Thread.sleep(backoff);
+                        stopRequested.await(backoff, TimeUnit.MILLISECONDS);
                     } catch (InterruptedException interrupted) {
                         if (closed.get()) {
                             break;
@@ -173,10 +195,8 @@ public final class OrderCdcRelay implements AutoCloseable {
                                 }
                             })
                             .build();
-                    engine = created;
                     Thread running = Thread.ofPlatform().daemon().name("order-cdc-engine-" + settings.shard())
                             .unstarted(created);
-                    engineThread = running;
                     Exception closeFailure = null;
                     try {
                         running.start();
@@ -190,29 +210,7 @@ public final class OrderCdcRelay implements AutoCloseable {
                             }
                         }
                     } finally {
-                        try {
-                            if (running.isAlive()) {
-                                created.close();
-                            }
-                        } catch (Exception failedToClose) {
-                            closeFailure = failedToClose;
-                        } finally {
-                            // Never release the session lock while the previous reader can still write offsets.
-                            boolean interrupted = false;
-                            while (running.isAlive()) {
-                                running.interrupt();
-                                try {
-                                    running.join(1_000);
-                                } catch (InterruptedException stop) {
-                                    interrupted = true;
-                                }
-                            }
-                            if (interrupted) {
-                                Thread.currentThread().interrupt();
-                            }
-                        }
-                        engineThread = null;
-                        engine = null;
+                        closeFailure = stopEngine(created, running);
                     }
                     if (processor.failure() != null) {
                         throw new IllegalStateException("CDC batch stopped before checkpoint", processor.failure());

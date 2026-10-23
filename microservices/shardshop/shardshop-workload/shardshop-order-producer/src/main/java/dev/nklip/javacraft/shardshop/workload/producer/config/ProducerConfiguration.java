@@ -28,14 +28,22 @@ public interface ProducerConfiguration {
     @WithDefault("5s")
     Duration requestTimeout();
     /**
-     * Initial new order starts per second, 0..100 with at most three decimals; zero starts paused. One order is in
-     * flight at a time. The control page changes the live rate; a restart returns to this value.
+     * Initial new order starts per second, 0..30 with at most three decimals; zero starts paused. The control page changes the live rate; a restart returns to this value.
      */
     @WithDefault("0.5")
     BigDecimal orderRate();
+    /** Concurrent allocation + PUT operations; 1..12. */
+    @WithDefault("4")
+    int submissionConcurrency();
+    /** Concurrent status requests; 1..12, independent of writes. */
+    @WithDefault("2")
+    int observerConcurrency();
+    /** Reserves capacity for writes as well as accepted non-terminal orders; concurrency..10000. */
+    @WithDefault("100")
+    int maxNonTerminalOrders();
     @WithDefault("250ms")
     Duration pollInterval();
-    /** Complete allocation, submission, retries and terminal polling budget for one ordinal. */
+    /** Complete allocation, submission and observation budget for one ordinal, excluding pacing/backpressure waits. */
     @WithDefault("60s")
     Duration orderDeadline();
     /** Separate complete budgets for catalog resolution and creation/recovery of all buyers. */
