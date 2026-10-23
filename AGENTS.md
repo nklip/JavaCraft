@@ -19,7 +19,7 @@
 
 ## 1) How to work in this repo
 
-- Read the root README, the affected module's README when present, and the nearest relevant ARCHITECTURE.md when present. Inspect comparable code and tests within that module.
+- Read the root README, the affected module's README and RUNBOOK.md when present, and the nearest relevant ARCHITECTURE.md when present. Inspect comparable code and tests within that module.
 - Keep changes scoped to the requested feature or bugfix.
 - Resolve requirements and integration boundaries from the request and repository. Ask only when unresolved ambiguity materially affects correctness or scope.
 - Preserve the Java compiler release configured in the applicable POM unless an upgrade is requested; a newer available JDK alone is not a reason to change the target.

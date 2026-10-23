@@ -1,0 +1,385 @@
+{
+  "date": "2026-10-23",
+  "environment": {
+    "physicalMemoryGB": 16,
+    "dockerCPUs": 12,
+    "dockerMemoryBytes": 13580972032,
+    "hostSwapUsedMiBDuringRun": 20669.12,
+    "steadyPods": 36,
+    "productReplicas": 2,
+    "readerWorkers": 16,
+    "readerMaxConnections": 16,
+    "readProfile": "primary",
+    "catalogProductsByRegion": {
+      "US": 50,
+      "EU": 100,
+      "ASIA": 51
+    },
+    "concurrentNewOrders": 0,
+    "interactiveSeeder": "idle",
+    "metricsAPI": "unavailable; no per-pod CPU saturation inference"
+  },
+  "criteria": {
+    "windows": 3,
+    "windowSeconds": 30,
+    "warmupSeconds": 30,
+    "minimumTargetFraction": 0.95,
+    "p95MillisBelow": 100,
+    "outcomes": "all OK"
+  },
+  "phases": [
+    {
+      "target": 500,
+      "started": 1792757011.6003652,
+      "reports": [
+        {
+          "at": 1792757093.716243,
+          "seconds": 30.0,
+          "requests": 14671,
+          "rate": 489.0,
+          "outcomes": {
+            "OK": 14671
+          },
+          "latencyMillis": {
+            "p50": 2,
+            "p95": 6,
+            "p99": 56,
+            "max": 122
+          },
+          "regions": {
+            "ASIA": 3793,
+            "EU": 7291,
+            "US": 3587
+          },
+          "pool": {
+            "leased": 2,
+            "pending": 0,
+            "available": 14,
+            "max": 16
+          }
+        },
+        {
+          "at": 1792757123.714397,
+          "seconds": 30.0,
+          "requests": 14550,
+          "rate": 485.0,
+          "outcomes": {
+            "OK": 14550
+          },
+          "latencyMillis": {
+            "p50": 2,
+            "p95": 14,
+            "p99": 64,
+            "max": 144
+          },
+          "regions": {
+            "ASIA": 3702,
+            "EU": 7229,
+            "US": 3619
+          },
+          "pool": {
+            "leased": 1,
+            "pending": 0,
+            "available": 15,
+            "max": 16
+          }
+        },
+        {
+          "at": 1792757153.720566,
+          "seconds": 30.0,
+          "requests": 14611,
+          "rate": 487.0,
+          "outcomes": {
+            "OK": 14611
+          },
+          "latencyMillis": {
+            "p50": 2,
+            "p95": 8,
+            "p99": 54,
+            "max": 243
+          },
+          "regions": {
+            "ASIA": 3734,
+            "EU": 7254,
+            "US": 3623
+          },
+          "pool": {
+            "leased": 0,
+            "pending": 0,
+            "available": 16,
+            "max": 16
+          }
+        }
+      ],
+      "passed": true
+    },
+    {
+      "target": 1000,
+      "started": 1792757165.126864,
+      "reports": [
+        {
+          "at": 1792757243.720452,
+          "seconds": 30.0,
+          "requests": 28523,
+          "rate": 950.7,
+          "outcomes": {
+            "OK": 28523
+          },
+          "latencyMillis": {
+            "p50": 2,
+            "p95": 10,
+            "p99": 40,
+            "max": 203
+          },
+          "regions": {
+            "ASIA": 7221,
+            "EU": 14255,
+            "US": 7047
+          },
+          "pool": {
+            "leased": 1,
+            "pending": 0,
+            "available": 15,
+            "max": 16
+          }
+        },
+        {
+          "at": 1792757273.719,
+          "seconds": 30.0,
+          "requests": 28973,
+          "rate": 965.8,
+          "outcomes": {
+            "OK": 28973
+          },
+          "latencyMillis": {
+            "p50": 2,
+            "p95": 7,
+            "p99": 26,
+            "max": 139
+          },
+          "regions": {
+            "ASIA": 7300,
+            "EU": 14447,
+            "US": 7226
+          },
+          "pool": {
+            "leased": 1,
+            "pending": 0,
+            "available": 15,
+            "max": 16
+          }
+        },
+        {
+          "at": 1792757303.719434,
+          "seconds": 30.0,
+          "requests": 29188,
+          "rate": 972.9,
+          "outcomes": {
+            "OK": 29188
+          },
+          "latencyMillis": {
+            "p50": 2,
+            "p95": 6,
+            "p99": 24,
+            "max": 128
+          },
+          "regions": {
+            "ASIA": 7417,
+            "EU": 14467,
+            "US": 7304
+          },
+          "pool": {
+            "leased": 1,
+            "pending": 0,
+            "available": 15,
+            "max": 16
+          }
+        }
+      ],
+      "passed": true
+    },
+    {
+      "target": 2000,
+      "started": 1792757307.625728,
+      "reports": [
+        {
+          "at": 1792757393.72123,
+          "seconds": 30.0,
+          "requests": 57041,
+          "rate": 1901.3,
+          "outcomes": {
+            "OK": 57041
+          },
+          "latencyMillis": {
+            "p50": 2,
+            "p95": 5,
+            "p99": 15,
+            "max": 927
+          },
+          "regions": {
+            "ASIA": 14504,
+            "EU": 28271,
+            "US": 14266
+          },
+          "pool": {
+            "leased": 16,
+            "pending": 0,
+            "available": 0,
+            "max": 16
+          }
+        },
+        {
+          "at": 1792757423.728729,
+          "seconds": 30.0,
+          "requests": 55231,
+          "rate": 1841.1,
+          "outcomes": {
+            "OK": 55231
+          },
+          "latencyMillis": {
+            "p50": 2,
+            "p95": 9,
+            "p99": 27,
+            "max": 198
+          },
+          "regions": {
+            "ASIA": 13962,
+            "EU": 27376,
+            "US": 13893
+          },
+          "pool": {
+            "leased": 3,
+            "pending": 0,
+            "available": 13,
+            "max": 16
+          }
+        },
+        {
+          "at": 1792757453.72008,
+          "seconds": 30.0,
+          "requests": 54939,
+          "rate": 1831.3,
+          "outcomes": {
+            "OK": 54939
+          },
+          "latencyMillis": {
+            "p50": 2,
+            "p95": 9,
+            "p99": 25,
+            "max": 286
+          },
+          "regions": {
+            "ASIA": 13878,
+            "EU": 27453,
+            "US": 13608
+          },
+          "pool": {
+            "leased": 1,
+            "pending": 0,
+            "available": 15,
+            "max": 16
+          }
+        }
+      ],
+      "passed": false
+    },
+    {
+      "target": 1500,
+      "started": 1792757460.7948742,
+      "reports": [
+        {
+          "at": 1792757543.6571,
+          "seconds": 30.0,
+          "requests": 43111,
+          "rate": 1437.0,
+          "outcomes": {
+            "OK": 43111
+          },
+          "latencyMillis": {
+            "p50": 2,
+            "p95": 5,
+            "p99": 19,
+            "max": 125
+          },
+          "regions": {
+            "ASIA": 10994,
+            "EU": 21252,
+            "US": 10865
+          },
+          "pool": {
+            "leased": 1,
+            "pending": 0,
+            "available": 15,
+            "max": 16
+          }
+        },
+        {
+          "at": 1792757573.658029,
+          "seconds": 30.0,
+          "requests": 43463,
+          "rate": 1448.8,
+          "outcomes": {
+            "OK": 43463
+          },
+          "latencyMillis": {
+            "p50": 1,
+            "p95": 5,
+            "p99": 16,
+            "max": 118
+          },
+          "regions": {
+            "ASIA": 11097,
+            "EU": 21522,
+            "US": 10844
+          },
+          "pool": {
+            "leased": 1,
+            "pending": 0,
+            "available": 15,
+            "max": 16
+          }
+        },
+        {
+          "at": 1792757603.732525,
+          "seconds": 30.0,
+          "requests": 42525,
+          "rate": 1417.4,
+          "outcomes": {
+            "OK": 42525
+          },
+          "latencyMillis": {
+            "p50": 2,
+            "p95": 8,
+            "p99": 23,
+            "max": 296
+          },
+          "regions": {
+            "ASIA": 10891,
+            "EU": 21036,
+            "US": 10598
+          },
+          "pool": {
+            "leased": 1,
+            "pending": 0,
+            "available": 15,
+            "max": 16
+          }
+        }
+      ],
+      "passed": false
+    }
+  ],
+  "restoredControls": {
+    "product-reader": {
+      "targetRate": 200,
+      "paused": false,
+      "state": "RUNNING"
+    },
+    "order-producer": {
+      "targetRate": 0.5,
+      "paused": false,
+      "state": "RUNNING"
+    }
+  },
+  "qualification": "Highest passing target 1,000/s; 1,500/s and 2,000/s undersupply target. This does not establish product/database saturation or a simultaneous read/write maximum."
+}
