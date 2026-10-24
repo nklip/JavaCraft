@@ -315,7 +315,9 @@ budget, while `basic.reject(requeue=true)` spends it, and malformed-message
 rejection parks immediately. Test containers and their temporary volumes are
 removed on completion. The test-only Java client uses its socket transport.
 
-The full operational drills of the broker are planned in step 5.4.
+The [retry and DLQ capacity drills](../shardshop-testing/RUNBOOK.md#retry-and-dlq-capacity-drills)
+exercise shard-outage recovery and real application outbox backpressure under an
+unbound or full DLQ, using the shared guard to restore temporary settings.
 
 ## Stop and resume the cluster
 

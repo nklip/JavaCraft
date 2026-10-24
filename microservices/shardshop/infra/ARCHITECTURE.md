@@ -5,12 +5,13 @@
 The infrastructure layer creates, deploys, verifies, stops and destroys the local
 kind lab. It also defines the runtime topology and the RabbitMQ delivery policy.
 
-- **Status:** the local lifecycle, topology and delivery policies are implemented
-  through [PLAN steps 3.20 and 4.14](../PLAN.md). Recovery/reconciliation,
-  transport cleanup, complete failover/restore drills and optional AWS delivery
-  remain planned in milestones 5–7. Requirements below retain those target
-  guarantees; they do not claim that the future recovery tools or every acceptance
-  scenario already exist.
+- **Status:** the local lifecycle, topology and delivery policies are implemented,
+  together with durable reconciliation, transport cleanup, manual retry reset
+  and qualified retry/capacity recovery in [PLAN steps 5.1–5.4](../PLAN.md).
+  Complete crash, failover/restore and optional AWS delivery checks remain planned
+  in milestones 5–7. Requirements below retain
+  those target guarantees; they do not claim every acceptance scenario already
+  passes.
 
 ## Platform and versions
 
@@ -227,6 +228,7 @@ with a Java controller.
 | `kind-database-drill` | Explicit `kind-drill` | Standby replacement, quorum availability/blocking and WAL retention on the first inventory shard, or `shardshop.kind.drillShard` |
 | `kind-workload-drill` | Explicit `kind-drill` | Repeated temporary seeder Jobs, identical saved IDs and the replacement of one product pod |
 | `kind-saga-drill` | Explicit `kind-drill` | Duplicate delivery, policy-change replay, two orders for the same stock and cross-worker saga replacement |
+| `kind-retry-drill` | Explicit `kind-drill` | Shard outage beyond broker retries, reconciliation, and unbound/full DLQ pressure on both application publishers; see the [retry runbook](../shardshop-testing/RUNBOOK.md#retry-and-dlq-capacity-drills) |
 
 **Default profile.** `kind-workload` checks credential restrictions, the saved
 151 seller/201 product IDs of `catalog-v2` (only the retained 150/300 `catalog-v1`
@@ -436,7 +438,7 @@ uses one of the result IDs it reserved for that saga's command envelopes.
 ### Broker version
 
 The reviewed community baseline is RabbitMQ **4.3.6**, with a pinned image digest
-and the compatible bundled **Erlang/OTP 27.3.4.17** runtime, for native quorum delayed
+and the compatible bundled **Erlang/OTP 27.3.4.19** runtime, for native quorum delayed
 retry. This is a rolling-support component, not a multi-year LTS release. Recheck
 the maintained GA release and runtime matrix under [VERSIONS.md](../VERSIONS.md)
 before pinning; earlier broker versions need a separately specified retry design. See
@@ -509,12 +511,15 @@ quorum queue type alone does not give a single broker high availability.
 
 ### Retry budget
 
-The documented retry formula is `min(delayed-retry-min * delivery_count,
-delayed-retry-max)`: counts 1-5 imply delays of 1-5 seconds, approximately 15
-seconds of delay plus processing time. The documentation's worked example is
-inconsistent with that formula; [scenario 7](../shardshop-testing/ARCHITECTURE.md#scenario-7)
-must measure rejection counts, redelivery timestamps, and the exact delivery-limit
-boundary on the pinned broker.
+The retry formula is `min(delayed-retry-min * delivery_count,
+delayed-retry-max)`: counts 1–5 imply delays of 1–5 seconds, approximately 15
+seconds of delay plus processing time. The pinned RabbitMQ 4.3.6/OTP 27.3.4.19
+measurement confirms five delayed redeliveries and parking on the sixth rejection:
+15.176 seconds for commands and 15.185 seconds for results, including client/broker
+IO. The [dated evidence](../CHANGELOG.md#step-54) records each delay;
+the [retry runbook](../shardshop-testing/RUNBOOK.md#retry-and-dlq-capacity-drills)
+provides the repeatable check. Application processing during an outage adds time
+to this broker delay budget.
 
 This is a short transient-retry budget. Longer outages, including primary
 failover and a synchronous wait while both standbys are down, are expected to
@@ -557,7 +562,7 @@ an order.
   first and monitor capacity; never downgrade to drop-head or classic
   dead-lettering. See [quorum retry and dead-letter semantics](https://www.rabbitmq.com/docs/quorum-queues).
 - **Parked messages.** Never publish parked messages again. The
-  [planned reconciliation contract](../shardshop-order/ARCHITECTURE.md#reconciliation-and-replayed-outcomes)
+  [reconciliation contract](../shardshop-order/ARCHITECTURE.md#reconciliation-and-replayed-outcomes)
   creates their commands and results again from saga state and permanent ledger
   decisions. After the last automatic attempt, only a manual reconciliation reset
   or a restore continues the saga.

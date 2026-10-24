@@ -11,6 +11,7 @@ Feature: RabbitMQ provisioning and delivery reliability
     Then RabbitMQ exposes the pinned runtime, effective topology and readiness contract
     And RabbitMQ rejects guest and restricts order and ledger to their own messaging operations
 
+  @broker-retry-timing
   Scenario Outline: Native failed retries preserve their bounded budget
     Then native reject retries "<queue>" at the configured delays and delivery limit while nack does not count as failure
 

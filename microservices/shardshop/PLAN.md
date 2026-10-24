@@ -8,14 +8,14 @@ vectors do not mean the corresponding application behavior is implemented.
 
 ### Current position
 
-- **Completed:** milestones 0–4 and steps 5.1–5.3. The current deployment has
+- **Completed:** milestones 0–4 and steps 5.1–5.4. The current deployment has
   two order HTTP pods and one separate `shardshop-order-saga` pod, using the same
   order image. The [overview](ARCHITECTURE.md) and module designs describe current
   behavior; dated completion notes below describe what passed at that time.
-- **Next:** step **5.4, retry and capacity drills**. Durable reconciliation,
-  transport cleanup and manual reset are implemented. Qualify broker retry timing,
-  parking and retained-source pressure, then recovery after the retry window.
-- **Remaining:** milestone 5 completes recovery and cleanup; milestone 6 qualifies
+- **Next:** step **5.5, crash recovery and observability**. Reconciliation,
+  transport cleanup, manual reset and retry/capacity recovery are verified.
+  Complete the crash-boundary drills and expose the remaining recovery metrics.
+- **Remaining:** milestone 5 completes crash recovery and observability; milestone 6 qualifies
   replica reads, failover, backup/restore and HTTP/2. AWS remains optional and
   starts only after local step 6.6. These steps remain **Planned**.
 - **Capacity baseline:** step 4.14 measured 29.45 new accepted orders/s, including
@@ -309,7 +309,7 @@ reader; step 4.9 adds order, ledger and the order producer when they are functio
 | 5.1 Durable saga reconciliation | 4.14 | Done | Implement the [persisted reconciliation schedule](shardshop-order/ARCHITECTURE.md#reconciliation-schedule) in `shardshop-order-saga`; HTTP replicas run no background loops. Reuse the existing saga columns and permanent replay identities. Under the saga lock, re-check state, eligibility and the five-attempt budget; reuse an unpublished command without consuming another attempt. Replay preserves logical identity and the immutable snapshot. Injected-clock tests cover the 60/120/240/300/300-second waits, exhausted-budget alerts, restarts and removal of eligible published outbox rows without a sixth automatic enqueue. Lost results recover through stored ledger outcomes. Production transport cleanup belongs to 5.2. **2026-10-24:** scoped verification and 40 packaged recovery/CDC/stock scenarios passed, including all four reconciliation cases; see [evidence](CHANGELOG.md#step-51). |
 | 5.2 Safe transport cleanup | 5.1 | Done | Implement the [retention rules](database/ARCHITECTURE.md#retention). Order outbox cleanup requires both confirmed publication and a durable CDC checkpoint past the insert. Preserve permanent business/replay identities, reconciliation counters, reservation history and closed guards, unpublished messages and unresolved quarantine. Cleanup deletes never become commands. Verify duplicate-command/result recovery after transport rows are removed, without duplicate stock, ledger or profit effects. **2026-10-24:** scoped verification and all 18 selected cleanup, migration, publisher and reconciliation scenarios passed, including exact replay after cleanup and concurrent rearm preservation; see [evidence](CHANGELOG.md#step-52). |
 | 5.3 Manual reconciliation reset | 5.2 | Done | **2026-10-24:** native `psql` resets one explicit pending order/saga pair under the order advisory and saga row locks, using a separate login restricted to the two retry columns. Repeated reset, terminal no-ops, contention, permissions and recorded/rejected replay after cleanup pass. The reset part of [scenario 7](shardshop-testing/ARCHITECTURE.md#scenario-7) is complete. Existing labs require foundation role reconciliation before the changed grants; see [step 5.3 evidence](CHANGELOG.md#step-53) and the [operator procedure](shardshop-order/RUNBOOK.md#manual-reconciliation-reset). |
-| 5.4 Retry and capacity drills | 5.3 | Planned | Complete the retry and capacity drills of [scenario 7](shardshop-testing/ARCHITECTURE.md#scenario-7) on the pinned broker: measure retry counts/timing and parking; hold a shard unavailable beyond the retry window and recover through DLQ plus reconciliation. Separately unbind and fill a DLQ while its broker/source stay running; prove retained-source pressure and negative confirms leave outboxes pending, then restore the binding or capacity and prove progress. Restore temporary settings through the existing drill guard. |
+| 5.4 Retry and capacity drills | 5.3 | Done | Complete the retry and capacity drills of [scenario 7](shardshop-testing/ARCHITECTURE.md#scenario-7) on the pinned broker: measure retry counts/timing and parking; hold a shard unavailable beyond the retry window and recover through DLQ plus reconciliation. Separately unbind and fill a DLQ while its broker/source stay running; prove retained-source pressure and negative confirms leave outboxes pending, then restore the binding or capacity and prove progress. Restore temporary settings through the existing drill guard. **2026-10-24:** both pinned-broker timing cases park on the sixth rejection after about 15.2 seconds. The shard-outage case and all four unbound/full DLQ cases pass, including same-outbox progress and exactly-once business effects. Seven final infrastructure/deployment/idle gates pass; temporary settings and owned diagnostics are cleaned up, and the prior running lab state is preserved. [Evidence and commands](CHANGELOG.md#step-54). |
 | 5.5 Crash recovery and observability | 5.4 | Planned | Complete [scenario 6](shardshop-testing/ARCHITECTURE.md#scenario-6), excluding promotion/failover owned by 6.2. Extend the existing saga-process drills from 4.14: crashes around database commit, broker confirmation, consumer acknowledgement and CDC checkpoints recover without duplicate effects while HTTP writes continue; an HTTP rollout preserves the saga and its slot ownership. Distinguish ordinary reconnect recovery from explicit recovery after slot/offset/WAL loss. Metrics expose stalled outboxes/CDC, pending or exhausted sagas, quarantine, queue capacity and pool/replication pressure. |
 
 ### Milestone 6: Read profiles, failover, restore, and operation
@@ -613,8 +613,9 @@ in-process loopback servers. Testcontainers tests run in the `integration` Maven
 profile, as the Cucumber scenarios of `shardshop-testing`. The step 3.15 `kind`
 profile verifies infrastructure safety, deployed routing/topology and workloads
 using an explicit invocation snapshot. Its default tag is `kind-deployment`;
-`kind-drill` selects all disruptive families (database, workload and saga);
+`kind-drill` selects all disruptive families (database, workload, saga and retry/capacity);
 `kind-saga-drill` narrows selection to the order-process recovery checks from 4.14.
+`kind-retry-drill` selects the shard-outage and DLQ capacity checks from 5.4.
 Both are opt-in and use the
 shared recovery guard. Turn
 every architecture acceptance scenario into a reproducible check, without adding scripts.

@@ -4702,3 +4702,245 @@ git diff --check
 Read-only `psql` queries through `kubectl exec` on the shard and ledger primaries
 gave the counts above. The test stopped all tunnels and removed its temporary
 password and CA files.
+
+## Step 5.4
+
+**2026-10-24:** added the explicitly selected `kind-retry-drill` suite for broker
+retry exhaustion and DLQ pressure. The existing `KindDrillGuard` owns recovery;
+no lifecycle entry point, application API, schema, dependency or deployment
+configuration was added.
+
+The shard-outage drill pauses the producer without replacing its JVM, prepares
+one confirmed-published command while ledger is stopped, fences the buyer shard's
+three instances, and resumes ledger. It inspects the exact parked result and its
+`delivery_limit` death reason, holds it unacknowledged while the shard returns,
+and requires automatic reconciliation to regenerate the immutable ledger result.
+The original diagnostic is acknowledged only after one ledger entry, reservation
+and profit effect are verified. Conditional patches preserve Cluster/Deployment
+identity and refuse to overwrite concurrent changes.
+
+Four capacity cases cover unbound and full DLQs for both the order CDC publisher
+and the ledger result relay. Temporary exact-queue policies lower message-count
+limits to eight while retaining the complete delivery policy. Marked malformed
+filler is rejected by the live consumers and retained by the dead-letter worker;
+the test distinguishes that retention from ready/unacknowledged consumer backlog.
+The broker negatively confirms further publishes, and a real accepted order's
+outbox remains unpublished after its publisher reports the negative confirm.
+Restoring the binding, or selectively acknowledging owned parking filler and
+restoring normal parking capacity, allows that same outbox to publish and the
+order to confirm while the source retains its low limit. Both source and parking
+limits return to their original policies. Broker Pod/container identity, restart
+count and clear resource alarms are checked throughout. The native 180-second
+internal dead-letter confirmation retry remains unchanged.
+
+Preconditions require healthy workloads, drained processing queues and empty
+selected DLQs. The drills reuse seeded catalog stock and existing buyers, preserve
+the producer's live rate/pause settings, and remove only owned filler or the
+inspected scoped result. They never purge a shared queue, replay a parked envelope,
+reset generator history or replenish stock. Scoped business orders remain as
+verification evidence. These drills measure finite queue pressure, not a new
+maximum sustainable order/read throughput.
+
+### Validation
+
+The existing lab was already running with steps 5.1–5.3 deployed. Verification
+used Maven 3.9.16, Oracle OpenJDK 25, macOS 26.6.2/aarch64 and the unchanged pinned
+images. The next version-review deadline remains 2026-10-28. No application build,
+image load, Helm release or database migration was required for this test-only
+implementation.
+
+The scoped unit and broker-timing run passed 291 common and 207 testing-module
+checks. Both selected broker scenarios passed; the other 148 were excluded by the
+tag filter. The pinned RabbitMQ 4.3.6/OTP 27.3.4.19 broker measured:
+
+| Source queue | Five reject-to-redelivery delays (ms) | Total from first rejection to DLQ (ms) |
+|---|---|---:|
+| `ledger.record-order` | 1020, 2006, 3019, 4031, 5024 | 15176 |
+| `order.ledger-results` | 1014, 2020, 3048, 4032, 5009 | 15185 |
+
+Each queue reported failure counts 0–5; the sixth rejection parked the message
+with `delivery_limit`. A preceding `basic.nack(requeue=true)` did not consume the
+failure budget. These measurements include client/broker IO; application failure
+processing adds its own time during an actual outage.
+
+The first live run passed shard-outage recovery and the unbound result-DLQ case.
+Order `107456276258103296` parked result `107456277050822657` with
+`delivery_limit` and `x-delivery-count=6`, 23,687 ms after the harness observed its
+confirmed publication. This interval includes application work and observation
+latency; the disposable-broker measurements above isolate the retry delays.
+Recovery used one reconciliation attempt and two command/result bindings, with
+one ledger entry, reservation and profit effect. The exact immutable result was
+reproduced before the original parked diagnostic was acknowledged.
+
+Three initial capacity checks failed in the harness: allocation returned a
+transient HTTP 503 after the preceding shard outage, and both full-DLQ cases read
+sampled queue depth before it reflected the confirmed filler. Each failed check
+restored the prior broker configuration and removed its owned filler; all four
+queues were subsequently empty and the drill lock was absent. The harness now
+retries only documented transient allocation errors with the same identity,
+bounded attempts/time and jitter, and awaits the sampled depth after observing a
+negative confirm. It also excludes other orders' pending outboxes when attributing
+the publisher's failure log to the scoped order. No application behavior changed.
+
+The corrected capacity run observed these scoped outboxes under pressure:
+
+| DLQ condition | Source | Order ID | Original pending outbox ID | Retained source / parked messages |
+|---|---|---|---|---|
+| Unbound | `ledger.record-order` | `107459422808186880` | `107459423391191040` | 10 / 0 |
+| Full | `ledger.record-order` | `107460560047579136` | `107460561184231424` | 10 / 9 |
+| Unbound | `order.ledger-results` | `107461652433084416` | `107461653058031617` | 10 / 0 |
+| Full | `order.ledger-results` | `107462720831365120` | `107462721389203457` | 10 / 9 |
+
+Each source accepted ten marked fillers before its first negative confirm; full
+parking queues accepted nine before rejecting the next publish. This small
+overshoot is consistent with quorum admission limits including in-flight work;
+the test asserts pressure and rejection rather than an exact eight-message
+ceiling. Ready and unacknowledged source counts were zero while its total remained
+ten, identifying internally retained dead letters. CDC cases additionally observed
+a held durable checkpoint while publication failed. Broker identity remained
+`4369b802-c708-4935-9146-cf0cfff0ded0`, with the same container/restart count and no
+resource alarms.
+
+That four-case rerun passed both unbound cases and the full command-DLQ case.
+The full result-DLQ case timed out after 270 seconds while retaining the temporary
+eight-message parking limit: one native retry cycle released only one of the ten
+retained dead letters, so the next cycle would exceed the wait. Guard restoration
+again completed with empty queues and no retained lock. The final recovery path
+now removes owned parked filler and restores only the parking queue's original
+1,000-message capacity; the source stays at eight until the same outbox publishes
+and its order confirms. This restores the failed condition without creating a
+second full-DLQ condition during recovery. Both full cases are selected together
+by `kind-dlq-full` for regression verification.
+
+The first full-only rerun showed that capacity restoration alone did not make the
+270-second outbox wait sufficient: CDC still had nine retained dead letters after
+the first native retry. The result case confirmed its order, but its immediate
+post-acknowledgement counter check reported incomplete cleanup. Read-only checks
+then found all four queues empty, exactly the three original broker policies and
+all application Deployments ready; the retained lock was removed using its exact
+owner label, `15a4dc06-904a-4fe4-8442-9726dcb6713f`.
+
+The pinned [dead-letter worker](https://github.com/rabbitmq/rabbitmq-server/blob/v4.3.6/deps/rabbit/src/rabbit_fifo_dlx_worker.erl)
+checks each message's last-publish time on its 180-second timer. Sequential
+publishes can straddle a timer tick, which is consistent with the observed partial
+first retry. Full-DLQ outbox recovery now allows 450 seconds for two ticks plus
+application recovery; the broker configuration is unchanged. Cleanup also awaits
+empty sampled counters for up to 40 seconds after selective acknowledgements.
+Pressure, message ownership, same-outbox publication, business effects and broker
+health assertions remain intact.
+
+The final full-only rerun passed both scenarios, including guard cleanup:
+
+| Source | Order ID | Same original outbox ID | Restoration through verified recovery (ms) |
+|---|---|---|---:|
+| `ledger.record-order` | `107467652066189312` | `107467653429334016` | 362796 |
+| `order.ledger-results` | `107469538651545600` | `107469539180023809` | 178492 |
+
+Both again observed ten retained source messages, nine parked messages and
+negative confirms before restoration. The command case exercised the second
+timer tick that the earlier bound excluded. Recovery timings include application
+and broker verification, not just the broker timer. With the earlier successful
+outage and unbound cases, all five new drill scenarios have passing evidence.
+
+The final seven infrastructure, deployment and idle-drill gates passed: seeded
+catalog integrity, fresh clean reads through both product replicas, durable CDC
+and scoped USD/EUR saga completion, database readiness, broker topology, absence
+of the drill lock, and independent replicated shard topology. Final observations
+found all four queues empty, all 20 steady ShardShop pods Ready with zero container
+restarts, all three shards at 3/3 and ledger-db at 1/1. Ledger's intended temporary
+scale-down/recreation was restored to one replica; producer, reader, saga and
+broker retained their original pods. Producer controls were restored by the
+guard, and only the four previously running kind containers remain running;
+unrelated stopped containers were unchanged. The temporary verification snapshot
+was removed after the checks. Scoped business orders remain as evidence.
+
+Documentation verification preserved all 65 plan step IDs and checked 780 local
+Markdown links with no missing paths or anchors. `git diff --check` and a trailing
+whitespace check over the four new files passed. No whole-repository build was
+run: the affected testing module and its required common reactor dependencies,
+selected broker scenarios and live lab gates cover this test/documentation change.
+
+Commands from the repository root, with the snapshot prepared by the verification
+runbook (actual directory `/tmp/shardshop-54-snapshot.FxvjIt`):
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true -Pintegration verify \
+  -Dcucumber.filter.tags=@broker-retry-timing
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dshardshop.infrastructureOnly=true -Pkind test-compile failsafe:integration-test failsafe:verify \
+  -Dshardshop.kind.snapshot=/tmp/shardshop-54-snapshot.FxvjIt \
+  -Dshardshop.kind.tags=kind-retry-drill
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dshardshop.infrastructureOnly=true -Pkind test-compile failsafe:integration-test failsafe:verify \
+  -Dshardshop.kind.snapshot=/tmp/shardshop-54-snapshot.FxvjIt \
+  -Dshardshop.kind.tags=kind-dlq-capacity
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dshardshop.infrastructureOnly=true -Pkind test-compile failsafe:integration-test failsafe:verify \
+  -Dshardshop.kind.snapshot=/tmp/shardshop-54-snapshot.FxvjIt \
+  -Dshardshop.kind.tags=kind-dlq-full
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dshardshop.infrastructureOnly=true -Pkind test-compile failsafe:integration-test failsafe:verify \
+  -Dshardshop.kind.snapshot=/tmp/shardshop-54-snapshot.FxvjIt \
+  '-Dshardshop.kind.tags=kind-infrastructure | kind-deployment | kind-drills-idle'
+```
+
+### Final-code verification
+
+**2026-10-24:** the passing runs above used earlier versions of the harness.
+`KindRetryRecoveryDrill` changed after the outage run, and `KindDlqCapacityDrill`
+changed after the final full-DLQ run. Thus, one run then executed all five
+`kind-retry-drill` scenarios on the final code. The lab ran the step 5.1–5.3
+deployment. There was no drill lock, all four queues were empty, and only the
+three original broker policies existed.
+
+The scoped unit and broker-timing run passed again: 291 common and 207
+testing-module checks and both `@broker-retry-timing` scenarios. Both queues
+parked on the sixth rejection after 15,213 and 15,246 ms.
+
+The live suite passed all five scenarios in 1,460 seconds. In the outage case,
+order `107482237573799936` parked result `107482238362324993` with
+`delivery_limit` and `x-delivery-count=6`, 28,084 ms after the harness observed
+its confirmed publication. One reconciliation confirmed the order, and the drill
+then removed the inspected parked result. The capacity cases observed:
+
+| DLQ condition | Source | Order ID | Same original outbox ID | Retained source / parked messages | Restoration through verified recovery (ms) |
+|---|---|---|---|---|---:|
+| Unbound | `ledger.record-order` | `107483107199819776` | `107483108105785344` | 10 / 0 | 181853 |
+| Unbound | `order.ledger-results` | `107484204069036032` | `107484205146968065` | 10 / 0 | 177554 |
+| Full | `ledger.record-order` | `107485284672741376` | `107485285465460736` | 10 / 9 | 369873 |
+| Full | `order.ledger-results` | `107487244197044224` | `107487245493080065` | 10 / 9 | 183099 |
+
+Each source accepted ten fillers before one negative confirm, and each full
+parking queue accepted nine. The full command case again needed the second
+180-second timer tick, inside the 450-second bound. Broker identity stayed
+`4369b802-c708-4935-9146-cf0cfff0ded0`.
+
+Then the seven infrastructure, deployment and idle gates passed in 101 seconds.
+The final checks found no drill lock and all four queues empty. Only the three
+original policies and both exact DLQ bindings exist, and the broker has no local
+alarms. All three shards are at 3/3 with no fence, and ledger-db is at 1/1.
+Compared with the pre-run state, 20 of the 21 pods kept their UID and restart
+count. The ledger pod is new, as the outage drill scales ledger down and up. The
+order producer runs, is not paused and has `targetRate` 0.5. The Docker container
+list and states did not change.
+
+Verification used Maven 3.9.16, OpenJDK 25 and macOS 26.6.2. The snapshot was
+prepared with the [verification runbook](shardshop-testing/RUNBOOK.md#kind-verification-snapshot)
+and removed after the checks. Commands from the repository root, with that
+snapshot:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true -Pintegration verify \
+  -Dcucumber.filter.tags=@broker-retry-timing
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true -Pkind verify \
+  -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-retry-drill
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dshardshop.infrastructureOnly=true -Pkind test-compile failsafe:integration-test failsafe:verify \
+  -Dshardshop.kind.snapshot="$snapshot" \
+  '-Dshardshop.kind.tags=kind-infrastructure | kind-deployment | kind-drills-idle'
+```
+
+No drill or harness code changed after this run.

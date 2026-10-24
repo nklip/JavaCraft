@@ -150,12 +150,15 @@ public final class RabbitMqStepDefinitions {
             delivery = delivery(channel, queue, DELIVERY);
             assertEquals(0, failureCount(delivery), "basic.nack must not spend the failure retry budget");
             List<Long> milliseconds = new ArrayList<>();
+            List<Long> redeliveredAt = new ArrayList<>();
+            long started = System.nanoTime();
             for (int failed = 1; failed <= 5; failed++) {
                 long rejected = System.nanoTime();
                 channel.basicReject(delivery.getEnvelope().getDeliveryTag(), true);
                 delivery = delivery(channel, queue, DELIVERY);
                 long elapsed = Duration.ofNanos(System.nanoTime() - rejected).toMillis();
                 milliseconds.add(elapsed);
+                redeliveredAt.add(Duration.ofNanos(System.nanoTime() - started).toMillis());
                 assertEquals(failed, failureCount(delivery), "basic.reject failure number " + failed);
                 assertArrayEquals(body, delivery.getBody());
                 assertTrue(delivery.getEnvelope().isRedeliver());
@@ -164,12 +167,17 @@ public final class RabbitMqStepDefinitions {
             }
             channel.basicReject(delivery.getEnvelope().getDeliveryTag(), true);
             GetResponse parked = delivery(channel, queue + ".dlq", DELIVERY);
+            long parkedAfter = Duration.ofNanos(System.nanoTime() - started).toMillis();
             assertArrayEquals(body, parked.getBody());
             assertDeath(parked, queue, "delivery_limit");
+            assertTrue(parkedAfter >= 14_000 && parkedAfter < 50_000,
+                    "Six rejects must park after five delays totaling 15 seconds, plus bounded IO: " + parkedAfter);
             channel.basicAck(parked.getEnvelope().getDeliveryTag(), false);
             assertEquals(0, channel.queueDeclarePassive(queue).getMessageCount());
             assertEquals(0, channel.queueDeclarePassive(queue + ".dlq").getMessageCount());
-            System.out.println("RabbitMQ " + queue + " reject redelivery delays (ms): " + milliseconds);
+            System.out.println("RabbitMQ " + queue + " failure counts=[0,1,2,3,4,5], rejects=6, "
+                    + "redelivery delays (ms)=" + milliseconds + ", redelivery elapsed (ms)=" + redeliveredAt
+                    + ", DLQ parking elapsed (ms)=" + parkedAfter);
         }
     }
 

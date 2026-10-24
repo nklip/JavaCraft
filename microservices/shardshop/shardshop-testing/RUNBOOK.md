@@ -114,7 +114,7 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind 
 ```
 
 Disruptive scenarios require explicit selection; `kind-drill` combines
-`kind-database-drill`, `kind-workload-drill` and `kind-saga-drill`:
+`kind-database-drill`, `kind-workload-drill`, `kind-saga-drill` and `kind-retry-drill`:
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
@@ -167,6 +167,64 @@ After the last check, remove the local snapshot:
 ```bash
 rm -rf -- "$snapshot"
 ```
+
+## Retry and DLQ capacity drills
+
+Step 5.4 has two complementary suites. Measure the pinned broker's five delayed
+redeliveries, sixth-rejection parking boundary and total parking time in disposable
+containers:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true -Pintegration verify \
+  -Dcucumber.filter.tags=@broker-retry-timing
+```
+
+For the application recovery checks, prepare the [kind snapshot](#kind-verification-snapshot)
+and use the existing running lab with the step 5.1–5.3 code and migrations deployed:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true -Pkind verify \
+  -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-retry-drill
+```
+
+`kind-retry-recovery` selects the shard-outage case. It pauses the producer through
+its control API and drains prior work, stops ledger consumption long enough to
+prepare one published command, then fences all three instances of the buyer's
+shard. After ledger resumes, the unavailable shard causes result delivery to
+exhaust the broker budget. The drill inspects the exact parked result and its
+`delivery_limit` death reason, restores the shard, and waits for automatic saga
+reconciliation to regenerate the saved result. It verifies one ledger entry,
+stock reservation and profit credit, then acknowledges only the inspected parked
+diagnostic. It never republishes the parked result.
+
+`kind-dlq-capacity` selects four cases: an unbound or full DLQ for each of
+`ledger.record-order` and `order.ledger-results`. They keep the broker and source
+queues running, use temporary exact-queue policies with a small message-count
+limit, and inject only marked malformed filler. Retained dead letters fill the
+source, negative publisher confirms block the real order CDC or ledger result
+outbox, and restoration allows the same outbox to publish and the scoped order
+to confirm. These are queue-capacity checks, not a new sustainable-throughput
+measurement. The normal 1,000-message/16 MiB limits remain unchanged after recovery.
+Use `kind-dlq-unbound` or `kind-dlq-full` to select only the two binding or capacity
+cases. Full-DLQ recovery removes owned parked filler and restores the original
+parking capacity, retaining the small source limit until the outbox progresses.
+The check preserves the broker's native 180-second internal dead-letter
+confirmation timer. Individually timestamped messages can straddle its first
+retry tick, so full-DLQ outbox recovery allows 450 seconds for two ticks and
+application recovery. The [dated evidence](../CHANGELOG.md#step-54) records the
+observed counts, elapsed recovery and harness corrections.
+
+The shared `KindDrillGuard` registers restoration before mutations. It restores
+producer rate/pause settings, shard fencing, ledger replicas, bindings and temporary
+policies; the producer JVM remains running. A selected source or DLQ containing unrelated
+work is a failed precondition. Cleanup acknowledges only this drill's owned filler
+or inspected result, never purges a shared queue. Scoped orders and their business
+effects remain as evidence. Logs record counts, timings and IDs without payloads
+or credentials. If restoration fails, keep `shardshop-kind-drill`, inspect the
+reported outstanding action, restore that state and verify readiness before
+removing the lock.
 
 ## Live deployment check
 
