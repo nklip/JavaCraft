@@ -3,8 +3,9 @@
 [ShardShop](../ARCHITECTURE.md) › **Order** · [README](README.md) · [Runbook](RUNBOOK.md) · [OpenAPI contract](src/main/resources/contracts/openapi.yaml) · [Implementation plan](../PLAN.md)
 
 Order owns buyer and order creation, stock reservation and compensation, command
-CDC and ledger-result application. Order is the saga coordinator: the workflow uses
-local database transactions and asynchronous commands/results; there is no
+CDC, ledger-result application and durable reconciliation. Order is the saga
+coordinator: the workflow uses local database transactions and asynchronous
+commands/results; there is no
 transaction spanning PostgreSQL, RabbitMQ, and the ledger database. Order never
 writes directly to the ledger database.
 
@@ -14,16 +15,15 @@ writes directly to the ledger database.
   writes stock reservations, product stock and seller profit in `catalog` on the
   seller shards.
 - **Status:** the HTTP and saga processes implement the workflow through
-  milestone 4. Planned reconciliation and restore requirements are identified
-  beside their contracts below; their presence does not claim that milestones 5
-  and 6 are implemented.
+  milestone 4 and the reconciliation schedule of step 5.1. Transport cleanup,
+  operator reset and restore requirements remain planned beside their contracts.
 
 ## Processes
 
 | Process | Deployment | Replicas | Strategy | Runs |
 |---|---|---:|---|---|
 | `http` (default) | `shardshop-order` | 2 | `RollingUpdate` | Buyer, allocation and order HTTP API, and the `/orders/` page |
-| `saga` | `shardshop-order-saga` | 1 | `Recreate` | Stock and profit workers, the CDC relay with one reader per shard, and the result consumer |
+| `saga` | `shardshop-order-saga` | 1 | `Recreate` | Stock, profit and reconciliation workers, the CDC relay with one reader per shard, and the result consumer |
 
 `shardshop.order.process` selects the process. The saga process serves only its
 management listener: it answers `404` for `/api/v1/*` and `/orders/*`. Thus the
@@ -334,20 +334,28 @@ entry and saga, not deletion of the original ledger row.
 
 > **Status:** steps 4.5–4.7 implement the permanent ledger decision,
 > duplicate-command result replay, publication-attempt checks, order-result
-> validation and quarantine described here. The automatic overdue-saga scanner and
-> five-attempt enqueue schedule remain planned in step 5.1; the operator reset is
-> step 5.3. Safe transport cleanup is step 5.2, and the recovery/observability
-> drills are step 5.5. The following requirements retain the complete target
-> contract.
+> validation and quarantine described here. Step 5.1 adds the overdue-saga scanner
+> and durable five-attempt enqueue schedule. Operator reset remains step 5.3,
+> safe transport cleanup is step 5.2, and the complete recovery/observability
+> drills are step 5.5.
 
-### Reconciliation schedule (planned)
+### Reconciliation schedule
 
-Persist `reconciliation_attempts` and `next_reconciliation_at` on
-`ordering.order_sagas`, initialized to zero and creation time plus 60 seconds.
-The coordinator scans each primary every 30 seconds for eligible `PENDING_LEDGER`
-sagas. The same scan retries `PENDING_STOCK` sagas and unfinished releases with
-bounded backoff; those retries consume no reconciliation attempts. Under the saga
-lock, re-check the state, schedule, and five-attempt limit.
+The existing `reconciliation_attempts` and `next_reconciliation_at` columns on
+`ordering.order_sagas` start at zero and creation time plus 60 seconds. A dedicated
+saga-process worker scans each primary every 30 seconds by default for eligible
+`PENDING_LEDGER` sagas. Each scan takes a bounded page; its saga-ID cursor advances
+past unpublished or temporarily failing work so that one saga cannot starve the
+rest. Each pass fixes its due-time cutoff at the first page, so newly overdue
+sagas cannot extend that pass indefinitely. It starts a new pass after the last
+page. HTTP replicas run no scanner.
+
+Each candidate takes the same order advisory lock as the result consumer, then
+the saga row lock. It rechecks both order and saga state, the persisted due time,
+the five-attempt limit and unresolved orphan quarantine before allocating IDs.
+The existing stock worker continues to retry `PENDING_STOCK` sagas and unfinished
+releases with its own durable bounded backoff. Those retries consume no ledger
+reconciliation attempts and do not need a second stock loop.
 
 If there is already an unpublished command, its CDC reader resumes/retries that
 captured insert without incrementing the reconciliation counter; a reader stopped
@@ -366,8 +374,9 @@ plus scan/IO delay. An unpublished outbox row can extend this schedule. After
 attempt five, disable further automatic enqueueing and alert if the saga remains
 pending.
 
-Only a manual reconciliation reset gives the saga a new budget. The reset sets
-`reconciliation_attempts` to zero and `next_reconciliation_at` to the current time
+**Planned in step 5.3:** only a manual reconciliation reset gives the saga a new
+budget. The reset sets `reconciliation_attempts` to zero and
+`next_reconciliation_at` to the current time
 for selected `PENDING_LEDGER` sagas. A repeated reset causes no duplicate ledger
 effect, and a reset never changes a terminal saga. Transport cleanup, restarts, or
 duplicate deliveries never reset the saga's counter or schedule. Keep this state
@@ -468,9 +477,9 @@ cleanup.
 > **Status:** step 4.7 implements reachable-primary orphan quarantine,
 > correlation/conflict checks and the creation lock. Coordinated backups and
 > isolated restores remain step 6.3; the operator audit, restore recovery and
-> optional asynchronous-loss drill remain step 6.4. References below to automatic
-> replay and manual budget reset depend on steps 5.1 and 5.3. These are required
-> target recovery procedures; they are not currently delivered operator tooling.
+> optional asynchronous-loss drill remain step 6.4. Automatic replay is implemented
+> in step 5.1; manual budget reset remains step 5.3. The restore procedures below
+> are required targets, not currently delivered operator tooling.
 
 ### Orphan results
 

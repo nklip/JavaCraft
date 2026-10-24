@@ -19,13 +19,18 @@ class OrderProcessWiringTest {
         var stock = mock(OrderConfiguration.Stock.class);
         var profit = mock(OrderConfiguration.Profit.class);
         var results = mock(OrderConfiguration.Results.class);
+        var reconciliation = mock(OrderConfiguration.Reconciliation.class);
         when(order.process()).thenReturn(process);
         when(order.stock()).thenReturn(stock);
         when(order.profit()).thenReturn(profit);
         when(order.results()).thenReturn(results);
+        when(order.reconciliation()).thenReturn(reconciliation);
         when(stock.enabled()).thenReturn(true);
         when(profit.enabled()).thenReturn(true);
         when(results.enabled()).thenReturn(true);
+        when(reconciliation.enabled()).thenReturn(true);
+        when(reconciliation.pollInterval()).thenReturn(Duration.ofSeconds(30));
+        when(reconciliation.batchSize()).thenReturn(100);
         when(stock.pollInterval()).thenReturn(Duration.ofMillis(250));
         when(stock.lease()).thenReturn(Duration.ofSeconds(30));
         when(stock.batchSize()).thenReturn(8);
@@ -44,5 +49,6 @@ class OrderProcessWiringTest {
         assertEquals(saga, new OrderWiring().stockSettings(order).enabled());
         assertEquals(saga, new ResultWiring().profitSettings(order).enabled());
         assertEquals(saga, new ResultWiring().resultSettings(order, cdc).enabled());
+        assertEquals(saga, new ReconciliationWiring().settings(order).enabled());
     }
 }

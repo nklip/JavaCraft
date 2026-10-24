@@ -1,7 +1,5 @@
 package dev.nklip.javacraft.shardshop.order.persistence;
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.nklip.javacraft.shardshop.common.jdbc.DatabasePhases;
 import dev.nklip.javacraft.shardshop.order.stock.StockFailure;
 import dev.nklip.javacraft.shardshop.order.stock.StockStore.Saga;
@@ -12,7 +10,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -149,18 +146,8 @@ final class JdbcStockSession {
         if (messageId <= 0 || resultId <= 0 || messageId == resultId) {
             throw new StockFailure(UNAVAILABLE);
         }
-        String envelope = envelope(saga, messageId, resultId);
-        try (PreparedStatement statement = prepare("INSERT INTO ordering.order_result_ids "
-                + "(message_id, result_message_id, saga_id) VALUES (?, ?, ?)")) {
-            messageIdentity(statement, saga, messageId, resultId);
-            requireOne(statement.executeUpdate());
-        }
-        try (PreparedStatement statement = prepare("INSERT INTO ordering.order_outbox "
-                + "(message_id, result_message_id, saga_id, envelope) VALUES (?, ?, ?, ?::jsonb)")) {
-            messageIdentity(statement, saga, messageId, resultId);
-            statement.setString(4, envelope);
-            requireOne(statement.executeUpdate());
-        }
+        JdbcOrderCommand.insert(connection, deadline, saga.sagaId(), saga.commandId(), saga.order(), saga.items(),
+                saga.currencyPolicyVersion(), messageId, resultId, clock.instant());
         return true;
     }
 
@@ -178,42 +165,6 @@ final class JdbcStockSession {
         statement.setLong(index, saga.sagaId());
         statement.setLong(index + 1, saga.order().orderId());
         statement.setLong(index + 2, saga.leaseVersion());
-    }
-
-    private void messageIdentity(PreparedStatement statement, Saga saga, long messageId, long resultId)
-            throws SQLException {
-        statement.setLong(1, messageId);
-        statement.setLong(2, resultId);
-        statement.setLong(3, saga.sagaId());
-    }
-
-    private String envelope(Saga saga, long messageId, long resultId) {
-        ObjectNode envelope = JsonNodeFactory.instance.objectNode();
-        envelope.put("type", "RecordOrder");
-        envelope.put("schemaVersion", saga.currencyPolicyVersion());
-        envelope.put("messageId", Long.toString(messageId));
-        envelope.put("commandId", Long.toString(saga.commandId()));
-        envelope.put("sagaId", Long.toString(saga.sagaId()));
-        envelope.put("orderId", Long.toString(saga.order().orderId()));
-        envelope.put("buyerId", Long.toString(saga.order().buyerId()));
-        envelope.put("requestFingerprint", saga.order().fingerprint());
-        envelope.put("occurredAt", clock.instant().truncatedTo(ChronoUnit.MICROS).toString());
-        envelope.put("resultMessageId", Long.toString(resultId));
-        ObjectNode snapshot = envelope.putObject("snapshot");
-        snapshot.put("amount", saga.order().totalAmount().setScale(2, java.math.RoundingMode.UNNECESSARY).toPlainString());
-        snapshot.put("currency", saga.order().currency());
-        var items = snapshot.putArray("items");
-        saga.items().stream().sorted(Comparator.comparingInt(ItemSnapshot::position)).forEach(item -> {
-            ObjectNode value = items.addObject();
-            value.put("itemPosition", item.position());
-            value.put("sellerId", Long.toString(item.sellerId()));
-            value.put("productId", Long.toString(item.productId()));
-            value.put("quantity", item.quantity());
-            value.put("productName", item.productName());
-            value.put("unitPrice", item.unitPrice().setScale(2, java.math.RoundingMode.UNNECESSARY).toPlainString());
-            value.put("currency", item.currency());
-        });
-        return envelope.toString();
     }
 
     void reserve(long orderId, List<ItemSnapshot> items) throws SQLException {

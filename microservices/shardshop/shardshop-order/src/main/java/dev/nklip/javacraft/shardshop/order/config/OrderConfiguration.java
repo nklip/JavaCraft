@@ -31,6 +31,13 @@ public interface OrderConfiguration {
     Stock stock();
     Results results();
     Profit profit();
+    Reconciliation reconciliation();
+
+    interface Reconciliation {
+        @WithDefault("true") boolean enabled();
+        @WithDefault("30s") Duration pollInterval();
+        @WithDefault("100") int batchSize();
+    }
 
     interface Results {
         @WithDefault("true") boolean enabled();

@@ -46,6 +46,7 @@ objects.
 
 | Feature | Replaces | Cases |
 |---|---|---|
+| `Reconciliation.feature` | Step 5.1 recovery acceptance | Unpublished-command reuse, the durable five-attempt budget under competing scanners and restarts, checkpointed transport cleanup, and lost recorded/rejected results regenerated from permanent ledger outcomes; select `@saga-reconciliation` |
 | `CatalogMigration.feature` | `verify-catalog-migration.py`, `verify-catalog-lab.sh` | V1 through V6 upgrade of legacy rows, provenance-based country backfill and legacy reporting, history validation of a rerun, object owners, no functions or triggers, creation-key and product constraints, profit-credit identities and lookup index, the privileges of each role and login, and a changed grants file that Flyway reapplies and that removes stale privileges |
 | `ProductApi.feature` | `verify-product-provider.py` | Seller and product creation, retries and conflicts on the shard of the key or seller, current stock and profits, integer forms, concurrent creation, lost responses, invalid input over the real HTTP stack, 32 KiB bodies, an incomplete body, a held lock with a full pool, restarts, and unavailable primaries or replicas |
 | `ProductTransport.feature` | `verify-product-transport.py` | TLS sessions, an untrusted CA, a host name that the certificate does not name, and pool recovery after a PostgreSQL restart without a product restart |

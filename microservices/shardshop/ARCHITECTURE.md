@@ -4,9 +4,9 @@
 
 ShardShop is a local system-design lab. It runs a regional product catalog,
 sharded orders and an asynchronous ledger on one kind cluster. This overview
-describes the implemented deployment on **2026-10-23**. Milestones 5–7 still plan
-the recovery and cloud features; the [detailed documents](#detailed-design-documents)
-identify them.
+describes the implemented architecture on **2026-10-24**. Remaining work in
+milestones 5–7 covers recovery qualification and cloud features; the
+[detailed documents](#detailed-design-documents) identify the planned behavior.
 
 - **Shape:** six Quarkus applications, three regional PostgreSQL shards, one
   ledger database and one RabbitMQ broker.
@@ -52,7 +52,7 @@ flowchart LR
 |---|---|
 | Product API | Creates sellers and products, serves catalog reads and the `/products/` page, and applies the seller currency policy. |
 | Order HTTP API | Creates buyers, issues order IDs, accepts orders atomically and serves the `/orders/` page. |
-| Order saga | Reserves stock, relays committed commands through CDC, applies ledger results and credits seller profit. |
+| Order saga | Reserves stock, relays committed commands through CDC, applies ledger results, credits seller profit and replays overdue ledger commands within a durable retry budget. |
 | Ledger | Keeps one permanent decision for each order and publishes its result. |
 | Workloads | Seed the catalog, read products and produce orders through the public APIs only. |
 | PostgreSQL and RabbitMQ | Regional shards, the separate ledger store and the message transport. |

@@ -10,7 +10,8 @@ may come from sellers in any region.
 
 The same image runs two processes selected by `shardshop.order.process`: `http`
 (the default) serves APIs and pages; `saga` runs stock reservation, compensation,
-seller-profit posting, CDC command publication and ledger-result consumption. The
+seller-profit posting, CDC command publication, ledger-result consumption and
+durable ledger reconciliation. The
 HTTP Deployment has two replicas with `RollingUpdate`; `shardshop-order-saga` has
 one replica with `Recreate` to prevent overlapping CDC slot owners. Each JVM reserves
 its own generator slot. HTTP replicas run no background saga loops.
@@ -150,3 +151,12 @@ home shard for a mark or a retry time. The next completed intent on that shard
 logs `Profit posting resumed for <shard>`. A blocked intent logs
 `Profit intent blocked for order <orderId>, item <position> on <home shard>: <reason>; investigate the durable intent`.
 Order IDs appear without digit grouping, thus a search for an ID finds the line.
+
+**Reconciliation worker.** `Reconciliation budget exhausted on <shard>: <count> pending ledger sagas require investigation`
+means those sagas have spent their five automatic replay attempts. The warning
+repeats when the count changes or after five minutes; `Reconciliation budget recovered on <shard>`
+means none remain pending at the limit. `Saga reconciliation unavailable for <shard> [at saga <id>]; pending work will retry: <cause>`
+reports a failed scan or replay transaction once per affected shard, followed by
+`Saga reconciliation resumed for <shard>` after a complete clean pass. See the
+[reconciliation runbook](RUNBOOK.md#durable-reconciliation) for inspection and
+configuration.

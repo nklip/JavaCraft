@@ -4395,3 +4395,96 @@ links in PLAN, CHANGELOG, VERSIONS and the architecture documents. A sentence
 comparison with the former READMEs found no lost requirement: only step history,
 former navigation lines, pointers to removed sections and repeated start steps were
 removed. No Java, SQL, chart, deployment default or lab state changed.
+
+## Step 5.1
+
+**2026-10-24:** implemented durable ledger reconciliation in the existing order
+saga process. HTTP replicas start no reconciliation worker. The implementation
+uses the existing schema, grants, immutable order snapshots and permanent replay
+identities; it requires no migration or additional pod.
+
+The worker scans bounded pages from each primary and takes the order advisory
+lock followed by the saga row lock. It rechecks the order and saga state, due time,
+retry budget, quarantine and unpublished commands before creating a replay.
+An unpublished command stays with CDC without consuming an attempt. Otherwise
+one transaction advances the persisted counter and schedule, reserves new
+transport/result IDs and inserts the command. Logical identity and the saved
+snapshot remain unchanged. The initial and replay commands share their envelope
+writer, including the original currency policy version.
+
+The waits before the five automatic attempts are 60, 120, 240, 300 and 300 seconds.
+Restarting workers or removing eligible published transport does not grant a
+sixth attempt. Exhausted pending sagas produce an aggregate warning per shard,
+repeated on count changes or after five minutes. Stock reservation and release
+keep their existing independent retry schedule. Transport cleanup and manual
+budget reset remain steps 5.2 and 5.3.
+
+Each keyset pass holds its eligibility cutoff steady so newly overdue higher IDs
+cannot indefinitely delay revisiting older sagas. Candidate failures do not block
+later candidates or other shards. A failed pass remains unhealthy across page
+boundaries; only a subsequent complete clean pass reports recovery. Failure logs
+include the affected shard, candidate ID when available and the bounded cause.
+
+The [order runbook](shardshop-order/RUNBOOK.md#durable-reconciliation) documents
+configuration, inspection and verification. The overview and module architecture
+documents distinguish implemented reconciliation from the remaining recovery work.
+
+### Acceptance evidence
+
+Injected-clock tests cover exact due-time boundaries, the five-attempt budget,
+unpublished commands, state changes under locks, quarantine, restart behavior,
+exhaustion warnings and scan progress. Persistence tests cover immutable envelope
+parity and rollback when an outbox insert fails after the counter and permanent
+identity writes. Startup checks keep the worker out of HTTP replicas and reject
+invalid reconciliation settings before generator reservation.
+
+Four packaged PostgreSQL/RabbitMQ scenarios exercise unpublished-command reuse,
+competing coordinators through all five attempts and restart, and recovery of lost
+`RECORDED` and `REJECTED` results. The cleanup fixture waits for both publication
+and a durable CDC checkpoint past the insert before deleting published transport.
+Permanent identities, the schedule and the budget remain. The lost-rejection
+case changes the ledger policy before replay, proving that the stored decision
+wins over reevaluation. Assertions cover ledger, stock and seller-profit effects.
+
+### Validation and environment
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@saga-reconciliation'
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@order-results or @stock-reservation or @cdc-relay'
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am test \
+  '-Dtest=ReconciliationCoordinatorTest#newDueHigherIdsDoNotExtendAnActivePassAndStarveAnOlderSaga' \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false
+python3 /tmp/shardshop-415-doc-links.py
+git diff --check
+docker ps -a --format '{{.Names}}\t{{.Status}}'
+```
+
+- The focused integration run passed all four reconciliation scenarios. The
+  broader run passed all 40 selected CDC, ledger-result, reconciliation and stock
+  scenarios; the other 95 scenarios were excluded by the tag filter. Its reactor
+  also passed 1,813 unit/provider tests and 75 packaged startup checks.
+- The scan-progress regression failed before the fixed pass cutoff and passed
+  afterward. The broader integration run had already packaged the preceding
+  version, so the final order `verify` was run after it completed: all 374 order
+  unit/provider tests and 45 packaged startup checks passed, together with the
+  selected dependency tests. No database, envelope or transport code changed
+  after the broader run was packaged.
+- An initial unit run exposed Mockito restubbing that consumed one extra generated
+  ID in the test fixture; fixing the fixture preserved the ID-count assertion.
+  The first focused-test invocation stopped in a dependency with no selected
+  tests; the explicit selection flags above allowed the intended failing and
+  passing regression runs. The final full order verification used neither flag.
+- Local Markdown link/anchor validation and `git diff --check` passed. The link
+  checker is an ephemeral documentation helper, not a Java behavior test or a new
+  lifecycle entry point. All 65 milestone IDs remain; only step 5.1 changed status.
+
+No kind deployment or capacity measurement was required for this application
+step. Testcontainers removed its disposable containers. The final Docker
+inventory matches the initial inventory: all four retained ShardShop nodes and
+the unrelated containers remain stopped. The new code has not been deployed to
+the retained lab.

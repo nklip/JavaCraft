@@ -277,7 +277,7 @@ Ordering migration V5 retains the first accepted envelope in
 `order_result_ids.received_envelope`. Matching terminal deliveries are harmless,
 including a new reserved reconciliation result ID. A changed same-ID payload or
 timestamp remains detectable after inbox/outbox cleanup. The consumer applies
-reconciliation results; their automatic command enqueuer is planned in step 5.1.
+reconciliation results from the [durable reconciliation worker](#durable-reconciliation).
 
 Confirmation also inserts one durable `ordering.profit_intents` row per item in
 the same transaction, using `(unit_price - unit_cost) * quantity` from immutable
@@ -330,6 +330,65 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order,shardshop-led
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
   '-Dcucumber.filter.tags=@order-results or @order-api or @stock-reservation or @catalog-migration'
 ```
+
+## Durable reconciliation
+
+The saga process enables ledger reconciliation by default. Every scan reads a
+bounded page from each primary and rechecks each candidate under the order
+advisory lock and saga row lock. An unpublished command stays with CDC and costs
+no attempt. Otherwise the worker atomically reserves new transport/result IDs,
+inserts a replay command and advances the persisted counter and due time. It uses
+the saved order snapshot, so catalog changes cannot change a replay.
+
+| Property | Default | Purpose |
+|---|---|---|
+| `shardshop.order.reconciliation.enabled` | `true` | Enable the scanner in the saga process; HTTP never starts it |
+| `shardshop.order.reconciliation.poll-interval` | `30s` | Delay between scans, 100 ms–30 s |
+| `shardshop.order.reconciliation.batch-size` | `100` | Maximum candidates per shard per scan, 1–1000 |
+
+The waits before attempts are fixed at 60, 120, 240, 300 and 300 seconds. Changing
+the polling interval does not shorten these waits. Each database transaction
+keeps the three-second phase deadline. A cursor moves past temporarily failing or
+unpublished candidates and wraps after the last page. The eligibility cutoff
+stays fixed for a pass, so continuous arrivals cannot delay older retries
+indefinitely. Restarts discard this scan position; PostgreSQL retains the retry
+budget and due time. The stock worker keeps
+its independent retry schedule for reservations and releases.
+
+After five attempts, no further automatic command is created. The saga process
+logs the number of exhausted pending sagas per shard, on first observation, when
+the count changes, and at most once every five minutes while the count is
+unchanged. A new process reports the persisted exhausted count again. Inspect the
+existing primary with an authorized read connection:
+
+```sql
+SELECT saga_id, order_id, reconciliation_attempts, next_reconciliation_at
+FROM ordering.order_sagas
+WHERE status = 'PENDING_LEDGER' AND reconciliation_attempts = 5
+ORDER BY next_reconciliation_at, saga_id;
+```
+
+Check the ledger decision, result queues and quarantine, and the
+[CDC recovery state](#order-outbox-cdc-relay). Reconciliation does not reset a lost
+slot or offset, delete transport rows, or reset an exhausted budget. Safe cleanup
+and the operator reset remain steps 5.2 and 5.3. No new migration is required for
+step 5.1: the existing schema and grants already retain the necessary state.
+
+Run the coordinator/worker checks and packaged PostgreSQL/RabbitMQ scenarios:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@saga-reconciliation'
+```
+
+Injected-clock unit tests check each exact due-time boundary and exhausted-budget
+alerts without waiting 17 minutes. Packaged scenarios retain the production waits
+and make individual sagas due with fixture SQL. They check concurrent scanners,
+restarts, unpublished commands and removal of published transport only after a
+durable CDC checkpoint has passed the insert. Lost recorded and rejected results
+recover through permanent ledger decisions, including a policy change after the
+original rejection.
 
 ## Order page tests
 

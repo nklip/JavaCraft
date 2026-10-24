@@ -15,6 +15,8 @@ import dev.nklip.javacraft.shardshop.order.stock.StockFailure;
 import dev.nklip.javacraft.shardshop.order.stock.StockStore;
 import dev.nklip.javacraft.shardshop.order.result.ResultStore;
 import dev.nklip.javacraft.shardshop.order.result.ResultFailure;
+import dev.nklip.javacraft.shardshop.order.reconciliation.ReconciliationFailure;
+import dev.nklip.javacraft.shardshop.order.reconciliation.ReconciliationStore;
 import dev.nklip.javacraft.shardshop.order.profit.ProfitStore;
 import dev.nklip.javacraft.shardshop.order.profit.ProfitFailure;
 import dev.nklip.javacraft.shardshop.sharding.Shard;
@@ -29,6 +31,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,7 +41,8 @@ import java.util.function.Function;
 import java.util.function.LongSupplier;
 
 /** Bounded per-endpoint pools and a hard deadline for the entire database phase. */
-public final class JdbcOrderStore implements OrderStore, OrderListingStore, StockStore, ResultStore, ProfitStore, AutoCloseable {
+public final class JdbcOrderStore implements OrderStore, OrderListingStore, StockStore, ResultStore, ProfitStore,
+        ReconciliationStore, AutoCloseable {
     private final Map<String, AgroalDataSource> pools;
     private final DatabasePhases phases;
     private final LongSupplier nanoTime;
@@ -147,12 +151,12 @@ public final class JdbcOrderStore implements OrderStore, OrderListingStore, Stoc
     }
 
     @Override
-    public Optional<Saga> claim(Shard shard, Duration lease) {
+    public Optional<StockStore.Saga> claim(Shard shard, Duration lease) {
         return stock(shard, session -> session.claim(lease));
     }
 
     @Override
-    public boolean renew(Shard shard, Saga saga, Duration lease) {
+    public boolean renew(Shard shard, StockStore.Saga saga, Duration lease) {
         return stock(shard, session -> session.renew(saga, lease));
     }
 
@@ -167,22 +171,22 @@ public final class JdbcOrderStore implements OrderStore, OrderListingStore, Stoc
     }
 
     @Override
-    public boolean cancel(Shard shard, Saga saga) {
+    public boolean cancel(Shard shard, StockStore.Saga saga) {
         return stock(shard, session -> session.cancel(saga));
     }
 
     @Override
-    public boolean pendingLedger(Shard shard, Saga saga, LongSupplier ids) {
+    public boolean pendingLedger(Shard shard, StockStore.Saga saga, LongSupplier ids) {
         return stock(shard, session -> session.pendingLedger(saga, ids));
     }
 
     @Override
-    public boolean released(Shard shard, Saga saga) {
+    public boolean released(Shard shard, StockStore.Saga saga) {
         return stock(shard, session -> session.released(saga));
     }
 
     @Override
-    public void retry(Shard shard, Saga saga, Duration delay) {
+    public void retry(Shard shard, StockStore.Saga saga, Duration delay) {
         stock(shard, session -> { session.retry(saga, delay); return null; });
     }
 
@@ -214,6 +218,53 @@ public final class JdbcOrderStore implements OrderStore, OrderListingStore, Stoc
                     connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
                     return work.apply(new JdbcResultSession(connection, deadline));
                 }, ResultFailure.class, ResultFailure::new);
+    }
+
+    @Override
+    public List<ReconciliationStore.Candidate> pendingReconciliation(Shard shard, Instant now,
+                                                                      long afterSagaId, int limit) {
+        if (limit <= 0 || afterSagaId < 0) {
+            throw new IllegalArgumentException("Invalid reconciliation page");
+        }
+        return reconciliationRead(shard, session -> session.pending(now, afterSagaId, limit));
+    }
+
+    @Override
+    public long exhaustedReconciliations(Shard shard) {
+        return reconciliationRead(shard, JdbcReconciliationSession::exhausted);
+    }
+
+    @Override
+    public <T> T reconciliation(Shard shard, Function<ReconciliationStore.Session, T> work) {
+        return reconciliationPhase(shard, false, (connection, deadline) ->
+                work.apply(new JdbcReconciliationSession(connection, deadline)));
+    }
+
+    @FunctionalInterface
+    private interface ReconciliationWork<T> {
+        T apply(Connection connection, DatabasePhases.Deadline deadline) throws SQLException;
+    }
+
+    @FunctionalInterface
+    private interface ReconciliationRead<T> {
+        T apply(JdbcReconciliationSession session) throws SQLException;
+    }
+
+    private <T> T reconciliationRead(Shard shard, ReconciliationRead<T> work) {
+        return reconciliationPhase(shard, true, (connection, deadline) ->
+                work.apply(new JdbcReconciliationSession(connection, deadline)));
+    }
+
+    private <T> T reconciliationPhase(Shard shard, boolean readOnly, ReconciliationWork<T> work) {
+        AgroalDataSource pool = pools.get(shard.clusterName());
+        if (pool == null) {
+            throw new ReconciliationFailure(new SQLException("Order shard unavailable"));
+        }
+        return phases.run(DatabasePhases.Pool.of(pool, () -> pool.flush(AgroalDataSource.FlushMode.ALL)), readOnly,
+                DatabasePhases.PHASE_BUDGET, (connection, deadline) -> {
+                    connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+                    return work.apply(connection, deadline);
+                }, ReconciliationFailure.class, ReconciliationFailure::new);
     }
 
     @Override

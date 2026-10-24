@@ -27,7 +27,7 @@ explain the durability assumptions behind these scenarios.
 | [4](#scenario-4) | Confirmed order effects | Covered by completed saga steps |
 | [5](#scenario-5) | Ledger rejection, compensation and replay | Covered by completed saga steps |
 | [6](#scenario-6) | Crash recovery and CDC | Step 4.4 covers the implemented relay; step 5.5 adds complete crash recovery, and step 6.2 adds promotion/failover cases |
-| [7](#scenario-7) | Broker retries, dead letters and reconciliation | Step 4.3 verifies broker policies and bounded retry/parking behavior. Durable reconciliation, safe cleanup, manual reset and full capacity/retry recovery drills are planned in steps 5.1–5.4 |
+| [7](#scenario-7) | Broker retries, dead letters and reconciliation | Step 4.3 verifies broker policies and bounded retry/parking behavior. Step 5.1 adds durable reconciliation and lost-result recovery. Safe cleanup, manual reset and full capacity/retry recovery drills remain planned in steps 5.2–5.4 |
 | [8](#scenario-8) | Standby loss, promotion, restore and audit | Current kind database drills cover standby/quorum behavior. Complete strict-read, promotion, coordinated restore and audit requirements remain in steps 6.1–6.4 |
 | [9](#scenario-9) | HTTP validation and transaction boundaries | Covered by completed validation steps |
 | [10](#scenario-10) | ID generation and service-issued identity | ID generation/allocation and service-issued identity checks exist; step 6.6 requires the complete lifecycle acceptance run. Backup/restore preservation is planned in step 6.3 |

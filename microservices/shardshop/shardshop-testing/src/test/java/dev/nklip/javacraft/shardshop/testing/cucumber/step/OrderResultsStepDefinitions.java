@@ -13,6 +13,7 @@ import dev.nklip.javacraft.shardshop.testing.cucumber.config.ShardShopFiles;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.CatalogApi;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.CatalogShards;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.Contracts;
+import dev.nklip.javacraft.shardshop.testing.cucumber.world.CdcRelay;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.LedgerRuntime;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.OrderRuntime;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.ProductBrowser;
@@ -339,6 +340,181 @@ public final class OrderResultsStepDefinitions {
         assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id));
     }
 
+    @Then("an overdue unpublished command waits while another eligible saga is replayed")
+    public void unpublishedCommandDoesNotSpendBudget() throws Exception {
+        String unpublished = accept(1, us);
+        String eligible = accept(1, asia);
+        order.enableStock();
+        order.enableReconciliation();
+        order.restart(Set.of());
+        awaitStatus(unpublished, "PENDING_LEDGER");
+        awaitStatus(eligible, "PENDING_LEDGER");
+        ObjectNode original = command(unpublished);
+        // The second command models a completed publication; the first remains pending for CDC.
+        markPublished(eligible);
+        forceDue(unpublished);
+        forceDue(eligible);
+        await("eligible saga is replayed by the packaged scanner", () -> attempts(eligible) == 1);
+        assertEquals(2, outboxes(eligible));
+        assertEquals(0, attempts(unpublished));
+        assertEquals(1, bindings(unpublished));
+        assertEquals(1, outboxes(unpublished));
+        assertEquals(original, command(unpublished));
+    }
+
+    @Then("competing packaged coordinators persist five distinct replays without a sixth attempt")
+    public void durableBudgetAndReplayIdentity() throws Exception {
+        String id = accept(1, us);
+        enableCheckpointedReconciliation();
+        awaitStatus(id, "PENDING_LEDGER");
+        ObjectNode original = command(id);
+        awaitCheckpointedPublication(id);
+        deletePublishedOutbox(id);
+        competitor = new OrderRuntime(shards);
+        competitor.enableReconciliation();
+        competitor.start(Set.of());
+
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            forceDue(id);
+            int expected = attempt;
+            await("replay attempt " + attempt + " commits with one outbox", () ->
+                    attempts(id) == expected && outboxes(id) == 1);
+            ObjectNode replay = command(id);
+            assertEquals(original.path("commandId"), replay.path("commandId"));
+            assertEquals(original.path("sagaId"), replay.path("sagaId"));
+            assertEquals(original.path("orderId"), replay.path("orderId"));
+            assertEquals(original.path("buyerId"), replay.path("buyerId"));
+            assertEquals(original.path("requestFingerprint"), replay.path("requestFingerprint"));
+            assertEquals(original.path("snapshot"), replay.path("snapshot"));
+            assertNotEquals(original.path("messageId"), replay.path("messageId"));
+            assertNotEquals(original.path("resultMessageId"), replay.path("resultMessageId"));
+            assertEquals(attempt + 1, bindings(id), "Every replay reserves a permanent result identity");
+            if (attempt < 5) assertNextEligibilityIsDelayed(id, attempt);
+            awaitCheckpointedPublication(id);
+            deletePublishedOutbox(id);
+            if (attempt == 2) {
+                order.restartSaga();
+                competitor.restartSaga();
+            }
+        }
+
+        // A fresh due saga proves that the same running scanner made another pass after exhaustion.
+        String witness = accept(1, asia);
+        awaitStatus(witness, "PENDING_LEDGER");
+        awaitCheckpointedPublication(witness);
+        deletePublishedOutbox(witness);
+        forceDue(id);
+        forceDue(witness);
+        await("scanner visits a new due saga", () -> attempts(witness) == 1);
+        assertEquals(5, attempts(id));
+        assertEquals(6, bindings(id));
+        assertEquals(0, outboxes(id));
+    }
+
+    @Then("an undelivered {word} result recovers through a checkpointed replay")
+    public void lostLedgerResult(String outcome) throws Exception {
+        String id = accept(1, us, asia);
+        enableCheckpointedReconciliation();
+        startLedger(outcome.equals("RECORDED") ? "USD" : "EUR");
+        awaitStatus(id, "PENDING_LEDGER");
+        ObjectNode original = command(id);
+        awaitCheckpointedPublication(id);
+        await("ledger stores and publishes its permanent decision", () ->
+                scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_operations WHERE order_id=" + id
+                        + " AND outcome='" + outcome + "'") == 1
+                        && scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_outbox WHERE message_id="
+                        + original.path("resultMessageId").asText() + " AND published_at IS NOT NULL") == 1
+                        && queueCount(RESULT_QUEUE) == 1);
+        assertEquals("PENDING_LEDGER", status(id));
+        ObjectNode savedResult = ledgerResult(original.path("resultMessageId").asLong());
+        assertEquals(outcome, savedResult.path("outcome").asText());
+
+        // Remove the original result delivery and eligible transport rows, retaining both permanent identities.
+        try (com.rabbitmq.client.Connection connection = broker.connect("admin");
+             Channel channel = connection.createChannel()) {
+            assertEquals(1, channel.queuePurge(RESULT_QUEUE).getMessageCount());
+        }
+        assertEquals(0, queueCount(RESULT_QUEUE));
+        deletePublishedOutbox(id);
+        try (Connection connection = postgres.superuser(ledgerDatabase); PreparedStatement delete = connection.prepareStatement(
+                "DELETE FROM ledger.ledger_outbox WHERE message_id=? AND published_at IS NOT NULL")) {
+            delete.setLong(1, original.path("resultMessageId").asLong());
+            assertEquals(1, delete.executeUpdate());
+        }
+        try (Connection connection = postgres.superuser(ledgerDatabase); PreparedStatement delete = connection.prepareStatement(
+                "DELETE FROM ledger.ledger_inbox WHERE message_id=?")) {
+            delete.setLong(1, original.path("messageId").asLong());
+            assertEquals(1, delete.executeUpdate());
+        }
+        assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_result_ids WHERE result_message_id="
+                + original.path("resultMessageId").asText()));
+        if (outcome.equals("REJECTED")) {
+            // The policy now accepts USD; replay must still return the saved rejection.
+            ledger.restartWithPublisher("USD");
+        }
+
+        order.enableResults(broker);
+        order.enableProfit();
+        order.restart(Set.of());
+        forceDue(id);
+        await("lost-result replay is enqueued", () -> attempts(id) == 1 && outboxes(id) == 1);
+        ObjectNode replay = command(id);
+        assertEquals(original.path("commandId"), replay.path("commandId"));
+        assertEquals(original.path("snapshot"), replay.path("snapshot"));
+        assertNotEquals(original.path("resultMessageId"), replay.path("resultMessageId"));
+        awaitCheckpointedPublication(id);
+        awaitStatus(id, outcome.equals("RECORDED") ? "CONFIRMED" : "CANCELLED");
+        ObjectNode replayedResult = ledgerResult(replay.path("resultMessageId").asLong());
+        assertEquals(savedResult.path("outcome"), replayedResult.path("outcome"));
+        assertEquals(savedResult.path("decidedAt"), replayedResult.path("decidedAt"));
+        assertEquals(savedResult.path("amount"), replayedResult.path("amount"));
+        assertEquals(savedResult.path("currency"), replayedResult.path("currency"));
+        assertEquals(savedResult.path("rejectionReason"), replayedResult.path("rejectionReason"));
+        assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_operations WHERE order_id=" + id
+                + " AND outcome='" + outcome + "'"));
+        assertEquals(2, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_result_ids WHERE order_id=" + id));
+        assertEquals(1, scalar(home(), "SELECT count(*) FROM ordering.order_inbox WHERE saga_id="
+                + original.path("sagaId").asText()));
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.conflicting_results WHERE order_id=" + id));
+        if (outcome.equals("RECORDED")) {
+            await("each seller receives one confirmed profit credit", () ->
+                    credits(us, id) == 1 && credits(asia, id) == 1);
+            assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_entries WHERE order_id=" + id));
+            assertEquals(9, scalar(shards.ofSeller(us.seller().id()),
+                    "SELECT stock FROM catalog.products WHERE product_id=" + us.id()));
+            assertEquals(9, scalar(shards.ofSeller(asia.seller().id()),
+                    "SELECT stock FROM catalog.products WHERE product_id=" + asia.id()));
+        } else {
+            await("rejected order releases both reservations", () -> scalar(home(),
+                    "SELECT count(*) FROM ordering.order_sagas WHERE order_id=" + id
+                            + " AND stock_released_at IS NOT NULL") == 1);
+            assertEquals(0, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_entries WHERE order_id=" + id));
+            assertEquals(0, credits(us, id));
+            assertEquals(0, credits(asia, id));
+            assertEquals(10, scalar(shards.ofSeller(us.seller().id()),
+                    "SELECT stock FROM catalog.products WHERE product_id=" + us.id()));
+            assertEquals(10, scalar(shards.ofSeller(asia.seller().id()),
+                    "SELECT stock FROM catalog.products WHERE product_id=" + asia.id()));
+        }
+        publishCommand(original);
+        await("late original result is handled after the replay result", () ->
+                scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_outbox WHERE message_id="
+                        + original.path("resultMessageId").asText()
+                        + " AND publication_attempt>=2 AND published_at IS NOT NULL") == 1
+                        && scalar(home(), "SELECT count(*) FROM ordering.order_inbox WHERE saga_id="
+                        + original.path("sagaId").asText()) == 2);
+        assertEquals(outcome.equals("RECORDED") ? "CONFIRMED" : "CANCELLED", status(id));
+        assertEquals(outcome.equals("RECORDED") ? 1 : 0,
+                scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_entries WHERE order_id=" + id));
+        assertEquals(outcome.equals("RECORDED") ? 1 : 0, credits(us, id));
+        assertEquals(outcome.equals("RECORDED") ? 1 : 0, credits(asia, id));
+        int expectedStock = outcome.equals("RECORDED") ? 9 : 10;
+        assertEquals(expectedStock, scalar(shards.ofSeller(us.seller().id()),
+                "SELECT stock FROM catalog.products WHERE product_id=" + us.id()));
+        assertEquals(expectedStock, scalar(shards.ofSeller(asia.seller().id()),
+                "SELECT stock FROM catalog.products WHERE product_id=" + asia.id()));
+    }
+
     @Then("result replay and reconciliation are idempotent while changed identities and envelopes are quarantined")
     public void replayAndConflicts() throws Exception {
         String id = accept(1, us);
@@ -641,6 +817,109 @@ public final class OrderResultsStepDefinitions {
         order.enableResults(broker);
         if (profit) order.enableProfit();
         order.restart(Set.of());
+    }
+
+    private void enableCheckpointedReconciliation() throws Exception {
+        for (var shard : shards.all()) postgres.createOrderPublication(shard.database());
+        order.enableStock();
+        order.enableCdc(broker);
+        order.enableReconciliation();
+        order.restart(Set.of());
+    }
+
+    private long walLsn() throws SQLException {
+        try (Connection connection = shards.superuser(home()); var statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')::bigint")) {
+            assertTrue(rows.next());
+            return rows.getLong(1);
+        }
+    }
+
+    private void awaitCheckpointedPublication(String id) throws Exception {
+        CdcRelay relay = new CdcRelay(shards, broker);
+        await("published command for order " + id, () ->
+                scalar(home(), "SELECT count(*) FROM ordering.order_outbox o JOIN ordering.order_sagas s"
+                        + " USING (saga_id) WHERE s.order_id=" + id + " AND o.published_at IS NOT NULL") == 1);
+        // Capture a WAL position after the committed insert. The reader's transactional
+        // logical heartbeat advances its durable offset beyond this barrier without changing
+        // the production insert-only publication or the command transport row.
+        long barrier = walLsn();
+        await("durable CDC checkpoint after published command " + id, () -> relay.offsetLsn(home()) > barrier);
+    }
+
+    private void deletePublishedOutbox(String id) throws SQLException {
+        try (Connection connection = shards.superuser(home()); PreparedStatement delete = connection.prepareStatement(
+                "DELETE FROM ordering.order_outbox WHERE saga_id=(SELECT saga_id FROM ordering.order_sagas WHERE order_id=?)"
+                        + " AND published_at IS NOT NULL")) {
+            delete.setLong(1, Long.parseLong(id));
+            assertEquals(1, delete.executeUpdate(), "Only a published command is eligible for this fixture cleanup");
+        }
+        assertEquals(0, outboxes(id));
+    }
+
+    private void markPublished(String id) throws SQLException {
+        try (Connection connection = shards.superuser(home()); PreparedStatement mark = connection.prepareStatement(
+                "UPDATE ordering.order_outbox SET published_at=clock_timestamp() WHERE saga_id="
+                        + "(SELECT saga_id FROM ordering.order_sagas WHERE order_id=?) AND published_at IS NULL")) {
+            mark.setLong(1, Long.parseLong(id));
+            assertEquals(1, mark.executeUpdate());
+        }
+    }
+
+    private void forceDue(String id) throws SQLException {
+        try (Connection connection = shards.superuser(home()); PreparedStatement update = connection.prepareStatement(
+                "UPDATE ordering.order_sagas SET next_reconciliation_at="
+                        + "GREATEST(created_at, CURRENT_TIMESTAMP - INTERVAL '1 second') WHERE order_id=?")) {
+            update.setLong(1, Long.parseLong(id));
+            assertEquals(1, update.executeUpdate());
+        }
+    }
+
+    private int attempts(String id) throws SQLException {
+        return (int) scalar(home(), "SELECT reconciliation_attempts FROM ordering.order_sagas WHERE order_id=" + id);
+    }
+
+    private long bindings(String id) throws SQLException {
+        return scalar(home(), "SELECT count(*) FROM ordering.order_result_ids r JOIN ordering.order_sagas s"
+                + " USING (saga_id) WHERE s.order_id=" + id);
+    }
+
+    private long outboxes(String id) throws SQLException {
+        return scalar(home(), "SELECT count(*) FROM ordering.order_outbox o JOIN ordering.order_sagas s"
+                + " USING (saga_id) WHERE s.order_id=" + id);
+    }
+
+    private void assertNextEligibilityIsDelayed(String id, int attempt) throws SQLException {
+        long seconds = switch (attempt) {
+            case 1 -> 120;
+            case 2 -> 240;
+            case 3, 4 -> 300;
+            default -> throw new IllegalArgumentException("No next automatic attempt follows attempt " + attempt);
+        };
+        try (Connection connection = shards.superuser(home()); PreparedStatement query = connection.prepareStatement(
+                "SELECT next_reconciliation_at FROM ordering.order_sagas WHERE order_id=?")) {
+            query.setLong(1, Long.parseLong(id));
+            try (ResultSet rows = query.executeQuery()) {
+                assertTrue(rows.next());
+                Instant due = rows.getObject(1, java.time.OffsetDateTime.class).toInstant();
+                Instant expected = Instant.now().plusSeconds(seconds);
+                assertFalse(due.isBefore(expected.minusSeconds(10)), "Next eligibility follows the persisted schedule");
+                assertFalse(due.isAfter(expected.plusSeconds(10)), "Next eligibility follows the persisted schedule");
+            }
+        }
+    }
+
+    private ObjectNode ledgerResult(long resultMessageId) throws SQLException {
+        try (Connection connection = postgres.superuser(ledgerDatabase); PreparedStatement query = connection.prepareStatement(
+                "SELECT envelope::text FROM ledger.ledger_result_ids WHERE result_message_id=?")) {
+            query.setLong(1, resultMessageId);
+            try (ResultSet rows = query.executeQuery()) {
+                assertTrue(rows.next(), "Ledger retains the immutable result envelope");
+                ObjectNode envelope = Json.object(rows.getString(1));
+                assertFalse(rows.next());
+                return envelope;
+            }
+        }
     }
 
     private void startLedger(String allowedCurrencies) throws Exception {

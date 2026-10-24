@@ -35,6 +35,7 @@ public final class OrderRuntime implements Disposable {
     private RabbitMqBroker cdcBroker;
     private RabbitMqBroker resultsBroker;
     private boolean profitEnabled;
+    private boolean reconciliationEnabled;
 
     public OrderRuntime(CatalogShards shards) throws IOException {
         this.shards = shards;
@@ -57,6 +58,9 @@ public final class OrderRuntime implements Disposable {
         values.add("shardshop.order.profit.enabled=" + profitEnabled);
         values.add("shardshop.order.profit.poll-interval=PT0.25S");
         values.add("shardshop.order.profit.batch-size=8");
+        values.add("shardshop.order.reconciliation.enabled=" + reconciliationEnabled);
+        values.add("shardshop.order.reconciliation.poll-interval=100ms");
+        values.add("shardshop.order.reconciliation.batch-size=8");
         RabbitMqBroker configuredBroker = cdcBroker != null ? cdcBroker : resultsBroker;
         if (configuredBroker != null) {
             values.add("shardshop.order.cdc.broker.host=127.0.0.1");
@@ -128,6 +132,11 @@ public final class OrderRuntime implements Disposable {
         profitEnabled = true;
     }
 
+    /** Enables the production overdue-saga scanner on subsequent starts. */
+    public void enableReconciliation() {
+        reconciliationEnabled = true;
+    }
+
     public int port() {
         return port;
     }
@@ -143,7 +152,8 @@ public final class OrderRuntime implements Disposable {
     }
 
     private void startSaga() throws IOException, InterruptedException {
-        if (!stockEnabled && cdcBroker == null && resultsBroker == null && !profitEnabled) return;
+        if (!stockEnabled && cdcBroker == null && resultsBroker == null && !profitEnabled
+                && !reconciliationEnabled) return;
         saga = PackagedApplication.start("shardshop-order", directory, List.of(
                 "-Dshardshop.routing.config=" + configuration.toUri(),
                 "-Dshardshop.order.process=saga",

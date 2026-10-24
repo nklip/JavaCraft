@@ -5,6 +5,8 @@ import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderFailure;
 import dev.nklip.javacraft.shardshop.order.stock.StockFailure;
 import dev.nklip.javacraft.shardshop.order.stock.StockStore.Saga;
+import dev.nklip.javacraft.shardshop.order.reconciliation.ReconciliationFailure;
+import dev.nklip.javacraft.shardshop.order.reconciliation.ReconciliationStore;
 import dev.nklip.javacraft.shardshop.sharding.Shard;
 import io.agroal.api.AgroalDataSource;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +20,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -180,6 +183,37 @@ class JdbcOrderStoreTest {
         verify(order).executeUpdate();
         verify(item).executeBatch();
         verify(saga).executeUpdate();
+        verify(connection).rollback();
+        verify(connection, never()).commit();
+    }
+
+    @Test
+    void reconciliationOutboxFailureRollsBackTheAttemptAndPermanentIdentity() throws SQLException {
+        PreparedStatement update = mock();
+        PreparedStatement identity = mock();
+        PreparedStatement outbox = mock();
+        when(connection.prepareStatement(startsWith("UPDATE ordering.order_sagas SET reconciliation_attempts")))
+                .thenReturn(update);
+        when(connection.prepareStatement(startsWith("INSERT INTO ordering.order_result_ids"))).thenReturn(identity);
+        when(connection.prepareStatement(startsWith("INSERT INTO ordering.order_outbox"))).thenReturn(outbox);
+        when(update.executeUpdate()).thenReturn(1);
+        when(identity.executeUpdate()).thenReturn(1);
+        when(outbox.executeUpdate()).thenThrow(new SQLException("conflicting message ID"));
+        Instant now = Instant.parse("2026-10-24T01:02:03Z");
+        ReconciliationStore.Saga replay = new ReconciliationStore.Saga(71, 81,
+                new Order(31, 41, "fp", "USD", new BigDecimal("39.90"), "PENDING_LEDGER", null),
+                List.of(new ItemSnapshot(0, 51, 61, 2, "Product", new BigDecimal("19.95"),
+                        new BigDecimal("12.50"), "USD")), 2, "PENDING_LEDGER", 2, now.minusSeconds(1));
+
+        assertThrows(ReconciliationFailure.class, () -> store.reconciliation(SHARD, session -> {
+            session.enqueue(replay, 91, 92, now, now.plusSeconds(240));
+            return null;
+        }));
+
+        verify(connection).setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+        verify(update).executeUpdate();
+        verify(identity).executeUpdate();
+        verify(outbox).executeUpdate();
         verify(connection).rollback();
         verify(connection, never()).commit();
     }
