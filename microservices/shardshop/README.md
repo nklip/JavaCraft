@@ -20,8 +20,9 @@ the modules contain all other procedures: configuration, tests, stop, recovery.
   commands need no Python runtime.
 - **Docker memory:** give Docker Desktop's VM at least 12 GB of memory
   (Settings → Resources). Both startup scripts stop early if it has less.
-- **Image tools:** Docker's Buildx plugin and Docker Scout. `up.sh` builds and
-  scans the images before it changes the cluster, thus it needs network access.
+- **Image tools:** Docker's Buildx plugin and Docker Scout, with Docker Hub signed
+  in through Docker Desktop or `docker login`. `up.sh` builds and scans the images
+  before it changes the cluster, thus it needs network access.
 - **Java and Maven:** `JAVA_HOME` set to a JDK 25 or newer, and Maven 3.9.16 or
   newer on `PATH` ([details](RUNBOOK.md#java-and-maven)).
 
@@ -101,6 +102,7 @@ Each module guide tells how to start that application by itself:
 | Workload status API | `GET /api/v1/<workload>/control` through the same tunnels | [Workload control](shardshop-core/workload-control/README.md#monitoring) |
 | Product HTTP counters | Prometheus endpoint `/q/metrics` of each product pod | [Product](shardshop-product/README.md#metrics) |
 | Order write latency | `GET /internal/order/write-metrics` of each order HTTP pod | [Order](shardshop-order/README.md#write-metrics) |
+| Saga recovery and database pressure | `/q/metrics` on order and ledger; native broker/database observations | [Recovery metrics](infra/README.md#saga-and-database-pressure) |
 | Application logs | `kubectl logs` of each Deployment or Job | Each module guide lists its log lines |
 | RabbitMQ management | Port 15672 of Service `shardshop-rabbitmq` | [Infrastructure](infra/README.md#rabbitmq-management) |
 | Pods, databases and migrations | `kubectl` and `helm` | [Infrastructure](infra/README.md#monitoring), [database](database/README.md#monitoring) |

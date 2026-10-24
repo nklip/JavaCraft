@@ -238,7 +238,13 @@ CDC is enabled by default in the saga process. HTTP processes never start it. `-
 workers, but it checks the CDC credentials. Tests can set
 `shardshop.order.cdc.enabled=false` to isolate HTTP or stock behavior. The application release gives order
 these passwords as `secretKeyRef` environment variables.
-Crash injection and synchronized-standby failover drills are planned in steps 5.5 and 6.2.
+Step 5.5 qualifies abrupt process crashes at publication/checkpoint and consumer
+commit/acknowledgement boundaries in the [crash suite](../shardshop-testing/RUNBOOK.md#crash-recovery-and-observability).
+Synchronized-standby failover remains step 6.2. A process restart is safe with
+intact compatible durable state; it cannot repair a missing slot, offset or WAL.
+For those incidents, preserve the state and investigate the explicit recovery
+log and metrics before attempting any resnapshot. Automated restore/audit tooling
+belongs to steps 6.3–6.4; step 5.5 does not add a destructive reset shortcut.
 Run the relay acceptance against disposable PostgreSQL and RabbitMQ containers:
 
 ```bash
@@ -246,6 +252,14 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am -Paudit c
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify \
   '-Dcucumber.filter.tags=@cdc-relay'
 ```
+
+Both order processes expose `/q/metrics`; the saga process refreshes its durable
+outbox, saga, quarantine and CDC gauges every ten seconds through the bounded
+application pool. A scrape uses the cached sample and performs no database query.
+See the [metrics guide](README.md#prometheus-metrics) for names, age semantics,
+the distinction between ordinary reconnects and explicit recovery, and why CDC
+checkpoint distance is WAL pressure rather than business-event lag. Failed
+refreshes leave the last sample visible with a failure gauge and increasing age.
 
 ## Order result consumer and seller profit
 

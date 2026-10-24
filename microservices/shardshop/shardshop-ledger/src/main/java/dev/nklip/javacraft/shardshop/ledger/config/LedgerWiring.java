@@ -7,9 +7,11 @@ import dev.nklip.javacraft.shardshop.common.jdbc.JdbcUrls;
 import dev.nklip.javacraft.shardshop.ledger.command.LedgerService;
 import dev.nklip.javacraft.shardshop.ledger.cleanup.LedgerTransportCleanup;
 import dev.nklip.javacraft.shardshop.ledger.messaging.LedgerCommandConsumer;
+import dev.nklip.javacraft.shardshop.ledger.metrics.LedgerMetrics;
 import dev.nklip.javacraft.shardshop.ledger.persistence.JdbcLedgerStore;
 import dev.nklip.javacraft.shardshop.ledger.result.LedgerResultRelay;
 import io.quarkus.runtime.Startup;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.enterprise.inject.Disposes;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Singleton;
@@ -83,6 +85,17 @@ public class LedgerWiring {
 
     void closeCleanup(@Disposes LedgerTransportCleanup cleanup) {
         cleanup.close();
+    }
+
+    @Produces
+    @Singleton
+    @Startup
+    LedgerMetrics metrics(JdbcLedgerStore store, LedgerConfiguration config, MeterRegistry registry) {
+        return new LedgerMetrics(store, registry, Clock.systemUTC(), config.enabled());
+    }
+
+    void closeMetrics(@Disposes LedgerMetrics metrics) {
+        metrics.close();
     }
 
     void closeStore(@Disposes JdbcLedgerStore store) {

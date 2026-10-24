@@ -171,6 +171,23 @@ public final class CdcRelay {
         }
     }
 
+    public String offsetJson(CatalogShards.Shard shard) throws SQLException {
+        try (var connection = shards.superuser(shard); Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT offset_val FROM ordering.debezium_offset_storage")) {
+            return rows.next() ? rows.getString(1) : "<absent>";
+        }
+    }
+
+    /** A WAL fence after a source insert, independent of Debezium's event LSN representation. */
+    public long currentWalPosition(CatalogShards.Shard shard) throws SQLException {
+        try (var connection = shards.superuser(shard);
+             var statement = connection.createStatement();
+             var rows = statement.executeQuery("SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')::bigint")) {
+            assertTrue(rows.next());
+            return rows.getLong(1);
+        }
+    }
+
     public void deleteOffsets(CatalogShards.Shard shard) throws SQLException {
         try (var connection = shards.superuser(shard); Statement statement = connection.createStatement()) {
             statement.executeUpdate("DELETE FROM ordering.debezium_offset_storage");

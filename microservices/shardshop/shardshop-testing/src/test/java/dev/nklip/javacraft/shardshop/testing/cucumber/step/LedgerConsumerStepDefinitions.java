@@ -7,6 +7,7 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.GetResponse;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.CatalogDatabase;
+import dev.nklip.javacraft.shardshop.testing.cucumber.config.CrashBreakpoint;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.Json;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.RabbitMqBroker;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.ShardShopFiles;
@@ -135,6 +136,92 @@ public final class LedgerConsumerStepDefinitions {
         assertNull(value("SELECT published_at::text FROM ledger.ledger_outbox WHERE message_id=?",
                 id(command, "resultMessageId")));
         awaitQueueEmpty();
+    }
+
+    @Then("a killed ledger consumer before database commit redelivers its command")
+    public void crashBeforeCommit() throws Exception {
+        ObjectNode command = command(900, "USD");
+        // This session method runs only inside the command's still-open write transaction.
+        // A generic DatabasePhases breakpoint could stop a metrics or startup query instead.
+        var crash = CrashBreakpoint.afterSourceLine("shardshop-ledger",
+                "dev.nklip.javacraft.shardshop.ledger.persistence.JdbcLedgerStore$JdbcSession",
+                "insertDecision", 450, 449, "});");
+        try (crash) {
+            runtime.crashAt(crash);
+            runtime.start(database, broker, "USD");
+            publish(command);
+            runtime.awaitCrash(crash, Duration.ofSeconds(30));
+            await("the suspended command is broker-owned", () ->
+                    broker.queue(SOURCE).path("messages_unacknowledged").asInt(-1) == 1);
+            assertEquals(0, count("ledger.ledger_operations"), "The decision is not visible before commit");
+            long redeliveries = broker.queue(SOURCE).path("message_stats").path("redeliver").asLong(0);
+            runtime.killAt(crash, Duration.ofSeconds(30));
+            assertEquals(0, count("ledger.ledger_operations"), "The stopped transaction must roll back");
+            assertEquals(0, count("ledger.ledger_entries"));
+            runtime.restart("USD");
+            await("redelivered command commits", () -> count("ledger.ledger_operations") == 1);
+            await("broker reports redelivery of the killed transaction", () ->
+                    broker.queue(SOURCE).path("message_stats").path("redeliver").asLong(0) > redeliveries);
+            assertEquals(1, count("ledger.ledger_entries"));
+            assertResult(command, result(command), "RECORDED");
+            awaitQueueEmpty();
+        }
+    }
+
+    @Then("a killed ledger consumer after database commit but before acknowledgement reuses its decision")
+    public void crashBeforeAck() throws Exception {
+        ObjectNode command = command(901, "USD");
+        var crash = CrashBreakpoint.atSourceLine("shardshop-core/common",
+                "dev.nklip.javacraft.shardshop.common.amqp.QueueConsumer", "settle", 154,
+                "channel.basicAck(deliveryTag, false)");
+        try (crash) {
+            runtime.crashAt(crash);
+            runtime.start(database, broker, "USD");
+            publish(command);
+            runtime.killAt(crash, Duration.ofSeconds(30));
+            assertEquals(1, count("ledger.ledger_operations"), "The decision committed before acknowledgement");
+            assertEquals(1, count("ledger.ledger_entries"));
+            JsonNode first = result(command);
+            runtime.restart("USD");
+            await("redelivered command rearms the saved result", () -> attempt(command) == 2);
+            awaitQueueEmpty();
+            assertEquals(1, count("ledger.ledger_operations"));
+            assertEquals(1, count("ledger.ledger_entries"));
+            assertEquals(first, result(command), "Redelivery must retain the exact result identity and decision");
+            assertEquals(2, attempt(command), "An identical redelivery rearms the saved result once");
+        }
+    }
+
+    @Then("a killed ledger consumer after acknowledgement does not reprocess its command")
+    public void crashAfterAck() throws Exception {
+        ObjectNode command = command(902, "USD");
+        // The bytecode return on line 157 follows basicAck on line 154. A one-shot
+        // breakpoint avoids class-wide method-exit suspension during startup.
+        var crash = CrashBreakpoint.afterSourceLine("shardshop-core/common",
+                "dev.nklip.javacraft.shardshop.common.amqp.QueueConsumer", "settle", 157, 154,
+                "channel.basicAck(deliveryTag, false)");
+        try (crash) {
+            runtime.crashAt(crash);
+            runtime.start(database, broker, "USD");
+            publish(command);
+            runtime.awaitCrash(crash, Duration.ofSeconds(30));
+            await("broker has accepted the acknowledgement", () ->
+                    broker.queue(SOURCE).path("messages").asInt(-1) == 0
+                            && broker.queue(SOURCE).path("messages_unacknowledged").asInt(-1) == 0);
+            assertEquals(1, count("ledger.ledger_operations"));
+            assertEquals(1, count("ledger.ledger_entries"));
+            assertEquals(1, attempt(command));
+            JsonNode original = result(command);
+            runtime.killAt(crash, Duration.ofSeconds(30));
+            runtime.restart("USD");
+            await("restarted ledger consumer registers", () ->
+                    broker.queue(SOURCE).path("consumers").asInt(-1) == 1);
+            awaitQueueEmpty();
+            assertEquals(1, count("ledger.ledger_operations"));
+            assertEquals(1, count("ledger.ledger_entries"));
+            assertEquals(1, attempt(command), "An acknowledged command must not be redelivered");
+            assertEquals(original, result(command));
+        }
     }
 
     @Then("an unsupported EUR command saves a permanent rejection without an entry")

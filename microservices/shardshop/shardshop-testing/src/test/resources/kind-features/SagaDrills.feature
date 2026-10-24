@@ -11,5 +11,6 @@ Feature: Explicit kind saga replay and CDC relocation drills
   Scenario: A saga replacement on another worker resumes stored CDC offsets while writes continue
     Then the saga JVM on a different worker resumes CDC while HTTP commits new orders
 
-  Scenario: A rolling HTTP update leaves its saga relay running
+  @kind-http-rollout
+  Scenario: Continuous HTTP writes survive a rolling update while its saga relay keeps ownership
     Then an HTTP rollout preserves the saga JVM and its active CDC slots

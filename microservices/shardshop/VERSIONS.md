@@ -942,6 +942,15 @@ Docker, Buildx, Docker Scout, kind, Skaffold, Helm, Helmfile and Maven are requi
 for the local build and migration workflow. Review changed build inputs and the
 resulting digest together.
 
+**2026-10-24:** an uncached rebuild exposed timestamps introduced by the
+artifact-copy stage. The Dockerfile now normalizes the copied tree to epoch zero,
+in addition to `SOURCE_DATE_EPOCH=0` for image metadata. Two independent uncached
+ARM64 builds produce identical config and platform digests. All 68 payload files,
+permissions and owners match the earlier reviewed image. The updated pin passes
+the restricted Flyway CLI check, the unchanged Scout gate and kind's platform
+manifest check. [Step 5.5](CHANGELOG.md#step-55) records the comparison; the existing
+2026-10-28 review deadline is unchanged.
+
 The final ARM64 image reports `java.vendor=Ubuntu` and OpenJDK
 `25.0.4.1+1-1-26.04.4-Ubuntu`. A Docker Scout scan of the trimmed image on
 2026-09-30 indexed 74 packages and reported no findings; the earlier untrimmed
@@ -1139,3 +1148,17 @@ only the interactive seeder, the reader and the producer listen on port 8080.
 The control pacer is custom code by the user's choice on 2026-10-22: Guava
 `RateLimiter` stores one second of permits (a burst after Resume), sleeps
 uninterruptibly and has no zero rate; Bucket4j is not in the Quarkus platform.
+
+## Step 5.5 observability dependencies
+
+On **2026-10-24**, order and ledger reuse product's pinned
+`quarkus-micrometer-registry-prometheus` **3.40.1**, Micrometer **1.17.1** and
+Prometheus simpleclient **0.16.0**. The existing version-lock qualification and
+review dates apply; no version or new monitoring server is introduced. Ledger now
+listens on port 8080 for metrics. Application audit builds regenerate dependency
+trees and SBOMs for the expanded packages.
+
+The crash harness uses `jdk.jdi` from the required **JDK 25** only in verification.
+It adds no application dependency and no debug listener to application images.
+RabbitMQ and CloudNativePG observations use their existing native endpoints and
+counters. [Step 5.5 evidence](CHANGELOG.md#step-55) records validation and deployment status.

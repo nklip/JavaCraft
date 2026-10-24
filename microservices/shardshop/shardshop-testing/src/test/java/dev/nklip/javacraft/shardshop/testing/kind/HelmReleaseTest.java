@@ -109,8 +109,16 @@ class HelmReleaseTest {
         JsonNode service = resources.stream().filter(resource -> resource.path("kind").asText().equals("Service")
                 && resource.at("/metadata/name").asText().equals("shardshop-order")).findFirst().orElseThrow();
         assertEquals("shardshop-order", service.at("/spec/selector/app.kubernetes.io~1name").asText());
-        assertTrue(resources.stream().noneMatch(resource -> resource.path("kind").asText().equals("Service")
-                && resource.at("/metadata/name").asText().equals("shardshop-order-saga")));
+        for (String name : List.of("shardshop-order-saga", "shardshop-ledger")) {
+            JsonNode metrics = resources.stream().filter(resource -> resource.path("kind").asText().equals("Service")
+                    && resource.at("/metadata/name").asText().equals(name)).findFirst().orElseThrow();
+            assertEquals(name, metrics.at("/spec/selector/app.kubernetes.io~1name").asText());
+            assertEquals(8080, metrics.at("/spec/ports/0/port").asInt());
+            assertEquals("http", metrics.at("/spec/ports/0/targetPort").asText());
+        }
+        JsonNode ledger = named(resources, "shardshop-ledger");
+        assertEquals(8080, ledger.at("/spec/template/spec/containers/0/ports/0/containerPort").asInt());
+        assertEquals("http", ledger.at("/spec/template/spec/containers/0/readinessProbe/tcpSocket/port").asText());
     }
 
     @Test

@@ -26,7 +26,7 @@ explain the durability assumptions behind these scenarios.
 | [3](#scenario-3) | Primary and replica reads | Primary/replica read behavior exists; the complete deployed strict-replica-read drill is planned in step 6.1 |
 | [4](#scenario-4) | Confirmed order effects | Covered by completed saga steps |
 | [5](#scenario-5) | Ledger rejection, compensation and replay | Covered by completed saga steps |
-| [6](#scenario-6) | Crash recovery and CDC | Step 4.4 covers the implemented relay; step 5.5 adds complete crash recovery, and step 6.2 adds promotion/failover cases |
+| [6](#scenario-6) | Crash recovery and CDC | Steps 4.4 and 5.5 qualify relay/crash recovery, independent HTTP writes and observability; promotion/failover cases remain step 6.2 |
 | [7](#scenario-7) | Broker retries, dead letters and reconciliation | Step 4.3 verifies broker policies and bounded retry/parking behavior. Step 5.1 adds durable reconciliation and lost-result recovery; step 5.2 adds transport cleanup with CDC checkpoints and retained-decision replay. Step 5.3 adds the restricted manual reset and replay after budget exhaustion. Step 5.4 measures retry timing and verifies shard-outage reconciliation plus unbound/full DLQ pressure and recovery on both application publishers; see the [drill runbook](RUNBOOK.md#retry-and-dlq-capacity-drills) and [dated evidence](../CHANGELOG.md#step-54) |
 | [8](#scenario-8) | Standby loss, promotion, restore and audit | Current kind database drills cover standby/quorum behavior. Complete strict-read, promotion, coordinated restore and audit requirements remain in steps 6.1–6.4 |
 | [9](#scenario-9) | HTTP validation and transaction boundaries | Covered by completed validation steps |
@@ -98,6 +98,13 @@ Acceptance scenarios for implementation:
    command bindings (mandatory return without offset advancement), and failover
    with synchronized logical slots. Slot/offset/WAL loss must stop capture for
    explicit recovery; ordinary reconnects must resume without losing a command.
+   Step 5.5 uses test-only debugger barriers in disposable packaged JVMs followed
+   by forced process death. SQL visibility and broker settlement checks establish
+   each crash boundary before replay assertions run. The kind rollout uses bounded
+   continuous HTTP traffic and checks unchanged saga ownership. Cached application
+   metrics and native broker/database observations expose backlog, quarantine,
+   checkpoint, queue and pool pressure; stale sampling is visible separately from
+   a healthy zero. [Commands and limits](RUNBOOK.md#crash-recovery-and-observability).
 7. <a id="scenario-7"></a>Measure same-queue rejection counts and redelivery timestamps on the pinned
    broker, assert its effective delayed-retry/delivery-limit behavior, and record
    total time to DLQ parking. Hold a shard unavailable beyond that window, for

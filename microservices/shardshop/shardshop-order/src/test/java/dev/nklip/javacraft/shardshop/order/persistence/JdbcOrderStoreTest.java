@@ -299,6 +299,20 @@ class JdbcOrderStoreTest {
     }
 
     @Test
+    void unobservedPoolMaximumIsZeroAndObservedMaximumIsPreserved() throws SQLException {
+        var endpoint = new Endpoint(
+                "jdbc:postgresql://localhost/shardshop?connectTimeout=0&socketTimeout=0", "order_app", "secret");
+        try (var fresh = new JdbcOrderStore(Map.of("shard-a", endpoint), 4)) {
+            assertEquals(0L, fresh.poolMaxUsed("shard-a"));
+        }
+
+        var metrics = mock(io.agroal.api.AgroalDataSourceMetrics.class);
+        when(primary.getMetrics()).thenReturn(metrics);
+        when(metrics.maxUsedCount()).thenReturn(7L);
+        assertEquals(7L, store.poolMaxUsed("shard-a"));
+    }
+
+    @Test
     void shutdownClosesPoolsAndExecutors() {
         store.close();
         verify(workers).shutdownNow();

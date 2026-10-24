@@ -11,6 +11,18 @@ Feature: Packaged ledger command consumer
   Scenario: The long lived consumer resumes after its broker connection closes
     Then the consumer reconnects and processes a new command after connection loss
 
+  @crash-recovery
+  Scenario: A killed consumer rolls back an uncommitted ledger decision
+    Then a killed ledger consumer before database commit redelivers its command
+
+  @crash-recovery
+  Scenario: A killed consumer redelivers a committed command before acknowledgement
+    Then a killed ledger consumer after database commit but before acknowledgement reuses its decision
+
+  @crash-recovery @crash-after-ack
+  Scenario: A killed consumer after acknowledgement leaves its committed decision stable
+    Then a killed ledger consumer after acknowledgement does not reprocess its command
+
   Scenario: A valid USD command commits the decision, entry, binding, inbox and pending result together
     Then a valid USD command records exactly one complete result
 

@@ -14,9 +14,10 @@ writes directly to the ledger database.
   quarantine and CDC offsets in schema `ordering` on each buyer's shard. It also
   writes stock reservations, product stock and seller profit in `catalog` on the
   seller shards.
-- **Status:** the HTTP and saga processes implement the workflow through
-  milestone 4, the reconciliation schedule of step 5.1 and transport cleanup in
-  step 5.2 and the operator reset of step 5.3. Restore requirements remain planned beside their contracts.
+- **Status:** the HTTP and saga processes implement the workflow, reconciliation,
+  transport cleanup and operator reset through milestone 5, with qualified retry,
+  capacity, crash recovery and observability checks. Failover and restore remain
+  planned in steps 6.2–6.4.
 
 ## Processes
 
@@ -336,8 +337,9 @@ entry and saga, not deletion of the original ledger row.
 > duplicate-command result replay, publication-attempt checks, order-result
 > validation and quarantine described here. Step 5.1 adds the overdue-saga scanner
 > and durable five-attempt enqueue schedule. Step 5.2 implements safe transport
-> cleanup. Step 5.3 adds the manual operator reset, and the complete recovery/observability
-> drills are step 5.5.
+> cleanup. Step 5.3 adds the manual operator reset. Steps 5.4–5.5 qualify retry,
+> capacity and crash recovery, independent HTTP writes and recovery observability.
+> Promotion/failover and coordinated restore remain steps 6.2–6.4.
 
 ### Reconciliation schedule
 

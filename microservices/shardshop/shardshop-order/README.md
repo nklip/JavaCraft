@@ -122,6 +122,46 @@ command reads the HTTP pod that the Service selects:
 curl -s http://127.0.0.1:18081/internal/order/write-metrics
 ```
 
+### Prometheus metrics
+
+Both order processes expose Prometheus text metrics at `/q/metrics`. The HTTP
+process reports its per-shard pool gauges. The saga process also refreshes a
+cached database snapshot every ten seconds through each existing bounded primary
+pool; scraping never runs SQL. Custom series carry only `shard`, `process` and,
+for saga counts, the fixed `status` label.
+
+The saga metrics `shardshop_order_outbox_pending` and
+`shardshop_order_outbox_oldest_pending_seconds` report unpublished work and its
+age. `shardshop_order_sagas{status=...}` reports counts for `PENDING_STOCK`,
+`PENDING_LEDGER`, `CONFIRMED` and `CANCELLED`; `shardshop_order_sagas_reconciliation_exhausted`
+counts pending ledger sagas at the five-attempt limit. The gauges
+`shardshop_order_quarantine_orphan_rows` and
+`shardshop_order_quarantine_conflicting_result_rows` count retained historical
+rows; `shardshop_order_quarantine_orphan_unresolved` separately counts orphan
+rows without `resolved_at`. Conflicting-result quarantines are retained incidents,
+so their row count does not imply they remain unresolved.
+
+CDC gauges `shardshop_order_cdc_slot_exists`, `shardshop_order_cdc_slot_active`,
+`shardshop_order_cdc_checkpoint_exists`, `shardshop_order_cdc_retained_wal_bytes`
+and `shardshop_order_cdc_checkpoint_lag_bytes` report slot/checkpoint state and
+WAL pressure. `shardshop_order_cdc_recovery_required` reports explicit recovery;
+`shardshop_order_cdc_retrying` separately reports ordinary reconnect backoff, and
+`shardshop_order_cdc_enabled` shows whether this process owns a reader for the shard.
+The checkpoint distance is a WAL pressure measure: heartbeat and other database
+activity can move it even when no business command is waiting. Use oldest pending
+outbox age to assess business progress. Missing slot/checkpoint distances are
+exported as `NaN`. After a failed snapshot, the last values remain visible;
+`shardshop_order_metrics_snapshot_success` becomes `0` and
+`shardshop_order_metrics_snapshot_age_seconds` continues to grow. Treat old values
+as stale until the success gauge returns to `1`.
+
+Pool gauges `shardshop_order_db_pool_active`, `shardshop_order_db_pool_available`,
+`shardshop_order_db_pool_awaiting`, `shardshop_order_db_pool_max` and
+`shardshop_order_db_pool_max_used` report active, available and awaiting
+connections, configured maximum size and maximum pool size observed since process
+start. The observed maximum is zero before the pool creates its first connection.
+These gauges are local to each JVM and shard.
+
 ### Logs
 
 ```bash

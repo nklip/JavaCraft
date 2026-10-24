@@ -6,18 +6,21 @@ import io.quarkus.runtime.annotations.QuarkusMain;
 import dev.nklip.javacraft.shardshop.ledger.messaging.LedgerCommandConsumer;
 import dev.nklip.javacraft.shardshop.ledger.result.LedgerResultRelay;
 import dev.nklip.javacraft.shardshop.ledger.cleanup.LedgerTransportCleanup;
+import dev.nklip.javacraft.shardshop.ledger.metrics.LedgerMetrics;
 
 @QuarkusMain
 public class LedgerApplication implements QuarkusApplication {
     private final LedgerCommandConsumer consumer;
     private final LedgerResultRelay relay;
     private final LedgerTransportCleanup cleanup;
+    private final LedgerMetrics metrics;
 
     public LedgerApplication(LedgerCommandConsumer consumer, LedgerResultRelay relay,
-                             LedgerTransportCleanup cleanup) {
+                             LedgerTransportCleanup cleanup, LedgerMetrics metrics) {
         this.consumer = consumer;
         this.relay = relay;
         this.cleanup = cleanup;
+        this.metrics = metrics;
     }
 
     @Override
@@ -29,6 +32,7 @@ public class LedgerApplication implements QuarkusApplication {
             consumer.start();
             relay.start();
             cleanup.start();
+            metrics.start();
             Quarkus.waitForExit();
         } finally {
             try {
@@ -37,7 +41,11 @@ public class LedgerApplication implements QuarkusApplication {
                 try {
                     relay.close();
                 } finally {
-                    cleanup.close();
+                    try {
+                        cleanup.close();
+                    } finally {
+                        metrics.close();
+                    }
                 }
             }
         }

@@ -15,6 +15,22 @@ Feature: Order outbox WAL relay to the durable ledger command queue
   Scenario: A saved offset survives an order process replacement
     Then CDC resumes its persisted per-shard offset after restart
 
+  @crash-recovery
+  Scenario: A killed saga before broker publication sends its committed command after restart
+    Then a forced saga death before broker publication delivers the committed command once after restart
+
+  @crash-recovery
+  Scenario: A killed saga replays an already confirmed command before its publication mark
+    Then a forced saga death after broker confirmation replays the same command
+
+  @crash-recovery
+  Scenario: A killed saga replays a marked command before its durable offset flush
+    Then a forced saga death after publication marking resumes before the durable CDC checkpoint
+
+  @crash-recovery
+  Scenario: A killed saga after its durable checkpoint does not replay the committed command
+    Then a forced saga death after the durable checkpoint resumes without replay
+
   Scenario: An idle reader keeps its durable position across a restart
     Then an idle CDC reader checkpoints its empty snapshot and resumes after a restart
 

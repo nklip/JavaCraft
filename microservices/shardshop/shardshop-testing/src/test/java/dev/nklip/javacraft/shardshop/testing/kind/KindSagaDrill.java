@@ -169,26 +169,42 @@ public final class KindSagaDrill {
                 java.util.Map<String, Long> slots = new java.util.LinkedHashMap<>();
                 for (String shard : lab.shards()) slots.put(shard, activeReader(shard));
                 JsonNode before = deployment.resource("deployment", "shardshop-order");
+                Set<String> originalHttp = httpPodUids();
+                require(originalHttp.size() == 2, "HTTP rollout requires two initial pod identities");
                 JsonNode annotations = before.at("/spec/template/metadata/annotations").deepCopy();
                 guard.onClose("restore HTTP rollout annotation and two ready HTTP replicas", () -> {
                     patchHttpAnnotations(annotations);
                     awaitHttp();
                     return true;
                 });
-                ObjectNode changed = annotations.isObject() ? annotations.deepCopy() : Json.newObject();
-                changed.put("shardshop.javacraft/drill", run);
-                patchHttpAnnotations(changed);
-                lab.await("HTTP rolls while its saga keeps the same live CDC slots", Duration.ofSeconds(180), () -> {
-                    require(owner.path("metadata").path("uid").equals(saga.pod("order-saga").path("metadata").path("uid")),
-                            "HTTP rollout replaced the saga owner");
-                    for (String shard : lab.shards())
-                        require(activeReader(shard) == slots.get(shard), "HTTP rollout reconnected the CDC reader on " + shard);
-                    return httpCurrent();
-                });
-                try (Tunnel tunnel = new Tunnel(lab, "service/shardshop-order", 8080)) {
-                    String id = accept(tunnel, request("USD", product("USD"), 1));
-                    awaitOrder(id, "CONFIRMED");
+                KindHttpWriter writer = new KindHttpWriter(lab, buyer, run + "-rollout", request("USD", rolloutProduct(), 1));
+                try (writer) {
+                    lab.await("scoped HTTP writer is committing before rollout", Duration.ofSeconds(30), () -> writer.count() >= 2);
+                    int[] replacementStartWrites = {-1};
+                    boolean[] wroteDuringReplacement = {false};
+                    ObjectNode changed = annotations.isObject() ? annotations.deepCopy() : Json.newObject();
+                    changed.put("shardshop.javacraft/drill", run);
+                    patchHttpAnnotations(changed);
+                    lab.await("HTTP rolls while writes continue and the saga keeps its live CDC slots", Duration.ofSeconds(180), () -> {
+                        require(owner.path("metadata").path("uid").equals(saga.pod("order-saga").path("metadata").path("uid")),
+                                "HTTP rollout replaced the saga owner");
+                        for (String shard : lab.shards())
+                            require(activeReader(shard) == slots.get(shard), "HTTP rollout reconnected the CDC reader on " + shard);
+                        int committed = writer.count();
+                        boolean current = httpCurrent();
+                        if (!current && httpPodUids().stream().anyMatch(uid -> !originalHttp.contains(uid))) {
+                            if (replacementStartWrites[0] < 0) replacementStartWrites[0] = writer.count();
+                            else if (committed > replacementStartWrites[0]) wroteDuringReplacement[0] = true;
+                        }
+                        return current;
+                    });
+                    require(wroteDuringReplacement[0], "No scoped HTTP order committed while replacement was in progress");
+                    lab.await("both original HTTP pods terminate after replacement", Duration.ofSeconds(60), () ->
+                            httpCurrent() && httpPodUids().stream().noneMatch(originalHttp::contains));
+                    int afterRollout = writer.count();
+                    lab.await("HTTP writer keeps committing after rollout", Duration.ofSeconds(20), () -> writer.count() > afterRollout);
                 }
+                for (String id : writer.accepted()) awaitOrder(id, "CONFIRMED");
                 saga.invariants();
             });
         }
@@ -216,8 +232,17 @@ public final class KindSagaDrill {
                 >= resource.path("metadata").path("generation").asLong();
     }
 
+    private Set<String> httpPodUids() throws IOException, InterruptedException {
+        return deployment.pods("app.kubernetes.io/name=shardshop-order").stream()
+                .map(pod -> pod.path("metadata").path("uid").asText())
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
     private void awaitHttp() throws IOException, InterruptedException {
-        lab.await("two current ready HTTP replicas", Duration.ofSeconds(180), this::httpCurrent);
+        lab.await("two current ready HTTP replicas with old pods terminated", Duration.ofSeconds(180), () -> {
+            List<JsonNode> pods = deployment.pods("app.kubernetes.io/name=shardshop-order");
+            return httpCurrent() && pods.size() == 2 && pods.stream().allMatch(KindDeployment::ready);
+        });
     }
 
     private long checkpoint(String shard) throws IOException, InterruptedException {
@@ -262,6 +287,16 @@ public final class KindSagaDrill {
             if (!product.isEmpty()) return KindLab.parse(product);
         }
         throw new IOException("No seeded product with remaining " + currency + " stock");
+    }
+
+    private JsonNode rolloutProduct() throws IOException, InterruptedException {
+        for (String shard : lab.shards()) {
+            String row = saga.sql(shard, "SELECT row_to_json(x)::text FROM (SELECT seller_id::text, product_id::text "
+                    + "FROM catalog.products WHERE currency='USD' AND stock>=600 AND starts_with(creation_key,'catalog-v2.') "
+                    + "ORDER BY stock DESC, product_id LIMIT 1) x").strip();
+            if (!row.isEmpty()) return KindLab.parse(row);
+        }
+        throw new IOException("HTTP rollout needs a seeded USD product with stock for its bounded writer");
     }
 
     static ObjectNode request(String currency, JsonNode product, int quantity) throws IOException {

@@ -7,6 +7,7 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.GetResponse;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.CatalogDatabase;
+import dev.nklip.javacraft.shardshop.testing.cucumber.config.CrashBreakpoint;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.Json;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.RabbitMqBroker;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.ShardShopFiles;
@@ -90,6 +91,32 @@ public final class LedgerPublisherStepDefinitions {
         runtime.startWithPublisher(database, broker, "USD");
         assertDelivery(command, "RECORDED", delivery());
         awaitPublished(command);
+    }
+
+    @Then("a killed publisher after broker confirmation reuses its saved result")
+    public void crashAfterResultConfirm() throws Exception {
+        ObjectNode command = command(902, "USD");
+        runtime.start(database, broker, "USD");
+        publish(command);
+        await("committed pending result", () -> pending(command));
+        runtime.stop();
+        var crash = CrashBreakpoint.atSourceLine("shardshop-ledger",
+                "dev.nklip.javacraft.shardshop.ledger.result.LedgerResultRelay", "run", 67,
+                "if (closed.get())");
+        try (crash) {
+            runtime.crashAt(crash);
+            runtime.startWithPublisher(database, broker, "USD");
+            GetResponse first = delivery();
+            assertDelivery(command, "RECORDED", first);
+            runtime.killAt(crash, DEADLINE);
+            assertTrue(pending(command), "A broker confirm alone cannot clear the pending outbox");
+            runtime.restartWithPublisher("USD");
+            GetResponse second = delivery();
+            assertArrayEquals(first.getBody(), second.getBody(), "The original result identity and bytes must replay");
+            awaitPublished(command);
+            assertEquals(1, count("ledger.ledger_operations"));
+            assertEquals(1, count("ledger.ledger_entries"));
+        }
     }
 
     @Then("replayed and reconciliation results retain their exact saved decisions")

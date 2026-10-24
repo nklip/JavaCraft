@@ -7,7 +7,7 @@ separate database, and publishes the saved results with publisher confirms.
 
 ## Start
 
-In the lab, `up.sh` deploys ledger as one pod with no HTTP Service; see the
+In the lab, `up.sh` deploys ledger as one pod; see the
 [lab start](../README.md#start-the-lab). Apply ledger migrations through V3 before
 starting the application; V3 adds transport retention indexes.
 
@@ -17,6 +17,11 @@ configuration file. Normal starts enable the consumer, result publisher and tran
 or connecting to external services.
 
 ## Monitoring
+
+Prometheus metrics are available on the application port at `/q/metrics`.
+The ledger samples pending results and conflict quarantine every 10 seconds;
+scrapes read cached samples and do not query PostgreSQL. See the
+[metrics runbook](RUNBOOK.md#metrics) for names and freshness checks.
 
 ```bash
 kubectl --context kind-shardshop -n shardshop logs deployment/shardshop-ledger

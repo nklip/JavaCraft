@@ -236,7 +236,9 @@ Both use the same image, selected by `shardshop.order.process=http|saga` (defaul
 JVM reserves its own generator slot.
 Its offsets and reader history remain in the shard databases; no pod-local volume
 holds CDC progress. Ledger consumes commands and publishes saved results against
-its separate database. Its command-mode JVM needs no HTTP Service.
+its separate database. Its internal HTTP Service exposes `/q/metrics` on port
+8080; command and result traffic still uses RabbitMQ. The saga has an independent
+internal metrics Service, while the order API Service selects only HTTP pods.
 
 Order mounts the routing snapshot and the shard CA certificates. It gets the
 `order-app` and `ordering-cdc` passwords and its RabbitMQ credential from

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Channel;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.CatalogDatabase;
+import dev.nklip.javacraft.shardshop.testing.cucumber.config.CrashBreakpoint;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.CatalogRouting;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.Json;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.RabbitMqBroker;
@@ -146,6 +147,74 @@ public final class OrderResultsStepDefinitions {
                     "SELECT stock FROM catalog.products WHERE product_id=" + fixture.id()));
         }
         assertEquals(8, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_operations"));
+    }
+
+    @Then("a killed result consumer after its database commit redelivers without duplicate effects while HTTP writes continue")
+    public void crashAfterResultCommit() throws Exception {
+        String id = accept(1, us);
+        startWorkers(true);
+        awaitStatus(id, "PENDING_LEDGER");
+        ObjectNode savedCommand = command(id);
+        order.stopSaga();
+        var crash = CrashBreakpoint.atSourceLine("shardshop-core/common",
+                "dev.nklip.javacraft.shardshop.common.amqp.QueueConsumer", "settle", 154,
+                "channel.basicAck(deliveryTag, false)");
+        try (crash) {
+            order.crashSagaAt(crash);
+            order.restartSaga();
+            startLedger("USD");
+            publishCommand(savedCommand);
+            // The debugger suspends the saga JVM at basicAck, after the home transaction committed.
+            // The separate HTTP JVM must still be able to commit a new order at this exact point.
+            order.awaitSagaCrash(crash, Duration.ofSeconds(45));
+            String concurrent = accept(1, us);
+            assertEquals(1, scalar(home(), "SELECT count(*) FROM ordering.orders WHERE order_id=" + concurrent));
+            long redeliveries = broker.queue(RESULT_QUEUE).path("message_stats").path("redeliver").asLong(0);
+            order.killSagaAt(crash, Duration.ofSeconds(45));
+            assertEquals("CONFIRMED", status(id));
+            assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_operations WHERE order_id=" + id));
+            assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_entries WHERE order_id=" + id));
+            order.restartSaga();
+            await("redelivered result is acknowledged", () -> {
+                JsonNode queue = broker.queue(RESULT_QUEUE);
+                return queue.path("message_stats").path("redeliver").asLong(0) > redeliveries
+                        && queue.path("messages").asInt(-1) == 0;
+            });
+            await("single seller credit after result replay", () -> credits(us, id) == 1);
+            assertEquals(0, conflicts(id));
+            assertEquals(1, scalar(shards.ofSeller(us.seller().id()),
+                    "SELECT count(*) FROM catalog.stock_reservations WHERE order_id=" + id));
+            assertEquals("CONFIRMED", status(id));
+        }
+    }
+
+    @Then("a killed ledger consumer preserves its decision while independent order HTTP commits")
+    public void crashLedgerDuringHttpWrites() throws Exception {
+        String id = accept(1, us);
+        startWorkers(true);
+        awaitStatus(id, "PENDING_LEDGER");
+        ObjectNode savedCommand = command(id);
+        var crash = CrashBreakpoint.atSourceLine("shardshop-core/common",
+                "dev.nklip.javacraft.shardshop.common.amqp.QueueConsumer", "settle", 154,
+                "channel.basicAck(deliveryTag, false)");
+        try (crash) {
+            ledger.crashAt(crash);
+            startLedger("USD");
+            publishCommand(savedCommand);
+            ledger.awaitCrash(crash, Duration.ofSeconds(45));
+            String concurrent = accept(1, us);
+            assertEquals(1, scalar(home(), "SELECT count(*) FROM ordering.orders WHERE order_id=" + concurrent),
+                    "Order HTTP must commit while the ledger JVM is suspended before ACK");
+            ledger.killAt(crash, Duration.ofSeconds(45));
+            assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_operations WHERE order_id=" + id));
+            assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_entries WHERE order_id=" + id));
+            ledger.restartWithPublisher("USD");
+            awaitStatus(id, "CONFIRMED");
+            await("single seller credit after ledger replay", () -> credits(us, id) == 1);
+            assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_operations WHERE order_id=" + id));
+            assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_entries WHERE order_id=" + id));
+            assertEquals(0, conflicts(id));
+        }
     }
 
     @Then("all seven currencies confirm cross-region purchases with exact profits and immutable legacy retries")

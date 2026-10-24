@@ -2,6 +2,7 @@ package dev.nklip.javacraft.shardshop.order;
 
 import io.quarkus.runtime.Quarkus;
 import dev.nklip.javacraft.shardshop.order.config.OrderConfiguration;
+import dev.nklip.javacraft.shardshop.order.config.OrderOperationalMetrics;
 import dev.nklip.javacraft.shardshop.order.config.StockWorker;
 import dev.nklip.javacraft.shardshop.order.cdc.OrderCdcRelay;
 import dev.nklip.javacraft.shardshop.order.cdc.TransportCleanupWorker;
@@ -24,8 +25,9 @@ class OrderLifecycleTest {
         ProfitWorker profit = mock(ProfitWorker.class);
         ReconciliationWorker reconciliation = mock(ReconciliationWorker.class);
         TransportCleanupWorker cleanup = mock(TransportCleanupWorker.class);
+        OrderOperationalMetrics metrics = mock(OrderOperationalMetrics.class);
         try (var runtime = mockStatic(Quarkus.class)) {
-            assertEquals(0, new OrderApplication(stock, cdc, results, profit, reconciliation, cleanup, config).run());
+            assertEquals(0, new OrderApplication(stock, cdc, results, profit, reconciliation, cleanup, metrics, config).run());
             runtime.verify(Quarkus::waitForExit);
         }
         var lifecycle = inOrder(stock, cdc, results, profit, reconciliation, cleanup);
@@ -35,6 +37,7 @@ class OrderLifecycleTest {
         lifecycle.verify(profit).start();
         lifecycle.verify(reconciliation).start();
         lifecycle.verify(cleanup).start();
+        verify(metrics).startSnapshots();
         lifecycle.verify(cleanup).close();
         lifecycle.verify(reconciliation).close();
         lifecycle.verify(results).close();
@@ -42,13 +45,13 @@ class OrderLifecycleTest {
         lifecycle.verify(stock).close();
         lifecycle.verify(cdc).close();
         try (var runtime = mockStatic(Quarkus.class)) {
-            assertEquals(0, new OrderApplication(stock, cdc, results, profit, reconciliation, cleanup, config).run("--unknown"));
+            assertEquals(0, new OrderApplication(stock, cdc, results, profit, reconciliation, cleanup, metrics, config).run("--unknown"));
             runtime.verify(Quarkus::waitForExit);
         }
-        clearInvocations(stock, cdc, results, profit, reconciliation, cleanup);
+        clearInvocations(stock, cdc, results, profit, reconciliation, cleanup, metrics);
         when(config.process()).thenReturn(OrderConfiguration.Process.HTTP);
         try (var runtime = mockStatic(Quarkus.class)) {
-            assertEquals(0, new OrderApplication(stock, cdc, results, profit, reconciliation, cleanup, config).run());
+            assertEquals(0, new OrderApplication(stock, cdc, results, profit, reconciliation, cleanup, metrics, config).run());
             runtime.verify(Quarkus::waitForExit);
         }
         verify(stock, never()).start();
@@ -57,9 +60,10 @@ class OrderLifecycleTest {
         verify(profit, never()).start();
         verify(reconciliation, never()).start();
         verify(cleanup, never()).start();
-        clearInvocations(stock, cdc, results, profit, reconciliation, cleanup);
-        assertEquals(0, new OrderApplication(stock, cdc, results, profit, reconciliation, cleanup, config)
+        verify(metrics, never()).startSnapshots();
+        clearInvocations(stock, cdc, results, profit, reconciliation, cleanup, metrics);
+        assertEquals(0, new OrderApplication(stock, cdc, results, profit, reconciliation, cleanup, metrics, config)
                 .run("--check-startup"));
-        verifyNoInteractions(stock, cdc, results, profit, reconciliation, cleanup);
+        verifyNoInteractions(stock, cdc, results, profit, reconciliation, cleanup, metrics);
     }
 }

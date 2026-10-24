@@ -19,6 +19,7 @@ import dev.nklip.javacraft.shardshop.order.reconciliation.ReconciliationFailure;
 import dev.nklip.javacraft.shardshop.order.reconciliation.ReconciliationStore;
 import dev.nklip.javacraft.shardshop.order.profit.ProfitStore;
 import dev.nklip.javacraft.shardshop.order.profit.ProfitFailure;
+import dev.nklip.javacraft.shardshop.order.cdc.CdcOffset;
 import dev.nklip.javacraft.shardshop.sharding.Shard;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.configuration.supplier.AgroalDataSourceConfigurationSupplier;
@@ -46,6 +47,13 @@ public final class JdbcOrderStore implements OrderStore, OrderListingStore, Stoc
     private final Map<String, AgroalDataSource> pools;
     private final DatabasePhases phases;
     private final LongSupplier nanoTime;
+
+    /** Bounded operational view; the caller refreshes it periodically rather than during a scrape. */
+    public record OperationalSnapshot(long pendingOutbox, double oldestPendingOutboxSeconds,
+                                      Map<String, Long> sagaStatuses, long exhaustedReconciliations,
+                                      long orphanQuarantines, long unresolvedOrphans,
+                                      long conflictingResultQuarantines, boolean slotExists, boolean slotActive,
+                                      boolean checkpointExists, double retainedWalBytes, double checkpointLagBytes) { }
 
     public JdbcOrderStore(Map<String, Endpoint> primary, int maxPoolSize) {
         this.pools = pools(primary, maxPoolSize);
@@ -80,7 +88,7 @@ public final class JdbcOrderStore implements OrderStore, OrderListingStore, Stoc
     }
 
     static AgroalDataSource pool(Endpoint endpoint, int size) throws SQLException {
-        return AgroalDataSource.from(new AgroalDataSourceConfigurationSupplier()
+        return AgroalDataSource.from(new AgroalDataSourceConfigurationSupplier().metricsEnabled()
                 .connectionPoolConfiguration(configuration -> configuration
                         .initialSize(0).minSize(0).maxSize(size)
                         .acquisitionTimeout(DatabasePhases.ACQUISITION_TIMEOUT)
@@ -320,6 +328,123 @@ public final class JdbcOrderStore implements OrderStore, OrderListingStore, Stoc
                     connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
                     return work.apply(new JdbcProfitSession(connection, deadline));
                 }, ProfitFailure.class, ProfitFailure::from);
+    }
+
+    public OperationalSnapshot operationalSnapshot(Shard shard) {
+        AgroalDataSource pool = pools.get(shard.clusterName());
+        if (pool == null) {
+            throw new IllegalArgumentException("Unknown order shard");
+        }
+        return phases.run(DatabasePhases.Pool.of(pool, () -> pool.flush(AgroalDataSource.FlushMode.ALL)), true,
+                DatabasePhases.PHASE_BUDGET, (connection, deadline) -> {
+                    DatabasePhases.refreshTimeouts(connection, deadline);
+                    long pendingOutbox;
+                    double oldestPendingOutbox;
+                    try (var statement = connection.prepareStatement("SELECT count(*), "
+                            + "COALESCE(extract(epoch FROM statement_timestamp() - min(created_at)), 0) "
+                            + "FROM ordering.order_outbox WHERE published_at IS NULL");
+                         var rows = statement.executeQuery()) {
+                        rows.next();
+                        pendingOutbox = rows.getLong(1);
+                        oldestPendingOutbox = rows.getDouble(2);
+                    }
+                    Map<String, Long> statuses = new java.util.HashMap<>();
+                    try (var statement = connection.prepareStatement("SELECT status, count(*) "
+                            + "FROM ordering.order_sagas GROUP BY status");
+                         var rows = statement.executeQuery()) {
+                        while (rows.next()) {
+                            statuses.put(rows.getString(1), rows.getLong(2));
+                        }
+                    }
+                    long exhausted;
+                    try (var statement = connection.prepareStatement("SELECT count(*) "
+                            + "FROM ordering.order_sagas WHERE status = 'PENDING_LEDGER' "
+                            + "AND reconciliation_attempts >= 5");
+                         var rows = statement.executeQuery()) {
+                        rows.next();
+                        exhausted = rows.getLong(1);
+                    }
+                    long orphanTotal;
+                    long unresolvedOrphans;
+                    long conflicts;
+                    try (var statement = connection.prepareStatement("SELECT "
+                            + "(SELECT count(*) FROM ordering.orphan_results), "
+                            + "(SELECT count(*) FROM ordering.orphan_results WHERE resolved_at IS NULL), "
+                            + "(SELECT count(*) FROM ordering.conflicting_results)");
+                         var rows = statement.executeQuery()) {
+                        rows.next();
+                        orphanTotal = rows.getLong(1);
+                        unresolvedOrphans = rows.getLong(2);
+                        conflicts = rows.getLong(3);
+                    }
+                    boolean slotExists;
+                    boolean slotActive;
+                    double retainedWalBytes;
+                    double checkpointLagBytes;
+                    String slotName = "shardshop_order_" + shard.clusterName().replace('-', '_');
+                    Long checkpointLsn = checkpointLsn(connection, slotName);
+                    try (var statement = connection.prepareStatement("SELECT active, "
+                            + "pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)::double precision "
+                            + "FROM pg_replication_slots WHERE slot_name = ?")) {
+                        statement.setString(1, slotName);
+                        try (var rows = statement.executeQuery()) {
+                            slotExists = rows.next();
+                            slotActive = slotExists && rows.getBoolean(1);
+                            retainedWalBytes = slotExists ? rows.getDouble(2) : Double.NaN;
+                            if (slotExists && rows.wasNull()) retainedWalBytes = Double.NaN;
+                        }
+                    }
+                    if (checkpointLsn == null) {
+                        checkpointLagBytes = Double.NaN;
+                    } else {
+                        String checkpoint = Long.toHexString(checkpointLsn >>> 32) + "/"
+                                + Long.toHexString(checkpointLsn & 0xffff_ffffL);
+                        try (var statement = connection.prepareStatement(
+                                "SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), ?::pg_lsn)::double precision")) {
+                            statement.setString(1, checkpoint);
+                            try (var rows = statement.executeQuery()) {
+                                rows.next();
+                                checkpointLagBytes = rows.getDouble(1);
+                            }
+                        }
+                    }
+                    return new OperationalSnapshot(pendingOutbox, oldestPendingOutbox, Map.copyOf(statuses),
+                            exhausted, orphanTotal, unresolvedOrphans, conflicts, slotExists, slotActive, checkpointLsn != null,
+                            retainedWalBytes, checkpointLagBytes);
+                }, IllegalStateException.class, failure -> new IllegalStateException("Order metrics snapshot failed", failure));
+    }
+
+    private static Long checkpointLsn(Connection connection, String identity) throws SQLException {
+        try (var statement = connection.prepareStatement("SELECT offset_key, offset_val "
+                + "FROM ordering.debezium_offset_storage");
+             var rows = statement.executeQuery()) {
+            Long checkpoint = null;
+            while (rows.next()) {
+                try {
+                    long position = CdcOffset.position(rows.getString(1), rows.getString(2), identity);
+                    checkpoint = checkpoint == null ? position : Math.max(checkpoint, position);
+                } catch (IllegalArgumentException invalid) {
+                    throw new SQLException("CDC checkpoint is malformed", invalid);
+                }
+            }
+            return checkpoint;
+        }
+    }
+
+    public long poolActive(String shard) { return pool(shard).getMetrics().activeCount(); }
+    public long poolAvailable(String shard) { return pool(shard).getMetrics().availableCount(); }
+    public long poolAwaiting(String shard) { return pool(shard).getMetrics().awaitingCount(); }
+    public long poolMaxSize(String shard) { return pool(shard).getConfiguration().connectionPoolConfiguration().maxSize(); }
+    public long poolMaxUsed(String shard) {
+        long observedMaximum = pool(shard).getMetrics().maxUsedCount();
+        // Agroal 3.2.1 uses Long.MIN_VALUE until the pool has created its first connection.
+        return observedMaximum == Long.MIN_VALUE ? 0 : observedMaximum;
+    }
+
+    private AgroalDataSource pool(String shard) {
+        AgroalDataSource pool = pools.get(shard);
+        if (pool == null) throw new IllegalArgumentException("Unknown order shard");
+        return pool;
     }
 
     @Override

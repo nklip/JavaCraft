@@ -9,6 +9,11 @@ generates IDs.
 
 - **Runs as:** one pod with the command consumer, result relay and transport cleanup worker, and a
   separate single-instance PostgreSQL pod, `ledger-db`.
+- **Observability:** `/q/metrics` serves Micrometer/Prometheus gauges. A ledger worker refreshes
+  pending outbox and historical quarantine counts every 10 seconds through the existing
+  three-second database phase; scrapes only read memory. Success and sample age gauges
+  distinguish current values from a failed or missing snapshot. Pool gauges read the
+  ledger-owned Agroal pool directly.
 - **Owns:** schema `ledger` in database `ledger`. There is no sharding.
 - **Status:** the command consumer and result relay are implemented in steps 4.5
   and 4.6; order reconciliation is step 5.1 and transport cleanup is step 5.2.

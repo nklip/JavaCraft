@@ -4944,3 +4944,260 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
 ```
 
 No drill or harness code changed after this run.
+
+
+## Step 5.5
+
+**2026-10-24:** recovery checks now stop packaged JVMs at real commit,
+publication-confirmation, acknowledgement and CDC-checkpoint boundaries. A
+loopback-only JDK debugger suspends the selected process before a forced kill;
+production applications have no crash switch or debug listener. Source anchors
+make a moved breakpoint fail explicitly. The CDC publication-mark case holds
+offset writes until the kill and verifies the durable position remains before
+the inserted command, then requires replay of the identical broker envelope.
+After a durable checkpoint, restart advances to the next command without
+replaying the checkpointed command. Ledger and order-result recovery preserve
+permanent decisions and exactly-once stock/profit effects. Independent HTTP
+order writes continue while saga or ledger processing is suspended.
+
+The HTTP rollout drill writes one scoped order per second through the Kubernetes
+Service proxy before, during and after replacement. It verifies both HTTP pod
+identities change while the saga pod and all three active CDC backend PIDs stay
+the same, then verifies every accepted order's terminal effects. A bounded writer
+and the existing restoration guard limit stock use and restore deployment
+annotations. No workload pod is added.
+
+Order and ledger expose Prometheus metrics through `/q/metrics`, with two new
+internal Services for saga and ledger. HTTP order pods expose only local pool
+metrics. Saga/ledger samples run every ten seconds through the existing bounded
+database operations; scrapes perform no SQL. Failed refreshes retain the last
+values and expose failure plus increasing sample age; values are NaN until the
+first successful sample. Gauges cover outbox count/age, saga states and exhausted
+reconciliation, quarantine, CDC state/checkpoint/WAL pressure and database pools.
+CDC transient retries and explicit recovery-required failures are separate.
+Native RabbitMQ counters and effective policies expose ready/unacknowledged
+message and byte pressure; CNPG metrics and physical replication observations
+expose standby pressure. The deployment gate checks these endpoints and fresh
+samples without adding a monitoring stack or pods.
+
+Ordinary reconnect and state-loss scenarios remain distinct: missing slots,
+missing offsets, lost WAL and slots ahead of their durable checkpoint stop the
+affected reader without silently resnapshotting. Promotion/failover remains
+step 6.2; coordinated restore and operator audit remain steps 6.3–6.4.
+
+Application verification passed 388 order unit/provider checks, 45 packaged
+order startup checks and 62 ledger checks. Tests cover snapshot freshness,
+retained values after failure, metrics endpoint wiring, pool capacity, process
+separation and startup checks that do not start sampling. Dependency audits reuse
+the already qualified Prometheus/Micrometer artifacts recorded in
+[VERSIONS.md](VERSIONS.md#step-55-observability-dependencies).
+
+Application commands from the repository root (the first command installed the
+required reactor dependencies before the final focused run):
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order,shardshop-ledger -am -Paudit install
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order,shardshop-ledger -Paudit install
+```
+
+
+The final selected packaged suite passed all **26 scenarios** in 9m29s, including
+all ten new abrupt-crash cases, ordinary CDC reconnect, lost slot/offset/WAL
+fail-closed behavior and independent HTTP continuity. A broader preceding run
+also passed the existing accepted-order CDC/stock case. Initial debugger hooks
+used class-wide method-exit events, which paused unrelated startup/consumer work
+and caused test timeouts. Replacing every such hook with a checked one-shot line
+breakpoint fixed the harness; no recovery assertion was relaxed. All three ledger
+crash cases first passed together, then the final combined suite passed with the
+same helper. No production crash hook or recovery-algorithm change was needed.
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Pintegration -Dshardshop.infrastructureOnly=true \
+  '-Dcucumber.filter.tags=(@cdc-relay and not @stock-reservation) or @crash-recovery or @crash-after-ack or @order-processes' \
+  test-compile failsafe:integration-test failsafe:verify
+```
+
+This final command reused the already passing testing/common unit checks and
+selected the 26 recovery scenarios explicitly. The documented broader command
+also includes the unchanged accepted-order stock/CDC case. The after-ACK case
+carries the common `@crash-recovery` tag as well as its focused selection tag.
+
+
+The deployment command `bash microservices/shardshop/scripts/up.sh` rebuilt the
+complete ShardShop reactor successfully in 4m50s: **1,843 unit/provider checks**,
+**75 packaged startup checks**, and the separate kind-configuration gate passed.
+All application images built. Its required Docker Scout vulnerability scan then
+stopped with `Log in with your Docker ID or email address to use docker scout`.
+This happened before cluster resumption or deployment. The four retained kind
+nodes and all unrelated containers were confirmed still stopped. The user then
+signed in through Docker Desktop, and the deployment command was retried. The
+scan gate was not changed.
+`git diff --check` and the new documentation-link checks passed.
+
+
+### Reproducible migration image
+
+After sign-in, all seven image advisory gates passed. Deployment then stopped
+before the application release because a cold Flyway build produced manifest
+`2583d3480ae8c234e53550ce7d401802b6dc936d4cc7f6882ccfb48acf9765aa`
+instead of reviewed manifest
+`96efa77525170d9eac45d4baa7027920da788a92b46bbbdc3f6a9b0443b32665`.
+A comparison against the retained node's original image found identical base
+layers, runtime configuration and all 68 file payload hashes, sizes, modes and
+owners. Only the copied `/flyway` layer's file/directory timestamps differed.
+The artifact-copy stage used rebuild-time timestamps, which the existing
+`SOURCE_DATE_EPOCH=0` did not normalize.
+
+The Flyway Dockerfile now normalizes `/dist` timestamps to epoch zero before
+copying it into the final image. Two independent uncached ARM64 builds produced
+the same config
+`fc824b8f915fabfdbefe9f59b70a3cb49264338e2cb24fb377d2aeb88a1fb22e`
+and platform manifest
+`a7253697965bb91889f388c68d12132caa8bf60bf6ff2cc36d3648ff5651205d`.
+All 68 files and six directories have epoch-zero timestamps; payload hashes,
+permissions and owners still match the original reviewed image. Loading the
+image into the retained control-plane node confirmed the platform manifest
+used by `up.sh`. The chart and lock now pin that verified digest.
+
+Flyway OSS 13.8.1 and the existing Ubuntu OpenJDK 25.0.4.1 runtime pass with
+network disabled, a read-only root, no capabilities, no privilege escalation
+and writable `/tmp`. The normalized image passes the unchanged Scout
+high/critical gate with the reviewed VEX statements (74 indexed packages).
+Docker 29.9.2 and Buildx 0.38.1 performed the rebuilds. Library versions,
+base-image pins and the 2026-10-28 review deadline are unchanged.
+
+```bash
+docker buildx build --no-cache --platform linux/arm64 \
+  --build-arg SOURCE_DATE_EPOCH=0 --provenance=false --sbom=false --load \
+  -t shardshop-flyway:repro-a -f microservices/shardshop/infra/images/flyway/Dockerfile \
+  microservices/shardshop/infra/images/flyway
+docker buildx build --no-cache --platform linux/arm64 \
+  --build-arg SOURCE_DATE_EPOCH=0 --provenance=false --sbom=false --load \
+  -t shardshop-flyway:repro-b -f microservices/shardshop/infra/images/flyway/Dockerfile \
+  microservices/shardshop/infra/images/flyway
+docker run --rm --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges --tmpfs /tmp:rw,nosuid,nodev,size=64m \
+  shardshop-flyway:repro-a -v
+kind load docker-image docker.io/library/shardshop-flyway:repro-a \
+  --name shardshop --nodes shardshop-control-plane
+docker exec shardshop-control-plane ctr --namespace=k8s.io images ls \
+  name==docker.io/library/shardshop-flyway:repro-a
+docker scout cves --exit-code --only-severity critical,high \
+  --format only-packages --only-vuln-packages \
+  --vex-location microservices/shardshop/infra/images/application/vex \
+  --vex-author '^ShardShop image review$' --ignore-suppressed \
+  local://shardshop-flyway:repro-a
+```
+
+
+### Live metrics corrections
+
+The first application deployment completed, and five of its six acceptance
+scenarios passed. The new observability gate failed on an unused HTTP pool:
+Agroal 3.2.1 initializes its peak-size accumulator to `Long.MIN_VALUE` and updates
+it only after creating a physical connection. Order pools start empty with
+metrics enabled, so this sentinel means their observed peak size is zero. The
+adapter now maps exactly that sentinel to zero and retains every other reading;
+the metric description also identifies peak pool size rather than simultaneous
+borrowed connections. The regression check exercises a real empty Agroal pool.
+
+A broker preflight also found that the pinned RabbitMQ CLI returns empty strings
+for quorum queue byte counters. The observability gate now reads numeric byte
+and message counts from the already enabled management API, using the existing
+credential only in memory. Missing or blank counters still fail validation;
+unknown pressure is never treated as zero. No broker plugin or pod was added.
+
+Final review tightened the HTTP rollout proof: it records the writer count after
+first observing a replacement pod, then requires a later commit while rollout
+is still incomplete. Writes immediately before replacement cannot satisfy that
+assertion.
+
+
+The empty-pool regression first failed with expected zero versus
+`-9223372036854775808`, then the same focused suite passed all 20 tests after
+the adapter fix. The first attempt with `-am` stopped in the common dependency
+because that module has no `JdbcOrderStoreTest`; the correctly scoped command
+below reached the order module and produced the red/green evidence.
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order \
+  -Dtest=JdbcOrderStoreTest test
+```
+
+The release observer also checks the two new metrics Services against the
+rendered chart and their actual ready EndpointSlices, alongside the existing
+provider and workload Services.
+
+
+The subsequent clean `up.sh` build passed every application, shared-library and
+packaged startup check, then found an outdated `KindReleaseTest` fixture that
+still omitted the two new Services. The fixture now includes them, and a new
+negative case requires a ready endpoint for each metrics Service. Only test
+sources changed after the application packages were built.
+
+To avoid repeating the unchanged application build, verification resumed with
+all 212 testing-module checks passing:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dshardshop.infrastructureOnly=true install
+```
+
+A temporary copy of `up.sh` used that command in place of its clean-build line and an absolute path to its
+lifecycle library. Every later image build, Scout scan, digest check, migration,
+release and acceptance stage remained unchanged. The repository lifecycle
+script itself is unchanged; a normal future deployment still runs `up.sh`.
+The temporary invocation was `bash /tmp/shardshop-55-up-resume.sh`.
+
+
+The resumed deployment completed successfully at application revision 3. All
+seven unchanged Scout advisory gates and all six live release/deployment
+scenarios passed (92.63 seconds), including fresh order/ledger metrics, numeric
+RabbitMQ message/byte counters, physical replication observations and both new
+metrics Services. A direct scrape showed peak pool size `1` on the active HTTP
+pod and `0` on its unused peer, confirming the sentinel fix in the deployed JVMs.
+Current Surefire reports total **1,845 tests**, with no failures, errors or skips;
+the clean application run also passed all **75 packaged startup checks**.
+
+
+All four selected live scenarios then passed in **4m31s**: observability,
+duplicate/rejected replay and stock consistency, cross-worker saga replacement,
+and continuous HTTP writes during HTTP replacement with unchanged saga pod and
+all three CDC backend PIDs. Every accepted rollout order reached its verified
+terminal effects. Cleanup restores the original HTTP annotations and waits for
+old pods to terminate before releasing the drill lock.
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dshardshop.infrastructureOnly=true -Pkind \
+  test-compile failsafe:integration-test failsafe:verify \
+  -Dshardshop.kind.snapshot=/tmp/shardshop-55-final-snapshot.rkMq34 \
+  '-Dshardshop.kind.tags=kind-saga-drill | kind-observability'
+```
+
+
+The final read-only suite passed all **nine scenarios** in **1m58s**, including
+the exact qualified release after drill restoration, fresh metrics, clean reader
+traffic, scoped saga effects, all database and broker topology checks and the
+absent drill lock. All shards reported 3/3 healthy instances and ledger 1/1;
+all nine application pods were ready. Producer and reader controls were running
+at their configured defaults of 0.5 new-order starts/s and 200 read starts/s.
+These are control targets, not a new capacity measurement.
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dshardshop.infrastructureOnly=true -Pkind \
+  test-compile failsafe:integration-test failsafe:verify \
+  -Dshardshop.kind.snapshot=/tmp/shardshop-55-final-snapshot.rkMq34 \
+  '-Dshardshop.kind.tags=kind-infrastructure | kind-deployment | kind-release | kind-drills-idle'
+bash microservices/shardshop/scripts/down.sh
+```
+
+`down.sh` returned the four retained kind nodes to their original stopped state;
+all unrelated containers remained stopped. No cluster, volume or business data
+was reset. The two temporary Flyway reproducibility tags, verification snapshots
+and temporary deployment-resume script were removed. The snapshot path above is
+the historical invocation; future runs create a new snapshot using the
+[runbook](shardshop-testing/RUNBOOK.md#kind-verification-snapshot). `git diff --check`
+and added-documentation-link checks pass. Step 5.5 is complete; step 6.1 is next.

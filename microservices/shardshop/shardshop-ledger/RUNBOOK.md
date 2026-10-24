@@ -150,6 +150,29 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pinteg
   '-Dcucumber.filter.tags=@transport-cleanup or @transport-cleanup-migration or @ledger-publisher'
 ```
 
+## Metrics
+
+The application exposes Prometheus text at `/q/metrics`. Ledger-owned gauges
+have no command, order, message, or other high-cardinality labels:
+
+| Metric | Meaning |
+|---|---|
+| `shardshop_ledger_pending_results` | Unpublished `ledger_outbox` rows |
+| `shardshop_ledger_oldest_pending_age_seconds` | Age of the oldest unpublished row at the last snapshot; zero when none are pending |
+| `shardshop_ledger_conflicting_commands` | Historical rows in `conflicting_commands`, including resolved incidents |
+| `shardshop_ledger_snapshot_success` | One if the latest database refresh succeeded, zero after a failure or before the first refresh |
+| `shardshop_ledger_snapshot_age_seconds` | Time since the last successful refresh |
+| `shardshop_ledger_pool_active`, `shardshop_ledger_pool_available`, `shardshop_ledger_pool_awaiting`, `shardshop_ledger_pool_max` | Ledger-owned Agroal pool capacity and usage |
+
+The 10-second refresh uses the normal pool and three-second database phase
+deadline. Before the first successful refresh, database-derived values and sample
+age are unavailable (`NaN` in the registry). A failed refresh retains the last
+values, sets `snapshot_success` to zero, and lets sample age grow. Check both
+freshness gauges before treating a queue depth of zero as current. Pool gauges
+read in-memory Agroal state and remain available during a database outage.
+
+`--check-startup` does not start the sampler or query the database.
+
 ## Tests
 
 **Command consumer.** Build the ledger and run its disposable PostgreSQL/RabbitMQ

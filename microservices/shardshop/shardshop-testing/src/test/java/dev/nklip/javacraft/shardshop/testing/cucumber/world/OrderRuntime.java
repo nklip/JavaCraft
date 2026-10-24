@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.testing.cucumber.world;
 
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.CatalogDatabase;
+import dev.nklip.javacraft.shardshop.testing.cucumber.config.CrashBreakpoint;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.PackagedApplication;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.RawHttp;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.RabbitMqBroker;
@@ -37,6 +38,7 @@ public final class OrderRuntime implements Disposable {
     private boolean profitEnabled;
     private boolean reconciliationEnabled;
     private boolean cleanupEnabled;
+    private CrashBreakpoint sagaCrash;
 
     public OrderRuntime(CatalogShards shards) throws IOException {
         this.shards = shards;
@@ -163,14 +165,44 @@ public final class OrderRuntime implements Disposable {
         if (saga != null && saga.isAlive()) saga.stop();
     }
 
+    public void killSaga() throws InterruptedException {
+        if (saga != null && saga.isAlive()) saga.kill();
+    }
+
+    public void crashSagaAt(CrashBreakpoint breakpoint) { sagaCrash = breakpoint; }
+
+    public void killSagaAt(CrashBreakpoint breakpoint, Duration timeout) throws Exception {
+        breakpoint.killAtHit(saga, timeout);
+    }
+
+    public void awaitSagaCrash(CrashBreakpoint breakpoint, Duration timeout) throws Exception {
+        breakpoint.awaitHit(saga, timeout);
+    }
+
+    public String sagaTail() {
+        return saga == null ? "" : saga.tail();
+    }
+
     private void startSaga() throws IOException, InterruptedException {
         if (!stockEnabled && cdcBroker == null && resultsBroker == null && !profitEnabled
                 && !reconciliationEnabled && !cleanupEnabled) return;
-        saga = PackagedApplication.start("shardshop-order", directory, List.of(
+        CrashBreakpoint pendingCrash = sagaCrash;
+        sagaCrash = null;
+        var options = new ArrayList<>(List.of(
                 "-Dshardshop.routing.config=" + configuration.toUri(),
                 "-Dshardshop.order.process=saga",
                 "-Dshardshop.id.generator-id=" + GENERATORS.incrementAndGet(),
                 "-Dquarkus.http.host=127.0.0.1", "-Dquarkus.http.port=0"));
+        if (pendingCrash != null) options.addAll(pendingCrash.options());
+        saga = PackagedApplication.start("shardshop-order", directory, options);
+        if (pendingCrash != null) {
+            try { pendingCrash.attach(); }
+            catch (Exception failed) {
+                pendingCrash.close();
+                saga.kill();
+                throw new IOException("Could not attach to packaged saga crash breakpoint", failed);
+            }
+        }
         applications.add(saga);
         long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
         while (System.nanoTime() < deadline) {

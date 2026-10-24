@@ -61,6 +61,20 @@ public final class OrderCdcRelay implements AutoCloseable {
         }
     }
 
+    public boolean recoveryRequired(String shard) {
+        return readers.stream().filter(reader -> reader.settings.shard().equals(shard))
+                .anyMatch(reader -> reader.recoveryRequired);
+    }
+
+    public boolean readerConfigured(String shard) {
+        return readers.stream().anyMatch(reader -> reader.settings.shard().equals(shard));
+    }
+
+    public boolean retrying(String shard) {
+        return readers.stream().filter(reader -> reader.settings.shard().equals(shard))
+                .anyMatch(reader -> reader.retrying);
+    }
+
     @Override
     public void close() {
         if (closed.compareAndSet(false, true)) {
@@ -109,6 +123,7 @@ public final class OrderCdcRelay implements AutoCloseable {
         private final Thread supervisor;
         private final CountDownLatch stopRequested = new CountDownLatch(1);
         private volatile boolean recoveryRequired;
+        private volatile boolean retrying;
 
         Reader(ShardSettings settings, BrokerSettings rabbit) {
             this.settings = settings;
@@ -142,6 +157,7 @@ public final class OrderCdcRelay implements AutoCloseable {
         public void run() {
             long backoff = 500;
             while (!closed.get() && !recoveryRequired) {
+                retrying = false;
                 try {
                     runOnce();
                     backoff = 500;
@@ -161,6 +177,7 @@ public final class OrderCdcRelay implements AutoCloseable {
                     }
                 }
                 if (!closed.get() && !recoveryRequired) {
+                    retrying = true;
                     try {
                         stopRequested.await(backoff, TimeUnit.MILLISECONDS);
                     } catch (InterruptedException interrupted) {

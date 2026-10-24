@@ -89,6 +89,13 @@ public final class PackagedApplication {
         return process.exitValue();
     }
 
+    /** Abrupt process death for crash recovery tests; no Quarkus shutdown hook runs. */
+    public void kill() throws InterruptedException {
+        process.destroyForcibly();
+        if (!process.waitFor(5, TimeUnit.SECONDS))
+            throw new AssertionError("Packaged JVM did not die after forced termination:\n" + tail());
+    }
+
     public List<String> lines() {
         try {
             return Files.readAllLines(log, StandardCharsets.UTF_8);

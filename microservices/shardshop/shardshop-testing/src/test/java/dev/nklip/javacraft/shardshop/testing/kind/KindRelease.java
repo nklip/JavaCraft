@@ -27,8 +27,9 @@ public final class KindRelease {
     private static final String SEEDER_CONTROL = "shardshop-product-seeder-control";
     private static final List<String> DEPLOYMENTS = List.of(PRODUCT, READER, ORDER, "shardshop-order-saga", "shardshop-ledger", PRODUCER,
             SEEDER_CONTROL);
-    /** The two provider APIs and the three workload control pages (step 4.13). */
-    private static final List<String> SERVICES = List.of(PRODUCT, ORDER, READER, PRODUCER, SEEDER_CONTROL);
+    /** Provider APIs, workload controls and the saga/ledger metrics endpoints. */
+    private static final List<String> SERVICES = List.of(PRODUCT, ORDER, READER, PRODUCER, SEEDER_CONTROL,
+            "shardshop-order-saga", "shardshop-ledger");
     private static final String SEEDER_ANNOTATION = "shardshop.javacraft/seeder-job";
     private static final ObjectMapper JSON = new ObjectMapper();
     private final KindLab lab;

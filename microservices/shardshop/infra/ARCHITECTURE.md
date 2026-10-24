@@ -7,9 +7,10 @@ kind lab. It also defines the runtime topology and the RabbitMQ delivery policy.
 
 - **Status:** the local lifecycle, topology and delivery policies are implemented,
   together with durable reconciliation, transport cleanup, manual retry reset
-  and qualified retry/capacity recovery in [PLAN steps 5.1–5.4](../PLAN.md).
-  Complete crash, failover/restore and optional AWS delivery checks remain planned
-  in milestones 5–7. Requirements below retain
+  and qualified retry/capacity recovery, crash recovery and observability in
+  [PLAN steps 5.1–5.5](../PLAN.md).
+  Failover/restore and optional AWS delivery checks remain planned
+  in milestones 6–7. Requirements below retain
   those target guarantees; they do not claim every acceptance scenario already
   passes.
 
@@ -224,10 +225,10 @@ with a Java controller.
 
 | Profile | Selection | Checks |
 |---|---|---|
-| `kind-deployment` | Default of the `kind` profile through `shardshop.kind.tags` | Deployed routing, independent replication and persistent-volume identity (`kind-topology`) and the existing product workload (`kind-workload`) |
+| `kind-deployment` | Default of the `kind` profile through `shardshop.kind.tags` | Deployed routing, independent replication and persistent-volume identity (`kind-topology`), product workload (`kind-workload`), saga effects (`kind-saga`) and recovery/pressure metrics (`kind-observability`) |
 | `kind-database-drill` | Explicit `kind-drill` | Standby replacement, quorum availability/blocking and WAL retention on the first inventory shard, or `shardshop.kind.drillShard` |
 | `kind-workload-drill` | Explicit `kind-drill` | Repeated temporary seeder Jobs, identical saved IDs and the replacement of one product pod |
-| `kind-saga-drill` | Explicit `kind-drill` | Duplicate delivery, policy-change replay, two orders for the same stock and cross-worker saga replacement |
+| `kind-saga-drill` | Explicit `kind-drill` | Duplicate delivery, policy-change replay, two orders for the same stock, cross-worker saga replacement and continuous writes during HTTP replacement with unchanged saga/CDC ownership |
 | `kind-retry-drill` | Explicit `kind-drill` | Shard outage beyond broker retries, reconciliation, and unbound/full DLQ pressure on both application publishers; see the [retry runbook](../shardshop-testing/RUNBOOK.md#retry-and-dlq-capacity-drills) |
 
 **Default profile.** `kind-workload` checks credential restrictions, the saved
@@ -568,6 +569,16 @@ an order.
   or a restore continues the saga.
 
 ### Monitoring and limits
+
+Order and ledger use the same pinned Micrometer Prometheus extension as product.
+Their custom application pools expose in-memory pressure gauges. The saga and
+ledger sample durable backlog and quarantine in bounded background database
+phases, with explicit freshness/failure gauges; metric scrapes perform no SQL.
+Only saga processes sample order business/CDC state. Internal saga and ledger
+Services expose port 8080 without adding pods. The read-only `kind-observability`
+deployment gate checks these gauges, native RabbitMQ queue capacity counters,
+CloudNativePG's port 9187 metrics and physical replication backlog. Endpoint and
+signal semantics belong to the [monitoring guide](README.md#saga-and-database-pressure).
 
 Resume the CDC readers for all order shards and the ledger result relay after
 restart. Monitor CDC lag, reader restarts, offset checkpoints, replication-slot

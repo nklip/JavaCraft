@@ -11,6 +11,10 @@ Feature: Packaged ledger result publisher
   Scenario: Pending results resume after a process restart
     Then a pending result is published after the ledger restarts
 
+  @crash-recovery
+  Scenario: A killed result publisher replays an already broker-confirmed result
+    Then a killed publisher after broker confirmation reuses its saved result
+
   Scenario: Duplicate and reconciliation commands replay retained decisions
     Then replayed and reconciliation results retain their exact saved decisions
 

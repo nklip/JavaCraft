@@ -55,12 +55,59 @@ public final class JdbcLedgerStore implements LedgerStore, ResultOutbox, Transpo
                                     .principal(new NamePrincipal(endpoint.username()))
                                     .credential(new SimplePassword(endpoint.password()))
                                     .loginTimeout(Duration.ofSeconds(1))
-                                    .networkTimeout(DatabasePhases.PHASE_BUDGET))));
+                                    .networkTimeout(DatabasePhases.PHASE_BUDGET)))
+                    .metricsEnabled());
         } catch (SQLException failure) {
             throw new IllegalStateException("Ledger store unavailable");
         }
         phases = new DatabasePhases("ledger", maxPoolSize);
     }
+
+    /** A single bounded read-only snapshot for metrics; scrapes never execute SQL. */
+    public MetricsSnapshot metricsSnapshot() {
+        return phases.run(DatabasePhases.Pool.of(pool, () -> pool.flush(AgroalDataSource.FlushMode.ALL)),
+                true, DatabasePhases.PHASE_BUDGET, JdbcLedgerStore::readMetricsSnapshot, IllegalArgumentException.class,
+                failure -> new IllegalStateException("Ledger metrics snapshot unavailable", failure));
+    }
+
+    static MetricsSnapshot readMetricsSnapshot(Connection connection, DatabasePhases.Deadline deadline)
+            throws SQLException {
+        DatabasePhases.refreshTimeouts(connection, deadline);
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT count(*), COALESCE(EXTRACT(EPOCH FROM "
+                        + "(statement_timestamp() - min(created_at))), 0) "
+                        + "FROM ledger.ledger_outbox WHERE published_at IS NULL");
+             ResultSet rows = statement.executeQuery()) {
+            rows.next();
+            long pending = rows.getLong(1);
+            double oldestAgeSeconds = Math.max(0, rows.getDouble(2));
+            DatabasePhases.refreshTimeouts(connection, deadline);
+            try (PreparedStatement conflicts = connection.prepareStatement(
+                    "SELECT count(*) FROM ledger.conflicting_commands");
+                 ResultSet conflictRows = conflicts.executeQuery()) {
+                conflictRows.next();
+                return new MetricsSnapshot(pending, oldestAgeSeconds, conflictRows.getLong(1));
+            }
+        }
+    }
+
+    public long activeConnections() {
+        return pool.getMetrics().activeCount();
+    }
+
+    public long availableConnections() {
+        return pool.getMetrics().availableCount();
+    }
+
+    public long awaitingConnections() {
+        return pool.getMetrics().awaitingCount();
+    }
+
+    public int maxConnections() {
+        return pool.getConfiguration().connectionPoolConfiguration().maxSize();
+    }
+
+    public record MetricsSnapshot(long pendingResults, double oldestPendingAgeSeconds, long conflictingCommands) {}
 
     @Override
     public Counts cleanup(Instant before, int batchSize) {

@@ -38,6 +38,25 @@ spec:
       port: 8080
       targetPort: http
 ---
+# Internal metrics endpoints; they add no pods and expose no public ingress.
+{{- range $name := list "order-saga" "ledger" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: shardshop-{{ $name }}
+  namespace: {{ $.Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/name: shardshop-{{ $name }}
+    app.kubernetes.io/part-of: shardshop
+spec:
+  selector:
+    app.kubernetes.io/name: shardshop-{{ $name }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+{{- end }}
 # Both process roles use the same image and existing order allocator permissions.
 # Only the singleton saga owns shard CDC slots; HTTP rolls independently with no unavailable replicas.
 {{- range $process := list (dict "name" "order" "mode" "http" "replicas" 2 "strategy" "RollingUpdate") (dict "name" "order-saga" "mode" "saga" "replicas" 1 "strategy" "Recreate") }}
@@ -191,6 +210,13 @@ spec:
                 secretKeyRef:
                   name: shardshop-rabbitmq
                   key: ledger-password
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 2
           resources:
             {{- toYaml .Values.ledgerApplication.resources | nindent 12 }}
           {{- include "shardshop.containerSecurity" . | nindent 10 }}

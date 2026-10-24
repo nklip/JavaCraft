@@ -102,7 +102,7 @@ needed for `kind-dns`. The inventory is read from the snapshot. Keep `-Dshardsho
 invocation; the suite does not create or reconcile the lab.
 
 The `kind` profile defaults to `kind-deployment`, which combines `kind-topology`,
-`kind-workload` and `kind-saga`. It needs an already-migrated and deployed lab
+`kind-workload`, `kind-saga` and `kind-observability`. It needs an already-migrated and deployed lab
 with all nine running application pods. The saga scenario creates two scoped orders
 for the gate's own buyer; the other scenarios only observe. With the snapshot
 above, run the default suite separately from the Testcontainers `integration`
@@ -344,6 +344,55 @@ PostgreSQL scenarios use two US shards to cover cross-shard partial-reservation 
 competing stock coordinators. The drill keeps business and allocator history;
 new order JVM starts permanently consume generator IDs. Do not run the kind suite
 and the disposable Testcontainers suite against shared build outputs concurrently.
+
+## Crash recovery and observability
+
+Step 5.5 uses disposable PostgreSQL/RabbitMQ containers for exact process-crash
+boundaries. Rebuild the changed packaged applications, then select the recovery
+suite from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order,shardshop-ledger -am -Paudit install
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true -Pintegration verify \
+  '-Dcucumber.filter.tags=@crash-recovery or @cdc-relay or @order-processes'
+```
+
+The test JDK must include `jdk.jdi` (the configured JDK 25 does). A test-only JDWP
+listener binds a random loopback port in a packaged JVM. The harness installs a
+checked source-line boundary before startup resumes, suspends the JVM there,
+checks independent SQL/broker evidence, and forcibly kills it. Application images
+and production settings have no debugger or crash switches. Source-line barriers
+validate their statement and method so moving code fails the test instead of
+silently changing its meaning.
+
+These cases distinguish an uncommitted ledger decision from a committed decision
+whose delivery is still unacknowledged, and broker-confirmed publication from its
+database mark and durable CDC checkpoint. Recovery retains command/result identity
+and permanent outcomes. Integrated command/result cases also commit new orders
+through the independent HTTP JVM while the consumer JVM is suspended. The existing
+CDC cases cover each shard, snapshot handoff, rollback, metadata changes,
+mandatory returns, connection loss, exclusive ownership and missing/invalid durable
+state. Slot/offset/WAL destruction happens only in these disposable databases.
+Promotion and synchronized-slot failover remain step 6.2.
+
+After deploying with `scripts/up.sh`, prepare the [kind snapshot](#kind-verification-snapshot):
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true -Pkind verify \
+  -Dshardshop.kind.snapshot="$snapshot" \
+  '-Dshardshop.kind.tags=kind-saga-drill | kind-observability'
+```
+
+The HTTP rollout drill submits scoped orders at up to one per second through the
+Kubernetes Service proxy, with a five-minute bound. A pod-bound port forward could
+not follow a replaced HTTP pod. The drill verifies commits before, during and after
+replacement, unchanged saga pod UID and active slot PIDs, and complete stock,
+ledger and profit effects for every accepted order. It restores the rollout
+annotation through the existing drill guard. No new workload pod is needed.
+`kind-observability` is also part of the normal deployment gate; the
+[monitoring guide](../infra/README.md#monitoring) names the endpoints and signals.
 
 ## Capacity measurement
 

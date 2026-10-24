@@ -5,7 +5,7 @@
 ShardShop is a local system-design lab. It runs a regional product catalog,
 sharded orders and an asynchronous ledger on one kind cluster. This overview
 describes the implemented architecture on **2026-10-24**. Remaining work in
-milestones 5–7 covers recovery qualification and cloud features; the
+milestones 6–7 covers replica reads, failover/restore qualification and cloud features; the
 [detailed documents](#detailed-design-documents) identify the planned behavior.
 
 - **Shape:** six Quarkus applications, three regional PostgreSQL shards, one
@@ -81,6 +81,11 @@ replay identities and business state remain available for recovery. Order outbox
 cleanup also waits for a durable CDC checkpoint. These workers add no pods.
 An operator can reset an exhausted retry budget for a selected pending saga;
 terminal decisions remain unchanged.
+
+Application metrics report pending work, exhausted retries, quarantine, database
+pool pressure and CDC recovery state. RabbitMQ and PostgreSQL expose their queue
+and replication pressure through native monitoring. These endpoints add no pods;
+the [monitoring guide](infra/README.md#monitoring) owns their operational details.
 
 ```mermaid
 sequenceDiagram

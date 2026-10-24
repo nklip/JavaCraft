@@ -10,6 +10,14 @@ Feature: Order applies ledger results and credits confirmed seller profit
   Scenario: Concurrent HTTP writes survive a saga restart with one ledger decision per order
     Then HTTP accepts concurrent retries while the saga is stopped and its restart completes each order once
 
+  @crash-recovery
+  Scenario: A killed saga redelivers a committed result before acknowledgement while HTTP commits another order
+    Then a killed result consumer after its database commit redelivers without duplicate effects while HTTP writes continue
+
+  @crash-recovery
+  Scenario: A killed ledger consumer preserves its committed decision while order HTTP commits another order
+    Then a killed ledger consumer preserves its decision while independent order HTTP commits
+
   @product-browser
   Scenario: A recorded cross-shard order credits each signed item margin once
     Then a packaged ledger recording confirms a cross-shard order and credits its items once

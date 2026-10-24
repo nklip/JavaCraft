@@ -12,7 +12,7 @@ with its own login role.
   role privileges and Flyway delivery are implemented. Step 5.2 implements the
   transport cleanup described below; step 5.3 adds the restricted operator reset.
   Coordinated backup/restore, restore audits and cloud/Argo CD delivery
-  remain planned in [PLAN milestones 5–7](../PLAN.md).
+  remain planned in [PLAN milestones 6–7](../PLAN.md).
 
 ## Sharding and replication
 

@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.testing.cucumber.world;
 
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.CatalogDatabase;
+import dev.nklip.javacraft.shardshop.testing.cucumber.config.CrashBreakpoint;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.PackagedApplication;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.RabbitMqBroker;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.ShardShopFiles;
@@ -21,6 +22,7 @@ public final class LedgerRuntime implements Disposable {
     private String name;
     private RabbitMqBroker broker;
     private boolean cleanupEnabled;
+    private CrashBreakpoint crash;
 
     public LedgerRuntime() throws IOException {
         directory = ShardShopFiles.newWorkDirectory("ledger-");
@@ -39,8 +41,19 @@ public final class LedgerRuntime implements Disposable {
         name = databaseName;
         broker = queue;
         Path configuration = configuration(databaseName, queue, allowedCurrencies, publisherEnabled);
-        application = PackagedApplication.start("shardshop-ledger", directory,
-                List.of("-Dquarkus.config.locations=" + configuration.toUri()));
+        CrashBreakpoint pendingCrash = crash;
+        crash = null;
+        var options = new java.util.ArrayList<>(List.of("-Dquarkus.config.locations=" + configuration.toUri()));
+        if (pendingCrash != null) options.addAll(pendingCrash.options());
+        application = PackagedApplication.start("shardshop-ledger", directory, options);
+        if (pendingCrash != null) {
+            try { pendingCrash.attach(); }
+            catch (Exception failed) {
+                pendingCrash.close();
+                application.kill();
+                throw new IOException("Could not attach to packaged ledger crash breakpoint", failed);
+            }
+        }
         long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
         while (System.nanoTime() < deadline) {
             if (!application.isAlive()) {
@@ -79,6 +92,8 @@ public final class LedgerRuntime implements Disposable {
         Path configuration = Files.createTempFile(directory, "ledger-", ".properties",
                 PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
         Files.writeString(configuration, String.join("\n", List.of(
+                "quarkus.http.host=127.0.0.1",
+                "quarkus.http.port=0",
                 "shardshop.ledger.enabled=true",
                 "shardshop.ledger.database.url=jdbc:postgresql://localhost:" + database.port() + "/" + databaseName,
                 "shardshop.ledger.database.username=ledger_app",
@@ -121,6 +136,16 @@ public final class LedgerRuntime implements Disposable {
         if (application != null && application.isAlive()) {
             application.stop();
         }
+    }
+
+    public void crashAt(CrashBreakpoint breakpoint) { crash = breakpoint; }
+
+    public void killAt(CrashBreakpoint breakpoint, Duration timeout) throws Exception {
+        breakpoint.killAtHit(application, timeout);
+    }
+
+    public void awaitCrash(CrashBreakpoint breakpoint, Duration timeout) throws Exception {
+        breakpoint.awaitHit(application, timeout);
     }
 
     public boolean isAlive() {

@@ -1,6 +1,8 @@
 package dev.nklip.javacraft.shardshop.testing.cucumber.step;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.RabbitMqBroker;
+import dev.nklip.javacraft.shardshop.testing.cucumber.config.CrashBreakpoint;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.CatalogShards;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.CdcRelay;
 import dev.nklip.javacraft.shardshop.testing.cucumber.world.OrderRuntime;
@@ -9,6 +11,8 @@ import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 
 import java.time.Duration;
+import java.sql.Connection;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -117,6 +121,129 @@ public final class CdcRelayStepDefinitions {
         eventually("post-restart WAL insert is checkpointed", () ->
                 relay.offsetLsn(shard) > afterRestart.walBeforeInsert());
         relay.assertNoDelivery(Duration.ofSeconds(2));
+    }
+
+    @Then("a forced saga death before broker publication delivers the committed command once after restart")
+    public void crashBeforeBrokerPublish() throws Exception {
+        var shard = shards.all().getFirst();
+        checkpoint(shard);
+        long baselineFence = relay.currentWalPosition(shard);
+        eventually("baseline is durably checkpointed", () -> relay.offsetLsn(shard) >= baselineFence);
+        order.stopSaga();
+        var crash = CrashBreakpoint.atSourceLine("shardshop-order",
+                "dev.nklip.javacraft.shardshop.order.cdc.CdcBatchProcessor", "process", 117,
+                "publisher.publish(messageId, envelope)");
+        try (crash) {
+            order.crashSagaAt(crash);
+            order.restartSaga();
+            var source = relay.insert(shard, false);
+            order.awaitSagaCrash(crash, RETRY);
+            assertFalse(relay.published(source));
+            relay.assertNoDelivery(Duration.ofSeconds(1));
+            order.killSagaAt(crash, RETRY);
+            order.restartSaga();
+            assertEquals(source.envelope(), relay.delivery(source, RETRY));
+            eventually("first publication is marked and checkpointed", () ->
+                    relay.published(source) && relay.offsetLsn(shard) > source.walBeforeInsert());
+            relay.assertNoDelivery(Duration.ofSeconds(2));
+        }
+    }
+
+    @Then("a forced saga death after broker confirmation replays the same command")
+    public void crashAfterBrokerConfirm() throws Exception {
+        var shard = shards.all().getFirst();
+        checkpoint(shard);
+        long baselineFence = relay.currentWalPosition(shard);
+        eventually("baseline command and publication mark are durably checkpointed",
+                () -> relay.offsetLsn(shard) >= baselineFence);
+        order.stopSaga();
+        var crash = CrashBreakpoint.atSourceLine("shardshop-order",
+                "dev.nklip.javacraft.shardshop.order.cdc.CdcBatchProcessor", "process", 118,
+                "status.markPublished(messageId)");
+        try (crash) {
+            order.crashSagaAt(crash);
+            order.restartSaga();
+            var source = relay.insert(shard, false);
+            long fence = relay.currentWalPosition(shard);
+            var first = relay.delivery(source);
+            order.killSagaAt(crash, RETRY);
+            assertFalse(relay.published(source), "The broker-confirmed command was not yet marked published");
+            assertTrue(relay.offsetLsn(shard) < fence,
+                    "An unmarked command must not pass its durable CDC checkpoint");
+            order.restartSaga();
+            assertEquals(first, relay.delivery(source, RETRY), "Recovery must reuse the captured message identity");
+            eventually("replayed command is marked published", () -> relay.published(source));
+            eventually("replayed command is checkpointed", () -> relay.offsetLsn(shard) > source.walBeforeInsert());
+        }
+    }
+
+    @Then("a forced saga death after publication marking resumes before the durable CDC checkpoint")
+    public void crashAfterPublicationMark() throws Exception {
+        var shard = shards.all().getFirst();
+        checkpoint(shard);
+        long baselineFence = relay.currentWalPosition(shard);
+        eventually("baseline command and publication mark are durably checkpointed",
+                () -> relay.offsetLsn(shard) >= baselineFence);
+        order.stopSaga();
+        var crash = CrashBreakpoint.afterSourceLine("shardshop-order",
+                "dev.nklip.javacraft.shardshop.order.cdc.CdcBatchProcessor", "process", 119, 118,
+                "status.markPublished(messageId)");
+        try (crash) {
+            order.crashSagaAt(crash);
+            order.restartSaga();
+            eventually("CDC walsender is active before offset lock", RETRY,
+                    () -> relay.slot(shard).active());
+            CdcRelay.Source source;
+            JsonNode first;
+            // Block the offset-store commit before creating the target WAL record. The source
+            // publication uses a different table and can still commit while this lock is held.
+            try (Connection offsetLock = shards.superuser(shard)) {
+                offsetLock.setAutoCommit(false);
+                try (Statement statement = offsetLock.createStatement()) {
+                    statement.execute("LOCK TABLE ordering.debezium_offset_storage IN SHARE MODE");
+                }
+                source = relay.insert(shard, false);
+                first = relay.delivery(source);
+                order.killSagaAt(crash, RETRY);
+                assertTrue(relay.published(source), "Publication marking committed before this crash boundary");
+                offsetLock.rollback();
+            }
+            assertTrue(relay.offsetLsn(shard) < source.walBeforeInsert(),
+                    "The killed JVM could not have durably checkpointed the target insert");
+            order.restartSaga();
+            try {
+                assertEquals(first, relay.delivery(source, RETRY),
+                        "Uncheckpointed WAL insert must replay its captured broker envelope");
+            } catch (AssertionError failure) {
+                throw new AssertionError("Missing uncheckpointed WAL replay; durable offset="
+                        + relay.offsetJson(shard) + ", slot=" + relay.slot(shard) + "\n" + order.sagaTail(), failure);
+            }
+            eventually("recovered reader reaches durable checkpoint", () ->
+                    relay.offsetLsn(shard) > source.walBeforeInsert());
+            relay.assertNoDelivery(Duration.ofSeconds(2));
+            var next = relay.insert(shard, false);
+            assertEquals(next.envelope(), relay.delivery(next, RETRY), "The recovered reader must advance");
+            eventually("next command is marked and checkpointed", () ->
+                    relay.published(next) && relay.offsetLsn(shard) > next.walBeforeInsert());
+        }
+    }
+
+    @Then("a forced saga death after the durable checkpoint resumes without replay")
+    public void crashAfterCheckpoint() throws Exception {
+        var shard = shards.all().getFirst();
+        order.enableCdc(broker);
+        order.start(Set.of());
+        var source = relay.insert(shard, false);
+        assertEquals(source.envelope(), relay.delivery(source));
+        eventually("command publication is marked", () -> relay.published(source));
+        long fence = relay.currentWalPosition(shard);
+        eventually("publication is durably checkpointed", () -> relay.offsetLsn(shard) >= fence);
+        order.killSaga();
+        order.restartSaga();
+        relay.assertNoDelivery(Duration.ofSeconds(2));
+        var next = relay.insert(shard, false);
+        assertEquals(next.envelope(), relay.delivery(next, RETRY));
+        eventually("reader continues after the killed owner", () -> relay.published(next));
     }
 
     @Then("an idle CDC reader checkpoints its empty snapshot and resumes after a restart")

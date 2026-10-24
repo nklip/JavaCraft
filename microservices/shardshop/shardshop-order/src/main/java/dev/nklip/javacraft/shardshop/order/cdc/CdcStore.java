@@ -126,26 +126,9 @@ final class CdcStore {
      */
     long validateOffset(String key, String value, String identity) {
         try {
-            if (key == null || value == null) {
-                throw new RecoveryRequiredException("offset data is malformed");
-            }
-            JsonNode partition = json.readTree(key);
-            JsonNode position = json.readTree(value);
-            if (partition == null || !partition.isArray() || partition.size() != 2
-                    || !identity.equals(partition.path(0).textValue())
-                    || !partition.path(1).isObject() || partition.path(1).size() != 1
-                    || !identity.equals(partition.path(1).path("server").textValue())) {
-                throw new RecoveryRequiredException("offset belongs to another connector");
-            }
-            if (position == null || !position.isObject() || !usable(position.path("lsn"))
-                    || (!position.path("lsn_commit").isMissingNode() && !position.path("lsn_commit").isNull()
-                    && !usable(position.path("lsn_commit")))) {
-                throw new RecoveryRequiredException("offset has no usable source position");
-            }
-            JsonNode commit = position.path("lsn_commit");
-            return usable(commit) ? commit.longValue() : position.path("lsn").longValue();
-        } catch (IOException malformed) {
-            throw new RecoveryRequiredException("offset data is malformed");
+            return CdcOffset.position(key, value, identity);
+        } catch (IllegalArgumentException invalid) {
+            throw new RecoveryRequiredException(invalid.getMessage());
         }
     }
 
@@ -173,10 +156,6 @@ final class CdcStore {
         } catch (IOException malformed) {
             throw new RecoveryRequiredException("offset data is malformed");
         }
-    }
-
-    private static boolean usable(JsonNode lsn) {
-        return lsn.isIntegralNumber() && lsn.canConvertToLong() && lsn.longValue() > 0;
     }
 
     /** Names the reason why this reader needs explicit reconciliation, or returns null when it may start. */

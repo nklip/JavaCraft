@@ -452,16 +452,16 @@ images:
     - canonical_openjdk_25_26_04
     - ubuntu_26_04
     tag_observed: docker.io/library/shardshop-flyway:13.8.1-openjdk25
-    reference: docker.io/library/shardshop-flyway:13.8.1-openjdk25@sha256:96efa77525170d9eac45d4baa7027920da788a92b46bbbdc3f6a9b0443b32665
-    linux_arm64_digest: sha256:96efa77525170d9eac45d4baa7027920da788a92b46bbbdc3f6a9b0443b32665
-    linux_arm64_config_digest: sha256:f6a88d7ea657f4cb3c995ac11841778e2fdad7500dd7889d42cdc3c6ff0fe80a
+    reference: docker.io/library/shardshop-flyway:13.8.1-openjdk25@sha256:a7253697965bb91889f388c68d12132caa8bf60bf6ff2cc36d3648ff5651205d
+    linux_arm64_digest: sha256:a7253697965bb91889f388c68d12132caa8bf60bf6ff2cc36d3648ff5651205d
+    linux_arm64_config_digest: sha256:fc824b8f915fabfdbefe9f59b70a3cb49264338e2cb24fb377d2aeb88a1fb22e
     dockerfile: infra/images/flyway/Dockerfile
     build_script: scripts/up.sh
     build_inputs:
     - flyway_distribution
     - application_jre
     source_date_epoch: 0
-    checked_on: '2026-10-14'
+    checked_on: '2026-10-24'
     review_by: '2026-10-28'
     java_runtime_version: 25.0.4.1+1-1-26.04.4-Ubuntu
     java_vendor: Ubuntu
@@ -475,7 +475,13 @@ images:
       config digest; the pin now records that platform manifest. up.sh reads the
       exact tag's containerd target and verifies its config against the scanned build.
       Earlier migration qualifications used an alias named after the archive index;
-      the underlying executable artifact is unchanged.
+      the underlying executable artifact is unchanged. On 2026-10-24, a cold build
+      exposed copy-layer mtime drift. The Dockerfile now normalizes /dist timestamps
+      to epoch zero. Two independent uncached ARM64 builds produced identical
+      config and platform digests; all 68 file payload hashes, sizes, modes and
+      owners match the reviewed original. The normalized artifact passes the
+      restricted CLI check and the unchanged Scout high/critical gate. kind's
+      loaded platform digest matches the new pin. The review deadline stays unchanged.
     advisories: 'Docker Scout 1.24.0 on 2026-10-18: 74 packages. Only the Go stdlib
       1.26.7 of /usr/bin/pebble has advisories (2 critical, 9 high, 2 medium), and the
       reviewed statements of infra/images/application/vex/jre-pebble.openvex.json

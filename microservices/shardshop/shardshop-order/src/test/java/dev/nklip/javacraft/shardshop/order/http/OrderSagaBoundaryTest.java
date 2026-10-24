@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @QuarkusTest
 @TestProfile(OrderSagaBoundaryTest.SagaProfile.class)
@@ -33,6 +34,12 @@ class OrderSagaBoundaryTest {
             var response = client.send(HttpRequest.newBuilder(base.resolve("/internal/order/write-metrics"))
                     .timeout(Duration.ofSeconds(3)).GET().build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(200, response.statusCode());
+            var metrics = client.send(HttpRequest.newBuilder(base.resolve("/q/metrics"))
+                    .timeout(Duration.ofSeconds(3)).GET().build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, metrics.statusCode());
+            assertTrue(metrics.body().contains("shardshop_order_db_pool_active"));
+            assertTrue(metrics.body().contains("shardshop_order_outbox_pending"));
+            assertTrue(metrics.body().contains("shardshop_order_cdc_recovery_required"));
         }
     }
 
