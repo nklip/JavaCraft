@@ -16,7 +16,7 @@ writes directly to the ledger database.
   seller shards.
 - **Status:** the HTTP and saga processes implement the workflow through
   milestone 4, the reconciliation schedule of step 5.1 and transport cleanup in
-  step 5.2. Operator reset and restore requirements remain planned beside their contracts.
+  step 5.2 and the operator reset of step 5.3. Restore requirements remain planned beside their contracts.
 
 ## Processes
 
@@ -336,7 +336,7 @@ entry and saga, not deletion of the original ledger row.
 > duplicate-command result replay, publication-attempt checks, order-result
 > validation and quarantine described here. Step 5.1 adds the overdue-saga scanner
 > and durable five-attempt enqueue schedule. Step 5.2 implements safe transport
-> cleanup. Operator reset remains step 5.3, and the complete recovery/observability
+> cleanup. Step 5.3 adds the manual operator reset, and the complete recovery/observability
 > drills are step 5.5.
 
 ### Reconciliation schedule
@@ -374,7 +374,7 @@ plus scan/IO delay. An unpublished outbox row can extend this schedule. After
 attempt five, disable further automatic enqueueing and alert if the saga remains
 pending.
 
-**Planned in step 5.3:** only a manual reconciliation reset gives the saga a new
+Only a manual reconciliation reset gives the saga a new
 budget. The reset sets `reconciliation_attempts` to zero and
 `next_reconciliation_at` to the current time
 for selected `PENDING_LEDGER` sagas. A repeated reset causes no duplicate ledger
@@ -382,6 +382,20 @@ effect, and a reset never changes a terminal saga. Transport cleanup, restarts, 
 duplicate deliveries never reset the saga's counter or schedule. Keep this state
 even after outbox rows are deleted, and retain it with the saga through
 terminal-state retention and backups.
+
+The operator runs the database-owned
+[`reset-reconciliation.sql`](../database/operations/reset-reconciliation.sql)
+through native `psql` with one explicit order/saga ID pair on its buyer shard.
+The dedicated `ordering_operator` login inherits only `ordering_reconciler`:
+selected identity/state reads and updates to those two retry fields. No service
+receives that credential. The operation takes the same order advisory lock as
+the workers, then the saga row lock, and rechecks that both order and saga are
+`PENDING_LEDGER`. A terminal, missing or mismatched pair is a no-op. Only the two
+retry fields change; no message is enqueued by the reset itself. A successful
+commit reports the previous attempt count and new UTC eligibility time.
+The [operator procedure](RUNBOOK.md#manual-reconciliation-reset) covers credential
+provisioning, verified TLS, bounded lock waits and inspection after an uncertain
+commit. The reset does not resolve quarantine or recover missing CDC state.
 
 ### Transport cleanup
 
@@ -495,7 +509,7 @@ cleanup.
 > correlation/conflict checks and the creation lock. Coordinated backups and
 > isolated restores remain step 6.3; the operator audit, restore recovery and
 > optional asynchronous-loss drill remain step 6.4. Automatic replay is implemented
-> in step 5.1; manual budget reset remains step 5.3. The restore procedures below
+> in step 5.1, and manual budget reset in step 5.3. The restore procedures below
 > are required targets, not currently delivered operator tooling.
 
 ### Orphan results

@@ -224,7 +224,9 @@ class KindStartupScriptTest {
         assertTrue(events.stream().anyMatch(line -> line.startsWith("mvn build ")
                 && line.contains("-pl shardshop-testing -am -Dshardshop.infrastructureOnly=true clean install -DinstallAtEnd=true")), events.toString());
         assertEquals(2, events.stream().filter(line -> line.contains(" install:install-file ")).count());
-        assertEquals(8, events.stream().filter(line -> line.contains("create secret generic ")).count());
+        assertEquals(9, events.stream().filter(line -> line.contains("create secret generic ")).count());
+        assertTrue(events.stream().anyMatch(line -> line.contains("create secret generic ordering-operator ")
+                && line.contains("--from-literal=username=ordering_operator")));
         JsonNode users = JSON.readTree(Files.readString(temporary.resolve("rabbitmq-users.json")));
         assertEquals(List.of("shardshop-admin", "shardshop-order", "shardshop-ledger"),
                 users.path("users").findValuesAsText("name"));
@@ -253,7 +255,7 @@ class KindStartupScriptTest {
         assertBefore("mvn kind-allocator ", "kubectl --context kind-shardshop --request-timeout=30s apply -f ");
         assertBefore("mvn kind-allocator ", "helmfile fresh=false ", "stage=infrastructure");
         assertTrue(phases().contains("kind-infrastructure"));
-        assertEquals(8, events().stream().filter(line -> line.contains("create secret generic ")).count());
+        assertEquals(9, events().stream().filter(line -> line.contains("create secret generic ")).count());
         assertNoAllocatorBootstrap();
         assertNoApplicationDelivery();
         assertFalse(Files.exists(lock()));

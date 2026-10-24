@@ -618,6 +618,147 @@ public final class OrderResultsStepDefinitions {
         assertEquals(0, outboxes(id));
     }
 
+    @Then("an exhausted {word} decision resumes after an operator reset and packaged transport cleanup")
+    public void resetExhaustedReconciliation(String outcome) throws Exception {
+        String id = accept(1, us, asia);
+        for (var shard : shards.all()) postgres.createOrderPublication(shard.database());
+        order.enableStock();
+        order.enableCdc(broker);
+        order.enableReconciliation();
+        order.enableCleanup();
+        order.restart(Set.of());
+        ledger.enableCleanup();
+        startLedger(outcome.equals("RECORDED") ? "USD" : "EUR");
+        awaitStatus(id, "PENDING_LEDGER");
+        ObjectNode original = command(id);
+        awaitCheckpointedPublication(id);
+        await("original ledger result is published", () ->
+                publishedLedgerResult(original) && queueCount(RESULT_QUEUE) == 1);
+        ObjectNode savedResult = ledgerResult(original.path("resultMessageId").asLong());
+        assertEquals(outcome, savedResult.path("outcome").asText());
+        purgeLostResult();
+        cleanupPublishedTransport(id, original);
+
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            forceDue(id);
+            int expected = attempt;
+            await("replay attempt " + attempt + " is persisted", () ->
+                    attempts(id) == expected && outboxes(id) == 1);
+            ObjectNode replay = command(id);
+            assertEquals(original.path("commandId"), replay.path("commandId"));
+            assertEquals(original.path("sagaId"), replay.path("sagaId"));
+            assertEquals(original.path("snapshot"), replay.path("snapshot"));
+            assertNotEquals(original.path("resultMessageId"), replay.path("resultMessageId"));
+            assertEquals(attempt + 1, bindings(id));
+            awaitCheckpointedPublication(id);
+            await("ledger result for replay " + attempt + " is published", () ->
+                    publishedLedgerResult(replay) && queueCount(RESULT_QUEUE) == 1);
+            assertSameLedgerDecision(savedResult, ledgerResult(replay.path("resultMessageId").asLong()));
+            purgeLostResult();
+            cleanupPublishedTransport(id, replay);
+        }
+
+        order.restartSaga();
+        assertEquals("PENDING_LEDGER", status(id));
+        assertEquals(5, attempts(id), "A coordinator restart preserves the exhausted budget");
+        assertEquals(6, bindings(id));
+        assertEquals(0, outboxes(id));
+        assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_operations WHERE order_id="
+                + id + " AND outcome='" + outcome + "'"));
+        assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.order_inbox i JOIN ordering.order_sagas s"
+                + " USING (saga_id) WHERE s.order_id=" + id));
+
+        // The operator command is the only way to reopen this exhausted pending saga.
+        order.stop();
+        long sagaId = original.path("sagaId").asLong();
+        String reset = postgres.resetReconciliation(home().database(), Long.parseLong(id), sagaId);
+        assertTrue(reset.startsWith("RESET|" + id + "|" + sagaId + "|5|"), reset);
+        String repeated = postgres.resetReconciliation(home().database(), Long.parseLong(id), sagaId);
+        assertTrue(repeated.startsWith("RESET|" + id + "|" + sagaId + "|0|"), repeated);
+        assertEquals(0, attempts(id));
+        assertEquals(0, outboxes(id), "Repeated reset does not itself publish a command");
+
+        if (outcome.equals("REJECTED")) ledger.restartWithPublisher("USD");
+        order.enableResults(broker);
+        order.enableProfit();
+        order.start(Set.of());
+        await("operator reset creates one replay", () -> attempts(id) == 1 && outboxes(id) == 1);
+        ObjectNode recovered = command(id);
+        assertEquals(original.path("commandId"), recovered.path("commandId"));
+        assertEquals(original.path("snapshot"), recovered.path("snapshot"));
+        assertNotEquals(original.path("resultMessageId"), recovered.path("resultMessageId"));
+        awaitCheckpointedPublication(id);
+        awaitStatus(id, outcome.equals("RECORDED") ? "CONFIRMED" : "CANCELLED");
+        assertSameLedgerDecision(savedResult, ledgerResult(recovered.path("resultMessageId").asLong()));
+        assertEquals(7, bindings(id), "The reset permits exactly one new result identity");
+        assertEquals(7, scalar(ledgerDatabase,
+                "SELECT count(*) FROM ledger.ledger_result_ids WHERE order_id=" + id));
+        assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_operations WHERE order_id=" + id));
+        assertEquals(outcome.equals("RECORDED") ? 1 : 0,
+                scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_entries WHERE order_id=" + id));
+        assertEquals(1, scalar(shards.ofSeller(us.seller().id()),
+                "SELECT count(*) FROM catalog.stock_reservations WHERE order_id=" + id));
+        assertEquals(1, scalar(shards.ofSeller(asia.seller().id()),
+                "SELECT count(*) FROM catalog.stock_reservations WHERE order_id=" + id));
+        if (outcome.equals("RECORDED")) {
+            await("confirmed order credits each seller once", () ->
+                    credits(us, id) == 1 && credits(asia, id) == 1);
+            assertEquals(new BigDecimal("7.45"), balance(us));
+            assertEquals(new BigDecimal("-2.00"), balance(asia));
+        } else {
+            await("rejected order releases reservations", () -> scalar(home(),
+                    "SELECT count(*) FROM ordering.order_sagas WHERE order_id=" + id
+                            + " AND stock_released_at IS NOT NULL") == 1);
+            assertEquals(0, credits(us, id));
+            assertEquals(0, credits(asia, id));
+            assertEquals(new BigDecimal("0.00"), balance(us));
+            assertEquals(new BigDecimal("0.00"), balance(asia));
+        }
+        int expectedStock = outcome.equals("RECORDED") ? 9 : 10;
+        assertEquals(expectedStock, scalar(shards.ofSeller(us.seller().id()),
+                "SELECT stock FROM catalog.products WHERE product_id=" + us.id()));
+        assertEquals(expectedStock, scalar(shards.ofSeller(asia.seller().id()),
+                "SELECT stock FROM catalog.products WHERE product_id=" + asia.id()));
+        assertEquals("NOOP|" + id + "|" + sagaId,
+                postgres.resetReconciliation(home().database(), Long.parseLong(id), sagaId).trim());
+        assertEquals(outcome.equals("RECORDED") ? "CONFIRMED" : "CANCELLED", status(id));
+        assertEquals(1, attempts(id), "A terminal no-op cannot rewrite the reconciliation counter");
+        assertEquals(7, bindings(id));
+        assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_operations WHERE order_id=" + id));
+    }
+
+    private boolean publishedLedgerResult(ObjectNode command) throws SQLException {
+        return scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_outbox WHERE message_id="
+                + command.path("resultMessageId").asLong() + " AND published_at IS NOT NULL") == 1;
+    }
+
+    private void purgeLostResult() throws Exception {
+        try (com.rabbitmq.client.Connection connection = broker.connect("admin");
+             Channel channel = connection.createChannel()) {
+            assertEquals(1, channel.queuePurge(RESULT_QUEUE).getMessageCount());
+        }
+    }
+
+    private void cleanupPublishedTransport(String id, ObjectNode command) throws Exception {
+        long commandId = command.path("messageId").asLong();
+        long resultId = command.path("resultMessageId").asLong();
+        ageOrderOutbox(id);
+        ageLedgerTransport(commandId, resultId);
+        await("packaged workers remove expired transport for " + commandId, () ->
+                outboxes(id) == 0
+                        && ledgerTransport("ledger.ledger_inbox", "message_id", commandId) == 0
+                        && ledgerTransport("ledger.ledger_outbox", "message_id", resultId) == 0);
+    }
+
+    private static void assertSameLedgerDecision(ObjectNode expected, ObjectNode actual) {
+        ObjectNode savedDecision = expected.deepCopy();
+        ObjectNode regeneratedDecision = actual.deepCopy();
+        // These are the only fields created for a new delivery; the complete saved decision must match.
+        savedDecision.remove(List.of("messageId", "occurredAt"));
+        regeneratedDecision.remove(List.of("messageId", "occurredAt"));
+        assertEquals(savedDecision, regeneratedDecision);
+    }
+
     @Then("an undelivered {word} result recovers through a checkpointed replay")
     public void lostLedgerResult(String outcome) throws Exception {
         String id = accept(1, us, asia);

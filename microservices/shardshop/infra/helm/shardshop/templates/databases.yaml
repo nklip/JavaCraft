@@ -6,11 +6,13 @@
       (dict "name" "catalog_reserver")
       (dict "name" "ordering_owner")
       (dict "name" "ordering_writer")
+      (dict "name" "ordering_reconciler")
       (dict "name" "ordering_cdc_reader" "resourceName" "order-cdc-reader")
       (dict "name" "catalog_migrator" "login" true "inherit" false "groups" (list "catalog_owner"))
       (dict "name" "ordering_migrator" "login" true "inherit" false "groups" (list "ordering_owner"))
       (dict "name" "product_app" "login" true "inherit" true "groups" (list "catalog_writer"))
       (dict "name" "order_app" "login" true "inherit" true "groups" (list "catalog_reader" "catalog_reserver" "ordering_writer"))
+      (dict "name" "ordering_operator" "login" true "inherit" true "groups" (list "ordering_reconciler"))
       (dict "name" "ordering_cdc" "login" true "inherit" true "replication" true "groups" (list "ordering_cdc_reader")) -}}
 {{- range .Values.shards }}
 {{- $shard := .name }}

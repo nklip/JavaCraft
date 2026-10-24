@@ -104,7 +104,20 @@ public final class KindReadiness {
                 var result = lab.kubectlAttempt("get", resource, "-o", "json");
                 if (result.exitCode() != 0) return false;
                 JsonNode list = KindLab.parse(result.stdout());
-                if (resource.equals("databases.postgresql.cnpg.io")) {
+                if (resource.equals("databaseroles.postgresql.cnpg.io")) {
+                    List<String> expected = new ArrayList<>();
+                    for (String shard : lab.shards()) {
+                        for (String role : List.of("catalog-owner", "catalog-reader", "catalog-writer", "catalog-reserver",
+                                "ordering-owner", "ordering-writer", "ordering-reconciler", "order-cdc-reader",
+                                "catalog-migrator", "ordering-migrator", "product-app", "order-app",
+                                "ordering-operator", "ordering-cdc")) expected.add(shard + "-" + role);
+                    }
+                    for (String role : List.of("ledger-schema-owner", "ledger-writer", "ledger-migrator", "ledger-app"))
+                        expected.add("ledger-db-" + role);
+                    List<String> actual = KindLab.items(list).stream()
+                            .map(item -> item.path("metadata").path("name").asText()).toList();
+                    if (!actual.containsAll(expected)) return false;
+                } else if (resource.equals("databases.postgresql.cnpg.io")) {
                     List<String> expected = new ArrayList<>();
                     for (String shard : lab.shards()) expected.add(shard + "-shardshop");
                     expected.add("ledger-db-ledger");

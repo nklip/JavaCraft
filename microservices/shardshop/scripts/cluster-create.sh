@@ -38,7 +38,7 @@ kubectl --context "$context" --request-timeout=30s apply -f "$work/namespace.yam
 verify_dns
 
 # Preserve existing passwords; only provision roles whose Secret is absent.
-for role in catalog_migrator ordering_migrator product_app order_app ordering_cdc ledger_migrator ledger_app; do
+for role in catalog_migrator ordering_migrator product_app order_app ordering_operator ordering_cdc ledger_migrator ledger_app; do
     secret="${role//_/-}"
     existing=$(k get secret "$secret" --ignore-not-found -o name)
     if [[ -z "$existing" ]]; then

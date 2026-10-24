@@ -12,6 +12,11 @@ clusters, roles, databases and schemas; `up.sh` runs the Flyway migrations as He
 hook Jobs before it deploys the applications. Applications never migrate at
 startup. See the [lab start](../README.md#start-the-lab).
 
+The [manual reconciliation reset](../shardshop-order/RUNBOOK.md#manual-reconciliation-reset)
+uses a separate operator login and native `psql`. Existing labs first reconcile
+its credential and roles with `cluster-create.sh`, then apply the repeatable
+grants with `up.sh`.
+
 ## Monitoring
 
 ### Shard clusters

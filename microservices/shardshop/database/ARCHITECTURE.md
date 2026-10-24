@@ -10,7 +10,8 @@ with its own login role.
   and one separate single-instance ledger cluster.
 - **Status:** regional shards, synchronous replication configuration, schemas,
   role privileges and Flyway delivery are implemented. Step 5.2 implements the
-  transport cleanup described below. Coordinated backup/restore, restore audits and cloud/Argo CD delivery
+  transport cleanup described below; step 5.3 adds the restricted operator reset.
+  Coordinated backup/restore, restore audits and cloud/Argo CD delivery
   remain planned in [PLAN milestones 5–7](../PLAN.md).
 
 ## Sharding and replication
@@ -222,7 +223,17 @@ SQL. For the catalog:
 | `order_app` | yes | `catalog_reader`, `catalog_reserver`, `ordering_writer` | Order service |
 
 The ordering stream repeats the pattern with `ordering_owner`, a non-inheriting
-`ordering_migrator`, `ordering_writer` and `ordering_cdc_reader`. The ledger uses
+`ordering_migrator`, `ordering_writer` and `ordering_cdc_reader`.
+`ordering_operator` inherits only the separate `ordering_reconciler` group. That
+group can read order IDs/status and saga IDs/order IDs/status/retry fields, and
+update only `reconciliation_attempts` and `next_reconciliation_at`. It has no
+payload, catalog, ledger, DDL, owner or replication privileges. The
+`ordering-operator` Secret belongs only to human operations and is never mounted
+in an application. The checked-in [reset SQL](operations/reset-reconciliation.sql)
+uses the order advisory lock followed by the saga row lock and changes only a
+selected pending pair; see the [procedure](../shardshop-order/RUNBOOK.md#manual-reconciliation-reset).
+These are column privileges, not row policies: the protected reset operation owns
+the pending-state check. The ledger uses
 non-login `ledger_schema_owner` and `ledger_writer` groups. `ledger_migrator` has
 non-inheriting membership in `ledger_schema_owner`; its Flyway connections select
 that role explicitly, and `ledger_app` inherits only `ledger_writer`. Their

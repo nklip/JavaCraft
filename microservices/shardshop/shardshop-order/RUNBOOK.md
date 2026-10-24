@@ -372,7 +372,8 @@ Check the ledger decision, result queues and quarantine, and the
 [CDC recovery state](#order-outbox-cdc-relay). Reconciliation does not reset a lost
 slot or offset, delete transport rows, or reset an exhausted budget. Safe cleanup
 is performed by the separate [transport cleanup worker](#transport-cleanup);
-the operator reset remains step 5.3. Step 5.1 reused the existing schema and grants.
+the [manual operator reset](#manual-reconciliation-reset) gives an exhausted saga
+a new retry budget. Step 5.1 reused the existing schema and runtime grants.
 
 Run the coordinator/worker checks and packaged PostgreSQL/RabbitMQ scenarios:
 
@@ -389,6 +390,105 @@ restarts, unpublished commands and removal of published transport only after a
 durable CDC checkpoint has passed the insert. Lost recorded and rejected results
 recover through permanent ledger decisions, including a policy change after the
 original rejection.
+
+## Manual reconciliation reset
+
+Use this after investigating an exhausted `PENDING_LEDGER` saga and restoring the
+failed dependency. The reset operates on one explicit order/saga pair on the
+buyer's primary shard. It sets attempts to zero and next eligibility to database
+time under the same advisory and row locks as the workers. It does not enqueue a
+message itself. The running saga process resumes on its next scan; the configured
+poll interval still applies. Resetting a pending saga again is safe, including
+after transport cleanup. Terminal, missing and mismatched pairs return `NOOP`.
+An unresolved quarantine incident or missing CDC slot/offset still needs its own
+recovery; this operation does not clear either condition.
+
+For an existing lab, first run `cluster-create.sh` to provision the new
+`ordering-operator` Secret and reconcile its two roles per shard, then `up.sh` to
+apply the changed ordering repeatable grants. Both preserve existing credentials
+and data. The login has no owner membership, replication, payload access or
+application credential mount. Its group may update only
+`reconciliation_attempts` and `next_reconciliation_at`; terminal-state protection
+comes from the checked-in operation, so use that operation instead of ad hoc SQL.
+
+Use native PostgreSQL 18 `psql` from `PATH`, with `-X` to ignore local startup
+commands. On macOS, the Homebrew `postgresql@18` formula is keg-only. Put
+`$(brew --prefix postgresql@18)/bin` first in `PATH` in the terminal that runs
+`psql`. Determine the buyer's shard from the retained routing inventory and
+inspect the exact pair before resetting it. This example selects `shard-b`.
+
+kubectl 1.36.3 can stop a port-forward after one forwarded `psql` connection
+closes. It then prints `lost connection to pod` and exits with a nonzero status.
+Thus, in one terminal, open the loopback-only primary tunnel in a loop. The loop
+starts the tunnel again after each lost connection and stops after Ctrl+C:
+
+```bash
+until kubectl --context kind-shardshop -n shardshop port-forward \
+  --address 127.0.0.1 service/shard-b-rw 15432:5432; do
+  sleep 1
+done
+```
+
+Send only one `psql` connection through the tunnel at a time. When the tunnel
+stops, it also closes all other connections, which can interrupt a commit. Before
+each `psql` command, wait for a new `Forwarding from` line. If `psql` reports
+`Connection refused`, no SQL ran. Wait for that line and run the command again.
+
+In another terminal, from the repository root, use the following protected
+temporary password/CA files. Replace the two IDs with the selected pair. The
+certificate hostname remains the primary Service name even though the TCP
+connection uses the local tunnel. Do not enable shell tracing or print passwords.
+
+```bash
+(
+  set -eu
+  set -o pipefail
+  umask 077
+  reset_dir=$(mktemp -d)
+  trap 'rm -rf "$reset_dir"' EXIT
+  kubectl --context kind-shardshop -n shardshop get secret shard-b-ca \
+    -o jsonpath='{.data.ca\.crt}' | base64 --decode >"$reset_dir/ca.crt"
+  reset_password=$(kubectl --context kind-shardshop -n shardshop get secret ordering-operator \
+    -o jsonpath='{.data.password}' | base64 --decode)
+  printf 'shard-b-rw.shardshop.svc:15432:shardshop:ordering_operator:%s\n' \
+    "$reset_password" >"$reset_dir/pgpass"
+  unset reset_password
+  PGPASSFILE="$reset_dir/pgpass" psql -X --no-password \
+    "host=shard-b-rw.shardshop.svc hostaddr=127.0.0.1 port=15432 dbname=shardshop user=ordering_operator sslmode=verify-full sslrootcert=$reset_dir/ca.crt connect_timeout=5" \
+    --set=order_id=123456789 --set=saga_id=123456790 \
+    --file=microservices/shardshop/database/operations/reset-reconciliation.sql
+)
+```
+
+To inspect first, use the same protected connection options with `psql` but omit
+`--file` to open an interactive session, then run the query below. Quit that
+session with `\q` before you run the reset. Run the reset only after confirming
+the pair. The permitted inspection is:
+
+```sql
+SELECT s.order_id, s.saga_id, o.status AS order_status, s.status AS saga_status,
+       s.reconciliation_attempts, s.next_reconciliation_at
+FROM ordering.order_sagas s JOIN ordering.orders o USING (order_id)
+WHERE s.order_id = 123456789 AND s.saga_id = 123456790;
+```
+
+The SQL file rejects absent, noncanonical, nonpositive or overflowing IDs. It uses
+a two-second lock timeout, three-second statement timeout and ten-second total
+transaction timeout. A timeout or SQL error exits nonzero and rolls back. Success
+prints `RESET|order_id|saga_id|previous_attempts|new_eligibility_UTC` only after
+commit; `NOOP|order_id|saga_id` means no matching pending pair changed. A lost
+connection during commit has an uncertain outcome: inspect the pair before
+retrying, since the worker may already have consumed the new budget. Each
+deliberate reset grants a fresh budget; repeating it does not undo business effects.
+Retain the output with the operator's incident record. Stop the tunnel loop with
+Ctrl+C after use. If a new `Forwarding from` line appears, press Ctrl+C again. See the [native psql options](https://www.postgresql.org/docs/18/app-psql.html).
+
+Verify the SQL boundary, permissions and recorded/rejected recovery scenarios:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@manual-reconciliation-reset or @manual-reconciliation-reset-sql'
+```
 
 ## Transport cleanup
 

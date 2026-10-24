@@ -86,6 +86,16 @@ May 2029); preserve that vendor build. The Ubuntu 26.04 choice applies to the
 application, build and Java migration images. [CNPG image variants](https://github.com/cloudnative-pg/postgres-containers),
 [Ubuntu lifecycle](https://ubuntu.com/about/release-cycle).
 
+Step **5.3** uses native PostgreSQL **18.x `psql`** for the
+[manual reconciliation reset](shardshop-order/RUNBOOK.md#manual-reconciliation-reset).
+On **2026-10-24**, its SQL acceptance checks passed using `psql 18.6`
+(`Debian 18.6-1.pgdg13+2`) from the already-pinned Testcontainers image. The
+operator procedure selects `psql` from `PATH`; no binary is installed by the
+project, and no image or dependency pin changes for this step. The same day, the
+live operator run used Homebrew `psql 18.6` (`postgresql@18` 18.6_1) and host
+kubectl 1.36.3 against the kind lab; see the
+[step 5.3 evidence](CHANGELOG.md#live-operator-run).
+
 The kind 0.33.0 release's tested Kubernetes **1.36.4** image is selected under
 `images.kind_node`. Its published digest matches the registry bytes. A fresh
 `kindest/node:v1.36.5` lookup returned **404 / MANIFEST_UNKNOWN** on 2026-09-28;

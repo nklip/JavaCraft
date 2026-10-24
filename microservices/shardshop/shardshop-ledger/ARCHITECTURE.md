@@ -12,7 +12,8 @@ generates IDs.
 - **Owns:** schema `ledger` in database `ledger`. There is no sharding.
 - **Status:** the command consumer and result relay are implemented in steps 4.5
   and 4.6; order reconciliation is step 5.1 and transport cleanup is step 5.2.
-  Manual reset and restore tooling remain planned in milestones 5 and 6.
+  Step 5.3 adds the [order-side manual reset](../shardshop-order/ARCHITECTURE.md#reconciliation-schedule).
+  Restore tooling remains planned in milestone 6.
 
 ```mermaid
 flowchart LR

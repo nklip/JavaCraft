@@ -69,7 +69,8 @@ request to its limit. Explicit requests still take precedence. It verifies every
 `-rw` Service, every configured PostgreSQL setting on every instance (including
 pending restarts), and the exact
 two streaming quorum standbys of each shard. It also creates random password Secrets only if absent: `catalog-migrator`,
-`ordering-migrator`, `product-app`, `order-app`, and `ordering-cdc` are shared by
+`ordering-migrator`, `product-app`, `order-app`, `ordering-cdc` and
+`ordering-operator` are shared by
 the shards; `ledger-migrator` and `ledger-app` belong to the separate ledger.
 It applies CNPG `DatabaseRole`s and `Database` resources for catalog, ordering,
 and ledger, waits for roles at their current generation, then waits up to 180

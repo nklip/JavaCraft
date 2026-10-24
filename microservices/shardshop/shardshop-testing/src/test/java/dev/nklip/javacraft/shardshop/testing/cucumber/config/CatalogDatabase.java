@@ -9,6 +9,8 @@ import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.Container.ExecResult;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
+import org.testcontainers.utility.MountableFile;
+import org.testcontainers.images.builder.Transferable;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -33,6 +35,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public final class CatalogDatabase {
     private static final String TLS_DIRECTORY = "/var/lib/postgresql/tls";
+    private static final String RESET_SQL = "/tmp/reset-reconciliation.sql";
+    private static final String OPERATOR_PASSFILE = "/tmp/ordering-operator.pgpass";
     private static final AtomicInteger DATABASES = new AtomicInteger();
 
     private final PostgreSQLContainer container;
@@ -44,6 +48,7 @@ public final class CatalogDatabase {
     private final String orderPassword = UUID.randomUUID().toString();
     private final String ledgerPassword = UUID.randomUUID().toString();
     private final String cdcPassword = UUID.randomUUID().toString();
+    private final String operatorPassword = UUID.randomUUID().toString();
 
     private CatalogDatabase() throws IOException, InterruptedException, SQLException {
         String image = System.getProperty("tc.image.postgresql");
@@ -59,6 +64,8 @@ public final class CatalogDatabase {
         createCertificates();
         enableTls();
         createRoles();
+        container.copyFileToContainer(Transferable.of("localhost:5432:*:ordering_operator:" + operatorPassword + "\n", 0100600),
+                OPERATOR_PASSFILE);
     }
 
     public static CatalogDatabase instance() {
@@ -124,7 +131,7 @@ public final class CatalogDatabase {
     private void createRoles() throws SQLException {
         try (Connection connection = superuser("postgres"); Statement statement = connection.createStatement()) {
             for (String group : List.of("shardshop_owner", "catalog_owner", "catalog_reader", "catalog_writer",
-                    "catalog_reserver", "ordering_owner", "ordering_writer", "ordering_cdc_reader",
+                    "catalog_reserver", "ordering_owner", "ordering_writer", "ordering_reconciler", "ordering_cdc_reader",
                     "ledger_owner", "ledger_schema_owner", "ledger_writer")) {
                 statement.execute("CREATE ROLE " + group + " NOLOGIN");
             }
@@ -136,6 +143,8 @@ public final class CatalogDatabase {
                     + "' IN ROLE catalog_writer");
             statement.execute("CREATE ROLE order_app LOGIN INHERIT PASSWORD '" + orderPassword
                     + "' IN ROLE catalog_reader, catalog_reserver, ordering_writer");
+            statement.execute("CREATE ROLE ordering_operator LOGIN INHERIT PASSWORD '" + operatorPassword
+                    + "' IN ROLE ordering_reconciler");
             statement.execute("CREATE ROLE ordering_cdc LOGIN INHERIT REPLICATION PASSWORD '" + cdcPassword
                     + "' IN ROLE ordering_cdc_reader");
             statement.execute("CREATE ROLE ledger_migrator LOGIN NOINHERIT PASSWORD '" + migratorPassword
@@ -272,6 +281,36 @@ public final class CatalogDatabase {
     public Connection order(String database) throws SQLException {
         return DriverManager.getConnection(catalogUrl(database) + "&connectTimeout=5&socketTimeout=10",
                 "order_app", orderPassword);
+    }
+
+    /** The separate manual-reconciliation login, using the same verified TLS trust as application connections. */
+    public Connection orderingOperator(String database) throws SQLException {
+        return DriverManager.getConnection(catalogUrl(database) + "&connectTimeout=5&socketTimeout=10",
+                "ordering_operator", operatorPassword);
+    }
+
+    /** Run the checked-in operator SQL with psql variables as distinct arguments; preserve failures for negative cases. */
+    public ExecResult resetReconciliation(String database, String orderId, String sagaId)
+            throws IOException, InterruptedException {
+        container.copyFileToContainer(MountableFile.forHostPath(
+                ShardShopFiles.resolve("database/operations/reset-reconciliation.sql")), RESET_SQL);
+        return container.execInContainer("timeout", "30s", "env",
+                "PGHOST=localhost", "PGPORT=5432", "PGUSER=ordering_operator", "PGSSLMODE=verify-full",
+                "PGSSLROOTCERT=" + TLS_DIRECTORY + "/ca.crt", "PGPASSFILE=" + OPERATOR_PASSFILE,
+                "PGCONNECT_TIMEOUT=5", "PGOPTIONS=-c statement_timeout=15000 -c lock_timeout=5000",
+                "psql", "-X", "-qAt", "-w", "-v", "ON_ERROR_STOP=1", "-v", "order_id=" + orderId,
+                "-v", "saga_id=" + sagaId, "-d", database, "-f", RESET_SQL);
+    }
+
+    /** The normal path expects a successful reset or no-op machine line from the shared SQL. */
+    public String resetReconciliation(String database, long orderId, long sagaId)
+            throws IOException, InterruptedException {
+        ExecResult result = resetReconciliation(database, Long.toString(orderId), Long.toString(sagaId));
+        if (result.getExitCode() != 0) {
+            throw new IllegalStateException("Manual reconciliation reset failed (exit " + result.getExitCode() + "): "
+                    + result.getStderr().strip());
+        }
+        return result.getStdout().strip();
     }
 
     public Connection ledger(String database) throws SQLException {

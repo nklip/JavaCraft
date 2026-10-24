@@ -54,6 +54,13 @@ Namespace, credential Secrets and allocator registry/identity remain outside
 release ownership. The lifecycle uses Helmfile 1.8.0 and Skaffold 2.25.0 from
 `PATH`, with their shared configuration retained in the repository.
 
+Manual saga reconciliation uses native `psql` and database-owned SQL, through the
+restricted `ordering_operator` login. `cluster-create.sh` creates its missing
+Secret and CNPG reconciles its group/login roles; the ordinary Flyway ordering
+stream grants its column permissions. No application receives that Secret, and
+no lifecycle command performs a reset. See the
+[operator procedure](../shardshop-order/RUNBOOK.md#manual-reconciliation-reset).
+
 ## Lab lifecycle
 
 ```mermaid

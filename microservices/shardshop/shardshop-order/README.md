@@ -18,6 +18,9 @@ its own generator slot. HTTP replicas run no background saga loops.
 
 The normal `up.sh` workflow applies ordering migrations through V8, including the
 transport retention indexes, before deploying the image.
+The [manual reconciliation reset](RUNBOOK.md#manual-reconciliation-reset) uses
+the separate `ordering_operator` login. Existing labs need `cluster-create.sh`
+before `up.sh` once to provision that credential and its roles.
 
 In the lab, `up.sh` deploys both processes; see the [lab start](../README.md#start-the-lab).
 Apply the catalog and ordering migrations before order serves requests; the

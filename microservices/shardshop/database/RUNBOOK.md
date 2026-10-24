@@ -262,17 +262,29 @@ timeouts and topology placeholders. No Java module or application startup migrat
 | `ordering_owner` | no | Owns ordering schema, tables and history |
 | `ordering_migrator` | yes | Non-inheriting owner membership, used only by Flyway |
 | `ordering_writer` | no | Reads/inserts business records; updates status, reconciliation and publication metadata; deletes transport rows; reads/writes CDC offsets |
+| `ordering_reconciler` | no | Selected order/saga identity and state columns; updates only saga reconciliation attempts and next eligibility |
+| `ordering_operator` | yes | Inherits only `ordering_reconciler`; human-operated reset, never an application credential |
 | `ordering_cdc_reader` | no | Ordinary SQL `SELECT` on `ordering.order_outbox` only |
 | `order_app` | yes | `ordering_writer`, `catalog_reader`, `catalog_reserver` |
 | `ordering_cdc` | yes | Replication attribute plus `ordering_cdc_reader`; highly privileged WAL access |
 
-The additional Secrets are `ordering-migrator`, `order-app` and `ordering-cdc`.
+The additional Secrets are `ordering-migrator`, `order-app`, `ordering-cdc` and
+`ordering-operator`.
 `cluster-create.sh` creates each once; `up.sh` preserves it on reruns. Both wait for every role's
 current generation to be applied before checking the schemas. Ordinary SQL grants
 give runtime logins no DDL, temporary-table, history or owner privileges. Product
 has no ordering privileges; CDC has no SQL `SELECT` on catalog, other ordering
 tables or offsets. Order can update only the `stock` column of catalog products
 and cannot update sellers.
+
+For the step 5.3 upgrade, run `cluster-create.sh` before `up.sh` so the new
+operator Secret and roles exist before Flyway reapplies `R__ordering_grants.sql`.
+No versioned migration or business-row rewrite is required. The repeatable grants
+revoke stale table and column permissions before granting the narrow reset
+permissions. Use the checked-in [reset operation](operations/reset-reconciliation.sql)
+through native `psql`; the [order runbook](../shardshop-order/RUNBOOK.md#manual-reconciliation-reset)
+documents selection, verified TLS, output and failure handling. The SQL operation
+is outside the Flyway directories and never runs during deployment.
 
 The `ordering-cdc` Secret is highly privileged: PostgreSQL's `REPLICATION`
 attribute allows logical decoding beyond those SQL grants. The installed
@@ -351,7 +363,7 @@ sequences, SQL functions, or triggers.
 
 `cluster-create.sh` creates `ledger-migrator` and `ledger-app` Secrets once;
 `up.sh` preserves them on reruns. Four ledger `DatabaseRole` resources accompany the existing
-bootstrap role; the default three-shard inventory therefore renders 40
+bootstrap role; the default three-shard inventory therefore renders 46
 `DatabaseRole` resources and four `Database` resources. Runtime has no DDL,
 temporary-table, Flyway-history, or `TRUNCATE` privileges.
 

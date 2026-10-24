@@ -44,3 +44,20 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ordering.debezium_offset_storage TO orde
 GRANT SELECT ON ordering.cdc_reader_state TO ordering_writer;
 GRANT INSERT (reader_name) ON ordering.cdc_reader_state TO ordering_writer;
 GRANT SELECT ON ordering.order_outbox TO ordering_cdc_reader;
+
+-- Human-operated reconciliation reset. No application is a member of this group.
+REVOKE ALL ON SCHEMA ordering FROM ordering_reconciler;
+REVOKE ALL ON ALL TABLES IN SCHEMA ordering FROM ordering_reconciler;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA ordering FROM ordering_reconciler;
+REVOKE ALL (order_id, buyer_id, request_fingerprint, currency, total_amount, status,
+    created_at, updated_at, currency_policy_version) ON ordering.orders FROM ordering_reconciler;
+REVOKE ALL (saga_id, order_id, command_id, status, cancellation_reason, stock_released_at,
+    reconciliation_attempts, created_at, updated_at, next_reconciliation_at,
+    stock_lease_version, stock_lease_until, stock_failures, next_stock_attempt_at,
+    ledger_result) ON ordering.order_sagas FROM ordering_reconciler;
+GRANT USAGE ON SCHEMA ordering TO ordering_reconciler;
+GRANT SELECT (order_id, status) ON ordering.orders TO ordering_reconciler;
+GRANT SELECT (saga_id, order_id, status, reconciliation_attempts, next_reconciliation_at)
+    ON ordering.order_sagas TO ordering_reconciler;
+GRANT UPDATE (reconciliation_attempts, next_reconciliation_at)
+    ON ordering.order_sagas TO ordering_reconciler;

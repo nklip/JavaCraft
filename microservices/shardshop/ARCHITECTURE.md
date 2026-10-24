@@ -79,6 +79,8 @@ The saga and ledger processes clean up expired inbox and published outbox rows
 after a configurable retention window (24 hours by default). Permanent decisions,
 replay identities and business state remain available for recovery. Order outbox
 cleanup also waits for a durable CDC checkpoint. These workers add no pods.
+An operator can reset an exhausted retry budget for a selected pending saga;
+terminal decisions remain unchanged.
 
 ```mermaid
 sequenceDiagram

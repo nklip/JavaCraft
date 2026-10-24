@@ -4564,3 +4564,141 @@ session was already running in an isolated checkout; its containers were left
 untouched and were also absent from the final inventory. The four retained
 ShardShop nodes and unrelated retained containers remain stopped. The new code
 and index migrations have not been deployed to the retained lab.
+
+## Step 5.3
+
+**2026-10-24:** implemented manual reconciliation reset as the database-owned
+[`reset-reconciliation.sql`](database/operations/reset-reconciliation.sql), run
+through native PostgreSQL `psql`. It takes one explicit canonical positive
+order/saga ID pair on the buyer's primary shard. There is no wildcard reset,
+additional shell entry point, HTTP endpoint, application process or pod.
+
+The operation takes the same signed SHA-256 order advisory lock as Java and then
+the saga row lock. A fresh `READ COMMITTED` statement checks the pair and both
+pending states after any advisory-lock wait. Only `PENDING_LEDGER` pairs reset:
+attempts become zero and next eligibility becomes database time. All other saga
+fields and business records remain. Missing, mismatched or terminal pairs are
+no-ops. The reset does not create messages, recover missing CDC state or resolve
+quarantine; the normal scanner performs the next eligible replay. A repeated
+manual reset grants a fresh budget while permanent identities prevent duplicate
+business effects.
+
+The script uses quoted psql substitutions, validates IDs before locking and
+reports the previous count and new UTC eligibility only after commit. Lock,
+statement, idle-transaction and total-transaction timeouts bound contention and
+interrupted clients. The [operator procedure](shardshop-order/RUNBOOK.md#manual-reconciliation-reset)
+documents a verified-TLS primary tunnel, protected password file, inspection,
+no-op/error handling and uncertain commits.
+
+CNPG declares the non-login `ordering_reconciler` group and its sole login member,
+`ordering_operator`, for every shard. The group has only the identity/state reads
+needed by the operation and updates to the two retry columns. It cannot read
+payloads, change terminal decisions, insert/delete records or assume an owner
+role. The pending-state protection is in the checked-in operation; column grants
+alone cannot prevent ad hoc changes to those two fields on other sagas.
+No application receives the operator Secret. `cluster-create.sh` provisions that
+missing Secret outside Helm, and the infrastructure readiness gate includes both
+new roles. The default inventory renders 46 database roles and unchanged pod counts.
+
+Flyway reapplies the complete ordering repeatable grants, including explicit
+revocation of stale operator table/column rights. No versioned migration, custom
+SQL function, trigger, business-row rewrite or dependency change is needed. An
+existing lab must reconcile the foundation with `cluster-create.sh` before `up.sh`
+applies the grants; the SQL operation itself is outside the migration streams.
+
+### Acceptance and validation
+
+The SQL scenarios execute the actual checked-in file using the dedicated login
+and the pinned PostgreSQL container's `psql`. They check selection, exact current
+eligibility, repeatability, no-ops, malformed/injected IDs, an advisory-lock race
+with a newly terminal order, row-lock timeout and rollback, the privilege matrix,
+and removal of stale grants on a retained schema without changing rows.
+
+Two packaged scenarios exhaust all five automatic retries for recorded and
+rejected decisions, cleaning published/checkpointed transport through the real
+workers between attempts. They restart the coordinator, reset twice through the
+operator login, and resume normal replay. Assertions cover the saved decision,
+single stock/ledger/profit effects and terminal no-ops, including a currency-policy
+change before replaying a rejection.
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@manual-reconciliation-reset or @manual-reconciliation-reset-sql or @saga-reconciliation or @transport-cleanup or @transport-cleanup-migration'
+bash -n microservices/shardshop/scripts/cluster-create.sh
+python3 /tmp/shardshop-415-doc-links.py
+git diff --check
+docker ps -a --format '{{.Names}}\t{{.Status}}\t{{.Label "org.testcontainers.sessionId"}}'
+```
+
+The scoped reactor passed **1,830 unit/provider tests**, including 384 order,
+57 ledger and 207 testing-module tests, plus **75 packaged startup checks**.
+All **19 selected integration scenarios** passed: the two manual recovery cases,
+seven SQL/privilege cases, four reconciliation regressions, four transport cleanup
+cases and two retained-schema migration cases. The tag filter intentionally
+excluded the other 131 scenarios. No implementation or test code changed after
+this successful run.
+
+The SQL checks used `psql 18.6 (Debian 18.6-1.pgdg13+2)` from the pinned database
+image. The bootstrap script and all three new runbook Bash blocks pass syntax
+checks; all 769 local Markdown links and anchors resolve, and `git diff --check`
+passes. All 65 milestone IDs remain; only 5.3 changed status, to Done. The final
+review found no outstanding issues in the locks, grants or upgrade ordering.
+
+Testcontainers removed the run's disposable containers. The four retained kind
+nodes and unrelated retained containers remain stopped. No live kind deployment,
+CNPG role reconciliation or capacity measurement was performed for this run.
+The [live operator run](#live-operator-run) below used a newly created lab. No
+run has tested the upgrade of an existing lab with `cluster-create.sh` followed
+by `up.sh`.
+
+### Live operator run
+
+**2026-10-24:** the kind lab was created again, and `up.sh` deployed the 5.3
+working tree. All three Helm releases are at revision 1 with status `deployed`.
+The `ordering-reconciler` and `ordering-operator` DatabaseRoles are applied on all
+three shards, and the `ordering-operator` Secret exists. On `shard-a`, the
+operator login can update only the two retry columns. It has no owner membership,
+no replication, no update on `ordering.orders` and no read of `buyer_id`.
+
+The procedure used Homebrew `psql 18.6` (`postgresql@18` 18.6_1) and host kubectl
+1.36.3 over a verified-TLS loopback tunnel. The lab had no exhausted saga. A
+pending pair lasts approximately one to two seconds. Thus, one operator session
+selected a pending `shard-c` pair and ran the checked-in file with `\i`:
+
+```text
+RESET|107421868297822208|107421868339765248|0|2026-10-24 11:02:32.461208+00
+```
+
+The order confirmed through its normal flow 0.44 seconds later, so the reset
+caused no replay. The order shard kept one command, one outbox row and one
+accepted result, with zero attempts and no quarantine. The ledger kept one
+`RECORDED` operation, one entry and one result binding at publication attempt 1,
+with no conflicting command. The catalog kept three stock reservations and three
+profit credits. Then the unchanged runbook command on the same confirmed pair
+printed `NOOP|107421868297822208|107421868339765248` and changed no row.
+
+The first tunnels stopped after every closed `psql` connection and printed
+`lost connection to pod`. Thus, a second connection after the inspection was
+refused. One later tunnel stayed open after a connection. The
+[operator procedure](shardshop-order/RUNBOOK.md#manual-reconciliation-reset) now
+starts the tunnel in an `until` loop and allows one connection at a time. A test
+of that loop on `shard-b` passed two sequential connections, and SIGINT stopped it.
+
+Commands from the repository root. The runbook blocks used `shard-c`, port 15433
+and the pair above:
+
+```bash
+brew install postgresql@18
+export PATH="$(brew --prefix postgresql@18)/bin:$PATH"
+kubectl --context kind-shardshop -n shardshop get databaseroles.postgresql.cnpg.io
+helm --kube-context kind-shardshop -n shardshop list
+bash -n microservices/shardshop/scripts/cluster-create.sh
+python3 /tmp/shardshop-415-doc-links.py
+git diff --check
+```
+
+Read-only `psql` queries through `kubectl exec` on the shard and ledger primaries
+gave the counts above. The test stopped all tunnels and removed its temporary
+password and CA files.
