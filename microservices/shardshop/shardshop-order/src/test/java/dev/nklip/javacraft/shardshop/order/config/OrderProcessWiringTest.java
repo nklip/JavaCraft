@@ -20,15 +20,21 @@ class OrderProcessWiringTest {
         var profit = mock(OrderConfiguration.Profit.class);
         var results = mock(OrderConfiguration.Results.class);
         var reconciliation = mock(OrderConfiguration.Reconciliation.class);
+        var cleanup = mock(OrderConfiguration.Cleanup.class);
         when(order.process()).thenReturn(process);
         when(order.stock()).thenReturn(stock);
         when(order.profit()).thenReturn(profit);
         when(order.results()).thenReturn(results);
         when(order.reconciliation()).thenReturn(reconciliation);
+        when(order.cleanup()).thenReturn(cleanup);
         when(stock.enabled()).thenReturn(true);
         when(profit.enabled()).thenReturn(true);
         when(results.enabled()).thenReturn(true);
         when(reconciliation.enabled()).thenReturn(true);
+        when(cleanup.enabled()).thenReturn(true);
+        when(cleanup.retention()).thenReturn(Duration.ofHours(24));
+        when(cleanup.pollInterval()).thenReturn(Duration.ofSeconds(30));
+        when(cleanup.batchSize()).thenReturn(1000);
         when(reconciliation.pollInterval()).thenReturn(Duration.ofSeconds(30));
         when(reconciliation.batchSize()).thenReturn(100);
         when(stock.pollInterval()).thenReturn(Duration.ofMillis(250));
@@ -50,5 +56,6 @@ class OrderProcessWiringTest {
         assertEquals(saga, new ResultWiring().profitSettings(order).enabled());
         assertEquals(saga, new ResultWiring().resultSettings(order, cdc).enabled());
         assertEquals(saga, new ReconciliationWiring().settings(order).enabled());
+        assertEquals(saga, new CleanupWiring().settings(order).enabled());
     }
 }

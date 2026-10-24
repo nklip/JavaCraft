@@ -15,15 +15,15 @@ writes directly to the ledger database.
   writes stock reservations, product stock and seller profit in `catalog` on the
   seller shards.
 - **Status:** the HTTP and saga processes implement the workflow through
-  milestone 4 and the reconciliation schedule of step 5.1. Transport cleanup,
-  operator reset and restore requirements remain planned beside their contracts.
+  milestone 4, the reconciliation schedule of step 5.1 and transport cleanup in
+  step 5.2. Operator reset and restore requirements remain planned beside their contracts.
 
 ## Processes
 
 | Process | Deployment | Replicas | Strategy | Runs |
 |---|---|---:|---|---|
 | `http` (default) | `shardshop-order` | 2 | `RollingUpdate` | Buyer, allocation and order HTTP API, and the `/orders/` page |
-| `saga` | `shardshop-order-saga` | 1 | `Recreate` | Stock, profit and reconciliation workers, the CDC relay with one reader per shard, and the result consumer |
+| `saga` | `shardshop-order-saga` | 1 | `Recreate` | Stock, profit, reconciliation and transport cleanup workers, the CDC relay with one reader per shard, and the result consumer |
 
 `shardshop.order.process` selects the process. The saga process serves only its
 management listener: it answers `404` for `/api/v1/*` and `/orders/*`. Thus the
@@ -335,8 +335,8 @@ entry and saga, not deletion of the original ledger row.
 > **Status:** steps 4.5–4.7 implement the permanent ledger decision,
 > duplicate-command result replay, publication-attempt checks, order-result
 > validation and quarantine described here. Step 5.1 adds the overdue-saga scanner
-> and durable five-attempt enqueue schedule. Operator reset remains step 5.3,
-> safe transport cleanup is step 5.2, and the complete recovery/observability
+> and durable five-attempt enqueue schedule. Step 5.2 implements safe transport
+> cleanup. Operator reset remains step 5.3, and the complete recovery/observability
 > drills are step 5.5.
 
 ### Reconciliation schedule
@@ -382,6 +382,23 @@ effect, and a reset never changes a terminal saga. Transport cleanup, restarts, 
 duplicate deliveries never reset the saga's counter or schedule. Keep this state
 even after outbox rows are deleted, and retain it with the saga through
 terminal-state retention and backups.
+
+### Transport cleanup
+
+The saga process runs one bounded cleanup worker across the primary shards; HTTP
+replicas start none. Inbox rows age from `received_at`, and outbox rows from
+`published_at`, with a 24-hour default retention window. A batch holds at most
+1,000 message IDs. The worker uses the existing order pools and three-second
+database phase deadlines, and a shard failure does not stop other shards.
+
+For outboxes, the worker captures a WAL position after selecting old confirmed
+rows and waits for a durable streaming checkpoint beyond that position. It uses
+the saved connector identity and `lsn_commit` when available, falling back to
+`lsn`, as the CDC restart check does. Only the captured IDs may be deleted, and
+the DELETE rechecks publication and age. Losing the in-memory batch on restart
+only delays cleanup. Inbox cleanup continues while an outbox batch waits for CDC.
+The [database retention rules](../database/ARCHITECTURE.md#retention) define the
+permanent records that remain; cleanup never resets reconciliation state.
 
 ### Ledger replay of a duplicate command
 

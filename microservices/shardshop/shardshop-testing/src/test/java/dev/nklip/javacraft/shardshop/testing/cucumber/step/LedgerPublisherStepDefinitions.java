@@ -213,6 +213,64 @@ public final class LedgerPublisherStepDefinitions {
         awaitPublished(command);
     }
 
+    @Then("a blocked cleanup delete cannot remove a rearmed ledger result")
+    public void cleanupRacesRearm() throws Exception {
+        ObjectNode command = command(108, "USD");
+        long resultId = id(command, "resultMessageId");
+        runtime.start(database, broker, "USD");
+        publish(command);
+        await("initial pending result", () -> pending(command));
+        JsonNode savedEnvelope = saved(command);
+        runtime.stop();
+        try (var connection = postgres.superuser(database);
+             PreparedStatement ageInbox = connection.prepareStatement(
+                     "UPDATE ledger.ledger_inbox SET received_at=clock_timestamp()-INTERVAL '2 hours' WHERE message_id=?");
+             PreparedStatement ageOutbox = connection.prepareStatement(
+                     "UPDATE ledger.ledger_outbox SET created_at=clock_timestamp()-INTERVAL '3 hours', "
+                             + "published_at=clock_timestamp()-INTERVAL '2 hours' WHERE message_id=?")) {
+            ageInbox.setLong(1, id(command, "messageId"));
+            ageOutbox.setLong(1, resultId);
+            assertEquals(1, ageInbox.executeUpdate());
+            assertEquals(1, ageOutbox.executeUpdate());
+        }
+
+        try (var holder = postgres.superuser(database)) {
+            holder.setAutoCommit(false);
+            try (PreparedStatement lock = holder.prepareStatement(
+                    "SELECT message_id FROM ledger.ledger_outbox WHERE message_id=? FOR UPDATE")) {
+                lock.setLong(1, resultId);
+                try (ResultSet rows = lock.executeQuery()) {
+                    assertTrue(rows.next());
+                }
+            }
+            runtime.enableCleanup();
+            runtime.start(database, broker, "USD");
+            await("packaged cleanup DELETE waits for the held outbox row", this::blockedCleanupDelete);
+            try (PreparedStatement binding = holder.prepareStatement(
+                    "UPDATE ledger.ledger_result_ids SET publication_attempt=2 WHERE result_message_id=?");
+                 PreparedStatement rearm = holder.prepareStatement(
+                         "UPDATE ledger.ledger_outbox SET publication_attempt=2, published_at=NULL WHERE message_id=?")) {
+                binding.setLong(1, resultId);
+                rearm.setLong(1, resultId);
+                assertEquals(1, binding.executeUpdate());
+                assertEquals(1, rearm.executeUpdate());
+            }
+            holder.commit();
+        }
+        await("cleanup finishes and removes the expired inbox", () ->
+                count("ledger.ledger_inbox") == 0 && !blockedCleanupDelete());
+        assertEquals(1, count("ledger.ledger_outbox"), "The DELETE must recheck a concurrently rearmed row");
+        assertEquals("2", value("SELECT publication_attempt::text FROM ledger.ledger_outbox WHERE message_id=?", resultId));
+        assertTrue(pending(command), "A newer publication attempt stays pending");
+        assertEquals(savedEnvelope, saved(command));
+        publish(command);
+        await("a real duplicate reuses the surviving result", () -> attempt(command) == 3);
+        assertEquals(savedEnvelope, saved(command));
+        assertTrue(pending(command));
+        assertEquals(1, count("ledger.ledger_operations"));
+        assertEquals(1, count("ledger.ledger_entries"));
+    }
+
     private static ObjectNode command(int ordinal, String currency) throws Exception {
         return LedgerConsumerStepDefinitions.command(ordinal, currency);
     }
@@ -291,6 +349,19 @@ public final class LedgerPublisherStepDefinitions {
              PreparedStatement query = connection.prepareStatement("SELECT count(*) FROM pg_stat_activity "
                      + "WHERE datname=? AND usename='ledger_app' AND wait_event_type='Lock' "
                      + "AND query ILIKE '%ledger_outbox%' AND query ILIKE 'UPDATE%'") ) {
+            query.setString(1, database);
+            try (ResultSet rows = query.executeQuery()) {
+                rows.next();
+                return rows.getInt(1) > 0;
+            }
+        }
+    }
+
+    private boolean blockedCleanupDelete() throws Exception {
+        try (var connection = postgres.superuser(database);
+             PreparedStatement query = connection.prepareStatement("SELECT count(*) FROM pg_stat_activity "
+                     + "WHERE datname=? AND usename='ledger_app' AND wait_event_type='Lock' "
+                     + "AND query ILIKE '%ledger_outbox%' AND query ILIKE 'WITH expired%'") ) {
             query.setString(1, database);
             try (ResultSet rows = query.executeQuery()) {
                 rows.next();

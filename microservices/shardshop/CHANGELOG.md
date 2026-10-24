@@ -4488,3 +4488,79 @@ step. Testcontainers removed its disposable containers. The final Docker
 inventory matches the initial inventory: all four retained ShardShop nodes and
 the unrelated containers remain stopped. The new code has not been deployed to
 the retained lab.
+
+## Step 5.2
+
+**2026-10-24:** implemented bounded transport cleanup in the existing order saga
+and ledger processes. Both default to a 24-hour retention window, a 30-second
+poll interval and batches of at most 1,000 rows per table. HTTP order replicas
+start no cleanup worker, and startup checks start no background loops. No pod,
+runtime grant or dependency was added. Manual reconciliation reset remains 5.3.
+
+Inbox age is measured from receipt; outbox age is measured from confirmed
+publication. Unpublished rows remain. Permanent ledger decisions, exact result
+envelopes and replay bindings, reconciliation counters, orders, sagas, allocations,
+profit state, stock history and closed reservation guards remain, as does
+unresolved quarantine.
+
+Order cleanup captures a bounded list of eligible published message IDs and then
+reads a WAL barrier after those inserts have committed. It deletes only those IDs,
+rechecking their publication age, after the durable Debezium streaming checkpoint
+passes that barrier. It uses the committed offset when present. Missing reader
+history or offsets, stale checkpoints and malformed, foreign, ambiguous or
+snapshot offsets retain the outbox rows. Restarting cleanup recaptures candidates
+and a fresh barrier. Inbox cleanup continues while the outbox waits for CDC.
+
+Ledger cleanup selects bounded batches and rechecks publication attempt and
+timestamp when deleting. A duplicate command that rearms a result while deletion
+is blocked therefore retains its newer pending publication. Full ledger batches
+continue immediately; partial batches and failures wait for the configured poll.
+Both services reuse their application pools and three-second database phases.
+Failure and recovery logs are documented in the
+[order](shardshop-order/RUNBOOK.md#transport-cleanup) and
+[ledger](shardshop-ledger/RUNBOOK.md#transport-cleanup) runbooks.
+
+Ordering V8 and ledger V3 add receipt-time indexes and partial publication-time
+indexes. Existing migrations remain unchanged. The migration scenarios start
+with retained ordering V7 and ledger V2 databases, compare retained row contents
+after upgrading, verify all four indexes and require an unchanged rerun.
+
+### Acceptance evidence
+
+Unit tests cover retention and batch bounds, strict checkpoint advancement,
+restart behavior, checkpoint validation, SQL parameters and cleanup lifecycle
+gates. Packaged scenarios exercise absent and stale checkpoints, independent inbox
+cleanup, recent and unpublished row preservation, cleanup of all four transport
+tables, and exact replay of both recorded and rejected results. They verify
+business, stock and profit effects remain unchanged, including after a ledger
+policy change. A post-deletion CDC checkpoint proves cleanup deletes do not become
+commands. Another scenario holds a row lock to exercise cleanup racing a rearm.
+
+### Validation and environment
+
+Commands from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-ledger -am verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@transport-cleanup or @transport-cleanup-migration or @saga-reconciliation or @ledger-publisher or @ledger-migration'
+python3 /tmp/shardshop-415-doc-links.py
+git diff --check
+docker ps -a --format '{{.Names}}\t{{.Status}}\t{{.Label "org.testcontainers.sessionId"}}'
+```
+
+The scoped ledger and order verification runs passed. The integration reactor
+compiled the final cleanup changes and passed 1,829 unit/provider tests, including
+384 order and 57 ledger tests, plus 75 packaged startup checks. All 18 selected
+cleanup, retained-schema migration, ledger publisher and reconciliation scenarios
+passed; the other 123 scenarios were excluded by the tag filter. No code changed
+after that run. All 754 local Markdown links and anchors resolve, and
+`git diff --check` passes. All 65 milestone IDs remain; only 5.2 changed status.
+
+No kind deployment or capacity measurement was required for this application
+step. Testcontainers removed this run's disposable containers. A separate test
+session was already running in an isolated checkout; its containers were left
+untouched and were also absent from the final inventory. The four retained
+ShardShop nodes and unrelated retained containers remain stopped. The new code
+and index migrations have not been deployed to the retained lab.

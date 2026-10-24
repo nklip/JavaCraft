@@ -20,6 +20,7 @@ public final class LedgerRuntime implements Disposable {
     private PackagedApplication application;
     private String name;
     private RabbitMqBroker broker;
+    private boolean cleanupEnabled;
 
     public LedgerRuntime() throws IOException {
         directory = ShardShopFiles.newWorkDirectory("ledger-");
@@ -88,6 +89,10 @@ public final class LedgerRuntime implements Disposable {
                 "shardshop.ledger.publisher.enabled=" + publisherEnabled,
                 "shardshop.ledger.publisher.batch-size=10",
                 "shardshop.ledger.publisher.poll-interval=100ms",
+                "shardshop.ledger.cleanup.enabled=" + cleanupEnabled,
+                "shardshop.ledger.cleanup.retention=PT1H",
+                "shardshop.ledger.cleanup.poll-interval=100ms",
+                "shardshop.ledger.cleanup.batch-size=8",
                 "shardshop.ledger.broker.host=127.0.0.1",
                 "shardshop.ledger.broker.port=" + queue.port(),
                 "shardshop.ledger.broker.virtual-host=shardshop",
@@ -100,6 +105,11 @@ public final class LedgerRuntime implements Disposable {
     public void restart(String allowedCurrencies) throws Exception {
         stop();
         start(name, broker, allowedCurrencies);
+    }
+
+    /** Enables the production transport cleanup worker on subsequent starts. */
+    public void enableCleanup() {
+        cleanupEnabled = true;
     }
 
     public void restartWithPublisher(String allowedCurrencies) throws Exception {

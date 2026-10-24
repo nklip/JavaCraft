@@ -7,13 +7,12 @@ conflict quarantine and result publication in its dedicated database. It receive
 immutable order snapshots and never queries the shared order/catalog databases or
 generates IDs.
 
-- **Runs as:** one pod with the command consumer and the result relay, and a
+- **Runs as:** one pod with the command consumer, result relay and transport cleanup worker, and a
   separate single-instance PostgreSQL pod, `ledger-db`.
 - **Owns:** schema `ledger` in database `ledger`. There is no sharding.
 - **Status:** the command consumer and result relay are implemented in steps 4.5
-  and 4.6. Automatic order reconciliation, transport cleanup and restore tooling
-  remain milestones 5 and 6; the saved-decision replay protocol already supports
-  them.
+  and 4.6; order reconciliation is step 5.1 and transport cleanup is step 5.2.
+  Manual reset and restore tooling remain planned in milestones 5 and 6.
 
 ```mermaid
 flowchart LR
@@ -125,6 +124,18 @@ acknowledgement without changing a permanent decision or emitting a rejection.
   tables, or read the Flyway history. There are no ID sequences, SQL functions, or
   triggers.
 
-Transport cleanup belongs to the later retention step. The DELETE grants alone do
-not enforce confirmed publication or retention windows; the
-[retention rules](../database/ARCHITECTURE.md#retention) define what may be removed.
+### Transport cleanup
+
+The ledger process removes bounded batches of old inbox and confirmed outbox rows
+using the existing runtime grants. Its default retention is 24 hours from
+`received_at` or `published_at`, with a batch of 1,000 per table. A full batch
+continues immediately; otherwise the worker waits 30 seconds. Each transaction
+uses the existing pool and three-second database phase deadline.
+
+The DELETE rechecks receipt/publication time and, for an outbox, its selected
+publication attempt. Under `READ COMMITTED`, a concurrent replay either makes
+the old delete ineligible or recreates a removed outbox as a new pending attempt.
+Permanent bindings and exact envelopes remain available in both cases. The
+[retention rules](../database/ARCHITECTURE.md#retention) define what may be removed;
+DELETE privileges alone do not enforce the publication or age checks. Ledger V3
+adds receipt-time and confirmed-publication indexes without changing grants.

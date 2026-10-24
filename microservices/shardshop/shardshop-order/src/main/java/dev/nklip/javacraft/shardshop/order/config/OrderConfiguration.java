@@ -32,6 +32,14 @@ public interface OrderConfiguration {
     Results results();
     Profit profit();
     Reconciliation reconciliation();
+    Cleanup cleanup();
+
+    interface Cleanup {
+        @WithDefault("true") boolean enabled();
+        @WithDefault("24h") Duration retention();
+        @WithDefault("30s") Duration pollInterval();
+        @WithDefault("1000") int batchSize();
+    }
 
     interface Reconciliation {
         @WithDefault("true") boolean enabled();

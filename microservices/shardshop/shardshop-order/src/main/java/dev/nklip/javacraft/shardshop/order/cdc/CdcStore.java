@@ -149,6 +149,32 @@ final class CdcStore {
         }
     }
 
+    /** A snapshot offset has not yet proved that the reader passed a later WAL barrier. */
+    long validateStreamingOffset(String key, String value, String identity) {
+        long position = validateOffset(key, value, identity);
+        try {
+            JsonNode offset = json.readTree(value);
+            JsonNode snapshot = offset.path("snapshot");
+            if (!snapshot.isMissingNode() && !snapshot.isBoolean() && !snapshot.isTextual()) {
+                throw new RecoveryRequiredException("cleanup offset has ambiguous snapshot state");
+            }
+            if (snapshot.isBoolean() && snapshot.booleanValue()
+                    || snapshot.isTextual() && !"false".equals(snapshot.textValue())) {
+                throw new RecoveryRequiredException("cleanup offset is still a snapshot");
+            }
+            JsonNode completed = offset.path("snapshot_completed");
+            if (!completed.isMissingNode() && !completed.isBoolean()) {
+                throw new RecoveryRequiredException("cleanup offset has ambiguous snapshot completion");
+            }
+            if (completed.isBoolean() && !completed.booleanValue()) {
+                throw new RecoveryRequiredException("cleanup offset has an incomplete snapshot");
+            }
+            return position;
+        } catch (IOException malformed) {
+            throw new RecoveryRequiredException("offset data is malformed");
+        }
+    }
+
     private static boolean usable(JsonNode lsn) {
         return lsn.isIntegralNumber() && lsn.canConvertToLong() && lsn.longValue() > 0;
     }

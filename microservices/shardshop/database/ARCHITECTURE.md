@@ -9,9 +9,8 @@ with its own login role.
 - **Runs as:** three regional CloudNativePG clusters with three instances each,
   and one separate single-instance ledger cluster.
 - **Status:** regional shards, synchronous replication configuration, schemas,
-  role privileges and Flyway delivery are implemented. The retention rules below
-  are mandatory constraints on planned cleanup, not evidence that cleanup is
-  running. Coordinated backup/restore, restore audits and cloud/Argo CD delivery
+  role privileges and Flyway delivery are implemented. Step 5.2 implements the
+  transport cleanup described below. Coordinated backup/restore, restore audits and cloud/Argo CD delivery
   remain planned in [PLAN milestones 5–7](../PLAN.md).
 
 ## Sharding and replication
@@ -178,9 +177,9 @@ applies to migrations as well as infrastructure.
 database/
   shard/            # database `shardshop`, applied to every shard primary
     catalog/        # flyway.toml, V1–V6, R__catalog_grants.sql
-    ordering/       # flyway.toml, V1–V7, R__ordering_grants.sql
+    ordering/       # flyway.toml, V1–V8, R__ordering_grants.sql
   ledger/
-    ledger/         # database `ledger`, applied once to ledger-db: flyway.toml, V1–V2, R__ledger_grants.sql
+    ledger/         # database `ledger`, applied once to ledger-db: flyway.toml, V1–V3, R__ledger_grants.sql
 ```
 
 | Stream | Migration | Adds |
@@ -198,8 +197,10 @@ database/
 | ordering | `V5__result_application_and_profit.sql` | Retained result envelopes and `profit_intents` |
 | ordering | `V6__regional_order_listing.sql` | Date/ID and product/ID indexes for the order page |
 | ordering | `V7__currency_policy_version.sql` | `currency_policy_version` on orders |
+| ordering | `V8__transport_cleanup_indexes.sql` | Retention indexes for inbox receipt time and confirmed outbox publication time |
 | ledger | `V1__ledger.sql` | Decisions, entries, result bindings, inbox, outbox and command quarantine |
 | ledger | `V2__permanent_command_envelopes.sql` | Permanent `command_envelope` on `ledger_result_ids` |
+| ledger | `V3__transport_cleanup_indexes.sql` | Retention indexes for inbox receipt time and confirmed outbox publication time |
 
 ## Roles
 
@@ -300,6 +301,27 @@ Keep cleanup deletes out of the command stream. Reconciliation counters and
 timestamps belong to `ordering.order_sagas` and are unaffected by that cleanup. A
 manual reconciliation reset is safe also after transport cleanup, because
 operation identity and outcome checks still apply.
+
+**Implemented in step 5.2:** the existing order saga and ledger processes run
+cleanup workers using their application roles. The default operational window is
+24 hours, measured from inbox receipt or confirmed outbox publication, with bounded
+batches of 1,000 rows. Only inboxes and outboxes are cleanup targets. Ordering V8
+and ledger V3 add indexes for these queries without changing rows or privileges.
+
+Order selects a batch of old published message IDs, then records a WAL position
+after that selection. It keeps the batch in memory until the matching connector's
+durable streaming checkpoint is strictly past that position. This proves the
+checkpoint passed every selected insert without adding per-row LSN columns.
+Missing, ambiguous, malformed or incomplete-snapshot offsets never authorize a
+delete. Restart discards the batch and captures a new position; it cannot weaken
+the check. The insert-only publication and relay filtering keep deletes out of
+the command stream.
+
+Both workers recheck publication and age in the DELETE. Ledger also rechecks the
+selected publication attempt and timestamp, preserving results rearmed by a
+concurrent duplicate command. Configuration, failure logs and inspection belong
+to the [order](../shardshop-order/RUNBOOK.md#transport-cleanup) and
+[ledger](../shardshop-ledger/RUNBOOK.md#transport-cleanup) runbooks.
 
 ## Consistency and failure boundaries
 

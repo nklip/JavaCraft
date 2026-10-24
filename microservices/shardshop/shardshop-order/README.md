@@ -11,10 +11,13 @@ may come from sellers in any region.
 The same image runs two processes selected by `shardshop.order.process`: `http`
 (the default) serves APIs and pages; `saga` runs stock reservation, compensation,
 seller-profit posting, CDC command publication, ledger-result consumption and
-durable ledger reconciliation. The
+durable ledger reconciliation and transport cleanup. The
 HTTP Deployment has two replicas with `RollingUpdate`; `shardshop-order-saga` has
 one replica with `Recreate` to prevent overlapping CDC slot owners. Each JVM reserves
 its own generator slot. HTTP replicas run no background saga loops.
+
+The normal `up.sh` workflow applies ordering migrations through V8, including the
+transport retention indexes, before deploying the image.
 
 In the lab, `up.sh` deploys both processes; see the [lab start](../README.md#start-the-lab).
 Apply the catalog and ordering migrations before order serves requests; the
@@ -160,3 +163,8 @@ reports a failed scan or replay transaction once per affected shard, followed by
 `Saga reconciliation resumed for <shard>` after a complete clean pass. See the
 [reconciliation runbook](RUNBOOK.md#durable-reconciliation) for inspection and
 configuration.
+
+**Transport cleanup.** `Transport cleanup unavailable for <shard>; will retry: <cause>`
+reports a failed cleanup phase, followed by `Transport cleanup resumed for <shard>`
+after recovery. The [cleanup runbook](RUNBOOK.md#transport-cleanup) explains the
+retention window and why published outbox rows can still be waiting for CDC.

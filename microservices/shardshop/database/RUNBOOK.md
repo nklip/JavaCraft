@@ -305,6 +305,10 @@ metadata can be updated. Java implements the atomic acceptance writes, the state
 transitions, envelope validation and stock reserve/release; cleanup is permitted
 only after the retention and CDC checkpoint gates.
 
+Ordering V8 adds receipt-time and confirmed-publication retention indexes. The
+[order cleanup worker](../shardshop-order/RUNBOOK.md#transport-cleanup) enforces the
+window and durable CDC checkpoint using the existing application grants.
+
 `orphan_results` and `conflicting_results` retain envelopes, correlation IDs,
 fingerprints, outcomes, reasons and audit metadata. Their composite key is message
 ID plus the SHA-256 fingerprint of the complete canonical received payload, so a
@@ -381,7 +385,9 @@ Java replays a duplicate command and confirms each publication attempt.
 The SQL constraints and grants supply storage boundaries. Java implements command
 validation, decision/entry atomicity, conflict detection and replay transactions.
 The result publisher confirms each publication and marks only its matching
-attempt. Cleanup after confirmed publication and retention is planned in step 5.2.
+attempt. The [ledger cleanup worker](../shardshop-ledger/RUNBOOK.md#transport-cleanup)
+implements cleanup after confirmed publication and retention. Ledger V3 adds its
+receipt-time and confirmed-publication indexes.
 A DELETE grant does not enforce these cleanup gates. The ledger application does
 not migrate at startup.
 Decisions have no runtime `UPDATE` privilege, including for `FOR UPDATE`/`FOR KEY

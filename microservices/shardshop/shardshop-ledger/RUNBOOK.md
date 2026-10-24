@@ -83,7 +83,7 @@ shardshop.ledger.broker.timeout=5s
 ```
 
 An enabled consumer requires both passwords. `shardshop.ledger.enabled=false`
-disables both workers. Database phases have a three-second deadline; broker
+disables the consumer, publisher and cleanup worker. Database phases have a three-second deadline; broker
 connections use the configured timeout and reconnect with capped exponential
 backoff and 25% jitter. The ledger and order consumers share this
 loop (`QueueConsumer` in `shardshop-common`).
@@ -98,7 +98,8 @@ shardshop.ledger.publisher.batch-size=100
 shardshop.ledger.publisher.poll-interval=500ms
 ```
 
-Set `shardshop.ledger.publisher.enabled=false` to run only the command consumer. Batch size is
+Set `shardshop.ledger.publisher.enabled=false` to stop result publication; cleanup
+has its own enable switch. Publisher batch size is
 limited to 1–1000 and poll interval to 1 ms–60 seconds. The broker timeout bounds
 the send and confirm phase, including a blocked socket write; connection cleanup
 can take one additional timeout. Failed streams are discarded before retry.
@@ -109,6 +110,45 @@ The order CDC relay and this relay share one publisher class,
 `dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher` in
 `shardshop-common`. Common declares the RabbitMQ client as an optional dependency,
 thus only order and ledger, which declare the client themselves, contain it.
+
+## Transport cleanup
+
+Apply ledger migrations through V3 before enabling cleanup. V3 adds retention
+indexes without changing rows or runtime grants. Normal startup runs cleanup in
+the existing ledger JVM; `--check-startup` does not start it.
+
+| Property | Default | Bounds |
+|---|---|---|
+| `shardshop.ledger.cleanup.enabled` | `true` | Also requires `shardshop.ledger.enabled=true` |
+| `shardshop.ledger.cleanup.retention` | `24h` | 1 second–365 days |
+| `shardshop.ledger.cleanup.poll-interval` | `30s` | 100 ms–60 seconds |
+| `shardshop.ledger.cleanup.batch-size` | `1000` | 1–1000 rows per table per transaction |
+
+The worker removes inboxes older than the window from `received_at`, and confirmed
+outboxes older than the window from `published_at`. The three-second transaction
+rechecks the selected row's timestamp and outbox publication attempt before
+deletion. A concurrent duplicate command can safely rearm or recreate the result;
+its permanent envelope and attempt counter remain. Unpublished results and
+quarantine never qualify. A full batch continues immediately; a partial batch or
+failure waits for the configured polling interval.
+
+An unchanged failure logs once as `Ledger transport cleanup failed; retrying: <cause>`;
+the next successful transaction logs `Ledger transport cleanup recovered`.
+Inspect old confirmed rows using the configured window, for example the default:
+
+```sql
+SELECT count(*) AS old_published_results
+FROM ledger.ledger_outbox
+WHERE published_at < statement_timestamp() - INTERVAL '24 hours';
+```
+
+The [retention contract](../database/ARCHITECTURE.md#retention) lists the permanent
+records. Verify cleanup, replay and concurrent rearm with:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@transport-cleanup or @transport-cleanup-migration or @ledger-publisher'
+```
 
 ## Tests
 

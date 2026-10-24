@@ -9,6 +9,7 @@ import dev.nklip.javacraft.shardshop.ledger.command.LedgerCommand;
 import dev.nklip.javacraft.shardshop.ledger.command.LedgerDecision;
 import dev.nklip.javacraft.shardshop.ledger.command.LedgerStore;
 import dev.nklip.javacraft.shardshop.ledger.command.TransportBinding;
+import dev.nklip.javacraft.shardshop.ledger.cleanup.TransportCleanupStore;
 import dev.nklip.javacraft.shardshop.ledger.result.PendingResult;
 import dev.nklip.javacraft.shardshop.ledger.result.ResultOutbox;
 import io.agroal.api.AgroalDataSource;
@@ -31,7 +32,7 @@ import java.util.TreeSet;
 import java.util.function.Function;
 
 /** Atomic, bounded ledger decisions and duplicate-result rearming on the ledger primary. */
-public final class JdbcLedgerStore implements LedgerStore, ResultOutbox, AutoCloseable {
+public final class JdbcLedgerStore implements LedgerStore, ResultOutbox, TransportCleanupStore, AutoCloseable {
     private final AgroalDataSource pool;
     private final DatabasePhases phases;
 
@@ -59,6 +60,56 @@ public final class JdbcLedgerStore implements LedgerStore, ResultOutbox, AutoClo
             throw new IllegalStateException("Ledger store unavailable");
         }
         phases = new DatabasePhases("ledger", maxPoolSize);
+    }
+
+    @Override
+    public Counts cleanup(Instant before, int batchSize) {
+        if (before == null || batchSize < 1 || batchSize > 1_000) {
+            throw new IllegalArgumentException("Ledger cleanup cutoff and batch size must be valid");
+        }
+        return phases.run(DatabasePhases.Pool.of(pool, () -> pool.flush(AgroalDataSource.FlushMode.ALL)),
+                false, DatabasePhases.PHASE_BUDGET, (connection, deadline) -> {
+                    connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+                    DatabasePhases.refreshTimeouts(connection, deadline);
+                    int inbox = deleteExpiredInbox(connection, before, batchSize);
+                    DatabasePhases.refreshTimeouts(connection, deadline);
+                    int outbox = deleteExpiredOutbox(connection, before, batchSize);
+                    return new Counts(inbox, outbox);
+                }, IllegalArgumentException.class,
+                failure -> new IllegalStateException("Ledger transport cleanup unavailable", failure));
+    }
+
+    static int deleteExpiredInbox(Connection connection, Instant before, int batchSize) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "WITH expired AS MATERIALIZED (SELECT message_id, received_at FROM ledger.ledger_inbox "
+                        + "WHERE received_at < ? ORDER BY received_at, message_id LIMIT ?) "
+                        + "DELETE FROM ledger.ledger_inbox AS target USING expired "
+                        + "WHERE target.message_id=expired.message_id AND target.received_at=expired.received_at "
+                        + "AND target.received_at < ?")) {
+            Timestamp cutoff = Timestamp.from(before);
+            statement.setTimestamp(1, cutoff);
+            statement.setInt(2, batchSize);
+            statement.setTimestamp(3, cutoff);
+            return statement.executeUpdate();
+        }
+    }
+
+    static int deleteExpiredOutbox(Connection connection, Instant before, int batchSize) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "WITH expired AS MATERIALIZED (SELECT message_id, publication_attempt, published_at "
+                        + "FROM ledger.ledger_outbox WHERE published_at IS NOT NULL AND published_at < ? "
+                        + "ORDER BY published_at, message_id LIMIT ?) "
+                        + "DELETE FROM ledger.ledger_outbox AS target USING expired "
+                        + "WHERE target.message_id=expired.message_id "
+                        + "AND target.publication_attempt=expired.publication_attempt "
+                        + "AND target.published_at=expired.published_at "
+                        + "AND target.published_at IS NOT NULL AND target.published_at < ?")) {
+            Timestamp cutoff = Timestamp.from(before);
+            statement.setTimestamp(1, cutoff);
+            statement.setInt(2, batchSize);
+            statement.setTimestamp(3, cutoff);
+            return statement.executeUpdate();
+        }
     }
 
     @Override

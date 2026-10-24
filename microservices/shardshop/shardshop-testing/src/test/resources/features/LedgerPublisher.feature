@@ -22,3 +22,7 @@ Feature: Packaged ledger result publisher
 
   Scenario: A stale confirmation cannot mark a newer replay attempt
     Then an older publisher confirmation cannot clear a newer pending attempt
+
+  @transport-cleanup
+  Scenario: Cleanup racing a duplicate rearm retains the newer pending result
+    Then a blocked cleanup delete cannot remove a rearmed ledger result

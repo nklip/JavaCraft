@@ -340,6 +340,213 @@ public final class OrderResultsStepDefinitions {
         assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id));
     }
 
+    @Then("packaged order cleanup keeps commands without a checkpoint and unpublished commands")
+    public void orderCleanupRequiresCheckpoint() throws Exception {
+        String published = accept(1, us);
+        String unpublished = accept(1, asia);
+        order.enableStock();
+        order.enableResults(broker);
+        order.enableCleanup();
+        order.restart(Set.of());
+        awaitStatus(published, "PENDING_LEDGER");
+        awaitStatus(unpublished, "PENDING_LEDGER");
+        ObjectNode saved = command(published);
+        ObjectNode unpublishedEnvelope = command(unpublished);
+        ageUnpublishedOrderOutbox(unpublished);
+        long staleCommit = walLsn();
+        markPublished(published);
+        ObjectNode recorded = result(saved, "RECORDED");
+        publishResult(recorded);
+        awaitStatus(published, "CONFIRMED");
+        ageOrderOutbox(published);
+        ageOrderInbox(recorded.path("messageId").asLong());
+        await("old result inbox is removed by the packaged order worker", () -> orderInbox(recorded) == 0);
+        assertEquals(1, outboxes(published), "Publication without a durable CDC offset cannot be cleaned");
+        assertEquals(1, outboxes(unpublished), "An unpublished command is never eligible");
+        assertEquals(unpublishedEnvelope, command(unpublished));
+
+        // The offset is at the WAL position before its own fixture transaction. Its
+        // apparent event LSN is deliberately ahead; lsn_commit must take precedence.
+        installStaleCheckpoint(staleCommit);
+        publishResult(recorded);
+        await("duplicate restores its transport inbox", () -> orderInbox(recorded) == 1);
+        ageOrderInbox(recorded.path("messageId").asLong());
+        await("another cleanup cycle removes the expired duplicate inbox", () -> orderInbox(recorded) == 0);
+        assertEquals(1, outboxes(published), "A stale commit offset cannot permit command deletion");
+        assertEquals(1, outboxes(unpublished));
+        assertEquals(0, attempts(published), "Transport cleanup cannot spend the saga retry budget");
+        assertEquals(0, attempts(unpublished));
+        assertEquals(1, bindings(published));
+        assertEquals(1, bindings(unpublished));
+        assertEquals(1, scalar(home(), "SELECT count(*) FROM ordering.orders WHERE order_id=" + published));
+        assertEquals(1, scalar(home(), "SELECT count(*) FROM ordering.order_sagas WHERE order_id=" + published));
+        assertCleanupIndex(home().database(), "order_inbox_retention_idx");
+        assertCleanupIndex(home().database(), "order_outbox_retention_idx");
+    }
+
+    @Then("packaged order and ledger cleanup preserve replay and business effects")
+    public void transportCleanupAndReplay() throws Exception {
+        for (var shard : shards.all()) postgres.createOrderPublication(shard.database());
+        order.enableStock();
+        order.enableCdc(broker);
+        order.enableResults(broker);
+        order.enableProfit();
+        order.enableCleanup();
+        order.restart(Set.of());
+        ledgerDatabase = postgres.createLedgerDatabase();
+        postgres.migrateLedger(ledgerDatabase, ShardShopFiles.resolve("database/ledger/ledger"));
+        ledger.enableCleanup();
+        ledger.startWithPublisher(ledgerDatabase, broker, "USD");
+
+        String old = accept(1, us);
+        awaitStatus(old, "CONFIRMED");
+        await("old order profit is credited", () -> credits(us, old) == 1);
+        ObjectNode command = command(old);
+        ObjectNode originalResult = ledgerResult(command.path("resultMessageId").asLong());
+        awaitCheckpointedPublication(old);
+        await("old ledger result publication is confirmed", () -> scalar(ledgerDatabase,
+                "SELECT count(*) FROM ledger.ledger_outbox WHERE message_id="
+                        + command.path("resultMessageId").asText() + " AND published_at IS NOT NULL") == 1);
+        String recent = accept(1, asia);
+        awaitStatus(recent, "CONFIRMED");
+        await("recent order profit is credited", () -> credits(asia, recent) == 1);
+        awaitCheckpointedPublication(recent);
+        ObjectNode recentCommand = command(recent);
+        await("recent ledger result publication is confirmed", () -> scalar(ledgerDatabase,
+                "SELECT count(*) FROM ledger.ledger_outbox WHERE message_id="
+                        + recentCommand.path("resultMessageId").asText() + " AND published_at IS NOT NULL") == 1);
+        long oldCommandId = command.path("messageId").asLong();
+        long oldResultId = command.path("resultMessageId").asLong();
+        long recentCommandId = recentCommand.path("messageId").asLong();
+        long recentResultId = recentCommand.path("resultMessageId").asLong();
+
+        ObjectNode changedCommand = command.deepCopy().put("occurredAt",
+                Instant.parse(command.path("occurredAt").asText()).plusSeconds(1).toString());
+        ObjectNode changedResult = originalResult.deepCopy().put("occurredAt",
+                Instant.parse(originalResult.path("occurredAt").asText()).plusSeconds(1).toString());
+        publishCommand(changedCommand);
+        publishResult(changedResult);
+        await("changed duplicate envelopes are quarantined", () ->
+                scalar(ledgerDatabase, "SELECT count(*) FROM ledger.conflicting_commands WHERE order_id=" + old) == 1
+                        && conflicts(old) == 1);
+        ageQuarantine(old);
+        ageRecentOutboxCreation(recent, recentResultId);
+
+        ageOrderOutbox(old);
+        ageOrderInbox(oldResultId);
+        ageLedgerTransport(oldCommandId, oldResultId);
+        await("all four expired transport rows are removed by packaged workers", () ->
+                outboxes(old) == 0 && orderInbox(originalResult) == 0
+                        && ledgerTransport("ledger.ledger_inbox", "message_id", oldCommandId) == 0
+                        && ledgerTransport("ledger.ledger_outbox", "message_id", oldResultId) == 0);
+        long afterDelete = walLsn();
+        CdcRelay relay = new CdcRelay(shards, broker);
+        await("CDC checkpoints past the cleanup delete", () -> relay.offsetLsn(home()) > afterDelete);
+        assertEquals(1, outboxes(recent), "A recently published command remains");
+        assertEquals(1, orderInbox(recentResultId), "A recent result delivery remains");
+        assertEquals(1, ledgerTransport("ledger.ledger_inbox", "message_id", recentCommandId));
+        assertEquals(1, ledgerTransport("ledger.ledger_outbox", "message_id", recentResultId));
+        assertEquals(1, scalar(home(), "SELECT count(*) FROM ordering.order_result_ids WHERE message_id=" + oldCommandId));
+        assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_result_ids WHERE message_id=" + oldCommandId));
+        assertEquals(1, scalar(home(), "SELECT count(*) FROM ordering.orders WHERE order_id=" + old));
+        assertEquals(1, scalar(home(), "SELECT count(*) FROM ordering.order_sagas WHERE order_id=" + old
+                + " AND reconciliation_attempts=0"));
+        assertEquals(1, scalar(shards.ofSeller(us.seller().id()),
+                "SELECT count(*) FROM catalog.stock_reservations WHERE order_id=" + old));
+        assertEquals(1, scalar(shards.ofSeller(us.seller().id()),
+                "SELECT count(*) FROM catalog.stock_reservation_guards WHERE order_id=" + old));
+        assertEquals(1, scalar(home(), "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + old));
+        assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_operations WHERE order_id=" + old));
+        assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_entries WHERE order_id=" + old));
+        assertEquals(1, credits(us, old));
+        assertEquals(1, conflicts(old), "Unresolved order quarantine survives cleanup");
+        assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.conflicting_commands WHERE order_id=" + old),
+                "Unresolved ledger quarantine survives cleanup");
+        assertEquals(0, queueCount("ledger.record-order"), "Cleanup deletes must not become commands");
+        assertEquals(2, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_result_ids"),
+                "Cleanup must not initiate another result publication");
+        assertEquals(1, scalar(ledgerDatabase,
+                "SELECT publication_attempt FROM ledger.ledger_result_ids WHERE result_message_id=" + oldResultId));
+        assertCleanupIndex(home().database(), "order_inbox_retention_idx");
+        assertCleanupIndex(home().database(), "order_outbox_retention_idx");
+        assertCleanupIndex(ledgerDatabase, "ledger_inbox_retention_idx");
+        assertCleanupIndex(ledgerDatabase, "ledger_outbox_retention_idx");
+
+        publishCommand(command);
+        await("ledger recreates and publishes the saved result after cleanup", () ->
+                ledgerTransport("ledger.ledger_outbox", "message_id", oldResultId) == 1
+                        && scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_outbox WHERE message_id="
+                        + oldResultId + " AND publication_attempt=2 AND published_at IS NOT NULL") == 1);
+        await("order records the duplicate result after inbox cleanup", () -> orderInbox(originalResult) == 1);
+        assertEquals(originalResult, ledgerResult(oldResultId), "Replay preserves the exact result envelope");
+        assertEquals("CONFIRMED", status(old));
+        assertEquals(0, attempts(old));
+        assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_operations WHERE order_id=" + old));
+        assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_entries WHERE order_id=" + old));
+        assertEquals(1, credits(us, old));
+        assertEquals(9, scalar(shards.ofSeller(us.seller().id()),
+                "SELECT stock FROM catalog.products WHERE product_id=" + us.id()));
+        assertEquals(9, scalar(shards.ofSeller(asia.seller().id()),
+                "SELECT stock FROM catalog.products WHERE product_id=" + asia.id()));
+        assertEquals(1, conflicts(old));
+        assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.conflicting_commands WHERE order_id=" + old));
+    }
+
+    @Then("packaged cleanup replays the original rejection after a policy change")
+    public void rejectedCleanupAndReplay() throws Exception {
+        for (var shard : shards.all()) postgres.createOrderPublication(shard.database());
+        order.enableStock();
+        order.enableCdc(broker);
+        order.enableResults(broker);
+        order.enableCleanup();
+        order.restart(Set.of());
+        ledger.enableCleanup();
+        startLedger("EUR");
+
+        String id = accept(1, us);
+        awaitStatus(id, "CANCELLED");
+        await("rejected reservation is released", () -> scalar(home(),
+                "SELECT count(*) FROM ordering.order_sagas WHERE order_id=" + id
+                        + " AND stock_released_at IS NOT NULL") == 1);
+        ObjectNode command = command(id);
+        ObjectNode savedResult = ledgerResult(command.path("resultMessageId").asLong());
+        assertEquals("REJECTED", savedResult.path("outcome").asText());
+        awaitCheckpointedPublication(id);
+        long commandId = command.path("messageId").asLong();
+        long resultId = command.path("resultMessageId").asLong();
+        await("rejection publication is confirmed", () -> scalar(ledgerDatabase,
+                "SELECT count(*) FROM ledger.ledger_outbox WHERE message_id=" + resultId
+                        + " AND published_at IS NOT NULL") == 1);
+
+        ageOrderOutbox(id);
+        ageOrderInbox(resultId);
+        ageLedgerTransport(commandId, resultId);
+        await("rejected decision transport is cleaned by packaged workers", () ->
+                outboxes(id) == 0 && orderInbox(resultId) == 0
+                        && ledgerTransport("ledger.ledger_inbox", "message_id", commandId) == 0
+                        && ledgerTransport("ledger.ledger_outbox", "message_id", resultId) == 0);
+        assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_operations WHERE order_id=" + id
+                + " AND outcome='REJECTED'"));
+        assertEquals(0, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_entries WHERE order_id=" + id));
+        assertEquals(1, scalar(shards.ofSeller(us.seller().id()),
+                "SELECT count(*) FROM catalog.stock_reservation_guards WHERE order_id=" + id + " AND closed"));
+
+        ledger.restartWithPublisher("USD");
+        publishCommand(command);
+        await("saved rejection is republished after cleanup", () -> scalar(ledgerDatabase,
+                "SELECT count(*) FROM ledger.ledger_outbox WHERE message_id=" + resultId
+                        + " AND publication_attempt=2 AND published_at IS NOT NULL") == 1);
+        await("order accepts the duplicate rejection after inbox cleanup", () -> orderInbox(resultId) == 1);
+        assertEquals(savedResult, ledgerResult(resultId), "Policy changes cannot alter the saved rejection envelope");
+        assertEquals("CANCELLED", status(id));
+        assertEquals(0, attempts(id));
+        assertEquals(1, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_operations WHERE order_id=" + id));
+        assertEquals(0, scalar(ledgerDatabase, "SELECT count(*) FROM ledger.ledger_entries WHERE order_id=" + id));
+        assertEquals(0, credits(us, id));
+        assertEquals(10, scalar(shards.ofSeller(us.seller().id()),
+                "SELECT stock FROM catalog.products WHERE product_id=" + us.id()));
+    }
+
     @Then("an overdue unpublished command waits while another eligible saga is replayed")
     public void unpublishedCommandDoesNotSpendBudget() throws Exception {
         String unpublished = accept(1, us);
@@ -845,6 +1052,123 @@ public final class OrderResultsStepDefinitions {
         // the production insert-only publication or the command transport row.
         long barrier = walLsn();
         await("durable CDC checkpoint after published command " + id, () -> relay.offsetLsn(home()) > barrier);
+    }
+
+    private void ageOrderOutbox(String id) throws SQLException {
+        try (Connection connection = shards.superuser(home()); PreparedStatement age = connection.prepareStatement(
+                "UPDATE ordering.order_outbox SET created_at=clock_timestamp()-INTERVAL '3 hours', "
+                        + "published_at=clock_timestamp()-INTERVAL '2 hours' WHERE saga_id="
+                        + "(SELECT saga_id FROM ordering.order_sagas WHERE order_id=?) AND published_at IS NOT NULL")) {
+            age.setLong(1, Long.parseLong(id));
+            assertEquals(1, age.executeUpdate());
+        }
+    }
+
+    private void ageUnpublishedOrderOutbox(String id) throws SQLException {
+        try (Connection connection = shards.superuser(home()); PreparedStatement age = connection.prepareStatement(
+                "UPDATE ordering.order_outbox SET created_at=clock_timestamp()-INTERVAL '2 hours' "
+                        + "WHERE saga_id=(SELECT saga_id FROM ordering.order_sagas WHERE order_id=?) "
+                        + "AND published_at IS NULL")) {
+            age.setLong(1, Long.parseLong(id));
+            assertEquals(1, age.executeUpdate());
+        }
+    }
+
+    private void ageRecentOutboxCreation(String orderId, long ledgerResultId) throws SQLException {
+        try (Connection connection = shards.superuser(home()); PreparedStatement age = connection.prepareStatement(
+                "UPDATE ordering.order_outbox SET created_at=clock_timestamp()-INTERVAL '2 hours' "
+                        + "WHERE saga_id=(SELECT saga_id FROM ordering.order_sagas WHERE order_id=?) "
+                        + "AND published_at IS NOT NULL")) {
+            age.setLong(1, Long.parseLong(orderId));
+            assertEquals(1, age.executeUpdate());
+        }
+        try (Connection connection = postgres.superuser(ledgerDatabase); PreparedStatement age = connection.prepareStatement(
+                "UPDATE ledger.ledger_outbox SET created_at=clock_timestamp()-INTERVAL '2 hours' "
+                        + "WHERE message_id=? AND published_at IS NOT NULL")) {
+            age.setLong(1, ledgerResultId);
+            assertEquals(1, age.executeUpdate());
+        }
+    }
+
+    private void ageOrderInbox(long resultId) throws SQLException {
+        try (Connection connection = shards.superuser(home()); PreparedStatement age = connection.prepareStatement(
+                "UPDATE ordering.order_inbox SET received_at=clock_timestamp()-INTERVAL '2 hours' WHERE message_id=?")) {
+            age.setLong(1, resultId);
+            assertEquals(1, age.executeUpdate());
+        }
+    }
+
+    private void ageLedgerTransport(long commandId, long resultId) throws SQLException {
+        try (Connection connection = postgres.superuser(ledgerDatabase);
+             PreparedStatement inbox = connection.prepareStatement(
+                     "UPDATE ledger.ledger_inbox SET received_at=clock_timestamp()-INTERVAL '2 hours' "
+                             + "WHERE message_id=?");
+             PreparedStatement outbox = connection.prepareStatement(
+                     "UPDATE ledger.ledger_outbox SET created_at=clock_timestamp()-INTERVAL '3 hours', "
+                             + "published_at=clock_timestamp()-INTERVAL '2 hours' "
+                             + "WHERE message_id=? AND published_at IS NOT NULL")) {
+            inbox.setLong(1, commandId);
+            outbox.setLong(1, resultId);
+            assertEquals(1, inbox.executeUpdate());
+            assertEquals(1, outbox.executeUpdate());
+        }
+    }
+
+    private void ageQuarantine(String orderId) throws SQLException {
+        for (String database : List.of(home().database(), ledgerDatabase)) {
+            String table = database.equals(ledgerDatabase)
+                    ? "ledger.conflicting_commands" : "ordering.conflicting_results";
+            try (Connection connection = postgres.superuser(database);
+                 PreparedStatement age = connection.prepareStatement("UPDATE " + table
+                         + " SET first_seen_at=clock_timestamp()-INTERVAL '2 hours', "
+                         + "last_seen_at=clock_timestamp()-INTERVAL '2 hours' WHERE order_id=?")) {
+                age.setLong(1, Long.parseLong(orderId));
+                assertEquals(1, age.executeUpdate());
+            }
+        }
+    }
+
+    private void installStaleCheckpoint(long commitLsn) throws SQLException {
+        String identity = "shardshop_order_" + home().name().replace('-', '_');
+        String key = "[\"" + identity + "\",{\"server\":\"" + identity + "\"}]";
+        String value = "{\"lsn\":" + Long.MAX_VALUE + ",\"lsn_commit\":" + commitLsn + "}";
+        try (Connection connection = shards.superuser(home());
+             PreparedStatement history = connection.prepareStatement(
+                     "INSERT INTO ordering.cdc_reader_state(reader_name) VALUES (?)");
+             PreparedStatement offset = connection.prepareStatement(
+                     "INSERT INTO ordering.debezium_offset_storage"
+                             + "(id,offset_key,offset_val,record_insert_ts,record_insert_seq) "
+                             + "VALUES (?,?,?,CURRENT_TIMESTAMP,0)")) {
+            history.setString(1, identity);
+            assertEquals(1, history.executeUpdate());
+            offset.setString(1, java.util.UUID.randomUUID().toString());
+            offset.setString(2, key);
+            offset.setString(3, value);
+            assertEquals(1, offset.executeUpdate());
+        }
+    }
+
+    private long orderInbox(ObjectNode result) throws SQLException {
+        return orderInbox(result.path("messageId").asLong());
+    }
+
+    private long orderInbox(long resultId) throws SQLException {
+        return scalar(home(), "SELECT count(*) FROM ordering.order_inbox WHERE message_id=" + resultId);
+    }
+
+    private long ledgerTransport(String table, String key, long id) throws SQLException {
+        return scalar(ledgerDatabase, "SELECT count(*) FROM " + table + " WHERE " + key + "=" + id);
+    }
+
+    private void assertCleanupIndex(String database, String name) throws SQLException {
+        try (Connection connection = postgres.superuser(database); PreparedStatement query = connection.prepareStatement(
+                "SELECT count(*) FROM pg_indexes WHERE indexname=?")) {
+            query.setString(1, name);
+            try (ResultSet rows = query.executeQuery()) {
+                assertTrue(rows.next());
+                assertEquals(1, rows.getInt(1), "Missing bounded transport cleanup index " + name);
+            }
+        }
     }
 
     private void deletePublishedOutbox(String id) throws SQLException {

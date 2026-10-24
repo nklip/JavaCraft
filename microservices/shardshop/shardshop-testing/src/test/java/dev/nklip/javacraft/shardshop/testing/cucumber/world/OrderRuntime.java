@@ -36,6 +36,7 @@ public final class OrderRuntime implements Disposable {
     private RabbitMqBroker resultsBroker;
     private boolean profitEnabled;
     private boolean reconciliationEnabled;
+    private boolean cleanupEnabled;
 
     public OrderRuntime(CatalogShards shards) throws IOException {
         this.shards = shards;
@@ -61,6 +62,12 @@ public final class OrderRuntime implements Disposable {
         values.add("shardshop.order.reconciliation.enabled=" + reconciliationEnabled);
         values.add("shardshop.order.reconciliation.poll-interval=100ms");
         values.add("shardshop.order.reconciliation.batch-size=8");
+        values.add("shardshop.order.cleanup.enabled=" + cleanupEnabled);
+        if (cleanupEnabled) {
+            values.add("shardshop.order.cleanup.retention=PT1H");
+            values.add("shardshop.order.cleanup.poll-interval=100ms");
+            values.add("shardshop.order.cleanup.batch-size=8");
+        }
         RabbitMqBroker configuredBroker = cdcBroker != null ? cdcBroker : resultsBroker;
         if (configuredBroker != null) {
             values.add("shardshop.order.cdc.broker.host=127.0.0.1");
@@ -137,6 +144,11 @@ public final class OrderRuntime implements Disposable {
         reconciliationEnabled = true;
     }
 
+    /** Enables the production transport cleanup worker on subsequent saga starts. */
+    public void enableCleanup() {
+        cleanupEnabled = true;
+    }
+
     public int port() {
         return port;
     }
@@ -153,7 +165,7 @@ public final class OrderRuntime implements Disposable {
 
     private void startSaga() throws IOException, InterruptedException {
         if (!stockEnabled && cdcBroker == null && resultsBroker == null && !profitEnabled
-                && !reconciliationEnabled) return;
+                && !reconciliationEnabled && !cleanupEnabled) return;
         saga = PackagedApplication.start("shardshop-order", directory, List.of(
                 "-Dshardshop.routing.config=" + configuration.toUri(),
                 "-Dshardshop.order.process=saga",

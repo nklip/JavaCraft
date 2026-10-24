@@ -52,8 +52,8 @@ flowchart LR
 |---|---|
 | Product API | Creates sellers and products, serves catalog reads and the `/products/` page, and applies the seller currency policy. |
 | Order HTTP API | Creates buyers, issues order IDs, accepts orders atomically and serves the `/orders/` page. |
-| Order saga | Reserves stock, relays committed commands through CDC, applies ledger results, credits seller profit and replays overdue ledger commands within a durable retry budget. |
-| Ledger | Keeps one permanent decision for each order and publishes its result. |
+| Order saga | Reserves stock, relays committed commands through CDC, applies ledger results, credits seller profit, replays overdue ledger commands within a durable retry budget and removes expired transport after CDC checkpointing. |
+| Ledger | Keeps one permanent decision for each order, publishes its result and removes expired transport. |
 | Workloads | Seed the catalog, read products and produce orders through the public APIs only. |
 | PostgreSQL and RabbitMQ | Regional shards, the separate ledger store and the message transport. |
 
@@ -74,6 +74,11 @@ until the complete catalog resolves. The interactive seeder stays available.
   publishes the committed command through CDC and RabbitMQ, and applies the ledger
   decision. Confirmation creates seller-profit work; rejection releases the stock.
   Retries use durable identities, thus stock, ledger and profit effects occur once.
+
+The saga and ledger processes clean up expired inbox and published outbox rows
+after a configurable retention window (24 hours by default). Permanent decisions,
+replay identities and business state remain available for recovery. Order outbox
+cleanup also waits for a durable CDC checkpoint. These workers add no pods.
 
 ```mermaid
 sequenceDiagram

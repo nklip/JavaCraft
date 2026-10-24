@@ -80,4 +80,28 @@ class CdcStoreTest {
         assertThrows(CdcStore.RecoveryRequiredException.class,
                 () -> store.validateOffset(expectedKey, "{\"lsn\":1234567,\"lsn_commit\":\"later\"}", identity));
     }
+
+    @Test
+    void cleanupRequiresACompletedStreamingOffsetAndPrefersCommitLsn() {
+        Endpoint endpoint = new Endpoint("jdbc:postgresql://localhost/shardshop", "app", "");
+        CdcStore store = new CdcStore(endpoint, endpoint);
+        String identity = "shardshop_order_shard_a";
+        String key = "[\"shardshop_order_shard_a\",{\"server\":\"shardshop_order_shard_a\"}]";
+        assertEquals(100L, store.validateStreamingOffset(key,
+                "{\"lsn\":200,\"lsn_commit\":100,\"snapshot\":\"false\"}", identity));
+        assertEquals(200L, store.validateStreamingOffset(key,
+                "{\"lsn\":200,\"snapshot\":false}", identity));
+        assertThrows(CdcStore.RecoveryRequiredException.class,
+                () -> store.validateStreamingOffset(key, "{\"lsn\":200,\"snapshot\":\"true\"}", identity));
+        assertThrows(CdcStore.RecoveryRequiredException.class,
+                () -> store.validateStreamingOffset(key, "{\"lsn\":200,\"snapshot\":\"last\"}", identity));
+        assertThrows(CdcStore.RecoveryRequiredException.class,
+                () -> store.validateStreamingOffset(key,
+                        "{\"lsn\":200,\"snapshot_completed\":false}", identity));
+        assertThrows(CdcStore.RecoveryRequiredException.class,
+                () -> store.validateStreamingOffset(key, "{\"lsn\":200,\"snapshot\":null}", identity));
+        assertThrows(CdcStore.RecoveryRequiredException.class,
+                () -> store.validateStreamingOffset("[\"other\",{\"server\":\"other\"}]",
+                        "{\"lsn\":200,\"snapshot\":false}", identity));
+    }
 }

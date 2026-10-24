@@ -10,6 +10,7 @@ import dev.nklip.javacraft.shardshop.order.cdc.OrderCdcRelay;
 import dev.nklip.javacraft.shardshop.order.config.ProfitWorker;
 import dev.nklip.javacraft.shardshop.order.config.ReconciliationWorker;
 import dev.nklip.javacraft.shardshop.order.messaging.OrderResultConsumer;
+import dev.nklip.javacraft.shardshop.order.cdc.TransportCleanupWorker;
 
 @QuarkusMain
 public class OrderApplication implements QuarkusApplication {
@@ -19,15 +20,18 @@ public class OrderApplication implements QuarkusApplication {
     private final OrderResultConsumer results;
     private final ProfitWorker profit;
     private final ReconciliationWorker reconciliation;
+    private final TransportCleanupWorker cleanup;
 
     public OrderApplication(StockWorker stock, OrderCdcRelay cdc, OrderResultConsumer results, ProfitWorker profit,
-                            ReconciliationWorker reconciliation, OrderConfiguration config) {
+                            ReconciliationWorker reconciliation, TransportCleanupWorker cleanup,
+                            OrderConfiguration config) {
         this.config = config;
         this.stock = stock;
         this.cdc = cdc;
         this.results = results;
         this.profit = profit;
         this.reconciliation = reconciliation;
+        this.cleanup = cleanup;
     }
 
     @Override
@@ -42,24 +46,29 @@ public class OrderApplication implements QuarkusApplication {
                 stock.start();
                 profit.start();
                 reconciliation.start();
+                cleanup.start();
             }
             Logger.getLogger(OrderApplication.class).infof("ShardShop order process ready: %s",
                     config.process().name().toLowerCase(java.util.Locale.ROOT));
             Quarkus.waitForExit();
         } finally {
             try {
-                reconciliation.close();
+                cleanup.close();
             } finally {
                 try {
-                    results.close();
+                    reconciliation.close();
                 } finally {
                     try {
-                        profit.close();
+                        results.close();
                     } finally {
                         try {
-                            stock.close();
+                            profit.close();
                         } finally {
-                            cdc.close();
+                            try {
+                                stock.close();
+                            } finally {
+                                cdc.close();
+                            }
                         }
                     }
                 }

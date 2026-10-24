@@ -371,8 +371,8 @@ ORDER BY next_reconciliation_at, saga_id;
 Check the ledger decision, result queues and quarantine, and the
 [CDC recovery state](#order-outbox-cdc-relay). Reconciliation does not reset a lost
 slot or offset, delete transport rows, or reset an exhausted budget. Safe cleanup
-and the operator reset remain steps 5.2 and 5.3. No new migration is required for
-step 5.1: the existing schema and grants already retain the necessary state.
+is performed by the separate [transport cleanup worker](#transport-cleanup);
+the operator reset remains step 5.3. Step 5.1 reused the existing schema and grants.
 
 Run the coordinator/worker checks and packaged PostgreSQL/RabbitMQ scenarios:
 
@@ -389,6 +389,54 @@ restarts, unpublished commands and removal of published transport only after a
 durable CDC checkpoint has passed the insert. Lost recorded and rejected results
 recover through permanent ledger decisions, including a policy change after the
 original rejection.
+
+## Transport cleanup
+
+The saga process enables transport cleanup by default. Apply ordering migrations
+through V8 using the normal `up.sh` workflow; V8 adds retention indexes. HTTP
+replicas never start cleanup, and `--check-startup` validates settings without
+running it. The existing application role and database pools perform the work.
+
+| Property | Default | Bounds |
+|---|---|---|
+| `shardshop.order.cleanup.enabled` | `true` | Enable cleanup in the saga process |
+| `shardshop.order.cleanup.retention` | `24h` | 1 second–365 days |
+| `shardshop.order.cleanup.poll-interval` | `30s` | 100 ms–60 seconds |
+| `shardshop.order.cleanup.batch-size` | `1000` | 1–1000 rows per table and shard |
+
+An inbox must be older than the window measured from `received_at`; an outbox
+must be older than the window measured from confirmed `published_at`. An old
+creation time alone does not qualify a recently published command. Unpublished
+commands, permanent identities and quarantine remain.
+
+Outbox cleanup has two phases: capture a bounded set of message IDs and a WAL
+position after reading them, then wait for the persisted CDC streaming checkpoint
+to pass that position. It rechecks age and publication when deleting only those
+IDs. A successful deletion captures the next bounded batch in the same poll.
+An absent or unusable checkpoint retains the batch; restarting captures a new
+batch and position. Each database phase has a three-second deadline. Inbox cleanup
+continues while an outbox batch waits for CDC.
+
+`Transport cleanup unavailable for <shard>; will retry: <cause>` reports a failed
+phase once per affected shard. `Transport cleanup resumed for <shard>` reports
+recovery. If old published rows remain, inspect the [CDC state](#order-outbox-cdc-relay)
+and its logs; publication alone is insufficient. This query reports rows past
+the age window, before the additional CDC check, using the default window:
+
+```sql
+SELECT count(*) AS old_published_commands
+FROM ordering.order_outbox
+WHERE published_at < statement_timestamp() - INTERVAL '24 hours';
+```
+
+The [retention contract](../database/ARCHITECTURE.md#retention) defines the retained
+business records. Changing cleanup settings never grants a new reconciliation
+budget or repairs a missing slot. Run the packaged cleanup and migration checks:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  '-Dcucumber.filter.tags=@transport-cleanup or @transport-cleanup-migration'
+```
 
 ## Order page tests
 

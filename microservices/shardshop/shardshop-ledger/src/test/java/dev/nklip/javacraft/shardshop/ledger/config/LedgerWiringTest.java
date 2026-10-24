@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.ledger.config;
 
 import dev.nklip.javacraft.shardshop.ledger.command.LedgerService;
+import dev.nklip.javacraft.shardshop.ledger.cleanup.LedgerTransportCleanup;
 import dev.nklip.javacraft.shardshop.ledger.persistence.JdbcLedgerStore;
 import org.junit.jupiter.api.Test;
 
@@ -37,11 +38,13 @@ class LedgerWiringTest {
         LedgerConfiguration config = mock(LedgerConfiguration.class);
         LedgerConfiguration.Broker broker = mock(LedgerConfiguration.Broker.class);
         LedgerConfiguration.Publisher publisher = mock(LedgerConfiguration.Publisher.class);
+        LedgerConfiguration.Cleanup cleanupConfig = mock(LedgerConfiguration.Cleanup.class);
         JdbcLedgerStore store = mock(JdbcLedgerStore.class);
         try (ServerSocket rabbit = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             when(config.enabled()).thenReturn(false);
             when(config.broker()).thenReturn(broker);
             when(config.publisher()).thenReturn(publisher);
+            when(config.cleanup()).thenReturn(cleanupConfig);
             when(broker.host()).thenReturn(InetAddress.getLoopbackAddress().getHostAddress());
             when(broker.port()).thenReturn(rabbit.getLocalPort());
             when(broker.virtualHost()).thenReturn("shardshop");
@@ -51,11 +54,17 @@ class LedgerWiringTest {
             when(publisher.enabled()).thenReturn(true);
             when(publisher.batchSize()).thenReturn(100);
             when(publisher.pollInterval()).thenReturn(Duration.ofMillis(10));
+            when(cleanupConfig.enabled()).thenReturn(true);
+            when(cleanupConfig.retention()).thenReturn(Duration.ofHours(24));
+            when(cleanupConfig.pollInterval()).thenReturn(Duration.ofMillis(100));
+            when(cleanupConfig.batchSize()).thenReturn(8);
             var wiring = new LedgerWiring();
             try (var consumer = wiring.consumer(mock(LedgerService.class), config);
-                 var relay = wiring.relay(store, config)) {
+                 var relay = wiring.relay(store, config);
+                 LedgerTransportCleanup cleanup = wiring.cleanup(store, config)) {
                 consumer.start();
                 relay.start();
+                cleanup.start();
                 rabbit.setSoTimeout(300);
                 assertThrows(SocketTimeoutException.class, rabbit::accept, "A disabled consumer connected to RabbitMQ");
             }

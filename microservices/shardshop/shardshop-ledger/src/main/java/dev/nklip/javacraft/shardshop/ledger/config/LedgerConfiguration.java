@@ -15,6 +15,14 @@ public interface LedgerConfiguration {
     Database database();
     Broker broker();
     Publisher publisher();
+    Cleanup cleanup();
+
+    interface Cleanup {
+        @WithDefault("true") boolean enabled();
+        @WithDefault("24h") Duration retention();
+        @WithDefault("30s") Duration pollInterval();
+        @WithDefault("1000") int batchSize();
+    }
 
     interface Publisher {
         @WithDefault("true") boolean enabled();

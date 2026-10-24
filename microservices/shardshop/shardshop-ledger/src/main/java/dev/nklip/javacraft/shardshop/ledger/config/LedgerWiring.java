@@ -5,6 +5,7 @@ import dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher;
 import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import dev.nklip.javacraft.shardshop.common.jdbc.JdbcUrls;
 import dev.nklip.javacraft.shardshop.ledger.command.LedgerService;
+import dev.nklip.javacraft.shardshop.ledger.cleanup.LedgerTransportCleanup;
 import dev.nklip.javacraft.shardshop.ledger.messaging.LedgerCommandConsumer;
 import dev.nklip.javacraft.shardshop.ledger.persistence.JdbcLedgerStore;
 import dev.nklip.javacraft.shardshop.ledger.result.LedgerResultRelay;
@@ -68,6 +69,20 @@ public class LedgerWiring {
 
     void closeRelay(@Disposes LedgerResultRelay relay) {
         relay.close();
+    }
+
+    @Produces
+    @Singleton
+    @Startup
+    LedgerTransportCleanup cleanup(JdbcLedgerStore store, LedgerConfiguration config) {
+        var cleanup = config.cleanup();
+        return new LedgerTransportCleanup(store,
+                new LedgerTransportCleanup.Settings(config.enabled() && cleanup.enabled(), cleanup.retention(),
+                        cleanup.pollInterval(), cleanup.batchSize()), Clock.systemUTC());
+    }
+
+    void closeCleanup(@Disposes LedgerTransportCleanup cleanup) {
+        cleanup.close();
     }
 
     void closeStore(@Disposes JdbcLedgerStore store) {

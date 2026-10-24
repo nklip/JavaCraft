@@ -267,6 +267,19 @@ public final class JdbcOrderStore implements OrderStore, OrderListingStore, Stoc
                 }, ReconciliationFailure.class, ReconciliationFailure::new);
     }
 
+    /** Reuses the order pool and one three-second phase for bounded transport cleanup SQL. */
+    public <T> T transportCleanupPhase(Shard shard, boolean readOnly, DatabasePhases.Work<T> work) {
+        AgroalDataSource pool = pools.get(shard.clusterName());
+        if (pool == null) {
+            throw new IllegalStateException("Order shard unavailable");
+        }
+        return phases.run(DatabasePhases.Pool.of(pool, () -> pool.flush(AgroalDataSource.FlushMode.ALL)), readOnly,
+                DatabasePhases.PHASE_BUDGET, (connection, deadline) -> {
+                    connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+                    return work.run(connection, deadline);
+                }, IllegalStateException.class, failure -> new IllegalStateException("Transport cleanup SQL failed", failure));
+    }
+
     @Override
     public List<PendingCredit> pendingProfit(Shard shard, int limit) {
         return profit(shard, session -> session.pendingProfit(limit));
