@@ -3,6 +3,7 @@ package dev.nklip.javacraft.shardshop.testing.kind;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
@@ -11,6 +12,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.regex.Pattern;
 
 /** Read-only checks of the deployed product workload; deployment remains a production responsibility. */
@@ -30,11 +32,14 @@ public final class KindDeployment {
 
     public Workload deployed() throws IOException, InterruptedException {
         JsonNode readerDeployment = null;
+        String productProperties = productConfiguration(resource("configmap", "shardshop-product-config"), "shardshop-product-config");
+        String routingProperties = productConfiguration(resource("configmap", "shardshop-routing"), "shardshop-routing");
         for (String name : List.of("shardshop-product", "shardshop-product-reader")) {
             var result = lab.kubectlAttempt("get", "deployment", name, "-o", "json");
             require(result.exitCode() == 0, "Deploy and migrate the lab before workload checks: missing " + name);
             JsonNode deployment = KindLab.parse(result.stdout());
             if (name.equals("shardshop-product-reader")) readerDeployment = deployment;
+            else primaryReads(deployment.path("spec").path("template").path("spec"), productProperties, routingProperties);
             int expected = name.endsWith("reader") ? 1 : 2;
             require(deployment.path("spec").path("replicas").asInt() == expected
                     && deployment.path("status").path("readyReplicas").asInt() == expected
@@ -43,7 +48,12 @@ public final class KindDeployment {
                     >= deployment.path("metadata").path("generation").asLong(),
                     name + " must already have " + expected + " ready, current replicas");
         }
-        List<String> products = readyProducts();
+        List<JsonNode> productPods = pods("app.kubernetes.io/name=shardshop-product");
+        for (JsonNode pod : productPods) {
+            if (ready(pod)) primaryReads(pod.path("spec"), productProperties, routingProperties);
+        }
+        List<String> products = productPods.stream().filter(KindDeployment::ready)
+                .map(KindDeployment::name).sorted().toList();
         require(products.size() == 2, "Expected two ready product pods before workload checks");
         List<JsonNode> readers = pods("app.kubernetes.io/name=shardshop-product-reader");
         require(readers.size() == 1 && ready(readers.getFirst())
@@ -69,6 +79,80 @@ public final class KindDeployment {
         catalogCounts();
         generators(products, highWater());
         return new Workload(products, reader, seeder, digest);
+    }
+
+    static String productConfiguration(JsonNode config, String name) throws IOException {
+        JsonNode properties = config.path("data").path("application.properties");
+        require(properties.isTextual() && !properties.textValue().isBlank(),
+                name + " must contain nonempty application.properties for the primary-read check");
+        return properties.textValue();
+    }
+
+    /** Check the declared primary-read contract, including out-of-band drill overrides. */
+    static void primaryReads(JsonNode spec, String... configurations) throws IOException {
+        for (String configuration : configurations) primaryProperties(configuration);
+        primaryContainer(spec);
+    }
+
+    private static void primaryProperties(String configuration) throws IOException {
+        Properties properties = new Properties();
+        try { properties.load(new StringReader(configuration)); }
+        catch (IllegalArgumentException invalid) { throw new IOException("Invalid product application.properties", invalid); }
+        for (String key : properties.stringPropertyNames()) {
+            if (readProfileKey(key)) require(properties.getProperty(key).equals("primary"),
+                    "Product must use primary reads: " + key + " is not literal primary");
+            require(!externalConfigurationKey(key), "Cannot establish primary reads with external product configuration: " + key);
+        }
+    }
+
+    private static void primaryContainer(JsonNode spec) throws IOException {
+        int products = 0;
+        for (JsonNode container : spec.path("containers")) {
+            if (!container.path("name").asText().equals("product")) continue;
+            products++;
+            require(container.path("envFrom").isEmpty(), "Cannot establish primary reads with product envFrom");
+            int profiles = 0;
+            for (JsonNode env : container.path("env")) {
+                String name = env.path("name").asText();
+                if (name.equals("SHARDSHOP_CATALOG_READ_PROFILE")
+                        || name.endsWith("_SHARDSHOP_CATALOG_READ_PROFILE") || readProfileKey(name)) {
+                    profiles++;
+                    require(!env.has("valueFrom") && env.path("value").asText().equals("primary"),
+                            "Product must use primary reads: SHARDSHOP_CATALOG_READ_PROFILE is not literal primary");
+                }
+                require(!name.matches("(?:.*_)?(?:QUARKUS|SMALLRYE)_CONFIG_LOCATIONS")
+                                && !name.matches("(?:.*_)?SHARDSHOP_ROUTING_CONFIG") && !externalConfigurationKey(name),
+                        "Cannot establish primary reads with external product configuration: " + name);
+                if (List.of("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "JAVA_OPTS", "JAVA_OPTS_APPEND", "_JAVA_OPTIONS").contains(name)) {
+                    require(!env.has("valueFrom"), "Cannot establish primary reads with indirect JVM options: " + name);
+                    primaryJvmOptions(env.path("value").asText());
+                }
+            }
+            require(profiles <= 1, "Product has duplicate read-profile environment settings");
+            for (String field : List.of("command", "args"))
+                for (JsonNode argument : container.path(field)) primaryJvmOptions(argument.asText());
+        }
+        require(products == 1, "Expected one product container for the primary-read check");
+    }
+
+    private static void primaryJvmOptions(String options) throws IOException {
+        var settings = Pattern.compile("-D[\"']?([^=\\s\"']+)=([^\\s]+)").matcher(options);
+        while (settings.find()) {
+            String key = settings.group(1);
+            if (readProfileKey(key)) require(settings.group(2).equals("primary"),
+                    "Product must use primary reads: JVM " + key + " is not literal primary");
+            require(!externalConfigurationKey(key), "Cannot establish primary reads with external JVM configuration: " + key);
+        }
+    }
+
+    private static boolean readProfileKey(String key) {
+        return key.equals("shardshop.catalog.read-profile") || key.endsWith(".shardshop.catalog.read-profile");
+    }
+
+    private static boolean externalConfigurationKey(String key) {
+        return key.equals("quarkus.config.locations") || key.endsWith(".quarkus.config.locations")
+                || key.equals("smallrye.config.locations") || key.endsWith(".smallrye.config.locations")
+                || key.equals("shardshop.routing.config") || key.endsWith(".shardshop.routing.config");
     }
 
     static String seederJobName(JsonNode readerDeployment, JsonNode reader) throws IOException {

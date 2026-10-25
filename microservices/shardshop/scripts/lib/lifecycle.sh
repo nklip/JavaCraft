@@ -2,10 +2,50 @@
 # down.sh and cluster-destroy.sh use only lifecycle_init and require_tools.
 # Provisioning and application delivery remain in their respective entry points.
 
-lifecycle_init() {
-    root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Test orchestration owns the chosen cluster's lifetime. Normal calls keep the
+# fixed lab and the caller's ordinary kubeconfig behavior.
+lifecycle_target() {
     cluster_name=shardshop
+    if [[ -n "${SHARDSHOP_TEST_CLUSTER+x}${SHARDSHOP_TEST_KUBECONFIG+x}" ]]; then
+        cluster_name=${SHARDSHOP_TEST_CLUSTER:-}
+        [[ "$cluster_name" =~ ^shardshop-test-[a-z0-9]([a-z0-9-]*[a-z0-9])?$ && ${#cluster_name} -le 63 ]] || {
+            echo 'SHARDSHOP_TEST_CLUSTER must be a shardshop-test- name with a lowercase DNS-label suffix (maximum 63 characters).' >&2
+            exit 1
+        }
+        local config=${SHARDSHOP_TEST_KUBECONFIG:-} directory default_directory
+        [[ "$config" == /* && "$config" != *:* && "$config" != *$'\n'* && "$config" != *$'\r'* && ! -L "$config" ]] || {
+            echo 'SHARDSHOP_TEST_KUBECONFIG must be one absolute private kubeconfig path, without symlinks or path lists.' >&2
+            exit 1
+        }
+        directory=$(cd -P -- "$(dirname -- "$config")" && pwd) || exit 1
+        default_directory="$(cd -- "$HOME" && pwd -P)/.kube"
+        if [[ -d "$default_directory" ]]; then
+            default_directory=$(cd -P -- "$default_directory" && pwd) || exit 1
+        fi
+        [[ "$directory" != "$default_directory" && "$directory" != "$default_directory/"* && -z "$(find "$directory" -prune ! -perm 700 -print)" ]] || {
+            echo 'The test kubeconfig requires a private mode-700 directory outside ~/.kube.' >&2
+            exit 1
+        }
+        config="$directory/$(basename -- "$config")"
+        [[ ! -e "$config" || ( -f "$config" && -z "$(find "$config" -prune ! -perm 600 -print)" ) ]] || {
+            echo 'An existing test kubeconfig must be a regular mode-600 file.' >&2
+            exit 1
+        }
+        if [[ ! -e "$config" ]]; then
+            (umask 077; set -o noclobber; : >"$config") || {
+                echo 'Cannot exclusively create the private test kubeconfig.' >&2
+                exit 1
+            }
+        fi
+        export SHARDSHOP_TEST_KUBECONFIG="$config" KUBECONFIG="$config"
+    fi
     context="kind-$cluster_name"
+    export SHARDSHOP_CLUSTER_NAME="$cluster_name" SHARDSHOP_CONTEXT="$context"
+}
+
+lifecycle_init() {
+    lifecycle_target
+    root="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
     export KIND_EXPERIMENTAL_PROVIDER=docker
     created_cluster=false
     work=
@@ -233,7 +273,7 @@ snapshot_configuration() {
     cp "$root/infra/helmfile.yaml.gotmpl" "$work/helmfile.yaml.gotmpl"
     export SHARDSHOP_ROOT="$root" SHARDSHOP_SNAPSHOT="$work"
     cp -R "$root/database" "$work/chart/migrations"
-    cp "$root/infra/kind.yaml" "$work/chart/kind.yaml"
+    sed "s/^name: shardshop$/name: $cluster_name/" "$root/infra/kind.yaml" >"$work/chart/kind.yaml"
     cp "${SHARDSHOP_ENV_VALUES:-$root/infra/helm/shardshop/kind-values.yaml}" "$work/environment.yaml"
     cp "${SHARDSHOP_INVENTORY:-$root/infra/shards.yaml}" "$work/inventory.yaml"
     # Helmfile parses these release inputs even when selecting application only.
@@ -262,7 +302,8 @@ verify_kind() {
         -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
         -Dit.test=KindIT \
         -Dshardshop.kind.tags="$phase" -Dshardshop.kind.snapshot="$work" \
-        -Dshardshop.kind.cluster="$cluster_name" -Dshardshop.kind.fresh="$created_cluster" "$@"
+        -Dshardshop.kind.cluster="$cluster_name" -Dshardshop.kind.fresh="$created_cluster" \
+        -Dshardshop.kind.kubeconfig="${SHARDSHOP_TEST_KUBECONFIG:-}" "$@"
 }
 
 resume_cluster() {

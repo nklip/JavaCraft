@@ -42,3 +42,11 @@ load matching assets. After upgrading from the earlier cached version, reload
 the page once with **Cmd+Shift+R** on macOS or **Ctrl+Shift+R** on Windows/Linux.
 This discards the old HTML that browsers were previously allowed to retain for
 24 hours; the updated page also uses new asset URLs to bypass old CSS/JavaScript.
+
+## Product page JavaScript checks
+
+The mandatory `ProductBrowserScriptTest` in `shardshop-testing` runs
+`src/test/js/products.test.cjs` during Maven `test`. It requires Node.js on `PATH`
+and no browser, Docker or running lab. Run the
+[verification-module unit tests or focused page checks](../shardshop-testing/RUNBOOK.md#javascript-page-checks)
+when changing the product page; a product-only Maven build does not run this harness.

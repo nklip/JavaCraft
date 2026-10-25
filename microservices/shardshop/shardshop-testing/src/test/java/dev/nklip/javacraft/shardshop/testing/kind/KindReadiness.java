@@ -15,11 +15,6 @@ public final class KindReadiness {
     private static final Duration DATABASE_TIMEOUT = Duration.ofSeconds(300);
     private static final Duration SQL_TIMEOUT = Duration.ofSeconds(180);
     private static final Pattern QUANTITY = Pattern.compile("([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))(.*)");
-    private static final String DNS_RECOVERY = "For waiting containers, inspect pod events and pinned-image availability. "
-            + "For running probes that cannot resolve DNS, inspect node addresses/pod CIDRs with kubectl --context kind-shardshop get nodes -o wide "
-            + "and docker exec <node> ip route. If kindnet has a stale address or missing peer route, replace only its pod "
-            + "on the affected node using kubectl --context kind-shardshop -n kube-system delete pod -l app=kindnet "
-            + "--field-selector spec.nodeName=<node>, then rerun the failed lifecycle command.";
     private static final String PARAMETERS_SQL = "SELECT coalesce(json_object_agg(f.name, json_build_object('setting', f.setting, 'applied', f.applied, 'pending', s.pending_restart)), '{}'::json) FROM (SELECT DISTINCT ON (name) name, setting, applied FROM pg_file_settings ORDER BY name, seqno DESC) f JOIN pg_settings s USING (name)";
     private final KindLab lab;
 
@@ -36,7 +31,7 @@ public final class KindReadiness {
                     "--timeout=1050s", "-f", manifest);
         } catch (IOException failure) {
             IOException diagnostic = new IOException("Cluster DNS probes did not succeed.\n" + dnsStatus(manifest)
-                    + "\n" + DNS_RECOVERY, failure);
+                    + "\n" + dnsRecovery(), failure);
             primaryFailure = diagnostic;
             throw diagnostic;
         } catch (InterruptedException | RuntimeException | Error failure) {
@@ -54,6 +49,19 @@ public final class KindReadiness {
                 Thread.currentThread().interrupt();
             }
         }
+    }
+
+    private String dnsRecovery() {
+        // Use the same effective config as observer processes, without reading its contents.
+        String config = lab.processBuilder("kubectl").environment().get("KUBECONFIG");
+        String command = (config == null || config.isBlank() ? ""
+                : "KUBECONFIG='" + config.replace("'", "'\"'\"'") + "' ")
+                + "kubectl --context kind-" + lab.clusterName();
+        return "For waiting containers, inspect pod events and pinned-image availability. "
+                + "For running probes that cannot resolve DNS, inspect node addresses/pod CIDRs with " + command + " get nodes -o wide "
+                + "and docker exec <node> ip route. If kindnet has a stale address or missing peer route, replace only its pod "
+                + "on the affected node using " + command + " -n kube-system delete pod -l app=kindnet "
+                + "--field-selector spec.nodeName=<node>, then rerun the failed lifecycle command.";
     }
 
     private String dnsStatus(String manifest) {

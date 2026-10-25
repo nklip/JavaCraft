@@ -15,7 +15,9 @@
 
     <properties>
         <java.release>25</java.release>
-        <quarkus.version>3.40.1</quarkus.version>
+        <quarkus.version>3.40.1.1</quarkus.version>
+        <shardshop.jackson.version>2.21.8</shardshop.jackson.version>
+        <shardshop.postgresql-jdbc.version>42.7.14</shardshop.postgresql-jdbc.version>
         <!-- Fixed entry times give the same JARs and Quarkus packages from the same sources.
              Docker then uses its cached image layer again, and up.sh gets the same image ID.
              1980-01-01T00:00:02Z is the earliest time that ZIP permits. -->
@@ -74,7 +76,15 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- The provider enables Netty; override the platform's 4.1.138 HTTP security baseline as a family. -->
+            <!-- Quarkus 3.40.1.1 still manages 2.21.7; 2.21.8 fixes CVE-2026-110879. -->
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${shardshop.jackson.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- The provider enables Netty; pin its HTTP security baseline as a family. -->
             <dependency>
                 <groupId>io.netty</groupId>
                 <artifactId>netty-bom</artifactId>
@@ -88,6 +98,12 @@
                 <version>${quarkus.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <!-- Quarkus manages 42.7.13; 42.7.14 fixes CVE-2026-107314 and CVE-2026-107315. -->
+            <dependency>
+                <groupId>org.postgresql</groupId>
+                <artifactId>postgresql</artifactId>
+                <version>${shardshop.postgresql-jdbc.version}</version>
             </dependency>
             <!-- The order relay and broker acceptance tests share the maintained AMQP socket client. -->
             <dependency>
@@ -350,7 +366,7 @@
                     <groupId>org.cyclonedx</groupId>
                     <artifactId>cyclonedx-maven-plugin</artifactId>
                     <version>${cyclonedx-maven-plugin.version}</version>
-                    <!-- Core 11.0.1 fixes GHSA-6fhj-vr9j-g45r; Jackson 2.22.x replaces the plugin's vulnerable 2.17.2. -->
+                    <!-- Core 11.0.1 fixes GHSA-6fhj-vr9j-g45r; Jackson 2.22.4 fixes CVE-2026-110879. -->
                     <dependencies>
                         <dependency>
                             <groupId>org.cyclonedx</groupId>
@@ -360,12 +376,12 @@
                         <dependency>
                             <groupId>com.fasterxml.jackson.core</groupId>
                             <artifactId>jackson-core</artifactId>
-                            <version>2.22.3</version>
+                            <version>2.22.4</version>
                         </dependency>
                         <dependency>
                             <groupId>com.fasterxml.jackson.core</groupId>
                             <artifactId>jackson-databind</artifactId>
-                            <version>2.22.3</version>
+                            <version>2.22.4</version>
                         </dependency>
                         <dependency>
                             <groupId>com.fasterxml.jackson.core</groupId>
@@ -375,12 +391,12 @@
                         <dependency>
                             <groupId>com.fasterxml.jackson.dataformat</groupId>
                             <artifactId>jackson-dataformat-xml</artifactId>
-                            <version>2.22.3</version>
+                            <version>2.22.4</version>
                         </dependency>
                         <dependency>
                             <groupId>com.fasterxml.jackson.dataformat</groupId>
                             <artifactId>jackson-dataformat-yaml</artifactId>
-                            <version>2.22.3</version>
+                            <version>2.22.4</version>
                         </dependency>
                     </dependencies>
                     <configuration>
@@ -401,6 +417,39 @@
                     <artifactId>quarkus-maven-plugin</artifactId>
                     <version>${quarkus.version}</version>
                     <extensions>true</extensions>
+                    <!-- Plugin dependencies do not inherit application BOM management. -->
+                    <dependencies>
+                        <dependency>
+                            <groupId>com.fasterxml.jackson.core</groupId>
+                            <artifactId>jackson-core</artifactId>
+                            <version>${shardshop.jackson.version}</version>
+                        </dependency>
+                        <dependency>
+                            <groupId>com.fasterxml.jackson.core</groupId>
+                            <artifactId>jackson-databind</artifactId>
+                            <version>${shardshop.jackson.version}</version>
+                        </dependency>
+                        <dependency>
+                            <groupId>com.fasterxml.jackson.core</groupId>
+                            <artifactId>jackson-annotations</artifactId>
+                            <version>2.21</version>
+                        </dependency>
+                        <dependency>
+                            <groupId>com.fasterxml.jackson.dataformat</groupId>
+                            <artifactId>jackson-dataformat-yaml</artifactId>
+                            <version>${shardshop.jackson.version}</version>
+                        </dependency>
+                        <dependency>
+                            <groupId>com.fasterxml.jackson.dataformat</groupId>
+                            <artifactId>jackson-dataformat-xml</artifactId>
+                            <version>${shardshop.jackson.version}</version>
+                        </dependency>
+                        <dependency>
+                            <groupId>com.fasterxml.jackson.datatype</groupId>
+                            <artifactId>jackson-datatype-jdk8</artifactId>
+                            <version>${shardshop.jackson.version}</version>
+                        </dependency>
+                    </dependencies>
                     <executions>
                         <execution>
                             <goals>

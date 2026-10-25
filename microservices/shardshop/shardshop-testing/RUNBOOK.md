@@ -8,6 +8,83 @@ lab; disruptive drills require explicit selection, use the shared drill lock and
 register recovery before any mutation. Keep every wait bounded and do not claim
 complete coverage for a planned scenario.
 
+## JavaScript page checks
+
+Install Node.js and put `node` on `PATH`; use the qualified version recorded in
+[VERSIONS](../VERSIONS.md). The default Maven `test` phase runs
+`OrderBrowserScriptTest`, `WorkloadControlScriptTest` and `ProductBrowserScriptTest`.
+These execute the shipped JavaScript with deterministic browser stand-ins, including
+`shardshop-product/src/test/js/products.test.cjs`. No browser, Docker or running lab
+is required. Missing Node.js, a nonzero harness exit or a run exceeding 20 seconds
+fails the build instead of skipping checks.
+
+Run all verification-module unit tests and their core dependencies:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Dshardshop.infrastructureOnly=true test
+```
+
+`shardshop.infrastructureOnly=true` omits the application packaging dependencies;
+the page harnesses read the scripts in this checkout. For a focused browser run:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Dshardshop.infrastructureOnly=true -Dtest=OrderBrowserScriptTest,WorkloadControlScriptTest,ProductBrowserScriptTest -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test
+```
+
+The two no-test flags accommodate upstream core modules without a selected browser
+test. Check that all three named wrappers run and pass. Testing only
+`shardshop-product` does not execute its JavaScript harness; include
+`shardshop-testing` when validating product page behavior.
+
+## Retained foundation upgrade witness
+
+The original 6.0 rehearsal used this procedure successfully. Its result is retained;
+repeating foundation/CNPG work is outside the reduced 6.0 scope. For a separately
+authorized future upgrade, use an owned `shardshop-test-*` cluster and private
+kubeconfig under the [isolated-lab procedure](../infra/RUNBOOK.md#disposable-test-clusters).
+Initialize it from the pre-5.3 revision, with real terminal orders and ledger
+decisions, before applying current infrastructure. A newly created current lab
+cannot satisfy this check: the before observer rejects existing operator roles.
+Keep workloads paused and let outstanding business work settle before capturing
+the baseline. Register owned-cluster cleanup before creation and preserve the
+retained lab's prior state.
+
+Build the current observer, then run these tags with the usual invocation
+snapshot and the explicit owned-cluster properties:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true install
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dshardshop.infrastructureOnly=true -Pkind \
+  test-compile failsafe:integration-test failsafe:verify \
+  -Dshardshop.kind.snapshot="$snapshot" \
+  -Dshardshop.kind.cluster="$SHARDSHOP_TEST_CLUSTER" \
+  -Dshardshop.kind.kubeconfig="$SHARDSHOP_TEST_KUBECONFIG" \
+  -Dshardshop.kind.upgrade.evidence="$evidence/before.json" \
+  -Dshardshop.kind.tags=kind-upgrade-before
+```
+
+The evidence file is created exclusively with mode 600. It contains hashes of
+retained rows and credentials, resource/database identities, routing and allocator
+metadata; it never stores raw credentials or row payloads. Current `cluster-create.sh`
+then `up.sh` must preserve that evidence. Re-run the observer with
+`kind-upgrade-after` before the manual reset; it checks existing identities and
+data, monotonic allocator state, exact restricted operator grants, and stock/profit
+invariants. New acceptance orders are permitted; removing or changing original
+permanent rows fails the check.
+
+For the separate reset/replay proof, prepare one owned pending order with a
+recorded ledger outcome and deliberately lost result. Supply its IDs to the
+before tag using `shardshop.kind.upgrade.order`, `.saga` and `.home` (the latter
+is an inventory shard, not a public API selector). The observer requires exactly
+one original result binding and an exhausted five-attempt budget. After upgrade,
+execute the [native operator reset](../shardshop-order/RUNBOOK.md#manual-reconciliation-reset)
+and select `kind-upgrade-replay` with the same evidence file. It requires one replay,
+two total command/result bindings and unchanged permanent ledger/stock/profit
+effects. This live upgrade fixture does not replace the packaged tests that
+exercise real retry-budget exhaustion and transport cleanup.
+
 ## Integration tests with Testcontainers
 
 The test-only module `shardshop-testing` holds Cucumber scenarios that run the
@@ -145,6 +222,18 @@ JVM configuration overrides, command/argument overrides and executable hooks or
 probes. Product URLs must contain no user information, query or fragment.
 Reader images built before periodic digest reporting need a rebuild and deployment
 for verification to survive startup-log rotation.
+
+The normal `kind-deployment` gate requires product primary reads. It checks the
+product and routing ConfigMaps, Deployment template and ready pods for replica-profile settings,
+including environment and JVM property overrides; indirect profile/JVM settings and
+external configuration locations (including routing-config overrides) fail the check.
+Both mounted ConfigMaps must contain nonempty application.properties. Unrelated environment and JVM
+settings remain allowed. This validates declared deployment configuration, not an
+introspection of the running JVM's resolved configuration. The complete deployed
+strict-replica-read drill remains step 6.1. That drill must capture the exact prior
+profile sources, register their restoration before changing them, and verify the
+restored Deployment and ready pods before releasing the shared drill lock. Helm
+alone cannot remove a profile environment variable added outside the release.
 
 All drill families share the `shardshop-kind-drill` ConfigMap lock. Recovery
 registers before each temporary mutation and runs in reverse order on failure or
@@ -360,11 +449,13 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
 
 The test JDK must include `jdk.jdi` (the configured JDK 25 does). A test-only JDWP
 listener binds a random loopback port in a packaged JVM. The harness installs a
-checked source-line boundary before startup resumes, suspends the JVM there,
+source boundary resolved from a unique sequence of complete statements before
+startup resumes, suspends the JVM there,
 checks independent SQL/broker evidence, and forcibly kills it. Application images
-and production settings have no debugger or crash switches. Source-line barriers
-validate their statement and method so moving code fails the test instead of
-silently changing its meaning.
+and production settings have no debugger or crash switches. The barriers validate
+unique statement anchors, methods and executable bytecode locations. Harmless line
+shifts need no test edit; missing or ambiguous statements fail before attachment,
+and changed statements require an intentional anchor review.
 
 These cases distinguish an uncommitted ledger decision from a committed decision
 whose delivery is still unacknowledged, and broker-confirmed publication from its
@@ -440,6 +531,14 @@ requests, duration, outcomes, latency, regions and pool snapshots. Retain raw
 reports with the dated evidence. For write measurements, use the existing
 [order-capacity runbook](../shardshop-workload/shardshop-order-producer/RUNBOOK.md)
 and the stricter backlog criteria in the protocol.
+
+For writes, save monotonic timestamps around each producer control request and
+check both the elapsed observation time and post-warmup latency-sample count as
+specified in the protocol. Capture `/internal/order/write-metrics` from **each**
+order HTTP pod alongside `/q/metrics`; the former provides separate allocation
+and PUT p95 windows, while the latter's request sums/counts provide averages.
+Do not treat those per-pod windows as interval percentiles or add their p95s to
+reconstruct the producer's allocation-through-PUT p95.
 
 Always restore `targetRate` with the same `/control/rate` endpoint and restore
 `paused` with `/control/pause` or `/control/resume` from **each saved control**,

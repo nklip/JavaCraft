@@ -228,6 +228,15 @@ which window is reported; do not present a final rolling p95 as a percentile of
 an entire observation interval. The final step 4.14 backlog ranges and stock
 cancellations remain in its historical evidence.
 
+Capture producer counters after warmup and require at least 1,024 additional
+`writeLatency.samples` before assessing its warmed p95. Predetermine a 120-second
+observation at 10/s; the 90-second minimum remains sufficient at 30/s only if the
+sample requirement is met. Measure elapsed time with a monotonic clock from
+receipt of the baseline counters to the start of the final counter request.
+An integral-second schedule or the end of later diagnostic collection does not
+prove this duration. A short window or insufficient samples invalidates the
+measurement; do not extend it until latency happens to pass.
+
 The standard producer rotates buyer regions equally, so dividing its accepted
 rate by three gives a **derived buyer-home rate**, not measured per-shard SQL
 load. Allocation and submission are two HTTP writes per new order. Reservation,

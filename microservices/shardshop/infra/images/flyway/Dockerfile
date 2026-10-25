@@ -11,7 +11,7 @@ RUN mkdir -p /dist/drivers \
     && cp /flyway/drivers/postgresql-*.jar /dist/drivers/ \
     && find /dist -exec touch -h -d '@0' {} +
 
-FROM docker.io/ubuntu/jre:25-26.04_stable@sha256:3e921054481a0208daca2194e7982a14063771be914851eae06754a8e6890bab
+FROM docker.io/ubuntu/jre:25-26.04_stable@sha256:d9de3bc0831ec1f753fe5e94ef5aa9cb3b3ba0388ae85a51328d1c83c06738a3
 
 COPY --from=distribution /dist /flyway
 WORKDIR /flyway

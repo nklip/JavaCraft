@@ -10,12 +10,19 @@ suites that observe the deployed lab.
 
 | Suite | Command | Needs |
 |---|---|---|
-| Unit and packaged startup tests | `mvn -B -ntp -f microservices/shardshop/pom.xml clean verify` | JDK 25 and Maven |
+| Unit and packaged startup tests | `mvn -B -ntp -f microservices/shardshop/pom.xml clean verify` | JDK 25, Maven and Node.js on `PATH` |
 | Testcontainers scenarios | `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify` | Docker and `helm` |
 | kind suites | `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify -Dshardshop.kind.snapshot="$snapshot"` | A running lab and a [verification snapshot](RUNBOOK.md#kind-verification-snapshot) |
 
 Disruptive drills require explicit selection; the [runbook](RUNBOOK.md) lists each
 suite, drill and capacity measurement.
+
+## JavaScript page checks
+
+The default Maven test suite runs the product, order and workload page harnesses
+through Node.js; no browser installation is needed. Node.js on `PATH` is mandatory:
+a missing executable or failing harness fails Maven. See the
+[focused checks](RUNBOOK.md#javascript-page-checks) for commands and prerequisites.
 
 ## Results
 

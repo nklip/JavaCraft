@@ -27,13 +27,14 @@ class KindStartupScriptTest {
     @TempDir Path temporary;
     private String helm;
     private int invocation;
+    private Map<String, String> targetEnvironment = Map.of();
 
     @BeforeEach
     void installFixtures() throws Exception {
         Path source = Path.of(System.getProperty("shardshop.directory", "..")).toAbsolutePath().normalize();
         helm = commandPath("helm");
         for (String directory : List.of("scripts", "bin", "tmp")) Files.createDirectories(temporary.resolve(directory));
-        for (String script : List.of("cluster-create.sh", "up.sh", "webpages.sh", "down.sh")) {
+        for (String script : List.of("cluster-create.sh", "up.sh", "webpages.sh", "down.sh", "cluster-destroy.sh")) {
             Files.copy(source.resolve("scripts").resolve(script), temporary.resolve("scripts").resolve(script));
         }
         if (Files.isDirectory(source.resolve("scripts/lib"))) {
@@ -55,11 +56,18 @@ class KindStartupScriptTest {
         executable("kind", """
                 #!/bin/bash
                 set -eu
+                if [[ -n "${SHARDSHOP_TEST_CLUSTER:-}" ]]; then
+                  [[ "$KUBECONFIG" == "$SHARDSHOP_TEST_KUBECONFIG" ]] || exit 89
+                fi
                 printf 'kind %s\n' "$*" >> "$FIXTURE/events"
+                cluster=${SHARDSHOP_TEST_CLUSTER:-shardshop}
                 case "$*" in
-                  'get nodes --name shardshop') cat "$FIXTURE/nodes";;
-                  'create cluster --name shardshop --config '* ) cp "$FIXTURE/created-nodes" "$FIXTURE/nodes";;
-                  'export kubeconfig --name shardshop'|'load docker-image '*) ;;
+                  "get nodes --name $cluster") cat "$FIXTURE/nodes";;
+                  "create cluster --name $cluster --config "* )
+                    cp "$FIXTURE/created-nodes" "$FIXTURE/nodes"
+                    [[ "$(cat "$FIXTURE/failure")" != create ]] || exit 70;;
+                  "export kubeconfig --name $cluster"|'load docker-image '*) ;;
+                  "delete cluster --name $cluster") : > "$FIXTURE/nodes";;
                   *) exit 99;;
                 esac
                 """);
@@ -67,6 +75,9 @@ class KindStartupScriptTest {
         executable("mvn", """
                 #!/bin/bash
                 set -eu
+                if [[ -n "${SHARDSHOP_TEST_CLUSTER:-}" ]]; then
+                  [[ "$KUBECONFIG" == "$SHARDSHOP_TEST_KUBECONFIG" ]] || exit 89
+                fi
                 phase=build
                 for argument in "$@"; do
                   case "$argument" in -Dshardshop.kind.tags=*) phase=${argument#*=};; esac
@@ -77,6 +88,9 @@ class KindStartupScriptTest {
         executable("docker", """
                 #!/bin/bash
                 set -eu
+                if [[ -n "${SHARDSHOP_TEST_CLUSTER:-}" ]]; then
+                  [[ "$KUBECONFIG" == "$SHARDSHOP_TEST_KUBECONFIG" ]] || exit 89
+                fi
                 printf 'docker %s\n' "$*" >> "$FIXTURE/events"
                 case "$1" in
                   buildx) exit 0;;
@@ -104,6 +118,9 @@ class KindStartupScriptTest {
         executable("lsof", """
                 #!/bin/bash
                 set -eu
+                if [[ -n "${SHARDSHOP_TEST_CLUSTER:-}" ]]; then
+                  [[ "$KUBECONFIG" == "$SHARDSHOP_TEST_KUBECONFIG" ]] || exit 89
+                fi
                 printf 'lsof %s\n' "$*" >> "$FIXTURE/events"
                 [[ "$(cat "$FIXTURE/failure")" != port-inspection ]] || exit 2
                 case "$*" in '-t -nP -iTCP:1808'[0-4]' -sTCP:LISTEN') ;; *) exit 99;; esac
@@ -118,6 +135,9 @@ class KindStartupScriptTest {
         executable("kubectl", """
                 #!/bin/bash
                 set -eu
+                if [[ -n "${SHARDSHOP_TEST_CLUSTER:-}" ]]; then
+                  [[ "$KUBECONFIG" == "$SHARDSHOP_TEST_KUBECONFIG" ]] || exit 89
+                fi
                 printf 'kubectl %s\n' "$*" >> "$FIXTURE/events"
                 case "$*" in
                   *'port-forward '*)
@@ -166,12 +186,18 @@ class KindStartupScriptTest {
         executable("helm", """
                 #!/bin/bash
                 set -eu
+                if [[ -n "${SHARDSHOP_TEST_CLUSTER:-}" ]]; then
+                  [[ "$KUBECONFIG" == "$SHARDSHOP_TEST_KUBECONFIG" ]] || exit 89
+                fi
                 printf 'helm %s\n' "$*" >> "$FIXTURE/events"
                 exec "$REAL_HELM" "$@"
                 """);
         executable("helmfile", """
                 #!/bin/bash
                 set -eu
+                if [[ -n "${SHARDSHOP_TEST_CLUSTER:-}" ]]; then
+                  [[ "$KUBECONFIG" == "$SHARDSHOP_TEST_KUBECONFIG" ]] || exit 89
+                fi
                 printf 'helmfile fresh=%s %s\n' "$SHARDSHOP_FRESH" "$*" >> "$FIXTURE/events"
                 if [[ "$*" == *stage=application* ]]; then
                   cp "$SHARDSHOP_SNAPSHOT/images.json" "$FIXTURE/application-values.json"
@@ -183,6 +209,9 @@ class KindStartupScriptTest {
         executable("skaffold", """
                 #!/bin/bash
                 set -eu
+                if [[ -n "${SHARDSHOP_TEST_CLUSTER:-}" ]]; then
+                  [[ "$KUBECONFIG" == "$SHARDSHOP_TEST_KUBECONFIG" ]] || exit 89
+                fi
                 printf 'skaffold %s\n' "$*" >> "$FIXTURE/events"
                 [[ "$(cat "$FIXTURE/failure")" != image-build ]] || exit 72
                 for argument in "$@"; do
@@ -205,12 +234,158 @@ class KindStartupScriptTest {
         executable("openssl", """
                 #!/bin/bash
                 set -eu
+                if [[ -n "${SHARDSHOP_TEST_CLUSTER:-}" ]]; then
+                  [[ "$KUBECONFIG" == "$SHARDSHOP_TEST_KUBECONFIG" ]] || exit 89
+                fi
                 [[ "$1" == rand && "$2" == -hex ]] || exit 99
                 digit=a
                 if [[ "$3" == 12 ]]; then digit=$(cat "$FIXTURE/random-digit"); fi
                 for ((i=0; i < $3 * 2; i++)); do printf '%s' "$digit"; done
                 printf '\n'
                 """);
+    }
+
+    @Test
+    void ownedTargetKeepsBuildUmaskAndCreatesOnlyAPrivateConfig() throws Exception {
+        selectOwnedLab();
+        executable("mvn", """
+                #!/bin/bash
+                set -eu
+                umask > "$FIXTURE/build-mask"
+                mkdir -p "$FIXTURE/build-output"
+                : > "$FIXTURE/build-output/library"
+                """);
+        Files.writeString(temporary.resolve("scripts/target-mask.sh"), """
+                #!/bin/bash
+                set -eu
+                umask 022
+                source "$FIXTURE/scripts/lib/lifecycle.sh"
+                lifecycle_target
+                mvn
+                """);
+        assertEquals(0, run("target-mask.sh").exit());
+        assertEquals(java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x"),
+                Files.getPosixFilePermissions(temporary.resolve("build-output")));
+        assertEquals(java.nio.file.attribute.PosixFilePermissions.fromString("rw-r--r--"),
+                Files.getPosixFilePermissions(temporary.resolve("build-output/library")));
+        assertEquals("0022", Files.readString(temporary.resolve("build-mask")).strip());
+        Path config = Path.of(targetEnvironment.get("SHARDSHOP_TEST_KUBECONFIG"));
+        assertEquals(java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"), Files.getPosixFilePermissions(config));
+        Files.writeString(config, "private-existing-config");
+        assertEquals(0, run("target-mask.sh").exit());
+        assertEquals("private-existing-config", Files.readString(config));
+    }
+
+    @Test
+    void lifecycleAliasUsesPhysicalReactorRoot() throws Exception {
+        Files.createSymbolicLink(temporary.resolve("alias"), temporary);
+        assertEquals(0, run("../alias/scripts/cluster-create.sh").exit());
+        String reactor = temporary.toRealPath().resolve("pom.xml").toString();
+        assertTrue(events().stream().filter(event -> event.startsWith("mvn "))
+                .allMatch(event -> event.contains("-f " + reactor + " ")), events().toString());
+    }
+
+    @Test
+    void ownedLabTargetsCreationResumeGatesImagesDeploymentPagesAndDeletion() throws Exception {
+        String cluster = selectOwnedLab();
+        assertEquals(0, run("cluster-create.sh").exit());
+        assertEquals(0, run("up.sh").exit());
+        // The foreground page session finishes when its fixture forwards exit.
+        assertNotEquals(0, run("webpages.sh").exit());
+        assertEquals(0, run("down.sh").exit());
+        assertEquals(0, run("cluster-destroy.sh").exit());
+        List<String> events = events();
+        assertTrue(events.stream().anyMatch(event -> event.startsWith("kind create cluster --name " + cluster + " ")));
+        assertTrue(events.stream().anyMatch(event -> event.startsWith("kind export kubeconfig --name " + cluster)));
+        assertTrue(events.stream().anyMatch(event -> event.contains("--kube-context=kind-" + cluster)));
+        assertTrue(events.stream().filter(event -> event.startsWith("kind load ")).allMatch(event -> event.contains("--name " + cluster)));
+        assertTrue(events.stream().filter(event -> event.startsWith("kubectl "))
+                .allMatch(event -> event.startsWith("kubectl --context kind-" + cluster + " ")));
+        assertTrue(events.stream().filter(event -> event.startsWith("mvn kind-"))
+                .allMatch(event -> event.contains("-Dshardshop.kind.cluster=" + cluster)
+                        && event.contains("-Dshardshop.kind.kubeconfig=" + targetEnvironment.get("SHARDSHOP_TEST_KUBECONFIG"))));
+        assertTrue(events.contains("kind delete cluster --name " + cluster));
+        assertTrue(Files.readString(temporary.resolve("nodes")).isEmpty());
+        assertEquals("retained-kubeconfig", Files.readString(temporary.resolve("retained-config")));
+    }
+
+    @Test
+    void testOrchestrationRegistersCleanupBeforePartiallyFailedCreation() throws Exception {
+        selectOwnedLab();
+        state("failure", "create");
+        Files.writeString(temporary.resolve("scripts/owned-test.sh"), """
+                #!/bin/bash
+                set -eu
+                scripts=$(cd -- "$(dirname -- "$0")" && pwd)
+                trap 'bash "$scripts/cluster-destroy.sh"' EXIT
+                bash "$scripts/cluster-create.sh"
+                """);
+        assertEquals(70, run("owned-test.sh").exit());
+        assertBefore("kind create cluster ", "kind delete cluster ");
+        assertTrue(Files.readString(temporary.resolve("nodes")).isEmpty());
+    }
+
+    @Test
+    void invalidOwnedTargetFailsBeforeAnyCliIncludingDestroy() throws Exception {
+        String cluster = selectOwnedLab();
+        String config = targetEnvironment.get("SHARDSHOP_TEST_KUBECONFIG");
+        List<Map<String, String>> invalid = List.of(
+                Map.of("SHARDSHOP_TEST_CLUSTER", cluster),
+                Map.of("SHARDSHOP_TEST_KUBECONFIG", config),
+                Map.of("SHARDSHOP_TEST_CLUSTER", "shardshop", "SHARDSHOP_TEST_KUBECONFIG", config),
+                Map.of("SHARDSHOP_TEST_CLUSTER", "shardshop-test-x;echo", "SHARDSHOP_TEST_KUBECONFIG", config),
+                Map.of("SHARDSHOP_TEST_CLUSTER", cluster, "SHARDSHOP_TEST_KUBECONFIG", "relative"),
+                Map.of("SHARDSHOP_TEST_CLUSTER", cluster, "SHARDSHOP_TEST_KUBECONFIG", config + ":/tmp/other"));
+        for (Map<String, String> environment : invalid) {
+            targetEnvironment = environment;
+            for (String script : List.of("cluster-create.sh", "up.sh", "down.sh", "cluster-destroy.sh", "webpages.sh")) {
+                assertNotEquals(0, run(script).exit(), script + " accepted " + environment);
+                assertTrue(events().isEmpty(), "Invalid target reached a CLI: " + events());
+            }
+        }
+    }
+
+    @Test
+    void unsafeKubeconfigStorageCannotStopOrDeleteAnyLab() throws Exception {
+        selectOwnedLab();
+        Path config = Path.of(targetEnvironment.get("SHARDSHOP_TEST_KUBECONFIG"));
+        Files.writeString(config, "existing");
+        Files.setPosixFilePermissions(config, java.nio.file.attribute.PosixFilePermissions.fromString("rw-r--r--"));
+        assertNotEquals(0, run("cluster-destroy.sh").exit());
+        assertTrue(events().isEmpty());
+        Files.delete(config);
+        Files.createSymbolicLink(config, temporary.resolve("retained-config"));
+        assertNotEquals(0, run("down.sh").exit());
+        assertTrue(events().isEmpty());
+        Files.delete(config);
+        Files.setPosixFilePermissions(config.getParent(), java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x"));
+        assertNotEquals(0, run("cluster-destroy.sh").exit());
+        assertTrue(events().isEmpty());
+        assertEquals("retained-kubeconfig", Files.readString(temporary.resolve("retained-config")));
+    }
+
+    @Test
+    void kubeconfigBelowTheDefaultDirectoryCannotDeleteALab() throws Exception {
+        Path home = Files.createDirectory(temporary.resolve("home"));
+        Path directory = Files.createDirectories(home.resolve(".kube/private"));
+        Files.setPosixFilePermissions(directory, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
+        targetEnvironment = Map.of("HOME", home.toString(), "SHARDSHOP_TEST_CLUSTER", "shardshop-test-unit",
+                "SHARDSHOP_TEST_KUBECONFIG", directory.resolve("config").toString());
+        assertNotEquals(0, run("cluster-destroy.sh").exit());
+        assertTrue(events().isEmpty());
+    }
+
+    private String selectOwnedLab() throws IOException {
+        String cluster = "shardshop-test-unit";
+        Path directory = Files.createDirectory(temporary.resolve("private"),
+                java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                        java.nio.file.attribute.PosixFilePermissions.fromString("rwx------")));
+        Files.writeString(temporary.resolve("retained-config"), "retained-kubeconfig");
+        targetEnvironment = Map.of("SHARDSHOP_TEST_CLUSTER", cluster,
+                "SHARDSHOP_TEST_KUBECONFIG", directory.toRealPath().resolve("config").toString(),
+                "KUBECONFIG", temporary.resolve("retained-config").toString());
+        state("created-nodes", NODES.replace("shardshop-", cluster + "-"));
+        return cluster;
     }
 
     @Test
@@ -733,7 +908,8 @@ class KindStartupScriptTest {
     private void assertNoApplicationDelivery() throws IOException {
         List<String> maven = events().stream().filter(line -> line.startsWith("mvn ")).toList();
         assertTrue(maven.stream().allMatch(line -> line.contains("-Dshardshop.infrastructureOnly=true")), maven.toString());
-        assertTrue(maven.stream().allMatch(line -> line.contains("-f " + temporary.resolve("pom.xml") + " ")),
+        String reactor = temporary.toRealPath().resolve("pom.xml").toString();
+        assertTrue(maven.stream().allMatch(line -> line.contains("-f " + reactor + " ")),
                 "Every invocation must stay scoped to ShardShop: " + maven);
         assertTrue(maven.stream().allMatch(line -> line.contains("-pl shardshop-testing")
                 || (line.contains(" -N ") && line.contains(" install:install-file ")
@@ -779,6 +955,10 @@ class KindStartupScriptTest {
                 "TMPDIR", temporary.resolve("tmp").toString(), "FIXTURE", temporary.toString(), "REAL_HELM", helm));
         builder.environment().remove("SHARDSHOP_ENV_VALUES");
         builder.environment().remove("SHARDSHOP_INVENTORY");
+        for (String name : List.of("SHARDSHOP_TEST_CLUSTER", "SHARDSHOP_TEST_KUBECONFIG", "SHARDSHOP_CLUSTER_NAME", "SHARDSHOP_CONTEXT")) {
+            builder.environment().remove(name);
+        }
+        builder.environment().putAll(targetEnvironment);
         Process process = builder.start();
         process.getOutputStream().close();
         return new Running(process, output);

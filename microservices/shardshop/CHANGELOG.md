@@ -5201,3 +5201,490 @@ and temporary deployment-resume script were removed. The snapshot path above is
 the historical invocation; future runs create a new snapshot using the
 [runbook](shardshop-testing/RUNBOOK.md#kind-verification-snapshot). `git diff --check`
 and added-documentation-link checks pass. Step 5.5 is complete; step 6.1 is next.
+
+## Plan and verification review — 2026-10-25
+
+Validated the eleven review findings against the current checkout and upstream
+project documentation. This review changes future acceptance requirements and
+local test gates; it does not execute milestone 6 or upgrade the retained lab.
+
+| Finding | Assessment and correction |
+|---|---|
+| 1. Maintenance deadlines | Confirmed: 33 explicit `review_by` entries, including the root default, are due October 28; other entries inherit that date. Added step 6.0 before 6.1 and as an explicit dependency of 6.2, covering due reviews, RabbitMQ planning by November 2 and CNPG upgrade by November 30. Distinguish review deadlines from support/upgrade deadlines. The official release list still shows 1.30.1; 1.31 GA was not confirmed. No pins or review deadlines were renewed. |
+| 2. Unequal stock | Confirmed. Step 6.5 now requires identical per-product starting stock and equivalent workload inputs, using sequential isolated baselines or a newly implemented catalog-version isolation mechanism. Changing only the run name or rerunning the seeder is insufficient. Record stock and confirmation/cancellation mix and reject unequal comparisons. |
+| 3. Mesh scope and security | The scope/requalification gap is confirmed. Ambient enrollment is possible per pod as well as per namespace; namespace-wide enrollment is not mandatory. Step 6.5 names the HTTP participants and excluded stateful/background workloads, requires proof of actual SQL/replication/AMQP paths, and repeats all implemented recovery drills. Proxy/CNI identity and privilege qualification is explicit; sidecar UID 1337 is not assumed for every ambient component. |
+| 4. Argo delivery | Confirmed integration gap. Argo supports Helm rendering and some Helm-hook mappings, but it does not run this Helmfile workflow or supply increasing Helm release revisions. Step 7.4 now requires sync ordering/readiness, replacement Maven gates, safe per-attempt Job identities, selective-sync protection and interruption/retry acceptance. Local Helmfile behavior remains unchanged. |
+| 5. JavaScript verification | Confirmed and fixed. Both existing runners skipped without Node; product had no Maven runner. All three now use a mandatory runner that fails on missing Node, timeout or nonzero exit. The verification module runs all 68 cases. Node is documented and inventoried as a host test tool, with functional qualification on the installed 26.7.0 and patch/LTS review due in 6.0. |
+| 6. Step 5.3 acceptance | Confirmed. Restored the original acceptance requirement before its dated result. The older-lab upgrade has not been demonstrated: the live record used a fresh lab. Step 6.0 explicitly requires pre-5.3 retained data followed by current `cluster-create.sh` and `up.sh`, with role/grant, reset/replay and identity checks. The completed reset behavior is not relabeled as proof of this missing upgrade path. |
+| 7. Primary-read restoration | Confirmed and fixed at the deployment gate. It checks both deployed product/routing ConfigMaps, the product Deployment template and each ready pod for replica-profile or indirect configuration overrides. Step 6.1 must register exact restoration before mutation, roll restored pods and pass this gate before releasing its lock. No existing drill changes that profile; runtime drill qualification remains 6.1. |
+| 8. Fresh versus retained lab | Confirmed ambiguity. Steps 6.0/6.6 require owned-cluster/private-kubeconfig test configuration through the existing lifecycle entry points. Stop the retained lab, run only one full lab, clean the disposable cluster on every exit and restore the retained lab's prior state. The fixed-name README destruction command must not remove retained data. |
+| 9. RabbitMQ IDs | Confirmed mismatch in rule 3. RabbitMQ explicitly sets UID/GID/fsGroup 10001 beside the Flyway exception. Kubernetes Restricted permits nonzero IDs; OpenShift's assigned ranges may reject them. Documented the actual configuration and the unqualified OpenShift/PVC-permission work; no retained ownership was changed. |
+| 10. Stale statements | Corrected shutdown's restart-policy update, lock deployment/signature verification scope, and the implemented ledger poller and order CDC connector. Historical verification dates remain historical. |
+| 11. Crash source positions | Confirmed maintenance coupling, not an unsafe passing test. Replaced numeric source-line arguments at all nine call sites with unique complete-statement sequences. Blank lines and standalone comments may move; missing/ambiguous anchors fail before debugger startup. JDI still checks method/executable locations and suspends the whole JVM. Statement edits still require intentional anchor review. |
+
+The external checks use the official [CNPG releases](https://github.com/cloudnative-pg/cloudnative-pg/releases),
+[CNPG support matrix](https://cloudnative-pg.io/documentation/current/supported_releases/),
+[Istio enrollment](https://istio.io/latest/docs/ambient/usage/add-workloads/),
+[Argo Helm integration](https://argo-cd.readthedocs.io/en/stable/user-guide/helm/),
+[Argo sync phases](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/),
+[Kubernetes Restricted](https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted),
+[OpenShift SCC rules](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/authentication_and_authorization/managing-pod-security-policies)
+and [Node release policy](https://nodejs.org/en/about/previous-releases).
+
+### Regression evidence
+
+Commands below were run from the repository root with JDK 25, Maven 3.9.16 and
+Node 26.7.0. Tests use local fixtures; no kind deployment or Testcontainers run is
+part of this review.
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dshardshop.infrastructureOnly=true -Dtest=CrashBreakpointTest test
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dshardshop.infrastructureOnly=true -Dtest=KindDeploymentTest test
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true \
+  -Dtest=OrderBrowserScriptTest,WorkloadControlScriptTest,ProductBrowserScriptTest \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test
+PATH="$JAVA_HOME/bin:/usr/bin:/bin" /opt/homebrew/bin/mvn -B -ntp \
+  -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true \
+  -Dtest=OrderBrowserScriptTest,WorkloadControlScriptTest,ProductBrowserScriptTest \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test
+PRODUCTS_SCRIPT=/tmp/shardshop-deliberately-missing-products.js mvn -B -ntp \
+  -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true -Dtest=ProductBrowserScriptTest \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test
+```
+
+The last two commands intentionally fail. Before the change, missing Node returned
+`BUILD SUCCESS` with two skipped tests; afterward it returns three failures, zero
+skips and installation/PATH guidance. A missing product script propagates Node's
+nonzero exit and `ENOENT` to Maven. Normal execution passes three Maven wrappers
+and 68 JavaScript cases (36 product, 20 order, 12 workload).
+
+The source-position regression initially rejected a harmless shifted line and
+failed to reject an ambiguous marker before socket allocation; five final anchor
+unit cases pass. Replica profile regressions initially failed because the gate
+accepted the override; the final 21 deployment-unit cases pass, including a
+replica value hidden in the routing source. Initial focused `-am` invocations
+without the no-selected-tests overrides stopped in the common module before
+running the target tests; the module-only commands above resolve that selection
+issue.
+
+### Final scoped verification
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true test
+ruby -ryaml -e 'YAML.load_file("microservices/shardshop/versions.lock.yaml"); puts "YAML valid"'
+git diff --check
+```
+
+The first full scoped run was blocked by sandbox process-inspection and loopback
+restrictions (`sysctl failed` / `Operation not permitted`) in existing lifecycle
+fixtures. The same Maven command with those permissions passed **514 tests**:
+291 common tests and 223 verification-module tests, with zero failures, errors or
+skips, in 1 minute 10 seconds. This includes the 68 JavaScript cases inside their
+three Maven wrappers. Logs remain outside the repository at
+`/tmp/shardshop-review-fixes-tests.log` and
+`/tmp/shardshop-review-fixes-tests-unrestricted.log`.
+
+YAML parsing, local Markdown links/anchors and `git diff --check` pass. No leftover
+test-fixture processes were found. No runtime Java, image, schema or deployed
+resource changed; the retained lab was not started, reset or upgraded. Live kind
+acceptance and packaged crash/recovery scenarios were not rerun: the new profile
+gate is unit-verified against declared deployed configuration, not resolved
+configuration inside a running JVM, and crash selectors resolve to the same
+existing breakpoint locations with unchanged JDI handling. Full strict-read
+restoration belongs to 6.1, and the documented older-lab upgrade and version
+maintenance remain open 6.0 acceptance work.
+
+## Step 6.0
+
+2026-10-25 — application/build maintenance and retained-upgrade evidence.
+**Blocked:** application acceptance remains incomplete. The user accepted the
+saved JRE, K3s and Flyway-driver findings for this loopback-only local lab through
+October 28, without a VEX change, scan-gate bypass or unaffected claim. The user
+excluded CNPG operator/chart upgrades and
+managed PostgreSQL changes. The PostgreSQL selection is restored to the retained
+digest; no live database rollback or foundation reconciliation occurred.
+[Scope and minimum finish proposal](PLAN.md#minimum-completion-of-60) ·
+[Selections and open findings](VERSIONS.md#step-60-maintenance-review--2026-10-25).
+
+### Changes retained after review
+
+- Quarkus BOM/plugin 3.40.1.1, application Jackson BOM 2.21.8, separate plugin
+  Jackson overrides and pgJDBC 42.7.14. Java release 25 remains unchanged.
+- Refreshed Canonical JRE and reproducible Flyway image. The managed PostgreSQL
+  candidate was used only in the disposable rehearsal; it is no longer selected.
+- Paired owned-cluster/private-kubeconfig settings in existing lifecycle entry
+  points and Java observers. Default targets remain unchanged. Tests cover unsafe
+  targets/paths, physical reactor-root resolution, build umask preservation and
+  target-aware DNS diagnostics. HTTP failure diagnostics expose only safe labels.
+- Opt-in Java before/after/replay witnesses for the pre-5.3 upgrade. No production
+  saga logic, applied migration, SQL function or trigger was changed.
+- Earlier requested browser-test, breakpoint-anchor and primary-profile fixes are
+  preserved. This cleanup introduces no additional application behavior.
+
+The bounded static source review found no confirmed correctness blocker in these
+changes. It does not replace live acceptance. Witnesses cover stable retained-row
+projections and identities, not every mutable field; documented pause/drain and
+fixture preparation remain prerequisites.
+
+### Recorded validation
+
+| Check | Result and limit |
+|---|---|
+| Maven audit/artifacts | 15-project audit passed; 35 existing artifact hashes and 94 distinct updated records matched upstream metadata. Integrity is not a security clearance. |
+| Maintained-JDK build | **1,871 unit/provider tests + 75 startup checks passed**, zero failures/errors/skips. Later diagnostics were covered by focused checks below, not claimed as part of this earlier full run. |
+| Browser scripts | All **68 JavaScript cases** passed through the three Maven wrappers on Node 24.22.1 and separately 26.12.1. |
+| Packaged integration | Full run: **159/160 passed**. Reader interval 201.4/s exceeded the unchanged 201/s upper bound. Unchanged focused `@product-reader` rerun: **2 passed**. All scenarios have passing evidence across runs; there was no single clean full run. |
+| Isolation/diagnostics | Initial focused lifecycle/witness suite: **59 passed**. Physical-path and umask regressions failed before fixes and passed afterward. Safe HTTP diagnostics: **3 passed**. DNS private-target regression: failed before fix, then **10 passed**. |
+| Images | All seven existing advisory gates passed; two uncached Flyway builds matched manifest `d07094252ac8d0a3f9b50c5e272064b29628a07dd13959a7ab34847ae536e23c` / config `750b835a5675e3564836f04be3e84a7e16d7fa21976fdfcb3444dc805cc135e4`. Open vendor/source-package findings remain. |
+| Older-lab upgrade | Before/after/replay witnesses passed; current foundation and six application deployment/release cases passed on the isolated candidate configuration. Details below. |
+| Live recovery | **8/9 passed**: observability, outage retry/reconciliation, four DLQ pressure cases, business replay invariants and saga relocation. HTTP rollout failed; later attempts remained unsuccessful. |
+| Database/workload drill | Database case failed its initial 180s two-streaming-standby check, before SQL fixtures, replacement or fencing. Workload drill was not run. Saved controls were restored. |
+| Final release/idle | **2 passed** (`kind-release`, `kind-drills-idle`), not the full nine-case final suite. |
+| Capacity / retained deployment | Not run. Historical performance figures were not requalified; the retained lab was never upgraded. |
+
+The pre-5.3 fixture used commit `99bc0a738ef517967a6444c8837ebd0cede261b1`.
+Eight explicitly recorded baseline adapters addressed owned-target orchestration,
+physical paths/permissions, corresponding fake-CLI expectations and deterministic
+Flyway packaging; old application Java, SQL, roles and Maven pins were unchanged.
+Current `cluster-create.sh` then `up.sh` preserved **39 resource/credential
+identities, four database identities and 6,408 row hashes across 52 sets**.
+Allocator UID stayed fixed and its high-water mark advanced **7 → 12**.
+The restricted native operator reset and replay produced one original ledger
+decision/entry, one reservation and one profit credit; terminal reset returned
+`NOOP`. The fixture deliberately prepared an exhausted five-attempt budget;
+packaged tests, not this preparation, exercise the real retry schedule.
+
+This proof remains valid for the exercised configuration, which included the
+now-excluded PostgreSQL candidate. It is not a qualification of the new application
+selections on the retained PostgreSQL digest, or of failover, restore or capacity.
+
+### Failures and final state
+
+Initial attempts exposed physical-path/umask issues (fixed with regressions),
+then exhausted Docker's former 59 GiB disk. The user increased it to 80 GiB;
+cleanup was limited to identified task artifacts. A Docker restart interrupted
+one integration run; that run was stopped/cleaned and is not passing evidence.
+
+The first live HTTP rollout failed with an unclassified 503. The second failed
+with a request timeout and an inactive CDC reader amid broad SQL/AMQP/API
+interruptions and host memory pressure. After the user stopped IDEA and Whisky,
+the third preserved HTTP writes, the saga JVM and CDC ownership but left **15
+orders PENDING_LEDGER**, with unpublished commands and no ledger effects.
+
+Historical standby logs show `shard-a-2` repeatedly requesting WAL ahead of the
+primary's flush position and timing out. Later the primary advanced beyond that
+position, but the standby remained stuck. The logical sender waited on
+`WaitForStandbyConfirmation`: writes can commit with one standby while this lab's
+CDC requires both physical slots. Pod readiness did not prove replication health.
+The initiating fault was not conclusively attributed to the operator, image or
+host load. See the [PostgreSQL receiver source](https://github.com/postgres/postgres/blob/REL_18_STABLE/src/backend/replication/walreceiver.c).
+
+A bounded pod-only replacement preserved its PVC but did not become ready within
+60s. No timeout reduction, WAL switch, primary promotion, reset or replica reclone
+was performed. This failed attempt does not establish a recovery procedure.
+All four disposable nodes, their private context and kubeconfig were removed.
+Cleanup exited 0; retained node identities/images/volumes/stopped state and default
+kubeconfig bytes matched their original captures. Cleanup success is not overall
+qualification. No build/test/lab run was repeated for this documentation cleanup.
+
+### Reduced-scope retained preflight — October 25
+
+The user accepted the saved JRE, K3s and Flyway-driver findings through October 28
+and approved a ten-minute preflight followed, only on success, by one normal
+application deployment. The first preflight passed node identity, retained-state,
+database readiness, RabbitMQ, drill-idle and physical replication topology checks.
+Both workload cases failed their immediate assertion that product already had two
+ready, current replicas. The temporary wrapper had not waited for application
+startup after resuming the nodes; this result does not establish a persistent fault.
+No build or deployment ran. Native `down.sh` restored all four stopped nodes;
+identities, volumes and default kubeconfig bytes matched the original capture.
+
+Command: `bash /private/tmp/shardshop-60-app-finish-9njz6awy/run-maintenance.sh --user-approved-local-maintenance`.
+It reused compiled Java observers with `kind-nodes`, `kind-retention` and
+`kind-infrastructure | kind-topology | kind-drills-idle | (kind-workload & !kind-saga)`:
+six cases passed, two errored; owner exit 1, restoration exit 0. Evidence is in that
+directory's `invocation/preflight.log` and `preflight-reports/`.
+
+The user authorized one corrected attempt, adding a shared 180-second product/reader
+readiness wait after infrastructure checks. It passed all eight cases, including
+the two previously errored workload cases, and started the approved normal `up.sh`.
+Command: `bash /private/tmp/shardshop-60-app-ready-fkrxuvmn/run-maintenance.sh --user-approved-local-maintenance`;
+its `invocation/preflight.log` preserves every result. The preflight qualifies the
+resumed baseline, not the new application images. No repository script or assertion
+was weakened, and no database repair or configuration change was performed.
+
+The single subsequent `scripts/up.sh` passed **1,875 unit/provider checks**, **75
+startup checks**, all seven image scan gates, migration validation and all six
+live deployment/release cases (zero failures/errors/skips). It completed at 17:30
+Samara time; the preflight/deployment phase took about 16 minutes. Both owner and
+restoration exited 0. Node identities/images/volumes and default kubeconfig bytes
+were preserved, and all four nodes were stopped. Reports and exact deployment
+inputs are saved under the same invocation's `build-reports/`, `deployment-reports/`
+and `current-invocation-snapshot/`; `up.log` contains the complete lifecycle result.
+That release result excludes subsequent recovery/capacity checks; see below.
+
+The user then approved a final phase capped at 30 minutes. Both separate live
+application drills passed on these exact images: `kind-http-rollout` in 45.849s
+and `kind-workload-drill` in 77s, one case each with no failures/errors/skips.
+Command: `bash /private/tmp/shardshop-60-final-checks-f6funr_2/run-maintenance.sh --user-approved-final-checks`.
+Logs/reports are in its `invocation/` directory; there was no rebuild or CNPG change.
+
+The first capacity capture was **unqualified**, not a new-write throughput pass.
+The saved producer was replaying historical orders: its recovered counter rose
+from 79 before capture to 279 after warmup and 1,079 at the final saved sample
+(80s into observation), while new starts and write-latency samples stayed zero.
+The error counter stayed at its pre-capture value of 9, so this capture records
+no new error delta. The capture was stopped before 30 orders/s, 1,000 reads/s or
+final gates. Evidence: `/private/tmp/shardshop-60-fixed-capacity-7c52gkn_/evidence`.
+
+The terminal interrupt also killed the owned port-forwards before API restoration;
+that capture correctly records restoration exit 1. Required cleanup then used new
+owned tunnels to restore producer 0.5/s and reader 200/s, both unpaused, and verify
+seeder 100/s, unpaused/idle, unchanged. Command:
+`bash /private/tmp/shardshop-60-control-restore-h4pnqyc9/run-maintenance.sh --restore-owned-controls`.
+It exited 0 with restoration 0; all four nodes are stopped, identities/volumes and
+kubeconfig bytes match the original captures, and owned tunnels are closed.
+The failed cleanup record is preserved alongside this successful recovery.
+The user approved a 20-minute setup correction and remaining checks. A temporary
+`SHARDSHOP_PRODUCER_RUN_NAME` under the owner-labelled shared drill lock produced
+new orders with zero historical recoveries. JSON-patch preconditions protected
+both mutation and restoration of the exact original environment/template. A stop
+request file and the collector's normal decision prompt preserve cleanup tunnels.
+Command: `bash /private/tmp/shardshop-60-fresh-capacity-gt5830pm/run-maintenance.sh --user-approved-fresh-capacity`.
+
+At target 10/s, the final native write p95 was **158.926 ms**, exceeding the required
+**<100 ms**. The first/last saved counters gained 888 new starts and 886 confirmations,
+with zero cancellations, recoveries or new errors; all catalog currencies still had
+stock. Sampled pending orders ranged 9–22, unapplied profit intents 1–12, blocked
+profits 0, and unpublished commands 3–6; producer backlog drained to zero. Final
+saga p95 was 2,013.482 ms. The nominal 90-second sample schedule spanned only
+**89.360711 s** in saved timestamps because Bash's integral `SECONDS` rounded the
+start; this is an additional measurement limitation, not a qualified 90s rate.
+The collector must allow enough margin to meet the actual >=90s requirement.
+
+The normal `stop` decision ended capture before 30/s, 1,000 reads/s or final gates.
+Collector and fixture restoration both exited 0; the exact original producer
+pod template, run name, 0.5/s unpaused control, reader 200/s unpaused and unchanged
+seeder settings were restored. The owned drill lock and tunnels were removed.
+Owner exit 1 preserves the unsuccessful check; node restoration exit 0 verifies
+all four nodes stopped with original identities/volumes/kubeconfig. Evidence is
+under that directory's `invocation/` and `capacity/evidence/`. No rebuild, repeated
+application drill, database change or latency investigation followed the failure.
+A saved-evidence review then found that only 888 write-latency samples followed
+warmup, leaving 136 older samples in the 1,024-entry p95 window. The user authorized
+one corrected 10/s check. Its collector uses monotonic deadlines, a predetermined
+120-second observation, a >=1,024 post-warmup sample gate, and both HTTP pods'
+existing `/internal/order/write-metrics` endpoint. The protocol/runbook now state
+these requirements. Application code and images were unchanged; no build, release or application
+drill was repeated.
+
+Command: `bash /private/tmp/shardshop-60-single10-_uzsug35/run-maintenance.sh --user-approved-single-10`.
+The check met measurement eligibility: **120.058077s** from baseline counter receipt
+to final counter-request start and **1,177 post-warmup writes** (about **9.8/s**),
+with zero new errors, cancellations or historical recoveries. It **failed** the
+unchanged write-p95 limit: **133.783 ms**, required **<100 ms**. Sampled pending,
+unapplied-profit and unpublished-command ranges were 11–16, 3–13 and 2–10; no
+blocked profits, no backpressure, and the producer backlog drained to zero.
+
+Per-pod endpoint p95s were allocation **49.749 / 44.276 ms** and PUT
+**76.648 / 70.820 ms**. These separate per-JVM windows include earlier requests;
+they cannot be added or treated as warmed interval percentiles. They preserve
+useful diagnostics without establishing the cause of the end-to-end latency.
+Evidence is in that invocation's `capacity/evidence/write-10/`, including
+`measurement-window.json` and each `sample-*/*.write-latency.json`.
+
+The normal `fail` decision stopped this single-point invocation. Collector and
+fixture restoration both exited 0; the original producer template/run name,
+saved controls, owned lock/tunnels, node identities/volumes/kubeconfig and stopped
+state were restored. Owner exit 1 preserves the failed check. No 30/s, 1,000/s
+or final-gate run followed. 6.0 remains blocked on latency and remaining capacity/
+final qualification; reuse the passing build, release and application drills.
+
+### Commands and local evidence
+
+The successful build used `JAVA_HOME=/Users/nikita.lipatov/.sdkman/candidates/java/25.0.5-tem`
+and its `bin` plus `/opt/homebrew/opt/node@24/bin` on `PATH`, from the repository root:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  clean install -DinstallAtEnd=true
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Pintegration -Dshardshop.infrastructureOnly=true verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Pintegration -Dshardshop.infrastructureOnly=true \
+  '-Dcucumber.filter.tags=@product-reader' verify
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dshardshop.infrastructureOnly=true -Dtest=KindHttpWriterTest test
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am test \
+  -Dtest=KindReadinessTest -Dsurefire.failIfNoSpecifiedTests=false \
+  -Dshardshop.failIfNoTests=false
+```
+
+The isolated runs selected `shardshop-test-upgrade-60-1025` and its private
+kubeconfig through the paired test variables. Existing Java kind cases used:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dshardshop.infrastructureOnly=true -Pkind \
+  failsafe:integration-test failsafe:verify \
+  -Dshardshop.kind.snapshot="$snapshot" \
+  -Dshardshop.kind.cluster="$SHARDSHOP_TEST_CLUSTER" \
+  -Dshardshop.kind.kubeconfig="$SHARDSHOP_TEST_KUBECONFIG" \
+  "-Dshardshop.kind.tags=$tags"
+```
+
+Recorded tag selections: `kind-upgrade-before`, `kind-upgrade-after`,
+`kind-upgrade-replay` (witness file/fixture properties per the
+[runbook](shardshop-testing/RUNBOOK.md#retained-foundation-upgrade-witness));
+`kind-retry-drill | kind-saga-drill | kind-observability`; `kind-http-rollout`;
+`kind-database-drill` with `-Dshardshop.kind.drillShard=shard-a`; and
+`kind-release | kind-drills-idle`. The nine-case run first used `test-compile`;
+later direct goals reused compiled observers. The private configuration has been
+removed, so these historical paths are not a runnable current lab.
+
+Local evidence remains in `/private/tmp/shardshop-60-upgrade.8wY9a8` and
+`/tmp/shardshop-60-{temurin-build,full-integration,reader-rerun,owned-recovery}-reports`.
+The three rollout logs are `/tmp/shardshop-60-http-rollout-{diagnostic,recovered}.log`
+and `/tmp/shardshop-60-owned-recovery.log`. The full pre-compaction record, including
+exact image/audit/native reset and recovery commands, is archived at
+`/private/tmp/shardshop-60-doc-cleanup-_3zjqy6z/CHANGELOG.md` (SHA-256 `cce66be89839346a3bcf95516de663179db33b29f13f66f94571fb1e1bd9b798`). These are local artifacts,
+not a promise of permanent retention or a replacement for the summarized results.
+
+Host changes from the original run: maintained Temurin installed beside the old
+JDK; Node LTS installation updated shared Homebrew dependencies and required
+repairing global Node to 26.12.1, also updating jupyterlab/mongosh/atlas-cli.
+No shell/default-JDK changes were made. Docker Desktop was already 4.96.3; the
+user changed its disk size. No host modifications occurred during cleanup.
+The rejected full private inventory upload to OSV was not performed; review
+limitations and unresolved findings remain in VERSIONS.md.
+
+
+### Latency deferral and remaining 6.0 checks — 2026-10-25
+
+The user moved sub-100 ms write-p95 qualification at 10/s and 30/s into planned
+step 6.7 and authorized the remaining 30/s throughput/backlog check, 1,000/s read
+check and final gates. The latency requirement remains unchanged; this scope
+change does not qualify full performance. Existing build, release and application
+drill results were reused, with no application rebuild or CNPG/database change.
+
+Command from the repository root:
+
+```bash
+bash /private/tmp/shardshop-60-remaining-n5cxo47r/run-maintenance.sh --user-approved-remaining-checks
+```
+
+The retained lab resumed and all four selected infrastructure/topology/drill-idle
+preflight cases passed. A temporary fresh producer run avoided historical replay;
+pre-load stock had no empty products, including 265 VND units. The 30/s target
+used the unchanged four submission workers, two observers and 100-order bound,
+with product reads at 200/s and a 20-second warmup.
+
+At the first post-warmup sample, the producer reached **100 outstanding orders
+and backpressure**. Subsequent sampled backlogs were 91, 83, 94 and 63. A normal
+stop-request file ended capture safely after the failure was observed. Saved
+samples cover only **40.044426 seconds and 987 new orders (~24.65/s)**, with zero
+new errors, cancellations or recovered orders. The capture is incomplete
+(<90s and <1,024 post-warmup samples); the final rolling write p95 of 154.613 ms
+is diagnostic only. The valid earlier 10/s result remains 133.783 ms. This attempt
+did not qualify 30/s and does not establish a sustainable maximum or prove a
+persistent regression. Earlier passing measurements differed in warm-up history,
+collection overhead, background work and stock-cancellation mix; causality is
+unresolved.
+
+Collector, producer-fixture and node restoration each exited 0; owner exit 2
+preserves the unsuccessful safe-stop outcome. The exact original producer
+configuration and saved controls (producer 0.5/s, reader 200/s, seeder 100/s;
+all unpaused) were restored. Owned lock/tunnels were removed; all four retained
+nodes were stopped with unchanged identities, volumes and default kubeconfig.
+Evidence is under the invocation's `capacity/evidence/` and `invocation/`.
+The 1,000/s read check and final gates were not started. Step 6.0 remains blocked
+on the throughput/backpressure check; the user was offered a separate bounded
+phase for the independent read/final checks. No rerun or further live investigation
+followed this failure.
+
+### Step 6.8 deferral and independent read check — 2026-10-25
+
+After the 30/s failure, the user explicitly moved that performance target to
+planned step **6.8**. Step 6.7 owns write p95 <100 ms at 10/s; 6.8 owns sustained
+30/s delivery without backpressure, bounded backlogs, and write p95 <100 ms.
+The incomplete ~24.65/s observation is retained without claiming a new maximum.
+Neither write qualification now blocks the reduced 6.0 acceptance; only the
+unchanged 1,000/s read check and final gates remained. The already-requested
+independent checks resumed with a ten-minute bound, without another write load
+run, application rebuild, repeated recovery drill or database change.
+
+Command from the repository root:
+
+```bash
+bash /private/tmp/shardshop-60-read-final-j1lbvjxf/run-maintenance.sh --user-approved-read-final
+```
+
+All four selected infrastructure/topology/drill-idle preflight cases passed.
+Before the read phase, the producer was paused/drained and all three shards had
+zero pending orders, unapplied profit intents and unpublished commands. The two
+product replicas retained primary reads; the seeder stayed idle. The first
+eligible 30-second report ended at `2026-10-25T15:11:27.749343296Z`: **28,446
+requests, 948.2/s**, all `OK`, read **p95 10 ms**, pool pending 0/max 16. It failed
+the unchanged requirement of at least **950/s in every eligible window**.
+A normal `fail` decision stopped the phase; a second report arrived before the
+pause, with **28,676 requests, 955.8/s, p95 9 ms**, all `OK` and pool pending 0.
+Both reports are preserved. The later passing window does not waive the first
+failure or supply the missing third passing window. This small delivery shortfall
+does not establish product/database saturation or a maximum read capacity.
+
+The final gates were not run. Collector, read-fixture and node restoration each
+exited 0; owner exit 1 preserves the failed read check. Saved producer/reader/seeder
+controls were restored, the producer template was unchanged, the owned lock and
+tunnels were removed, and all four retained nodes were stopped with original
+identities, volumes and default kubeconfig. Evidence is under that directory's
+`capacity/evidence/read-1000/` and `invocation/`. Step 6.0 remains **Blocked** on
+read-rate qualification; 6.7 and 6.8 remain **Planned**. No further live check or
+rerun followed. Documentation passed `git diff --check`; the lock parsed with
+`ruby -ryaml -e 'YAML.parse_file(ARGV[0])' microservices/shardshop/versions.lock.yaml`.
+
+### Reduced 6.0 acceptance complete — 2026-10-25
+
+The user then explicitly moved the 1,000/s read target to planned step **6.9**.
+The performance summary retains both observed read windows (948.2/s and 955.8/s,
+p95 10/9 ms, all OK) as an unsuccessful qualification. Step 6.9 preserves the
+three-window >=950/s, all-OK and p95 <100 ms criteria. Alongside 6.7 (10/s write
+latency) and 6.8 (sustained 30/s writes), it owns deferred performance work;
+none of these deferrals is a passing capacity result.
+
+The remaining final gates ran once against the existing application-release
+snapshot, without another capacity run, application rebuild or recovery drill:
+
+```bash
+bash /private/tmp/shardshop-60-final-gates-a94y85l5/run-maintenance.sh --user-approved-final-gates
+
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+  -Dit.test=KindIT -Dshardshop.kind.cluster=shardshop \
+  -Dshardshop.kind.snapshot=/private/tmp/shardshop-60-app-ready-fkrxuvmn/invocation/current-invocation-snapshot \
+  '-Dshardshop.kind.tags=kind-infrastructure | kind-deployment | kind-release | kind-drills-idle'
+```
+
+The Maven command is the wrapper's single gate invocation, not a second run.
+**All nine cases passed**, zero failures/errors/skips, test time **108.2s**;
+Maven finished at **2026-10-25 19:18:48 +04:00**. They verified the deployed catalog
+and primary-read profile, fresh clean reader traffic, scoped saga orders and
+ledger/profit effects, database and broker topology, release-image convergence
+and drill-idle state. Evidence: that invocation's `invocation/final.log` and
+`invocation/final-reports/`.
+
+Wrapper exit and restoration status are both **0**. All four retained nodes are
+stopped; original container/image/volume identities and default kubeconfig bytes
+are unchanged. No controls or producer template were changed in this final phase,
+and no CNPG/operator or managed PostgreSQL configuration was changed.
+
+Step **6.0 is Done under the user-approved reduced maintenance scope**, reusing
+the passing build, release, application recovery drills and historical upgrade
+proof. Full performance remains unqualified and assigned to planned 6.7–6.9.
+Local advisory acceptance still expires at the October 28 review date; no support
+deadline, scan gate or production-readiness claim changed.

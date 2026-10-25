@@ -55,7 +55,7 @@ ledger:
     wal_keep_size: "0"
 
 migration:
-  image: docker.io/library/shardshop-flyway:13.8.1-openjdk25@sha256:a7253697965bb91889f388c68d12132caa8bf60bf6ff2cc36d3648ff5651205d
+  image: docker.io/library/shardshop-flyway:13.8.1-openjdk25@sha256:d07094252ac8d0a3f9b50c5e272064b29628a07dd13959a7ab34847ae536e23c
   activeDeadlineSeconds: 180
   ttlSecondsAfterFinished: 86400
   resources:

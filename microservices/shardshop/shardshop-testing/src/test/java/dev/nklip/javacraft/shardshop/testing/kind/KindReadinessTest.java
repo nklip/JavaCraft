@@ -42,6 +42,10 @@ final class KindReadinessTest {
     void dnsFailureReportsImageDeliveryAndRuntimeFailureDetails() throws Exception {
         KindLab lab = mock(KindLab.class);
         when(lab.snapshot()).thenReturn(Path.of("dns-snapshot"));
+        when(lab.clusterName()).thenReturn("shardshop");
+        ProcessBuilder process = new ProcessBuilder("kubectl");
+        process.environment().remove("KUBECONFIG");
+        when(lab.processBuilder("kubectl")).thenReturn(process);
         IOException timeout = new IOException("Probe wait timed out");
         when(lab.kubectl(any(Duration.class), any(String[].class))).thenThrow(timeout);
         when(lab.kubectlAttempt(any(String[].class))).thenAnswer(invocation -> {
@@ -58,6 +62,25 @@ final class KindReadinessTest {
         assertSame(timeout, failure.getCause());
         assertTrue(failure.getMessage().contains("ImagePullBackOff registry unavailable"));
         assertTrue(failure.getMessage().contains("Failed Error 124"));
+        assertTrue(failure.getMessage().contains("kubectl --context kind-shardshop -n kube-system delete pod"));
+    }
+
+    @Test
+    void ownedDnsFailureGuidanceKeepsThePrivateTargetAndQuotesItsPath() throws Exception {
+        KindLab lab = mock(KindLab.class);
+        when(lab.snapshot()).thenReturn(Path.of("dns-snapshot"));
+        when(lab.clusterName()).thenReturn("shardshop-test-dns");
+        ProcessBuilder process = new ProcessBuilder("kubectl");
+        process.environment().put("KUBECONFIG", "/tmp/private lab's/config");
+        when(lab.processBuilder("kubectl")).thenReturn(process);
+        when(lab.kubectl(any(Duration.class), any(String[].class))).thenThrow(new IOException("DNS timeout"));
+        when(lab.kubectlAttempt(any(String[].class))).thenReturn(new KindLab.CommandResult(0, "probe Failed", ""));
+
+        IOException failure = assertThrows(IOException.class, () -> new KindReadiness(lab).dns());
+        String target = "KUBECONFIG='/tmp/private lab'\"'\"'s/config' kubectl --context kind-shardshop-test-dns";
+        assertTrue(failure.getMessage().contains(target + " get nodes -o wide"));
+        assertTrue(failure.getMessage().contains(target + " -n kube-system delete pod -l app=kindnet"));
+        assertFalse(failure.getMessage().contains("--context kind-shardshop "));
     }
 
     @Test

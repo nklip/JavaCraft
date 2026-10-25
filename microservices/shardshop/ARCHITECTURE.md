@@ -13,7 +13,7 @@ milestones 6–7 covers replica reads, failover/restore qualification and cloud 
 - **Consistency:** each write is a local transaction. The order saga connects the
   shards and the ledger through CDC, RabbitMQ and compensation. There is no
   distributed transaction.
-- **Capacity on this lab:** 29.45 complete orders/s and at least 963 product
+- **Last qualified capacity on this lab:** 29.45 complete orders/s and at least 963 product
   reads/s, measured separately ([section 4](#4-performance)).
 
 ## 1. System architecture
@@ -206,6 +206,40 @@ for the contracts and the remaining failover and restore requirements.
 These figures are **local-lab evidence, not a hardware-independent maximum**. One
 host ran the complete lab: 12 Docker CPUs, 12.65 GiB Docker memory and 16 GB
 physical memory.
+
+**Current measurement (2026-10-25, step 6.0):** target 10 orders/s produced
+**1,177 new writes in 120.058077 seconds (~9.8/s)**, with reads configured at
+200/s. Final rolling write **p95 was 133.783 ms** (mean 38.337 ms), exceeding the
+**<100 ms** requirement; saga p95 was 2.031 s. There were no new errors,
+cancellations or historical recoveries, no backpressure, and the producer backlog
+drained. The observation duration and post-warmup sample requirements passed.
+The later 30/s attempt reached the 100-order outstanding limit with backpressure
+at the first post-warmup sample and stopped early. It observed 987 new orders in
+40.044426s (~24.65/s), with no new errors, cancellations or recoveries. This short
+capture does not qualify sustained capacity or establish a new maximum.
+
+The subsequent 1,000/s read check is **unqualified**. With writes paused and
+backlogs drained, its first eligible 30s window delivered **948.2/s** (28,446
+requests), all OK, p95 **10 ms**, below the unchanged >=950/s minimum. A second
+window logged before pause delivered **955.8/s** (28,676 requests), all OK,
+p95 **9 ms**. It does not waive the failed first window or missing third passing
+window. This is not a server-capacity limit.
+
+At the user's explicit request, all capacity qualification is deferred:
+[step 6.7](PLAN.md#milestone-6-read-profiles-failover-restore-and-operation) owns
+write p95 <100 ms at 10/s; 6.8 owns sustained 30/s writes with reads at 200/s,
+controlled stock, no errors/backpressure, bounded backlogs and write p95 <100 ms;
+6.9 owns three eligible 1,000/s read windows each >=950/s, all OK and p95 <100 ms.
+6.0 is **Done under the explicit reduced local-maintenance scope**: all nine
+final kind-gate cases passed with no failures/errors/skips, and the original
+stopped retained lab was restored. Next is 6.1, still Planned. Full performance
+remains unqualified. The short 30/s capture's rolling 154.613 ms p95 is diagnostic
+only; the latest valid 10/s latency remains 133.783 ms. Write latency covers
+allocation through PUT acceptance; saga completion is separate. See
+[maintenance evidence](CHANGELOG.md#step-60) for failed checks and restoration.
+
+The following are **historical step 4.14–4.15 measurements**, not qualification
+of the current maintenance selections.
 
 | Operation | Highest verified sustained rate | Latency | Per shard |
 |---|---|---|---|

@@ -17,21 +17,23 @@ recovery of that module.
 
 ## Java and Maven
 
-Set `JAVA_HOME` to a JDK **25 or newer**. The SDKMAN `25-open` installation
-works; on this machine it reports `25+36-3489`. For example:
+Set `JAVA_HOME` to a maintained JDK **25 or newer patch**. Step 6.0 qualifies
+Temurin **25.0.5+8**; the old `25-open` installation is the original GA build.
+For the maintained installation on this machine:
 
 ```bash
-export JAVA_HOME="$HOME/.sdkman/candidates/java/25-open"
+export JAVA_HOME="$HOME/.sdkman/candidates/java/25.0.5-tem"
+export PATH="$JAVA_HOME/bin:$PATH"
 ```
 
-The lock records an official macOS arm64 OpenJDK 25 archive and its SHA-256 as a
-reference download. The build has no vendor or exact-patch restriction. Use the
+The lock records the official macOS ARM64 archive, checksum and signature
+verification. This example is not a vendor or exact-patch build restriction. Use the
 same JDK's `bin/java` to launch the packaged applications.
 
 Application and Flyway containers use the pinned Canonical OpenJDK 25 JRE on
 Ubuntu 26.04. The [migration runbook](database/RUNBOOK.md#database-schemas-and-migrations)
 describes the Flyway image. The container runtime does not change the local
-`25-open` installation or the JDK that `JAVA_HOME` selects.
+host installations or the JDK that `JAVA_HOME` selects.
 
 Maven comes from the command line: use the `mvn` on your `PATH`. ShardShop keeps
 Java **25** as its minimum and requires Maven **3.9.16** or newer, matching the
@@ -43,12 +45,19 @@ builds it. These rules are inherited only by ShardShop's children.
 
 ## Build and run
 
-All six applications use **Quarkus 3.40.1** in JVM mode on Java 25. Maven module
+All six applications use **Quarkus 3.40.1.1** in JVM mode on Java 25. Maven module
 tests need no Docker or Kubernetes; chart rendering and release
 orchestration tests require `helm` and `helmfile` on `PATH`. Product and order
 production starts require the routing snapshot and a live generator ID, which the
 JVM reserves through the Kubernetes API at each start; tests use a fixed test ID or
 a k3s API server.
+
+The verification module also requires `node` on `PATH`: its ordinary Maven
+`test`/`verify` phases run product, order and workload-control JavaScript suites.
+Missing Node, a timeout or a failing script fails Maven. A product- or order-only
+build does not include these checks; select `shardshop-testing` as well when
+changing browser assets. See [Node qualification](VERSIONS.md#nodejs-browser-test-tool)
+and the [browser test command](shardshop-testing/RUNBOOK.md#javascript-page-checks).
 
 | Maven module | Quarkus application class |
 |---|---|
@@ -104,9 +113,10 @@ failures and a valid external snapshot.
 
 ## Dependency and test validation
 
-The scoped Quarkus **3.40.1 platform BOM** manages application/test dependencies.
+The scoped Quarkus **3.40.1.1 platform BOM** manages application/test dependencies.
 The local parent aligns inherited JUnit **6.1.3** and Mockito **5.21.0** with that
-platform, overrides Netty to **4.1.139.Final**, and pins all 17 build/report
+platform, overrides Netty to **4.1.139.Final**, Jackson to **2.21.8** and pgJDBC
+to **42.7.14**, and pins all 17 build/report
 plugins. Plugin security overrides are confined to their own classpaths; the
 official Quarkus plugin's three XML-library exceptions are recorded in
 [the version policy](VERSIONS.md#quarkus-plugin-xml-libraries). Comments in the

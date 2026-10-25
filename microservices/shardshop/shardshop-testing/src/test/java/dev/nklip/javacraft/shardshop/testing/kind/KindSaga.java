@@ -297,7 +297,7 @@ public final class KindSaga {
 
         Tunnel(KindLab lab, String resource, int remote) throws IOException, InterruptedException {
             try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) { port = socket.getLocalPort(); }
-            process = new ProcessBuilder("kubectl", "--context", "kind-" + lab.clusterName(), "-n", "shardshop", "port-forward",
+            process = lab.processBuilder("kubectl", "--context", "kind-" + lab.clusterName(), "-n", "shardshop", "port-forward",
                     "--address=127.0.0.1", resource, port + ":" + remote).redirectOutput(ProcessBuilder.Redirect.DISCARD)
                     .redirectError(ProcessBuilder.Redirect.DISCARD).start();
             try {

@@ -88,7 +88,7 @@ and fresh allocator initialization; `up.sh` owns current application builds,
 Maven/Scout, migration and application image delivery. Both may resume retained
 nodes and share snapshot, lock, rendering, verifier and readiness functions in
 `scripts/lib/lifecycle.sh`. This sourced helper is not another entry point.
-`down.sh` and `cluster-destroy.sh` use it only for the lock and the signal traps. Skaffold owns image
+`down.sh` and `cluster-destroy.sh` use it for target selection, the lock and the signal traps. Skaffold owns image
 build configuration. Helmfile owns release dependencies and phase hooks; Helm
 owns declarative resources and migration/seeder hook Jobs. Kubernetes and
 CloudNativePG own reconciliation. Namespace, DNS probes and immutable allocator
@@ -378,6 +378,86 @@ host mounts. Destruction preserves repository
 source/configuration, Docker Desktop, unrelated containers, shared images/build
 caches and the shared kind network. Run `cluster-create.sh` and then `up.sh` to create a fresh lab;
 previous entity IDs and allocator history cannot be recovered by restarting it.
+
+## Disposable test clusters
+
+Ordinary calls retain the fixed `shardshop` cluster, `kind-shardshop` context and
+normal kubeconfig selection. An orchestration process can opt the same entry
+points into an owned test lab with both environment variables:
+
+| Variable | Contract |
+|---|---|
+| `SHARDSHOP_TEST_CLUSTER` | Unique `shardshop-test-` name; lowercase DNS-label suffix, ending in an alphanumeric character, at most 63 characters overall |
+| `SHARDSHOP_TEST_KUBECONFIG` | One absolute path in an existing mode-700 directory outside `~/.kube`; absent or a regular mode-600 file, with no symlink, colon or line break |
+
+The helper validates both settings before any CLI or lifecycle lock, creates an
+absent kubeconfig with mode 600 in a scoped subshell, and overrides inherited
+`KUBECONFIG` with that single file. It preserves the caller's build umask. The invocation's
+kind configuration uses the selected name; kind creation/export/deletion, image
+loading, kubectl, Helmfile/Helm hooks, Maven gates and Java HTTP tunnels all select
+the same lab. Namespace, release names and resources inside it remain `shardshop`.
+Keep both variables for every call, including stop and destruction. Supplying only
+one, a retained cluster name or an unsafe path fails before touching a cluster.
+
+The test orchestration process owns cleanup. Check that its random name is absent,
+then register cleanup **before creation**, since a failed `kind create` can already
+have created nodes. Record the retained lab's prior state and stop it before
+creating a disposable four-node lab; restore that state after owned cleanup.
+Stopped retained volumes still consume disk space. Step 6.0 exhausted the former
+59 GiB Docker filesystem during a database image rollout; its rehearsal retry used
+an 80 GiB configured disk and required at least 20 GiB free before creation. Budget
+for both sets of volumes, old/new images and build cache, and recheck free space
+before upgrades. Increasing capacity preserves data; shrinking Docker's disk can
+delete it. See [Docker's disk settings](https://docs.docker.com/desktop/troubleshoot-and-support/faqs/macfaqs/).
+
+For example, run this subshell from the repository root after satisfying those
+capacity/state preconditions and the normal lifecycle prerequisites:
+
+```bash
+(
+    set -euo pipefail
+    test_state=$(mktemp -d)
+    export SHARDSHOP_TEST_CLUSTER="shardshop-test-$(openssl rand -hex 8)"
+    export SHARDSHOP_TEST_KUBECONFIG="$test_state/config"
+    export KUBECONFIG="$SHARDSHOP_TEST_KUBECONFIG" KIND_EXPERIMENTAL_PROVIDER=docker
+    if [[ -n "$(kind get nodes --name "$SHARDSHOP_TEST_CLUSTER")" ]]; then
+        rmdir "$test_state"
+        echo 'Test cluster name already exists; no ownership was acquired.' >&2
+        exit 1
+    fi
+    cleanup_owned_lab() {
+        status=$?
+        trap - EXIT
+        if bash microservices/shardshop/scripts/cluster-destroy.sh; then
+            rm -rf -- "$test_state"
+        else
+            echo "Test cleanup failed; keep $test_state and retry destruction with the same variables." >&2
+            exit 1
+        fi
+        exit "$status"
+    }
+    trap cleanup_owned_lab EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    bash microservices/shardshop/scripts/cluster-create.sh
+    bash microservices/shardshop/scripts/up.sh
+    # Run the scoped qualification against this lab here.
+)
+```
+
+The scripts do not automatically destroy a failed lab; ordinary retained-data
+recovery is unchanged. Cleanup covers success, command failure and INT/TERM;
+SIGKILL, host failure or a failed Docker deletion requires explicit cleanup with
+the saved name and kubeconfig. The shared lifecycle lock still serializes calls.
+These labs share Docker images, build caches, Maven outputs and host page ports;
+cluster isolation does not make concurrent builds or page sessions independent.
+
+Standalone Maven observers accept `-Dshardshop.kind.cluster` and
+`-Dshardshop.kind.kubeconfig` (or the two test environment variables), together
+with the normal invocation snapshot. Its `kind.json` must contain the selected
+name. Reuse the lifecycle's snapshot inputs and change the copied `kind.yaml`
+name before rendering when preparing an independent snapshot. The private
+kubeconfig requirement also applies to observer subprocesses and tunnels.
 
 ## Recover retained data or failed startup
 

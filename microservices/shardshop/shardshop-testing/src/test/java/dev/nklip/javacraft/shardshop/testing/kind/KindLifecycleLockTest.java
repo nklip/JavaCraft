@@ -169,6 +169,9 @@ class KindLifecycleLockTest {
                 .directory(temporary.toFile()).redirectErrorStream(true).redirectOutput(output.toFile());
         builder.environment().putAll(Map.of("PATH", temporary.resolve("bin") + ":/usr/bin:/bin",
                 "TMPDIR", temporary.resolve("tmp").toString(), "FIXTURE", temporary.toString()));
+        for (String name : List.of("SHARDSHOP_TEST_CLUSTER", "SHARDSHOP_TEST_KUBECONFIG", "SHARDSHOP_CLUSTER_NAME", "SHARDSHOP_CONTEXT")) {
+            builder.environment().remove(name);
+        }
         Process process = builder.start();
         process.getOutputStream().close();
         return new Running(process, output);

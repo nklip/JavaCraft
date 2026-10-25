@@ -7,9 +7,9 @@ set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib/lifecycle.sh"
 lifecycle_init
 require_tools docker kind
-echo 'Permanently deleting the shardshop cluster, including databases, volumes, Secrets and allocator history.'
+echo "Permanently deleting the $cluster_name cluster, including databases, volumes, Secrets and allocator history."
 # kind removes the node containers with docker rm -f -v, which also removes their anonymous
-# /var volumes. Then kind removes its kind-shardshop entries from the kubeconfig. kind returns
+# /var volumes. Then kind removes the selected context entries from the kubeconfig. kind returns
 # an error if one of these steps fails, and it ends with success if the cluster does not exist.
 kind delete cluster --name "$cluster_name"
-echo 'Destroyed the shardshop cluster, its attached volumes and kubeconfig entries.'
+echo "Destroyed the $cluster_name cluster, its attached volumes and kubeconfig entries."

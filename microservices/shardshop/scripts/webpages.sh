@@ -4,7 +4,7 @@ set -euo pipefail
 
 [[ $# == 0 ]] || { echo 'Usage: webpages.sh' >&2; exit 1; }
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib/lifecycle.sh"
-context=kind-shardshop
+lifecycle_target
 require_tools kubectl lsof
 page_access_clear_ports
 page_access

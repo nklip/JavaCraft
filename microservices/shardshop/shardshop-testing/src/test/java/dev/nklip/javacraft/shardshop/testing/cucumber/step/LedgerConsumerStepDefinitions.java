@@ -143,9 +143,10 @@ public final class LedgerConsumerStepDefinitions {
         ObjectNode command = command(900, "USD");
         // This session method runs only inside the command's still-open write transaction.
         // A generic DatabasePhases breakpoint could stop a metrics or startup query instead.
-        var crash = CrashBreakpoint.afterSourceLine("shardshop-ledger",
+        var crash = CrashBreakpoint.atSourceAnchor("shardshop-ledger",
                 "dev.nklip.javacraft.shardshop.ledger.persistence.JdbcLedgerStore$JdbcSession",
-                "insertDecision", 450, 449, "});");
+                "insertDecision", "JdbcLedgerStore.insertDecision(connection, command, decision);",
+                "return null;", "});", "}");
         try (crash) {
             runtime.crashAt(crash);
             runtime.start(database, broker, "USD");
@@ -171,9 +172,9 @@ public final class LedgerConsumerStepDefinitions {
     @Then("a killed ledger consumer after database commit but before acknowledgement reuses its decision")
     public void crashBeforeAck() throws Exception {
         ObjectNode command = command(901, "USD");
-        var crash = CrashBreakpoint.atSourceLine("shardshop-core/common",
-                "dev.nklip.javacraft.shardshop.common.amqp.QueueConsumer", "settle", 154,
-                "channel.basicAck(deliveryTag, false)");
+        var crash = CrashBreakpoint.atSourceAnchor("shardshop-core/common",
+                "dev.nklip.javacraft.shardshop.common.amqp.QueueConsumer", "settle",
+                "channel.basicAck(deliveryTag, false);");
         try (crash) {
             runtime.crashAt(crash);
             runtime.start(database, broker, "USD");
@@ -195,11 +196,11 @@ public final class LedgerConsumerStepDefinitions {
     @Then("a killed ledger consumer after acknowledgement does not reprocess its command")
     public void crashAfterAck() throws Exception {
         ObjectNode command = command(902, "USD");
-        // The bytecode return on line 157 follows basicAck on line 154. A one-shot
-        // breakpoint avoids class-wide method-exit suspension during startup.
-        var crash = CrashBreakpoint.afterSourceLine("shardshop-core/common",
-                "dev.nklip.javacraft.shardshop.common.amqp.QueueConsumer", "settle", 157, 154,
-                "channel.basicAck(deliveryTag, false)");
+        // The method return follows the acknowledgement and its enclosing blocks.
+        // A one-shot breakpoint avoids class-wide method-exit suspension during startup.
+        var crash = CrashBreakpoint.atSourceAnchor("shardshop-core/common",
+                "dev.nklip.javacraft.shardshop.common.amqp.QueueConsumer", "settle",
+                "channel.basicAck(deliveryTag, false);", "}", "}", "}");
         try (crash) {
             runtime.crashAt(crash);
             runtime.start(database, broker, "USD");

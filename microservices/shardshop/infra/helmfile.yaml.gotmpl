@@ -22,14 +22,15 @@
     - -Dit.test=KindIT
     - {{ printf "-Dshardshop.kind.tags=%s" .tags | quote }}
     - {{ printf "-Dshardshop.kind.snapshot=%s" (requiredEnv "SHARDSHOP_SNAPSHOT") | quote }}
-    - -Dshardshop.kind.cluster=shardshop
+    - {{ printf "-Dshardshop.kind.cluster=%s" (env "SHARDSHOP_CLUSTER_NAME" | default "shardshop") | quote }}
+    - {{ printf "-Dshardshop.kind.kubeconfig=%s" (env "SHARDSHOP_TEST_KUBECONFIG") | quote }}
     - {{ printf "-Dshardshop.kind.fresh=%s" (env "SHARDSHOP_FRESH" | default "false") | quote }}
 {{- end }}
 
 # Use sync: Flyway validates actual database history and idempotent seeding reruns.
 # No automatic rollback/uninstall: a failed application release cannot undo SQL.
 helmDefaults:
-  kubeContext: kind-shardshop
+  kubeContext: {{ env "SHARDSHOP_CONTEXT" | default "kind-shardshop" | quote }}
   wait: true
   timeout: 600
   historyMax: 10
@@ -58,7 +59,7 @@ releases:
     hooks:
       - events: [presync]
         command: kubectl
-        args: [--context, kind-shardshop, wait, --for=condition=Established, crd, --all, --timeout=180s]
+        args: [--context, {{ env "SHARDSHOP_CONTEXT" | default "kind-shardshop" | quote }}, wait, --for=condition=Established, crd, --all, --timeout=180s]
 
   - name: shardshop-migrations
     namespace: shardshop

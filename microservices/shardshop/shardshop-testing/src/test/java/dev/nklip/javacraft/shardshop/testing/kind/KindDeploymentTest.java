@@ -33,6 +33,85 @@ final class KindDeploymentTest {
     }
 
     @Test
+    void primaryReadGateRejectsReplicaConfigurationAndPodOverrides() throws IOException {
+        JsonNode base = json("{\"containers\":[{\"name\":\"product\"}]}");
+        KindDeployment.primaryReads(base, ""); // The application default is primary.
+        KindDeployment.primaryReads(base, "shardshop.catalog.read-profile=primary\n");
+        for (String properties : List.of("shardshop.catalog.read-profile=replica",
+                "%prod.shardshop.catalog.read-profile=replica", "shardshop.catalog.read-profile=${READ_PROFILE:primary}"))
+            assertThrows(IOException.class, () -> KindDeployment.primaryReads(base, properties), properties);
+        for (String env : List.of(
+                "{\"name\":\"SHARDSHOP_CATALOG_READ_PROFILE\",\"value\":\"replica\"}",
+                "{\"name\":\"SHARDSHOP_CATALOG_READ_PROFILE\",\"valueFrom\":{\"configMapKeyRef\":{\"name\":\"drill\",\"key\":\"profile\"}}}",
+                "{\"name\":\"JAVA_TOOL_OPTIONS\",\"value\":\"-Xmx128m -Dshardshop.catalog.read-profile=replica\"}")) {
+            ObjectNode overridden = (ObjectNode) base.deepCopy();
+            ((ObjectNode) overridden.path("containers").get(0)).putArray("env").add(json(env));
+            assertThrows(IOException.class, () -> KindDeployment.primaryReads(overridden, ""), env);
+        }
+        ObjectNode args = (ObjectNode) base.deepCopy();
+        ((ObjectNode) args.path("containers").get(0)).putArray("args").add("-Dshardshop.catalog.read-profile=replica");
+        assertThrows(IOException.class, () -> KindDeployment.primaryReads(args, ""));
+        JsonNode unrelated = json("{\"containers\":[{\"name\":\"product\",\"env\":[{\"name\":\"JAVA_TOOL_OPTIONS\",\"value\":\"-Xmx128m\"}]}]}");
+        KindDeployment.primaryReads(unrelated, "");
+    }
+
+    @Test
+    void deploymentGateChecksTheProductTemplateBeforeTrustingReadyReplicaCounts() throws Exception {
+        KindLab lab = mock(KindLab.class);
+        when(lab.kubectlAttempt("get", "configmap", "shardshop-product-config", "-o", "json"))
+                .thenReturn(new KindLab.CommandResult(0, "{\"data\":{\"application.properties\":\"shardshop.catalog.max-pool-size=4\"}}", ""));
+        when(lab.kubectlAttempt("get", "configmap", "shardshop-routing", "-o", "json"))
+                .thenReturn(new KindLab.CommandResult(0, "{\"data\":{\"application.properties\":\"shardshop.routing.version=2\"}}", ""));
+        String deployment = """
+                {"metadata":{"generation":1},"spec":{"replicas":2,"template":{"spec":{"containers":[
+                {"name":"product","env":[{"name":"SHARDSHOP_CATALOG_READ_PROFILE","value":"replica"}]}]}}},
+                "status":{"readyReplicas":2,"updatedReplicas":2,"observedGeneration":1}}
+                """;
+        when(lab.kubectlAttempt("get", "deployment", "shardshop-product", "-o", "json"))
+                .thenReturn(new KindLab.CommandResult(0, deployment, ""));
+        IOException failure = assertThrows(IOException.class, () -> new KindDeployment(lab).deployed());
+        assertTrue(failure.getMessage().contains("primary reads"));
+        // A clean pod template must not hide a replica setting in the known routing source.
+        when(lab.kubectlAttempt("get", "deployment", "shardshop-product", "-o", "json"))
+                .thenReturn(new KindLab.CommandResult(0, deployment.replace("replica\"", "primary\""), ""));
+        when(lab.kubectlAttempt("get", "configmap", "shardshop-routing", "-o", "json"))
+                .thenReturn(new KindLab.CommandResult(0,
+                        "{\"data\":{\"application.properties\":\"shardshop.catalog.read-profile=replica\"}}", ""));
+        IOException routingFailure = assertThrows(IOException.class, () -> new KindDeployment(lab).deployed());
+        assertTrue(routingFailure.getMessage().contains("primary reads"));
+    }
+
+    @Test
+    void externalConfigurationCannotHideAReplicaOverride() {
+        JsonNode base = json("{\"containers\":[{\"name\":\"product\"}]}");
+        assertThrows(IOException.class, () -> KindDeployment.primaryReads(base, "quarkus.config.locations=file:/drill.properties"));
+        JsonNode indirect = json("{\"containers\":[{\"name\":\"product\",\"envFrom\":[{\"configMapRef\":{\"name\":\"drill\"}}]}]}");
+        assertThrows(IOException.class, () -> KindDeployment.primaryReads(indirect, ""));
+    }
+
+    @Test
+    void routingSourceOverridesCannotHideTheReadProfile() throws IOException {
+        JsonNode base = json("{\"containers\":[{\"name\":\"product\"}]}");
+        KindDeployment.primaryReads(base, "shardshop.catalog.max-pool-size=4", "shardshop.routing.version=2");
+        assertThrows(IOException.class, () -> KindDeployment.primaryReads(base, "shardshop.catalog.read-profile=primary",
+                "shardshop.catalog.read-profile=replica"));
+        assertThrows(IOException.class, () -> KindDeployment.primaryReads(base, "shardshop.routing.config=file:/drill.properties"));
+        JsonNode changed = json("{\"containers\":[{\"name\":\"product\",\"env\":[{\"name\":\"SHARDSHOP_ROUTING_CONFIG\",\"value\":\"file:/drill.properties\"}]}]}");
+        assertThrows(IOException.class, () -> KindDeployment.primaryReads(changed, ""));
+        JsonNode jvm = json("{\"containers\":[{\"name\":\"product\",\"args\":[\"-Dshardshop.routing.config=file:/drill.properties\"]}]}");
+        assertThrows(IOException.class, () -> KindDeployment.primaryReads(jvm, ""));
+    }
+
+    @Test
+    void missingOrEmptyMountedConfigurationCannotStandInForTheApplicationDefault() throws IOException {
+        for (String document : List.of("{}", "{\"data\":{\"application.properties\":null}}",
+                "{\"data\":{\"application.properties\":\"\"}}", "{\"data\":{\"application.properties\":123}}"))
+            assertThrows(IOException.class, () -> KindDeployment.productConfiguration(json(document), "shardshop-routing"));
+        assertEquals("shardshop.routing.version=2", KindDeployment.productConfiguration(
+                json("{\"data\":{\"application.properties\":\"shardshop.routing.version=2\"}}"), "shardshop-routing"));
+    }
+
+    @Test
     void catalogCountsAcceptOnlyTheDatasetsAndTheGateFixtures() throws IOException {
         KindDeployment.validateCatalogCounts(Map.of("shard-a", "50 50 0 0 0 0 0 0 100",
                 "shard-b", "50 100 0 0 0 0 0 0 150", "shard-c", "51 51 0 0 0 0 0 0 102"));

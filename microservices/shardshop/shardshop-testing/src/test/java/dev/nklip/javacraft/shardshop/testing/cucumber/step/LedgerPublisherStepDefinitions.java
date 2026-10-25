@@ -100,9 +100,10 @@ public final class LedgerPublisherStepDefinitions {
         publish(command);
         await("committed pending result", () -> pending(command));
         runtime.stop();
-        var crash = CrashBreakpoint.atSourceLine("shardshop-ledger",
-                "dev.nklip.javacraft.shardshop.ledger.result.LedgerResultRelay", "run", 67,
-                "if (closed.get())");
+        var crash = CrashBreakpoint.atSourceAnchor("shardshop-ledger",
+                "dev.nklip.javacraft.shardshop.ledger.result.LedgerResultRelay", "run",
+                "active.publish(Long.toString(result.messageId()),",
+                "result.envelope().getBytes(StandardCharsets.UTF_8));", "if (closed.get()) {");
         try (crash) {
             runtime.crashAt(crash);
             runtime.startWithPublisher(database, broker, "USD");

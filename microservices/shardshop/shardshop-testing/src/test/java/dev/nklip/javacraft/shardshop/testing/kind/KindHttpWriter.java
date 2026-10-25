@@ -1,6 +1,10 @@
 package dev.nklip.javacraft.shardshop.testing.kind;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.core.JsonParser;
 import dev.nklip.javacraft.shardshop.testing.cucumber.config.Json;
 
 import java.io.IOException;
@@ -13,7 +17,10 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -23,6 +30,14 @@ import static dev.nklip.javacraft.shardshop.testing.kind.KindDeployment.require;
 
 /** Bounded scoped traffic through the Service proxy, which can select new pods during a rollout. */
 final class KindHttpWriter implements AutoCloseable {
+    private static final int DIAGNOSTIC_BODY_LIMIT = 4096;
+    private static final ObjectMapper DIAGNOSTIC_JSON = JsonMapper.builder()
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION).build();
+    private static final Set<String> APPLICATION_CODES = Set.of("ORDER_STORE_UNAVAILABLE",
+            "ID_GENERATION_UNAVAILABLE", "CATALOG_UNAVAILABLE");
+    private static final Set<String> KUBERNETES_REASONS = Set.of("ServiceUnavailable", "Timeout", "ServerTimeout",
+            "InternalError", "NotFound", "Forbidden", "Unauthorized", "BadRequest", "TooManyRequests");
     private final Process proxy;
     private final HttpClient client;
     private final URI root;
@@ -41,7 +56,7 @@ final class KindHttpWriter implements AutoCloseable {
         try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             port = socket.getLocalPort();
         }
-        proxy = new ProcessBuilder("kubectl", "--context", "kind-" + lab.clusterName(), "proxy",
+        proxy = lab.processBuilder("kubectl", "--context", "kind-" + lab.clusterName(), "proxy",
                 "--address=127.0.0.1", "--port=" + port).redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .redirectError(ProcessBuilder.Redirect.DISCARD).start();
         try {
@@ -67,9 +82,9 @@ final class KindHttpWriter implements AutoCloseable {
             // At most one order per second for five minutes; finite stock use even if rollout never finishes.
             for (int ordinal = 0; ordinal < 300 && stopping.getCount() != 0; ordinal++) {
                 JsonNode allocation = call("POST", "order-allocations",
-                        Json.newObject().put("runName", run).put("requestOrdinal", Integer.toString(ordinal)), 201);
+                        Json.newObject().put("runName", run).put("requestOrdinal", Integer.toString(ordinal)), 201, ordinal);
                 String id = KindSaga.id(allocation.path("orderId").asText());
-                call("PUT", "orders/" + id, request, 202);
+                call("PUT", "orders/" + id, request, 202, ordinal);
                 accepted.add(id);
                 if (stopping.await(1, TimeUnit.SECONDS)) return;
             }
@@ -79,14 +94,47 @@ final class KindHttpWriter implements AutoCloseable {
         }
     }
 
-    private JsonNode call(String method, String path, JsonNode body, int expected) throws IOException, InterruptedException {
+    private JsonNode call(String method, String path, JsonNode body, int expected, int ordinal) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder(root.resolve(path)).timeout(Duration.ofSeconds(10))
                 .header("Content-Type", "application/json")
                 .method(method, HttpRequest.BodyPublishers.ofByteArray(Json.bytes(body))).build();
+        long started = System.nanoTime();
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+        String diagnostic = response.statusCode() == expected ? "" : "; observedAt=" + Instant.now() + "; ordinal=" + ordinal
+                + "; elapsedMs=" + elapsedMillis + "; "
+                + failureDetails(response.headers().firstValue("Content-Type").orElse(""), response.body());
         require(response.statusCode() == expected, "Rollout writer " + method + " expected " + expected
-                + "; received " + response.statusCode());
+                + "; received " + response.statusCode() + diagnostic);
         return KindLab.parse(response.body());
+    }
+
+    /** Only fixed diagnostic labels escape this method; upstream messages and payloads remain private. */
+    static String failureDetails(String contentType, String body) {
+        String normalized = "other";
+        if (contentType == null || contentType.isBlank()) normalized = "missing";
+        else if (contentType.length() <= 256) {
+            String mediaType = contentType.split(";", 2)[0].strip().toLowerCase(Locale.ROOT);
+            if (Set.of("application/json", "application/problem+json", "text/plain", "text/html",
+                    "application/octet-stream").contains(mediaType)) normalized = mediaType;
+        }
+        String classification = "origin=unknown; detail=redacted";
+        if ((normalized.equals("application/json") || normalized.equals("application/problem+json"))
+                && body != null && body.length() <= DIAGNOSTIC_BODY_LIMIT) {
+            try {
+                JsonNode error = DIAGNOSTIC_JSON.readTree(body);
+                if (error != null && error.isObject()) {
+                    String code = error.path("code").asText();
+                    String reason = error.path("reason").asText();
+                    if (error.path("kind").asText().equals("Status") && KUBERNETES_REASONS.contains(reason))
+                        classification = "origin=kubernetes; kind=Status; reason=" + reason;
+                    else if (APPLICATION_CODES.contains(code)) classification = "origin=application; code=" + code;
+                }
+            } catch (IOException ignored) {
+                // Parser errors can quote private input. Never retain or propagate them.
+            }
+        }
+        return "contentType=" + normalized + "; " + classification;
     }
 
     int count() throws IOException {

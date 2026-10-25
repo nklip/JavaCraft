@@ -31,7 +31,13 @@ class HelmfileGateTest {
         Files.createDirectories(temporary.resolve("bin"));
         executable("helm", """
                 #!/bin/sh
-                if [ "$1" = --kube-context ]; then shift 2; fi
+                if [ -n "${SHARDSHOP_TEST_KUBECONFIG:-}" ]; then
+                  [ "$KUBECONFIG" = "$SHARDSHOP_TEST_KUBECONFIG" ] || exit 89
+                fi
+                if [ "$1" = --kube-context ]; then
+                  [ "$2" = "${SHARDSHOP_CONTEXT:-kind-shardshop}" ] || exit 88
+                  shift 2
+                fi
                 case "$1" in
                   version) printf 'v4.3.0\n';;
                   list) printf '[]\n';;
@@ -50,6 +56,13 @@ class HelmfileGateTest {
                 """);
         executable("mvn", """
                 #!/bin/sh
+                cluster=false
+                config=false
+                for argument in "$@"; do
+                  [ "$argument" != "-Dshardshop.kind.cluster=${SHARDSHOP_CLUSTER_NAME:-shardshop}" ] || cluster=true
+                  [ "$argument" != "-Dshardshop.kind.kubeconfig=${SHARDSHOP_TEST_KUBECONFIG:-}" ] || config=true
+                done
+                [ "$cluster" = true ] && [ "$config" = true ] || exit 87
                 for argument in "$@"; do
                   case "$argument" in
                     -Dshardshop.kind.tags=*)
@@ -64,7 +77,7 @@ class HelmfileGateTest {
         executable("kubectl", """
                 #!/bin/sh
                 case "$*" in
-                  '--context kind-shardshop wait --for=condition=Established crd --all --timeout=180s') exit 0;;
+                  "--context ${SHARDSHOP_CONTEXT:-kind-shardshop} wait --for=condition=Established crd --all --timeout=180s") exit 0;;
                   *) printf 'Unexpected kubectl command: %s\n' "$*" >&2; exit 99;;
                 esac
                 """);
@@ -81,6 +94,13 @@ class HelmfileGateTest {
                 "sync-start shardshop-migrations", "sync-complete shardshop-migrations",
                 "verify kind-publications | kind-migration-reservation | kind-drills-idle",
                 "sync-start shardshop-application", "sync-complete shardshop-application", FINAL_GATE), result.events());
+    }
+
+    @Test
+    void ownedLabUsesItsContextAndPrivateKubeconfigForHelmHooksAndMavenGates() throws Exception {
+        Sync result = sync("", 0, 0, true);
+        assertEquals(0, result.exit(), result.output());
+        assertEquals(FINAL_GATE, result.events().getLast());
     }
 
     @Test
@@ -125,6 +145,10 @@ class HelmfileGateTest {
     }
 
     private Sync sync(String failedRelease, int failedGate, int failedDrillGate) throws Exception {
+        return sync(failedRelease, failedGate, failedDrillGate, false);
+    }
+
+    private Sync sync(String failedRelease, int failedGate, int failedDrillGate, boolean owned) throws Exception {
         Path output = temporary.resolve("output.log");
         Path events = temporary.resolve("events.log");
         ProcessBuilder builder = new ProcessBuilder(helmfile().toString(), "--file",
@@ -136,6 +160,14 @@ class HelmfileGateTest {
                 "SHARDSHOP_FRESH", "false", "FIXTURE_LOG", events.toString(),
                 "FAIL_RELEASE", failedRelease, "FAIL_GATE", Integer.toString(failedGate),
                 "FAIL_DRILL_GATE", Integer.toString(failedDrillGate)));
+        for (String name : List.of("SHARDSHOP_TEST_CLUSTER", "SHARDSHOP_TEST_KUBECONFIG", "SHARDSHOP_CLUSTER_NAME", "SHARDSHOP_CONTEXT")) {
+            builder.environment().remove(name);
+        }
+        if (owned) {
+            builder.environment().putAll(java.util.Map.of("SHARDSHOP_CLUSTER_NAME", "shardshop-test-helmfile",
+                    "SHARDSHOP_CONTEXT", "kind-shardshop-test-helmfile", "SHARDSHOP_TEST_KUBECONFIG",
+                    temporary.resolve("config").toString(), "KUBECONFIG", temporary.resolve("config").toString()));
+        }
         Process process = builder.start();
         process.getOutputStream().close();
         try {

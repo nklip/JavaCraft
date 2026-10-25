@@ -85,8 +85,26 @@ The four maintained entry points are `cluster-create.sh`, `up.sh`, `down.sh` and
 chart and values. `cluster-create.sh` and `up.sh` source `scripts/lib/lifecycle.sh`
 for locks, traps, snapshots, rendering, verifiers, readiness and retained-node
 resumption; this helper is not an entry point. `down.sh` and `cluster-destroy.sh`
-source it only for the lock and traps, then call `docker stop` and
+source it for target selection, the lock and traps, then call `docker stop` and
 `kind delete cluster`. After any node start, the lifecycle restarts kindnet.
+
+### Owned qualification labs
+
+The lifecycle helper also provides an opt-in target for disposable test
+orchestration: paired `SHARDSHOP_TEST_CLUSTER` and `SHARDSHOP_TEST_KUBECONFIG`.
+Only the `shardshop-test-` DNS-label namespace is accepted, with a mandatory
+absolute single kubeconfig in a private directory outside the user's default
+kubeconfig directory. Validation precedes every lifecycle mutation, including
+deletion. The immutable invocation copy changes only the kind cluster name;
+application namespace, releases and manifests retain their existing contracts.
+The selected context and kubeconfig propagate through native CLIs, Helmfile
+release hooks, Maven observers and their local HTTP proxies.
+
+The invoking test owner establishes a fresh unique name and registers cleanup
+before creation. Production lifecycle traps still own only transient invocation
+files/probes and the lock; they never turn a failed retained bootstrap into an
+automatic reset. See the [test-lab procedure](RUNBOOK.md#disposable-test-clusters)
+for the environment contract, cleanup boundary and shared host resources.
 
 ### Accepted changes
 
@@ -122,9 +140,10 @@ annotation remains the baseline only for resources outside Helm ownership.
 4. It also provisions a retained single-broker RabbitMQ StatefulSet, public
    topology ConfigMap and runtime-generated credential Secret. Broker configuration
    imports public topology and private users through a clean temporary directory,
-   excluding Kubernetes projection metadata. The broker runs with an arbitrary
-   non-root UID and a read-only root filesystem; its PVC is writable through
-   fsGroup.
+   excluding Kubernetes projection metadata. The broker runs with configured
+   non-root UID/GID 10001 and a read-only root filesystem; its PVC is writable
+   through fsGroup 10001. This meets Kubernetes Restricted; admission-assigned
+   OpenShift UID/group ranges and retained-volume permissions remain unqualified.
 5. The infrastructure gate verifies the broker's persistent storage, readiness,
    stream feature flag, exact quorum queue arguments, bindings and effective
    delivery policies. Creation verifies database and broker readiness and returns

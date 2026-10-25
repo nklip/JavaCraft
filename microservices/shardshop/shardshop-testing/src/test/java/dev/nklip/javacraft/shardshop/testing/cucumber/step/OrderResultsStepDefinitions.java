@@ -156,9 +156,9 @@ public final class OrderResultsStepDefinitions {
         awaitStatus(id, "PENDING_LEDGER");
         ObjectNode savedCommand = command(id);
         order.stopSaga();
-        var crash = CrashBreakpoint.atSourceLine("shardshop-core/common",
-                "dev.nklip.javacraft.shardshop.common.amqp.QueueConsumer", "settle", 154,
-                "channel.basicAck(deliveryTag, false)");
+        var crash = CrashBreakpoint.atSourceAnchor("shardshop-core/common",
+                "dev.nklip.javacraft.shardshop.common.amqp.QueueConsumer", "settle",
+                "channel.basicAck(deliveryTag, false);");
         try (crash) {
             order.crashSagaAt(crash);
             order.restartSaga();
@@ -194,9 +194,9 @@ public final class OrderResultsStepDefinitions {
         startWorkers(true);
         awaitStatus(id, "PENDING_LEDGER");
         ObjectNode savedCommand = command(id);
-        var crash = CrashBreakpoint.atSourceLine("shardshop-core/common",
-                "dev.nklip.javacraft.shardshop.common.amqp.QueueConsumer", "settle", 154,
-                "channel.basicAck(deliveryTag, false)");
+        var crash = CrashBreakpoint.atSourceAnchor("shardshop-core/common",
+                "dev.nklip.javacraft.shardshop.common.amqp.QueueConsumer", "settle",
+                "channel.basicAck(deliveryTag, false);");
         try (crash) {
             ledger.crashAt(crash);
             startLedger("USD");

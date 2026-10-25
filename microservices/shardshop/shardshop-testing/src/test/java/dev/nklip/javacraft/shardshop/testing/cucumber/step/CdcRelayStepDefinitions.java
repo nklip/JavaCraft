@@ -130,9 +130,9 @@ public final class CdcRelayStepDefinitions {
         long baselineFence = relay.currentWalPosition(shard);
         eventually("baseline is durably checkpointed", () -> relay.offsetLsn(shard) >= baselineFence);
         order.stopSaga();
-        var crash = CrashBreakpoint.atSourceLine("shardshop-order",
-                "dev.nklip.javacraft.shardshop.order.cdc.CdcBatchProcessor", "process", 117,
-                "publisher.publish(messageId, envelope)");
+        var crash = CrashBreakpoint.atSourceAnchor("shardshop-order",
+                "dev.nklip.javacraft.shardshop.order.cdc.CdcBatchProcessor", "process",
+                "publisher.publish(messageId, envelope);");
         try (crash) {
             order.crashSagaAt(crash);
             order.restartSaga();
@@ -157,9 +157,9 @@ public final class CdcRelayStepDefinitions {
         eventually("baseline command and publication mark are durably checkpointed",
                 () -> relay.offsetLsn(shard) >= baselineFence);
         order.stopSaga();
-        var crash = CrashBreakpoint.atSourceLine("shardshop-order",
-                "dev.nklip.javacraft.shardshop.order.cdc.CdcBatchProcessor", "process", 118,
-                "status.markPublished(messageId)");
+        var crash = CrashBreakpoint.atSourceAnchor("shardshop-order",
+                "dev.nklip.javacraft.shardshop.order.cdc.CdcBatchProcessor", "process",
+                "status.markPublished(messageId);");
         try (crash) {
             order.crashSagaAt(crash);
             order.restartSaga();
@@ -185,9 +185,9 @@ public final class CdcRelayStepDefinitions {
         eventually("baseline command and publication mark are durably checkpointed",
                 () -> relay.offsetLsn(shard) >= baselineFence);
         order.stopSaga();
-        var crash = CrashBreakpoint.afterSourceLine("shardshop-order",
-                "dev.nklip.javacraft.shardshop.order.cdc.CdcBatchProcessor", "process", 119, 118,
-                "status.markPublished(messageId)");
+        var crash = CrashBreakpoint.atSourceAnchor("shardshop-order",
+                "dev.nklip.javacraft.shardshop.order.cdc.CdcBatchProcessor", "process",
+                "status.markPublished(messageId);", "}");
         try (crash) {
             order.crashSagaAt(crash);
             order.restartSaga();

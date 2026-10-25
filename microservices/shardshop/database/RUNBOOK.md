@@ -67,7 +67,7 @@ No application is wired to the bootstrap owner. Like the shards, the cluster
 revokes `TEMPORARY` and access to schema `public` from `PUBLIC` when it is created.
 
 The ledger uses ordinary WAL and local durable commits, with no synchronous
-standby requirement or CDC setup; its planned outbox relay polls its own tables.
+standby requirement or CDC setup; its implemented outbox relay polls its own tables.
 It has **no database failover target**: ledger access stops during pod restarts
 or worker outages. Its PVC preserves data across ordinary pod replacement, but
 local-path storage cannot survive loss of its worker or volume and is not a
@@ -339,9 +339,9 @@ Each shard has CNPG Publication `<shard>-order-outbox`, SQL name
 generation to be applied before publishing routing. CDC uses its own login; publication-status and offset
 writes use `order_app`. The precreated `ordering.debezium_offset_storage` follows
 the [Debezium JDBC offset-store column contract](https://debezium.io/documentation/reference/3.7/configuration/storage.html#_offset_table_defaults).
-The future connector must set `offset.storage.jdbc.table.name` to that qualified
-name and disable publication auto-creation; connector/library qualification is
-still part of the CDC milestone.
+The implemented Debezium relay sets `offset.storage.jdbc.table.name` to that
+qualified name and disables publication auto-creation. Step 4.4 qualified the
+connector and step 5.5 its crash recovery; failover qualification remains in 6.2.
 
 ## Ledger schema and replay records
 

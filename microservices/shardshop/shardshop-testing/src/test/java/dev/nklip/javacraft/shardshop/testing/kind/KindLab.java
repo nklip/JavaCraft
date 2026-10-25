@@ -8,7 +8,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,17 +28,27 @@ public final class KindLab {
     private final Path snapshot;
     private final String clusterName;
     private final boolean fresh;
+    private final Path kubeconfig;
 
     public KindLab() {
-        this(snapshotProperty(), System.getProperty("shardshop.kind.cluster", "shardshop"),
-                Boolean.parseBoolean(System.getProperty("shardshop.kind.fresh", "false")));
+        this(snapshotProperty(), System.getProperty("shardshop.kind.cluster",
+                        System.getenv().getOrDefault("SHARDSHOP_TEST_CLUSTER", "shardshop")),
+                Boolean.parseBoolean(System.getProperty("shardshop.kind.fresh", "false")),
+                System.getProperty("shardshop.kind.kubeconfig", System.getenv("SHARDSHOP_TEST_KUBECONFIG")));
     }
 
     KindLab(Path snapshot, String clusterName, boolean fresh) {
+        this(snapshot, clusterName, fresh, null);
+    }
+
+    KindLab(Path snapshot, String clusterName, boolean fresh, String kubeconfig) {
         this.snapshot = snapshot.toAbsolutePath().normalize();
-        if (!clusterName.matches("[a-z0-9][a-z0-9-]*")) {
-            throw new IllegalArgumentException("Invalid kind cluster name");
+        boolean isolated = !"shardshop".equals(clusterName);
+        if (isolated && (clusterName.length() > 63
+                || !clusterName.matches("shardshop-test-[a-z0-9]([a-z0-9-]*[a-z0-9])?"))) {
+            throw new IllegalArgumentException("Test clusters require a shardshop-test- DNS label (maximum 63 characters)");
         }
+        this.kubeconfig = privateKubeconfig(kubeconfig, isolated);
         this.clusterName = clusterName;
         this.fresh = fresh;
         for (String file : List.of("inventory.json", "kind.json", "infrastructure.yaml")) {
@@ -44,6 +56,44 @@ public final class KindLab {
                 throw new IllegalArgumentException("The kind invocation snapshot is missing " + file);
             }
         }
+    }
+
+    private static Path privateKubeconfig(String value, boolean isolated) {
+        if (value == null || value.isBlank()) {
+            if (isolated) throw new IllegalArgumentException("A test cluster requires shardshop.kind.kubeconfig");
+            return null;
+        }
+        if (!isolated) throw new IllegalArgumentException("A private test kubeconfig requires an owned test cluster");
+        Path file = Path.of(value);
+        if (!file.isAbsolute() || file.getParent() == null || file.getFileName() == null || value.contains(":") || value.contains("\n") || value.contains("\r")
+                || Files.isSymbolicLink(file)) {
+            throw new IllegalArgumentException("Test kubeconfig must be one absolute path without symlinks or path lists");
+        }
+        try {
+            Path directory = file.getParent().toRealPath();
+            Path defaultDirectory = Path.of(System.getProperty("user.home"), ".kube").toAbsolutePath().normalize();
+            if (Files.exists(defaultDirectory)) defaultDirectory = defaultDirectory.toRealPath();
+            if (directory.startsWith(defaultDirectory)
+                    || !Files.getPosixFilePermissions(directory).equals(PosixFilePermissions.fromString("rwx------"))) {
+                throw new IllegalArgumentException("Test kubeconfig requires a private mode-700 directory outside ~/.kube");
+            }
+            file = directory.resolve(file.getFileName());
+            if (Files.exists(file, LinkOption.NOFOLLOW_LINKS)
+                    && (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)
+                    || !Files.getPosixFilePermissions(file).equals(PosixFilePermissions.fromString("rw-------")))) {
+                throw new IllegalArgumentException("Existing test kubeconfig must be a regular mode-600 file");
+            }
+            return file;
+        } catch (IOException failure) {
+            throw new IllegalArgumentException("Cannot inspect the private test kubeconfig", failure);
+        }
+    }
+
+    /** All observer processes, including long-lived proxies, inherit the same private target. */
+    ProcessBuilder processBuilder(String... arguments) {
+        ProcessBuilder builder = new ProcessBuilder(arguments);
+        if (kubeconfig != null) builder.environment().put("KUBECONFIG", kubeconfig.toString());
+        return builder;
     }
 
     private static Path snapshotProperty() {
@@ -129,7 +179,7 @@ public final class KindLab {
     public CommandResult attempt(Duration timeout, String... arguments) throws IOException, InterruptedException {
         requirePositive(timeout);
         long deadline = System.nanoTime() + timeout.toNanos();
-        Process process = new ProcessBuilder(arguments).start();
+        Process process = processBuilder(arguments).start();
         process.getOutputStream().close();
         var readers = Executors.newVirtualThreadPerTaskExecutor();
         AtomicReference<IOException> outputFailure = new AtomicReference<>();

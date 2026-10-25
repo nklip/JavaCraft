@@ -1,10 +1,12 @@
 # ShardShop version and support policy
 
-Support information and published artifacts checked on **2026-09-28**. Exact
+Initial support and artifact inventory: **2026-09-28**. The [step 6.0 review](#step-60-maintenance-review--2026-10-25) records the current maintenance work and its limits. Exact
 selections, checksums, image digests, sources, and review deadlines are now in
 [versions.lock.yaml](versions.lock.yaml). Step **0.1 is Done**: kind 1.36.4 is selected under the user-authorized fallback,
 and Canonical OpenJDK 25 JDK/JRE images are pinned and smoke-tested.
-The inventory is complete; deployment readiness still requires later milestones.
+The initial inventory is complete. Local deployment through step 5.5 is qualified;
+milestone 6 failover, restore and final acceptance remain planned. Later dated
+records below supersede the initial artifact-only verification scope.
 Docker Desktop is updated, and the kind node image's advisory findings are
 accepted for the local, loopback-only lab. Recheck upstream information before
 implementation and version changes.
@@ -21,8 +23,9 @@ publication does not establish LTS or ongoing support. The requested Quarkus
 plugin also requires the narrowly scoped XML-library exception described below.
 
 The user-selected Java baseline is **OpenJDK 25** as a minimum, with no vendor or
-exact-patch restriction for local builds; newer JDKs also work. The installed GA
-build `25+36-3489` and JDK 26.0.2 are verified for the local skeletons. Containers use Canonical's maintained OpenJDK 25 stable
+exact-patch restriction for local builds; use a maintained patch. Step 6.0
+qualifies Temurin **25.0.5+8** for the host. Earlier skeleton checks used
+`25+36-3489` and JDK 26.0.2. Containers use Canonical's maintained OpenJDK 25 stable
 tracks on Ubuntu 26.04, currently verified as `25.0.4.1+1-1-26.04.4-Ubuntu`.
 This selection includes Java migration tools: Flyway uses the same Canonical
 JRE, with its Java libraries copied from the official Flyway image; that source
@@ -34,9 +37,10 @@ requalify image digests monthly and before deployment. [OpenJDK 25](https://jdk.
 
 ### Quarkus target selected on 2026-10-03
 
-The application target is **Quarkus 3.40.1**, the latest stable release at this
-review, on the **3.40 LTS** line with community maintenance through
-**2027-09-30**. Pin the platform BOM and Maven plugin to 3.40.1. Retain the Java 25
+The application target is **Quarkus 3.40.1.1**, selected by the step 6.0
+security review, on the **3.40 LTS** line with community maintenance through
+**2027-09-30**. Pin the platform BOM and Maven plugin to 3.40.1.1; step 6.0 also records the
+separate Jackson security override. Retain the Java 25
 baseline and JVM deployment model. [Quarkus release status](https://quarkus.io/releases/),
 [3.40 getting started](https://quarkus.io/version/3.40/guides/getting-started/).
 
@@ -51,9 +55,9 @@ successor before the LTS deadline.
 
 | Component | Planned stable baseline | Maintenance window and selection constraint |
 |---|---|---|
-| JDK and application runtime | **JDK 25 or newer** for builds (verified with **25+36-3489** and **26.0.2**); OpenJDK 25 runtime images | Compile and test with one JDK, 25 or newer; bytecode targets release 25. No vendor or exact-patch requirement and no preview features. No fixed vendor support horizon is assumed. [OpenJDK 25](https://jdk.java.net/25/), [archive](https://jdk.java.net/archive/) |
+| JDK and application runtime | A maintained **JDK 25 or newer patch** for builds; step 6.0 selects **Temurin 25.0.5+8** through `JAVA_HOME`; OpenJDK 25 runtime images | Compile and test with one JDK; bytecode targets release 25. No vendor or exact-patch requirement and no preview features. Temurin 25 community maintenance runs at least through September 2031, with quarterly patch updates; this does not maintain the old 25+36 GA build. Historical checks on 25+36-3489 and 26.0.2 remain dated evidence. [Temurin support](https://adoptium.net/support/), [selected release](https://github.com/adoptium/temurin25-binaries/releases/tag/jdk-25.0.5%2B8) |
 | PostgreSQL, including ledger and backup tools | **18.6**, then maintained 18.x updates | PostgreSQL 18 maintenance ends **2030-11-14**. Use the same major in Kubernetes and Testcontainers; keep `pg_dump`/restore tools aligned. [Version policy](https://www.postgresql.org/support/versioning/) |
-| Quarkus | **3.40.1** with matching platform BOM and Maven plugin; verified in step 0.5 | 3.40 LTS community maintenance ends **2027-09-30**. Review maintained patches monthly and requalify Java 25 builds/runtime images on upgrades. [Release status](https://quarkus.io/releases/), [Java 25 support](https://quarkus.io/blog/quarkus-3-31-released/) |
+| Quarkus | **3.40.1.1** with matching platform BOM and Maven plugin; maintenance patch in step 6.0, following the original step 0.5 platform qualification | 3.40 LTS community maintenance ends **2027-09-30**. Review maintained patches monthly and requalify Java 25 builds/runtime images on upgrades. [Release status](https://quarkus.io/releases/), [Java 25 support](https://quarkus.io/blog/quarkus-3-31-released/) |
 | Maven | Command-line `mvn`; ShardShop minimum **3.9.16**, as declared by the Quarkus plugin | Maintained stable 3.9 series, no promised multi-year fixed-version LTS. Review future GA releases; exclude Maven 4 release candidates. [Release history](https://maven.apache.org/docs/history.html) |
 | Kubernetes and kubectl | **Kubernetes 1.36.4**, user-authorized kind fallback; **kubectl 1.36.x** from the user's `PATH` | 1.36 maintenance ends **2027-06-28**. This is the newest series supported by the selected CNPG release; match kubectl to the server minor. [Patch lifecycle](https://kubernetes.io/releases/patch-releases/), [release artifacts](https://github.com/kubernetes/kubernetes/releases) |
 | CloudNativePG | **1.30.1**, current maintained patch, installed from its official Helm chart **0.29.1** | 1.30.x supports Kubernetes 1.34-1.36 and PostgreSQL 14-18, with EOL approximately **December 2026**. Its short lifecycle requires operator upgrades. Kubernetes 1.37 is only tested, not supported by this operator version. [Support matrix](https://cloudnative-pg.io/docs/1.30/supported_releases/), [release](https://cloudnative-pg.io/releases/cloudnative-pg-1-30.1-released/) |
@@ -61,13 +65,13 @@ successor before the LTS deadline.
 | Helm | **4.3.0** tested; `helm` from the user's `PATH` | Maintained stable 4.x with no fixed LTS term; 4.3.x supports Kubernetes 1.34–1.37, covering the 1.36 lab. It installs only vendored, verified third-party charts, starting with CloudNativePG; a later cloud target reuses the same charts and values. [Version skew](https://helm.sh/docs/topics/version_skew/), [release](https://github.com/helm/helm/releases/tag/v4.3.0) |
 | Helmfile | **1.8.0**, installed through Homebrew; `helmfile` from the user's `PATH` | Maintained stable 1.8 series with no fixed LTS term. Owns ordered Helm releases; the current upstream patch is 1.8.1. Review monthly, first by **2026-11-13**. Two complete native `up.sh` runs deployed all releases on **2026-10-14**; the unchanged rerun preserved application and database identities and allocator state. Official archive checksum and the installed Homebrew executable identity are recorded separately in the lock. [Selected release](https://github.com/helmfile/helmfile/releases/tag/v1.8.0), [configuration](https://helmfile.readthedocs.io/en/stable/configuration/) |
 | Skaffold | **2.25.0**, installed through Homebrew; `skaffold` from the user's `PATH` | Maintained stable release with no fixed LTS term. Builds and tags the packaged Maven outputs using local Docker; native kind loads qualified images and Helmfile deploys them. Review monthly, first by **2026-11-13**. Two complete native `up.sh` runs on **2026-10-14** built all four artifacts, scanned them with Docker Scout and verified consistent qualified images on every kind node. Each run passed 1,034 unit/startup tests and 55 packaged routing checks. [Release](https://github.com/GoogleContainerTools/skaffold/releases/tag/v2.25.0), [Docker builder](https://skaffold.dev/docs/builders/builder-types/docker/) |
-| RabbitMQ | **4.3.6**, maintained GA patches and subsequent supported series | Community support ends **2027-01-31** (rechecked 2026-10-16). This is a rolling-support exception, not LTS; no newer stable series is listed at review time. Native quorum delayed retry requires 4.3+. [Support timeline](https://www.rabbitmq.com/release-information), [retry feature](https://www.rabbitmq.com/docs/quorum-queues#delayed-retry) |
+| RabbitMQ | **4.3.6**, maintained GA patches and subsequent supported series | Community support ends **2027-01-31** (rechecked 2026-10-16). This is a rolling-support exception, not LTS. The step 6.0 plan targets the now-published 4.4.0 successor. Native quorum delayed retry requires 4.3+. [Support timeline](https://www.rabbitmq.com/release-information), [retry feature](https://www.rabbitmq.com/docs/quorum-queues#delayed-retry) |
 | Erlang/OTP | **27.3.4.19**, bundled by the selected official RabbitMQ image | This corrects the draft's 28.x assumption. OTP 27 is supported by RabbitMQ 4.3.6; upgrade the broker/runtime image together. No fixed-date LTS is assumed. [Compatibility](https://www.rabbitmq.com/docs/which-erlang), [immutable image recipe](https://github.com/docker-library/rabbitmq/blob/a2d49841fbcf81713cf0e1c279facbce545e2292/4.3/ubuntu/Dockerfile), [OTP security policy](https://github.com/erlang/otp/security) |
 | Debezium Engine, PostgreSQL connector and JDBC offset store | **3.7.0.Final**, embedded only in order | Latest stable series checked **2026-10-18**; PostgreSQL 18 and Java 17+ connectors are in the upstream matrix. No fixed community LTS horizon is assumed. Review monthly, next by **2026-11-18**, and qualify with the selected Quarkus, PostgreSQL and RabbitMQ versions. [Release and compatibility matrix](https://debezium.io/releases/3.7/) |
 | PostgreSQL/operator image OS | Vendor-maintained **Debian 13 (trixie)** images | Full support through **2028-08-09**, Debian LTS through **2030-06-30**, subject to package/architecture coverage. The database/operator support window can expire first. [CNPG image baseline](https://cloudnative-pg.io/docs/1.30/release_notes/v1.30/), [Debian lifecycle](https://www.debian.org/releases/trixie/) |
 | Application and migration image OS | **Canonical OpenJDK 25** on **Ubuntu 26.04 LTS (resolute)**; `ubuntu/jdk` and `ubuntu/jre` stable tracks, pinned by digest | Canonical advertises these tracks through **May 2031**. Native ARM64 base-image build/runtime checks passed on Java **25.0.4.1**. Requalify derived images separately; the runtime is shell-free and final images must explicitly select a non-root user. [JDK support](https://hub.docker.com/r/ubuntu/jdk), [JRE support](https://hub.docker.com/r/ubuntu/jre) |
 | Schema migrations | **Flyway OSS 13.8.1** libraries on the selected Canonical OpenJDK 25 JRE; local image defined by `infra/images/flyway/Dockerfile`, pinned by manifest digest | The official Flyway image supplies libraries, drivers, configuration and licenses only. Frequent releases have no published fixed EOL; review monthly, first by **2026-10-30**, and requalify the final image and migration Jobs through `scripts/up.sh` on the lab. Application BOMs do not select the external migration runtime. [Distribution source](https://hub.docker.com/r/flyway/flyway), [release notes](https://help.red-gate.com/help/flyway-cli13/help_8.aspx?topic=release-notes-and-older-versions/release-notes-for-flyway-engine) |
-| Host container runtime and node internals | Docker Desktop **4.92.0** for macOS arm64 with a 12 GB VM (12 CPUs, 2 GB swap); node internals updated with kind | The host now runs 4.92.0 after checksum/signature verification; its component versions are recorded in the lock. Its containerd 2.3.5 and the node image have advisory findings, accepted for the local lab. Docker has rolling support, not fixed-version LTS. [Release notes](https://docs.docker.com/desktop/release-notes/), [macOS support](https://docs.docker.com/desktop/setup/install/mac-install/), [kind base-image contract](https://kind.sigs.k8s.io/docs/design/base-image/) |
+| Host container runtime and node internals | Docker Desktop **4.96.3** for macOS arm64 with a 12 GB VM (12 CPUs, 2 GB swap); node internals updated with kind | The installed 4.96.3 app passed signature/notarization checks on 2026-10-25; current component versions are recorded in the lock. Historical bundle exceptions remain dated and must not be read as a blanket approval for new advisories. Docker has rolling support, not fixed-version LTS. [Release notes](https://docs.docker.com/desktop/release-notes/), [macOS support](https://docs.docker.com/desktop/setup/install/mac-install/), [kind base-image contract](https://kind.sigs.k8s.io/docs/design/base-image/) |
 
 The lock records OCI index and native **linux/arm64** manifest/config digests for
 the selected upstream images, including kind and the Canonical OpenJDK JDK/JRE pair.
@@ -95,6 +99,31 @@ project, and no image or dependency pin changes for this step. The same day, the
 live operator run used Homebrew `psql 18.6` (`postgresql@18` 18.6_1) and host
 kubectl 1.36.3 against the kind lab; see the
 [step 5.3 evidence](CHANGELOG.md#live-operator-run).
+
+### Node.js browser test tool
+
+Node.js from the user's `PATH` is required by `shardshop-testing` during ordinary
+Maven `test` and `verify`, including lifecycle-script builds. Its product, order
+and workload-control runners fail for a missing executable, timeout or nonzero
+script exit. No Node binary, npm dependency or wrapper is downloaded by the build.
+Application-only Maven selections do not include these browser checks; use the
+[verification-module command](shardshop-testing/RUNBOOK.md#javascript-page-checks).
+
+On **2026-10-25**, the installed Homebrew **Node 26.7.0** on macOS arm64 passed
+all **68 JavaScript cases** (36 product, 20 order, 12 workload control) through
+three Maven tests. Missing-Node and failing-harness checks both failed Maven as
+required. The lock records the installed executable hash as local identity,
+not as an upstream archive checksum.
+
+Step 6.0 supersedes that host-tool selection with **24.22.1 LTS**.
+Use `PATH="/opt/homebrew/opt/node@24/bin:$PATH"` for the separate Homebrew keg.
+The official release list currently offers **24.22.1 LTS** and **26.12.1 Current**;
+26's scheduled LTS transition is **2026-10-28**, with planned support through
+**2029-04-30**. Prefer a maintained LTS patch and re-run the three suites after
+changing the host tool. The [step 6.0 record](#step-60-maintenance-review--2026-10-25) separates the new
+qualification from this earlier 26.7.0 test result. [Release list](https://nodejs.org/en/blog/release),
+[support policy](https://nodejs.org/en/about/previous-releases),
+[release schedule](https://github.com/nodejs/Release/blob/main/schedule.json).
 
 The kind 0.33.0 release's tested Kubernetes **1.36.4** image is selected under
 `images.kind_node`. Its published digest matches the registry bytes. A fresh
@@ -217,6 +246,18 @@ balances only TCP connections. The review on 2026-10-08 found these candidates:
 Step 6.5 selects the component and records its versions, support window and
 resource use here.
 
+The dated candidate list is not deployment approval. Ambient can enroll a pod
+or a namespace; step 6.5 must explicitly enroll only its HTTP participants and
+prove the database, broker, saga, ledger and migration paths remain outside that
+enrollment. A non-enrolled database does not by itself prove that an enrolled
+client's outbound SQL avoids a node proxy. Record the actual paths and repeat
+all implemented recovery drills on the final topology. Qualify the waypoint,
+ztunnel and CNI security contexts separately; UID 1337 is a sidecar convention,
+not proof that every ambient component uses that UID. Keep application admission
+restricted and document privileged system components before selection.
+[Enrollment](https://istio.io/latest/docs/ambient/usage/add-workloads/),
+[proxy UID requirement](https://istio.io/latest/docs/ops/deployment/application-requirements/).
+
 ## 2. Java libraries and build tools
 
 Use `io.quarkus.platform:quarkus-bom:3.40.1` for all six applications, scoped
@@ -233,9 +274,9 @@ checking the Quarkus graph. [Platform BOM](https://quarkus.io/guides/platform/).
 | Dependency family | Target selection and qualification rule |
 |---|---|
 | Dependency injection and configuration | Quarkus CDI and SmallRye Config; preserve constructor injection and eager routing validation |
-| HTTP and JSON | `io.quarkus:quarkus-rest-jackson`; use platform-managed Jackson versions and verify decimal-string ID contracts |
+| HTTP and JSON | `io.quarkus:quarkus-rest-jackson`; use the reviewed Jackson 2.21.8 security BOM ahead of the platform and verify decimal-string ID contracts |
 | Validation | `io.quarkus:quarkus-hibernate-validator`; retain the architecture's error precedence |
-| PostgreSQL JDBC and connection pools | `io.quarkus:quarkus-jdbc-postgresql` with Agroal; qualify bounded pools, timeouts, TLS and failover |
+| PostgreSQL JDBC and connection pools | `io.quarkus:quarkus-jdbc-postgresql` with Agroal and the reviewed pgJDBC 42.7.14 security override; qualify bounded pools, timeouts, TLS and failover |
 | Health and metrics | `io.quarkus:quarkus-smallrye-health` and `io.quarkus:quarkus-micrometer-registry-prometheus` when their milestones add observability |
 | Application tests | `io.quarkus:quarkus-junit` and, where needed, `io.quarkus:quarkus-junit-mockito`; qualify the resolved JUnit/Mockito family, agents and coverage |
 | RabbitMQ and CDC | `com.rabbitmq:amqp-client` and embedded Debezium Engine; separately qualify exact versions and the architecture's publication/acknowledgement contract |
@@ -763,6 +804,14 @@ verify checksums/signatures and record native CPU-architecture compatibility.
 
 ## 4. Maintenance and acceptance gates
 
+**2026-10-25 scope revision:** [step 6.0](PLAN.md#minimum-completion-of-60)
+owns the application/tool review and RabbitMQ planning. The user excludes CNPG
+operator/chart and managed PostgreSQL changes. Their findings and the
+**2026-11-30** upgrade deadline remain separate maintenance obligations before
+6.2; they are not 6.0 acceptance conditions. The October 25 review did not confirm
+a compatible successor. Any later operator/broker change invalidates affected
+completed failover/restore evidence until those drills pass again.
+
 - Review support status and updates monthly and before deployment. Take stable
   security/bug-fix updates promptly, rebuild pinned images for OS fixes, and test
   the result. A digest pin ensures reproducibility, not indefinite maintenance.
@@ -1162,3 +1211,130 @@ The crash harness uses `jdk.jdi` from the required **JDK 25** only in verificati
 It adds no application dependency and no debug listener to application images.
 RabbitMQ and CloudNativePG observations use their existing native endpoints and
 counters. [Step 5.5 evidence](CHANGELOG.md#step-55) records validation and deployment status.
+
+## Step 6.0 maintenance review — 2026-10-25
+
+**Reduced scope:** application/build maintenance, tool qualification and reuse of
+completed upgrade evidence. At the user's request, CNPG operator/chart upgrades,
+managed PostgreSQL image/configuration changes and further database recovery or
+upgrade rehearsals are excluded. The PostgreSQL image pin is restored to the
+retained baseline; the operator was never upgraded. No live rollback was needed:
+the database baseline is unchanged. One normal application release now passes
+(1,875 unit/provider and 75 startup checks, seven image scan gates and six live
+release cases), followed by both application recovery drills. The retained lab
+is stopped with saved controls and the original producer template restored. A fresh
+producer run corrected historical replay. After correcting duration and warmup
+eligibility, one authorized 10/s check covered 120.058077s and 1,177 post-warmup
+writes with zero new errors, but write p95 **133.783 ms** still exceeded **<100 ms**.
+Both HTTP write-metrics endpoints were captured. At that checkpoint, capacity
+and final gates were unqualified and no higher-rate or final-gate run had followed
+the failed single-point check. Passing build, release and drill results remain reusable.
+
+At the user's explicit request, all capacity qualification is deferred: 10/s
+write latency to 6.7, sustained 30/s writes to 6.8, and 1,000/s reads to 6.9.
+6.0 is **Done under the explicit reduced local-maintenance scope**. Final
+`kind-infrastructure | kind-deployment | kind-release | kind-drills-idle` gates
+passed nine cases, zero failures/errors/skips, in 108.2s, finishing
+2026-10-25T19:18:48+04. Wrapper exit/restoration 0 confirmed original stopped
+nodes, IDs/images/volumes/kubeconfig and no owned labs; no capacity rerun,
+application rebuild or recovery-drill repeat occurred. The valid 10/s p95 133.783 ms,
+incomplete 30/s capture and failed read qualification (948.2/s then 955.8/s,
+p95 10/9 ms, all OK; first window below 950/s and no third passing window)
+remain in the [evidence](CHANGELOG.md#step-60). This is not full performance
+qualification or a server-capacity limit; the historical baseline remains separate.
+
+The user accepted the saved JRE, K3s and Flyway-driver findings only for this
+local lab through October 28; see `maintenance_review_6_0.local_risk_acceptance`.
+This does not declare packages unaffected or bypass scan gates. CNPG successor
+availability is not a 6.0 completion gate. Historical isolated upgrade results
+used the excluded PostgreSQL candidate and do not qualify the revised combination.
+See [remaining work](PLAN.md#minimum-completion-of-60).
+
+### Retained maintenance selections
+
+| Component | Selection and evidence boundary |
+|---|---|
+| Quarkus | BOM and plugin **3.40.1.1**; Java target remains 25. |
+| Application Jackson | BOM **2.21.8**, imported before Quarkus, which still manages 2.21.7. |
+| Plugin Jackson | Quarkus plugin family **2.21.8** / annotations 2.21; CycloneDX family **2.22.4** / annotations 2.22. Plugin graphs do not inherit the application BOM. |
+| PostgreSQL JDBC | Application **42.7.14**. Flyway's separate vendor bundle still includes **42.7.12**; the Maven override does not change it. |
+| Application/Flyway JRE | Refreshed pinned Canonical image fixes Ubuntu zlib CVE-2026-85091 and updates NSS; Java remains 25.0.4.1. Two uncached Flyway builds agree at manifest/config level. Open findings below remain. |
+| Host JDK | **Temurin 25.0.5+8-LTS**, verified archive SHA-256/PGP, installed contents/modes and native code signatures. Installed beside the old JDK; select it through `JAVA_HOME`. Default symlink, shell files and compiler target are unchanged. |
+| Node | **24.22.1 LTS** for qualification. All three Maven browser wrappers execute 68 JavaScript checks; missing Node fails the build. |
+| Docker/tools | Existing Docker Desktop **4.96.3 (244472)** verified, not upgraded. Existing supported kind/Helm/Maven selections retained; actual kubectl **1.36.3** is recorded separately from the verified 1.36.5 reference download. |
+
+[Quarkus patch](https://quarkus.io/blog/quarkus-3-40-1-1-released/),
+[Jackson advisory](https://github.com/FasterXML/jackson-databind/security/advisories/GHSA-m8xf-2cr7-77ph),
+[pgJDBC advisories](https://jdbc.postgresql.org/security/),
+[Ubuntu zlib](https://ubuntu.com/security/CVE-2026-85091),
+[Temurin release](https://github.com/adoptium/temurin25-binaries/releases/tag/jdk-25.0.5%2B8),
+[Node LTS release](https://nodejs.org/en/blog/release/v24.22.1).
+
+Host side effects from the original execution remain explicit: Homebrew's Node
+LTS installation updated shared dependencies, breaking old global Node 26.7.0;
+updating that existing formula restored it at 26.12.1. Homebrew also updated
+jupyterlab, mongosh and mongodb-atlas-cli. Both Node versions passed the browser
+wrappers. The user increased Docker's disk to 80 GiB. None of these operations
+is repeated or reversed by the source/documentation cleanup.
+
+### RabbitMQ successor plan
+
+Planning completed before **2026-11-02**. The reviewed target is **4.4.0**, supported
+through **2027-07-31**; keep qualified **4.3.6 / OTP 27.3.4.19** until qualification
+by **2027-01-15**, with upgrade before **2027-01-31**.
+
+1. Verify the official image digest and bundled OTP/OS. The 4.4 matrix accepts OTP
+   27–29; a simultaneous move to OTP 28+ requires checking the recommended
+   intermediate 4.3.7-or-later path and actual artifact availability.
+2. Rehearse retained messages/definitions/permissions and stable feature flags on
+   an owned lab; prove an isolated restore of a consistent stopped-broker backup.
+3. Pause/drain producers, record remaining work and perform the planned single-
+   broker outage through the existing lifecycle/chart boundary.
+4. Check policies, delayed retries/parking, confirms, acknowledgements, health and
+   permissions; repeat implemented CDC/replay/reset/crash/DLQ/capacity checks and
+   any failover/restore drills completed by that date.
+5. On failure, restore the qualified backup in isolation and reconcile outcomes.
+   Do not simply downgrade the image: 4.4 classic-queue files may be unreadable by
+   4.3. This plan does not claim the future rehearsal has passed.
+
+[Support](https://www.rabbitmq.com/release-information),
+[upgrade requirements](https://www.rabbitmq.com/docs/upgrade),
+[Erlang matrix](https://www.rabbitmq.com/docs/which-erlang).
+
+### Deferred CNPG maintenance
+
+The October 25 review found **1.30.1 / chart 0.29.1**, with no confirmed compatible
+successor. Its recorded matrix covers Kubernetes 1.34–1.36 and PostgreSQL 14–18.
+The **2026-11-30** upgrade deadline and operator advisory findings remain a separate
+maintenance obligation before 6.2. That future work needs its own explicit scope,
+compatible GA artifact, retained-data rehearsal and recovery/restore validation;
+it is not authorization to modify CNPG during 6.0. Do not renew support dates or
+silently count an unreleased roadmap version as qualified.
+[Releases](https://github.com/cloudnative-pg/cloudnative-pg/releases),
+[recorded support matrix](https://cloudnative-pg.io/docs/1.30/supported_releases/),
+[upgrade procedure](https://cloudnative-pg.io/docs/1.30/installation_upgrade/).
+
+### Review boundaries and open findings
+
+The saved audit covers the October 28 groups: support matrices, OCI identities,
+installed/reference tools, Maven models, runtime/test graphs, plugin classpaths
+and SBOMs. **35 existing artifacts** matched locked bytes and **94 distinct new
+artifact records** matched upstream checksums. Reference-tool signatures/checksums
+and installed-tool identities remain separate in the lock. Integrity review does
+not renew behavioral qualification or waive security findings. The unresolved
+**2026-10-28** review deadline remains; no new blanket VEX/exception is granted.
+
+| Scope | Recorded finding/disposition |
+|---|---|
+| CNPG, excluded from 6.0 | 2 critical/9 high, including active manager Go/x-net dependencies. Preserve for separate maintenance; unused-helper exceptions do not cover the manager. |
+| Managed PostgreSQL, excluded from 6.0 | Retained digest remains selected, with six high findings in its recorded scan. The excluded candidate fixed OpenSSL/PCRE2 and reduced its count to four; its scan cannot be attributed to the retained image. Candidate identities remain in the lock as historical evidence. |
+| Canonical JRE/JDK | Scout omits six source groups; vendor matching reports 6 glibc and 54 OpenJDK medium-priority cases, including 47 newly listed Java cases, without recorded Ubuntu 26.04 fixes. Existing high CVSS scores remain relevant. `SBOM-AND-RUNTIME` remains open. |
+| K3s test fixture | 10 critical/27 high include the active binary. The user accepted these saved findings through October 28 only for the unprivileged loopback test fixture; the active binary remains affected. |
+| Flyway driver | 42.7.12 remains bundled. Repository inputs use no `requireAuth`, COPY, blob, large-object or `ByteStreamWriter` path; that limited assessment does not prove indirect paths absent. The user accepted the saved findings through October 28 for local migration Jobs; the bundle is unchanged. |
+| RabbitMQ | 6 critical/34 high map to the existing unused-gosu scope; the chart bypasses its entrypoint. Two lower-severity/unclassified IDs remain for review. No new general exception. |
+| Test PostgreSQL / kind node | 4 critical/33 high and 15 critical/59 high respectively; existing local test/fallback scopes remain dated and bounded, not clean-security claims. |
+
+Automatic approval review rejected the full **469-coordinate** private-derived
+inventory export to OSV. It was not sent or retried elsewhere; local graphs and
+vendor advisories were used. The earlier approved 43-coordinate query missed the
+published Jackson advisory, so an empty response is not evidence of no findings.

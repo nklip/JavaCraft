@@ -29,7 +29,7 @@ class KindLabTest {
                 """);
         Files.writeString(snapshot.resolve("kind.json"), "{\"kind\":\"Cluster\"}");
         Files.writeString(snapshot.resolve("infrastructure.yaml"), "kind: Namespace\n");
-        lab = new KindLab(snapshot, "unit-lab", false);
+        lab = new KindLab(snapshot, "shardshop", false);
     }
 
     @Test
@@ -43,7 +43,46 @@ class KindLabTest {
     @Test
     void requiresAllSnapshotInputs() throws IOException {
         Files.delete(snapshot.resolve("kind.json"));
-        assertThrows(IllegalArgumentException.class, () -> new KindLab(snapshot, "unit-lab", false));
+        assertThrows(IllegalArgumentException.class, () -> new KindLab(snapshot, "shardshop", false));
+    }
+
+    @Test
+    void ownedClusterRequiresAPrivateSingleKubeconfigAndPinsEveryChild() throws Exception {
+        Path directory = Files.createDirectory(snapshot.resolve("private"),
+                java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                        java.nio.file.attribute.PosixFilePermissions.fromString("rwx------")));
+        Path config = directory.toRealPath().resolve("config");
+        KindLab isolated = new KindLab(snapshot, "shardshop-test-unit", false, config.toString());
+        assertEquals(config.toString(), isolated.command("/bin/sh", "-c", "printf %s \"$KUBECONFIG\""));
+        assertEquals(config.toString(), isolated.processBuilder("kubectl", "proxy").environment().get("KUBECONFIG"));
+        assertThrows(IllegalArgumentException.class, () -> new KindLab(snapshot, "shardshop-test-unit", false));
+        for (String name : List.of("other-lab", "shardshop-test-", "shardshop-test-x;echo", "shardshop-test-" + "x".repeat(60))) {
+            assertThrows(IllegalArgumentException.class, () -> new KindLab(snapshot, name, false, config.toString()));
+        }
+        for (String path : List.of("relative", config + ":/tmp/other", config + "\nother")) {
+            assertThrows(IllegalArgumentException.class, () -> new KindLab(snapshot, "shardshop-test-unit", false, path));
+        }
+        Files.writeString(config, "private");
+        Files.setPosixFilePermissions(config, java.nio.file.attribute.PosixFilePermissions.fromString("rw-r--r--"));
+        assertThrows(IllegalArgumentException.class, () -> new KindLab(snapshot, "shardshop-test-unit", false, config.toString()));
+        Files.delete(config);
+        Files.createSymbolicLink(config, snapshot.resolve("inventory.json"));
+        assertThrows(IllegalArgumentException.class, () -> new KindLab(snapshot, "shardshop-test-unit", false, config.toString()));
+    }
+
+    @Test
+    void defaultKubeconfigDescendantsAreNeverPrivateTestStorage() throws Exception {
+        Path home = Files.createDirectory(snapshot.resolve("home"));
+        Path directory = Files.createDirectories(home.resolve(".kube/private"));
+        Files.setPosixFilePermissions(directory, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
+        String previous = System.getProperty("user.home");
+        try {
+            System.setProperty("user.home", home.toString());
+            assertThrows(IllegalArgumentException.class,
+                    () -> new KindLab(snapshot, "shardshop-test-unit", false, directory.resolve("config").toString()));
+        } finally {
+            System.setProperty("user.home", previous);
+        }
     }
 
     @Test

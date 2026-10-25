@@ -11,7 +11,7 @@ docker buildx version >/dev/null 2>&1 || { echo 'Docker Buildx is not available 
 docker scout version >/dev/null 2>&1 || { echo 'Docker Scout is not available in Docker' >&2; exit 1; }
 nodes=$(kind get nodes --name "$cluster_name")
 [[ -n "$nodes" ]] || {
-    echo 'No shardshop cluster exists. Run scripts/cluster-create.sh, then scripts/up.sh.' >&2
+    echo "No $cluster_name cluster exists. Run scripts/cluster-create.sh, then scripts/up.sh." >&2
     exit 1
 }
 snapshot_configuration

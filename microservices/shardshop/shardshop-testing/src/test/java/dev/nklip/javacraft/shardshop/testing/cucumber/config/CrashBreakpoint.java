@@ -42,29 +42,43 @@ public final class CrashBreakpoint implements AutoCloseable {
         this.lineMethod = lineMethod;
     }
 
-    /** Fail before launching a debugger if a source edit moved the intended crash boundary. */
-    public static CrashBreakpoint atSourceLine(String module, String className, String method,
-                                               int line, String sourceAnchor) throws IOException {
+    /**
+     * Resolve a unique sequence of complete source lines; stop before its final executable line.
+     * Context lines disambiguate repeated statements and method-closing braces without fixed offsets.
+     * Blank lines and standalone // comments may move without changing the boundary.
+     */
+    public static CrashBreakpoint atSourceAnchor(String module, String className, String method,
+                                                 String... sourceAnchor) throws IOException {
         String sourceClass = className.split("\\$")[0];
         Path source = ShardShopFiles.resolve(module + "/src/main/java/" + sourceClass.replace('.', '/') + ".java");
-        List<String> lines = Files.readAllLines(source);
-        if (line < 1 || line > lines.size() || !lines.get(line - 1).contains(sourceAnchor))
-            throw new IOException("Crash boundary moved from " + source + ':' + line + " (expected " + sourceAnchor + ')');
-        return new CrashBreakpoint(className, line, method);
+        return new CrashBreakpoint(className, resolveSourceLine(source, sourceAnchor), method);
     }
 
-    /** Check the method's closing bytecode line follows an asserted source statement. */
-    public static CrashBreakpoint afterSourceLine(String module, String className, String method,
-                                                  int line, int anchorLine, String precedingAnchor) throws IOException {
-        String sourceClass = className.split("\\$")[0];
-        Path source = ShardShopFiles.resolve(module + "/src/main/java/" + sourceClass.replace('.', '/') + ".java");
+    static int resolveSourceLine(Path source, String... sourceAnchor) throws IOException {
+        if (sourceAnchor.length == 0 || java.util.Arrays.stream(sourceAnchor).anyMatch(String::isBlank))
+            throw new IOException("Empty crash source anchor in " + source);
         List<String> lines = Files.readAllLines(source);
-        if (anchorLine < 1 || anchorLine >= line || line > lines.size()
-                || !lines.get(anchorLine - 1).contains(precedingAnchor)
-                || !lines.get(line - 1).trim().equals("}"))
-            throw new IOException("Crash boundary moved from " + source + ':' + line
-                    + " (expected closing line after " + precedingAnchor + ')');
-        return new CrashBreakpoint(className, line, method);
+        List<Integer> statements = java.util.stream.IntStream.range(0, lines.size())
+                .filter(index -> !lines.get(index).isBlank() && !lines.get(index).stripLeading().startsWith("//"))
+                .boxed().toList();
+        int resolved = -1;
+        for (int start = 0; start + sourceAnchor.length <= statements.size(); start++) {
+            boolean matches = true;
+            for (int offset = 0; offset < sourceAnchor.length; offset++) {
+                if (!lines.get(statements.get(start + offset)).trim().equals(sourceAnchor[offset].trim())) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) {
+                if (resolved != -1) throw new IOException("Ambiguous crash source anchor in " + source
+                        + ": " + List.of(sourceAnchor));
+                resolved = statements.get(start + sourceAnchor.length - 1) + 1;
+            }
+        }
+        if (resolved == -1) throw new IOException("Missing crash source anchor in " + source
+                + ": " + List.of(sourceAnchor));
+        return resolved;
     }
 
     public List<String> options() {
