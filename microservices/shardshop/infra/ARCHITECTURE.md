@@ -9,7 +9,8 @@ kind lab. It also defines the runtime topology and the RabbitMQ delivery policy.
   together with durable reconciliation, transport cleanup, manual retry reset
   and qualified retry/capacity recovery, crash recovery and observability in
   [PLAN steps 5.1–5.5](../PLAN.md).
-  Failover/restore and optional AWS delivery checks remain planned
+  Synchronous failover passed step 6.2; coordinated backup/isolated restore is
+  qualified in 6.3, including final source checks and cleanup on 2026-10-26. Older-backup audit/repair and optional AWS delivery remain planned
   in milestones 6–7. Requirements below retain
   those target guarantees; they do not claim every acceptance scenario already
   passes.

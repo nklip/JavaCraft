@@ -17,6 +17,18 @@ suites that observe the deployed lab.
 Disruptive drills require explicit selection; the [runbook](RUNBOOK.md) lists each
 suite, drill and capacity measurement.
 
+## Coordinated backup and isolated restore
+
+Step **6.3 is Done**, qualified on 2026-10-26: coordinated backup, isolated
+restore/explicit CDC recovery, final source checks, latest allocator export and
+restoration audit passed. The initial reader-gate failure remains recorded;
+the focused two-case source rerun passed with unchanged thresholds. See
+[evidence](../CHANGELOG.md#step-63).
+`kind-backup`, `kind-restore` and the standalone `kind-backup-allocator` history
+export are separately
+opt-in and are not selected by `kind-drill` or the default kind suite. See the [workflow and private-artifact requirements](RUNBOOK.md#coordinated-backup-and-isolated-restore).
+Step 6.2 remains qualified. Older-backup audit/repair remains step 6.4.
+
 ## JavaScript page checks
 
 The default Maven test suite runs the product, order and workload page harnesses

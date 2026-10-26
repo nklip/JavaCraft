@@ -448,6 +448,160 @@ whose response was lost, then restores saved workload controls. The final
 recovery retains the lock under the [shared recovery rules](#kind-verification-snapshot).
 Primary promotion is implemented by the [synchronous failover drill](#synchronous-failover-drill); step 6.2 passed [retained-lab qualification on 2026-10-26](../CHANGELOG.md#step-62).
 
+## Coordinated backup and isolated restore
+
+**Step 6.3 is Done**, qualified on 2026-10-26; see
+[evidence](../CHANGELOG.md#step-63). The initial implementation passed 45 focused checks in 4.588
+seconds on 2026-10-26 at 19:32:56+04
+(`/tmp/shardshop-6.3-focused-final.log`). Live coordinated backup then passed one
+scenario in 103.6 seconds and sealed four native dumps plus broker definitions in
+the private host bundle
+`/Users/nikita.lipatov/.local/share/shardshop/backups/2026-10-26-step63/backup`.
+Restore failed before container creation on Testcontainers qualified-image
+compatibility. Source cleanup succeeded and the lab was stopped at
+2026-10-26 19:38:21+04. At that point correction/retry and complete restore qualification were pending. See
+`/tmp/shardshop-6.3-live/backup.log` and `/tmp/shardshop-6.3-live/restore.log`.
+A subsequent restore passed all four databases, row hashes, database security
+and consistency checks, then CDC verification was blocked by a missing generated
+broker fixture. Fixture preflight is implemented; 47 focused checks pass
+(`/tmp/shardshop-6.3-fixture-focused.log`). The fixture-prepared attempt in
+`/tmp/shardshop-6.3-restore-fixture` failed after 267.2 seconds: all three
+missing-slot refusals, unchanged offset/history checks and pre-reset consistency
+passed, but isolated ledger startup failed after explicit reset because its
+allowlist included unsupported INR and omitted KRW. The corrected configuration
+uses `CurrencyPolicy.SUPPORTED_CURRENCIES`. The regression failed against the old
+configuration (`/tmp/shardshop-6.3-currency-before.log`); 48 focused checks then
+passed in 4.590 seconds at 2026-10-26 20:02:48+04
+(`/tmp/shardshop-6.3-currency-focused.log`). All three owned container IDs were
+removed; the source remained unchanged and stopped. The wrapper completed in
+271.167 seconds without cleanup errors. The user authorized a twenty-minute corrected-restore phase at 20:06+04;
+the corrected isolated restore passed in 365.4 seconds (Maven 6:07), finishing
+2026-10-26 20:13:20+04. Its private `restore-result.json` reports `passed: true`
+and `ownedTargetRemoved: true`: 11,537 orders, 11,535 ledger decisions, 56 retained
+published commands and 11,545 result bindings were verified; ledger entries
+remained 11,534 and all three streaming checkpoints were positive.
+
+The initial final source suite passed seven of eight cases; the reader gate failed
+on under-rate intervals of 174.1, 168.9 and 169.5 reads/s. A later 30-second log
+interval reached 6,000 all-OK reads (200/s). That failure remains evidence; it is
+not an eight-case same-run pass. The unchanged-threshold workload-only rerun in
+`/tmp/shardshop-6.3-reader-final` then passed two cases in 64.32 seconds (Maven
+1:08), finishing 2026-10-26 20:23:15+04. Independent latest-allocator export
+passed one case in 4.616 seconds (Maven 7.537 seconds), finishing 20:23:25+04.
+The wrapper passed in 178.498 seconds without cleanup errors and stopped all four
+source nodes at 20:23:36+04. Its restoration audit passed UID/spec, primary/fence,
+PVC, profile/routing, controls and absence-of-owned-lock checks; no CNPG pod UID
+changed. An independent Docker check confirmed removal of all three restore and
+broker container IDs. Source hashes were unchanged, so the valid 365.4-second
+restore result was reused without another restore. This completes step 6.3;
+earlier failed attempts remain preserved.
+Step 6.2 remains qualified. The separate tags `kind-backup` and `kind-restore`
+are excluded from both the default kind suite and `kind-drill`.
+
+Prepare the [kind snapshot](#kind-verification-snapshot), a running qualified
+source lab, Docker/OpenSSL and the qualified packaged order/ledger outputs needed
+by target-only CDC verification. Unchanged qualified application outputs do not
+need rebuilding. Generate the broker fixture used by the integration profile
+before restore; preflight now refuses its absence before target mutation:
+
+```bash
+helm template shardshop microservices/shardshop/infra/helm/shardshop \
+  --namespace shardshop \
+  --values microservices/shardshop/infra/helm/shardshop/kind-values.yaml \
+  --values microservices/shardshop/infra/shards.yaml \
+  --set-string render=infrastructure \
+  --output-dir microservices/shardshop/shardshop-testing/target/chart
+```
+
+Existing packaged order and ledger JARs are also required. Set
+`shardshop.kind.cluster` explicitly to the
+source cluster name matching the snapshot. Choose absolute normalized artifact
+paths outside the repository and every Maven `target` directory:
+
+- `shardshop.backup.directory`: a new exclusive backup directory; do not precreate it.
+- `shardshop.backup.allocator`: a separate latest-history file under an existing
+  private parent, outside the backup directory. Preserve it independently across
+  backups; restore checks its monotonic high-water mark and allocator lineage.
+- `shardshop.restore.directory`: a new exclusive private evidence directory,
+  separate from the immutable backup; do not precreate it.
+- `shardshop.restore.target`: a fresh Docker name matching
+  `shardshop-restore-` plus a DNS label, at most 63 characters in total. Existing
+  containers, including stopped containers, are refused.
+
+Use a mode `700` host parent and mode `600` artifact/allocator files. The bundle
+contains full seeded/business data and exported broker credential hashes; protect
+it and never commit it. Keep backup and allocator history outside kind and Maven
+cleanup. For example, after assigning `$backup`, `$allocator`, `$restore` and
+`$restoreTarget` to those selected paths/name:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true -Pkind verify \
+  -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.cluster=shardshop \
+  -Dshardshop.kind.tags=kind-backup \
+  -Dshardshop.backup.directory="$backup" -Dshardshop.backup.allocator="$allocator"
+
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true -Pkind verify \
+  -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.cluster=shardshop \
+  -Dshardshop.kind.tags=kind-restore \
+  -Dshardshop.backup.directory="$backup" -Dshardshop.backup.allocator="$allocator" \
+  -Dshardshop.restore.directory="$restore" -Dshardshop.restore.target="$restoreTarget"
+```
+
+Backup acquires the host lifecycle lock and shared Kubernetes drill lock, pauses
+all three workload controls and saves exact deployment replicas. It stops writers,
+drains saga/ledger work and every queue including DLQ parking queues, then stops
+the remaining consumers. Nonempty dead letters refuse capture; this is an explicit
+empty-queue baseline restriction. It records four full dumps, actual RabbitMQ
+definitions, roles, database ownership/ACLs, routing/region/schema versions,
+lineage, allocator history and complete table fingerprints. Source deployment,
+controls, topology, identities and business invariants are restored before the
+bundle is sealed; recovery failure retains the shared lock.
+
+Restore verifies compatibility/integrity and the latest independent allocator
+history before target mutation. It never contacts the source lab. A new owned
+loopback-only PostgreSQL container holds four isolated databases with TLS,
+restored roles and database ACLs. Full row/schema fingerprints and cross-shard
+saga/global checks must match. A logical dump has saved CDC offsets/history but
+no replication slot: packaged CDC must first refuse startup. Explicit target-only
+recovery resets that metadata, resnapshots retained commands to a fresh broker
+and ledger worker, then proves streaming replay of the same command/result IDs
+without adding ledger effects. No ID-emitting traffic runs; the source allocator
+is never rewritten. The target is removed, and private restore evidence remains
+separate from the immutable bundle. No older-backup repair (6.4), PITR or
+production cutover is qualified by this workflow.
+
+After final source gates, refresh the independent latest allocator history before
+stopping the lab. This standalone tag requires only explicit source cluster,
+snapshot and allocator path; it needs no backup or restore directory:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true -Pkind verify \
+  -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.cluster=shardshop \
+  -Dshardshop.kind.tags=kind-backup-allocator -Dshardshop.backup.allocator="$allocator"
+```
+
+`kind-backup-allocator` holds the host lifecycle lock and verifies deployment/saga
+readiness before observing the latest mark. Avoid restarting source generators
+after this capture; if a later restart occurs, refresh history again before any
+ID-producing restore use. Isolated target qualification always disables ID paths.
+This export is opt-in and excluded from `kind-drill` and the default selection.
+
+Focused implementation checks (no live lab):
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true \
+  '-Dtest=Backup*Test,KindBackupRestoreTest,OwnedRestoreTargetTest,Restore*Test,KindDrillGuardTest,KindFailoverDrillTest' \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test
+```
+
+The initial sandboxed process/sysctl attempt was blocked; the reviewed host run
+passed. Exact evidence is recorded in the [changelog](../CHANGELOG.md#step-63).
+Focused checks do not establish live capture/restore qualification.
+
 ## Synchronous failover drill
 
 **Step 6.2 passed retained-lab qualification on 2026-10-26**, including automatic
@@ -620,8 +774,8 @@ check: cluster UID/spec, original primaries/fences, PVC UID/spec/backing PV,
 Deployment UID/spec, routing/profile configuration, and absence of owned
 finalizers and the drill lock. Database pod UIDs for shard-a instances 2 and 3
 were recreated as expected; their PVCs were preserved. This complete run
-qualifies step 6.2; coordinated backup/restore and restore audit remain planned
-in steps 6.3–6.4. Exact commands, artifacts and preserved failures are in the
+qualifies step 6.2; coordinated backup/isolated restore subsequently passed
+step 6.3, while older-backup restore audit remains planned in 6.4. Exact commands, artifacts and preserved failures are in the
 [dated evidence](../CHANGELOG.md#step-62).
 
 Recovery removes only this invocation's finalizers, restores the exact original
@@ -632,7 +786,7 @@ It deletes no PVCs or PVs. The temporary unsafe-survivor probe schema is removed
 normal HTTP fixture buyers, allocations, orders and their permanent business
 history remain. A recovery failure retains the lock under the
 [shared recovery rules](#kind-verification-snapshot). Coordinated backup/restore
-and restore audit remain steps 6.3–6.4.
+passed step 6.3; older-backup restore audit remains step 6.4.
 
 ## Saga gate and drill
 

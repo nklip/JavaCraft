@@ -102,7 +102,7 @@ public final class KindFailoverDrill {
 
     private static void phase(String phase) { System.out.println("Synchronous failover drill: " + phase); }
 
-    private void controls(KindDrillGuard guard) throws IOException, InterruptedException {
+    void controls(KindDrillGuard guard) throws IOException, InterruptedException {
         for (String workload : List.of("order-producer", "product-reader", "product-seeder")) {
             String service = workload.equals("product-seeder") ? "shardshop-product-seeder-control" : "shardshop-" + workload;
             try (KindSaga.Tunnel tunnel = new KindSaga.Tunnel(lab, "service/" + service, 8080)) {

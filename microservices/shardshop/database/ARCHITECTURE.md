@@ -11,8 +11,9 @@ with its own login role.
 - **Status:** regional shards, synchronous replication configuration, schemas,
   role privileges and Flyway delivery are implemented. Step 5.2 implements the
   transport cleanup described below; step 5.3 adds the restricted operator reset.
-  Coordinated backup/restore, restore audits and cloud/Argo CD delivery
-  remain planned in [PLAN milestones 6–7](../PLAN.md).
+  Coordinated backup/isolated restore is implemented in step 6.3, with backup and
+  target restore, final source checks and cleanup passing on 2026-10-26. Older-backup
+  restore audits and cloud/Argo CD delivery remain planned in [PLAN milestones 6–7](../PLAN.md).
 
 ## Sharding and replication
 
@@ -363,6 +364,7 @@ ledger high availability requires its own replication design.
 
 The broker and ledger availability limits are present today. Synchronous promotion and primary-failure drills passed
 [step 6.2 qualification on 2026-10-26](../CHANGELOG.md#step-62). The optional
-asynchronous-loss demonstration, isolated restores and operator audit remain
-planned acceptance work; see [scenarios 3, 6 and 8](../shardshop-testing/ARCHITECTURE.md#scenario-3)
+asynchronous-loss demonstration and older-backup operator audit remain
+planned acceptance work. The coordinated baseline backup and isolated restore
+passed step 6.3 target checks; final source checks and cleanup passed on 2026-10-26; see [scenarios 3, 6 and 8](../shardshop-testing/ARCHITECTURE.md#scenario-3)
 and [PLAN milestone 6](../PLAN.md#milestone-6-read-profiles-failover-restore-and-operation).

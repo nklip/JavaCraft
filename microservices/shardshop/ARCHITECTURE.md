@@ -5,7 +5,7 @@
 ShardShop is a local system-design lab. It runs a regional product catalog,
 sharded orders and an asynchronous ledger on one kind cluster. This overview
 describes the implemented architecture on **2026-10-26**. Remaining work in
-milestones 6–7 covers backup/restore, HTTP/2, operation and cloud features; the
+milestones 6–7 covers older-backup audit/repair, HTTP/2, operation and cloud features; the
 [detailed documents](#detailed-design-documents) identify the planned behavior.
 
 - **Shape:** six Quarkus applications, three regional PostgreSQL shards, one
@@ -200,7 +200,9 @@ See [routing](shardshop-core/sharding/ARCHITECTURE.md),
 [ID generation](shardshop-core/idgen/ARCHITECTURE.md) and
 [database consistency](database/ARCHITECTURE.md#consistency-and-failure-boundaries)
 for the contracts, [qualified synchronous failover](CHANGELOG.md#step-62),
-and the remaining backup/restore requirements.
+and the coordinated backup/isolated-restore baseline plus remaining older-backup
+audit/repair requirements. Step 6.3 coordinated backup/isolated restore, final source checks and cleanup
+passed on 2026-10-26; see [evidence](CHANGELOG.md#step-63).
 
 ## 4. Performance
 

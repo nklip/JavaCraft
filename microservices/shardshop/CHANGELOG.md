@@ -6522,3 +6522,298 @@ the unchanged tested source. All earlier failed and incomplete evidence above is
 preserved. **Step 6.2 is Done.** Backup/restore, operator audit, deferred capacity
 and final deployment readiness remain outside this qualification; version-policy
 exceptions and deadlines are unchanged.
+
+<a id="step-63"></a>
+## 2026-10-26 — Step 6.3 coordinated backup and isolated restore (Done)
+
+The implementation adds explicit Maven selections `kind-backup`, `kind-restore`
+and `kind-backup-allocator`; none runs in default acceptance or `kind-drill`.
+No application images, database migrations or selected versions change. The
+existing control-restoration helper is reused through package visibility.
+
+Backup takes both host lifecycle and Kubernetes drill locks, saves workload and
+deployment state, blocks all application writers, drains saga/relay/profit and
+broker work, then stops the remaining workers before sequential dumps. This
+baseline requires every application-vhost queue, including DLQs, to be empty;
+retained active work blocks capture. Native custom-format dumps preserve complete
+schema/data and ownership/ACLs; separate metadata retains database privileges,
+roles, routing, migration histories, dataset and Snowflake contracts, allocator
+identity, and streamed per-table hashes. The bundle is private, external to kind
+and Maven `target`, and receives its checksum manifest only after source recovery.
+Broker definitions contain credential hashes and remain inside that private
+bundle. The implementation follows the PostgreSQL 18
+[archive/ownership contract](https://www.postgresql.org/docs/18/app-pgdump.html).
+
+Restore validates bundle integrity, routing/schema compatibility and independent
+latest allocator evidence before creating a uniquely named owned PostgreSQL
+container with four databases and loopback TLS. Full table comparisons and
+permanent order/saga/ledger/result/stock/profit checks precede explicit CDC
+recovery. The actual packaged relay must reject restored offsets/history with
+no slot. After validated reconciliation, only the isolated target's offsets and
+reader history are reset; its fresh snapshot and subsequent WAL replay retain
+the original command/result IDs and permanent ledger effect. ID-producing paths
+remain disabled. Owned PostgreSQL/broker/process resources are cleaned up; this
+is isolated qualification, not a production cutover or the older-backup repair
+owned by 6.4. PostgreSQL documents the snapshot boundary in its
+[logical-decoding contract](https://www.postgresql.org/docs/18/logicaldecoding-explanation.html).
+
+The separate allocator history advances monotonically and refuses a different
+registry UID or lower mark. `kind-backup-allocator` refreshes it after ready source
+JVMs restart; an older database dump never overwrites that history or the live
+registry. Runtime files and restore evidence are separate from immutable dumps.
+
+Focused validation from the repository root, with JDK 25.0.5-tem and Node 24 on
+`PATH`:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true \
+  '-Dtest=Backup*Test,KindBackupRestoreTest,OwnedRestoreTargetTest,Restore*Test,KindDrillGuardTest,KindFailoverDrillTest' \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test
+```
+
+All **45 checks passed**, with no failures/errors/skips, in **4.588 seconds** at
+**19:32:56+04** (`/tmp/shardshop-6.3-focused-final.log`). Tests cover private
+exclusive bundles, malformed/incomplete/corrupt artifacts, transfers larger than
+4 MiB, timeout/interruption cleanup, coordinated drain and guarded restoration,
+allocator history, target/role/database-ACL restrictions, compatibility, lifecycle
+exclusion, permanent identities and explicit CDC recovery prerequisites.
+An initial integration compile exposed the shared role-list visibility mismatch
+(`/tmp/shardshop-6.3-focused-initial.log`), which was corrected. A sandboxed run
+then blocked macOS `sysctl` used by process-descendant cleanup; its two failures
+are preserved in `/tmp/shardshop-6.3-focused.log`. The same suite passed with host
+process inspection permitted (`/tmp/shardshop-6.3-focused-host.log`, **3.860s**)
+before the final entrypoint validation. No assertion was relaxed.
+
+The user approved a bounded thirty-minute live phase at **19:34+04**. The
+unmodified tested source hashes and wrapper are retained in
+`/tmp/shardshop-6.3-live/`; `python3 /tmp/shardshop-6.3-live/run.py` began at
+**19:34:54+04**. The planned private bundle is
+`~/.local/share/shardshop/backups/2026-10-26-step63/backup`, with independent
+allocator history at `~/.local/share/shardshop/allocator-latest.json` and separate
+restore evidence. The wrapper stops the source during isolated restore, resumes
+it for final gates and allocator refresh, then restores its stopped state.
+The coordinated backup passed **one scenario in 103.6 seconds**. The private
+bundle contains all four native dumps and broker definitions, with its manifest
+sealed after successful source restoration. Isolated restore then failed before
+container creation: Testcontainers rejected the fully qualified PostgreSQL image
+as a compatible substitute for `postgres`. The failed evidence remains in
+`/tmp/shardshop-6.3-live/restore.log`. The wrapper restored saved controls and
+stopped the original four nodes at **19:38:21+04**, reporting no cleanup errors
+and **209.473 seconds** elapsed. A narrow compatibility fix and restore-only retry
+reuse the sealed backup; no application rebuild or repeated source dump is needed.
+**Step 6.3 remains In Progress; isolated restore and CDC recovery are unqualified.**
+
+
+The image compatibility regression reproduces the exact pre-container failure
+before the fix (`/tmp/shardshop-restore-image-before.log`). The corrected helper
+retains the pinned digest and declares its `postgres` compatibility; all eight
+`OwnedRestoreTargetTest` checks pass (`/tmp/shardshop-restore-image-after.log`).
+The full focused command above then passed **46 checks** in **4.463 seconds** at
+**19:45:07+04** (`/tmp/shardshop-6.3-image-focused.log`).
+
+A restore-only retry uses `python3 /tmp/shardshop-6.3-restore-retry/run.py`, the
+original sealed backup and invocation snapshot, a fresh `restore-retry` evidence
+directory, and target `shardshop-restore-step63-retry-20261026`. It refreshes the
+independent allocator history after source readiness before restore and again
+before final shutdown, including failure cleanup. Its deadline stays within the
+original approved phase, **20:04:49+04**; six minutes are reserved for final gates
+and cleanup. Failed first-attempt artifacts remain intact.
+
+
+The first restore-only wrapper stopped before target creation because it checked
+allocator readiness before both product replicas were ready. Its primary and
+cleanup allocator checks correctly failed closed. The wrapper restored the
+existing bounded deployment-readiness wait; the original failure remains under
+`/tmp/shardshop-6.3-restore-retry/` (**95.898 seconds**, allocator-refresh cleanup
+error, source nodes nevertheless stopped). No source backup was repeated.
+
+The corrected readiness run, `/tmp/shardshop-6.3-restore-ready/`, refreshed the
+allocator successfully (**35.576 seconds**), stopped the source and restored all
+four databases. Exact table/schema/privilege checks and two complete retained
+order/ledger consistency scans passed. CDC setup then failed because the broker
+helper's generated integration chart fixture was absent; this is preserved in
+`restore.log` (**160.7-second scenario**, no CDC qualification). The owned target
+was removed, source controls and independent allocator history were restored,
+and all retained nodes stopped at **19:53:10+04**. Its **357.410-second** wrapper
+reports no cleanup errors. `python3 /tmp/shardshop-6.3-restore-ready/audit-failed-attempt-cleanup.py` verifies unchanged
+cluster/PVC/deployment identities and specifications, primaries, fences, routing
+and primary-profile configuration, with no owned lock/finalizers. It explicitly
+records a failed qualification with successful cleanup.
+
+A new restore preflight rejects absent/malformed broker fixtures or missing
+packaged order/ledger artifacts before creating an evidence directory or target.
+The fixture-only command (no application/image build) was:
+
+```bash
+helm template shardshop microservices/shardshop/infra/helm/shardshop \
+  --namespace shardshop \
+  --values microservices/shardshop/infra/helm/shardshop/kind-values.yaml \
+  --values microservices/shardshop/infra/shards.yaml \
+  --set-string render=infrastructure \
+  --output-dir microservices/shardshop/shardshop-testing/target/chart
+```
+
+`/tmp/shardshop-6.3-fixture-render.log` records success. The focused Maven command
+above passed **47 checks**, zero failures/errors/skips, in **5.797 seconds** at
+**19:54:21+04** (`/tmp/shardshop-6.3-fixture-focused.log`). The live missing-fixture
+failure and new missing/prepared-fixture checks cover the regression without
+repeating its expensive database work solely to reproduce that known failure.
+
+`python3 /tmp/shardshop-6.3-restore-fixture/run.py` reuses the sealed bundle,
+prepared fixtures and allocator history refreshed by the prior cleanup. It starts
+restore directly while the source remains stopped, with fresh target/evidence
+names. The original **20:04:49+04** deadline remains; the wrapper reserves four
+minutes for final source gates and cleanup based on observed timings.
+
+
+The fixture-prepared restore passed native restore, fingerprints/ownership/ACLs,
+retained-order consistency and all three exact missing-logical-slot refusals.
+It verified the original offset/history digests were unchanged and rechecked
+consistency before the explicit isolated reset. The post-reset ledger worker
+then rejected its isolated currency allowlist: the harness included unsupported
+`INR` and omitted supported `KRW`. Thus snapshot replay, streaming continuation
+and final source gates remain **unqualified**. The scenario failed after
+**267.2 seconds**; its wrapper finished after **271.167 seconds**, with no cleanup
+errors. All three captured PostgreSQL/broker container IDs were independently
+confirmed removed (`cleanup-owned-resources.json`), and all four original source
+nodes remained stopped. No source restart or allocator change occurred in this
+attempt. Private worker logs remain under the `restore-fixture/cdc-*` evidence
+directory; payloads and credentials are not reproduced here.
+
+The isolated ledger now derives its allowlist from
+`CurrencyPolicy.SUPPORTED_CURRENCIES`. The focused regression was run with the
+old configuration and failed on the exact INR/KRW difference
+(`/tmp/shardshop-6.3-currency-before.log`, **4.336 seconds**). After restoring the
+fix, the focused Maven command above passed **48 checks** with zero
+failures/errors/skips in **4.590 seconds**, finishing **20:02:48+04**
+(`/tmp/shardshop-6.3-currency-focused.log`). Application artifacts remain unchanged.
+
+A direct restore-only wrapper is prepared at
+`/tmp/shardshop-6.3-restore-currency/run.py`, reusing the sealed bundle and current
+allocator evidence, with fresh target/evidence names. A new bounded twenty-minute
+phase was requested under the repository time-budget checkpoint; it has **not yet
+been authorized or run**. Step 6.3 stays In Progress.
+
+
+Exact before-fix regression selection (same JDK/PATH and repository root):
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false \
+  '-Dtest=RestoreCdcRecoveryTest#restoredLedgerAllowsTheSupportedCountriesCurrencies' test
+```
+
+The old allowlist was restored only for this regression and the corrected source
+was reinstated in a `finally` block before the passing 48-check suite. Final
+`git diff --check` passes. No commit or deployment/image change was made.
+
+
+The user approved the additional twenty-minute phase at **20:06+04**.
+`python3 /tmp/shardshop-6.3-restore-currency/run.py` is now running with the
+corrected, 48-check-tested source, whose hashes are retained in that directory.
+The source begins stopped; the immutable backup, current allocator evidence and
+prepared fixtures are reused. Fresh isolated target `shardshop-restore-step63-currency-20261026`
+and `restore-currency` evidence are exclusive. Restore is bounded to fifteen
+minutes; the phase reserves time for final source gates, allocator refresh and
+stopping the original nodes. **This entry records authorization and launch, not
+successful qualification.**
+
+
+The corrected isolated restore **passed one scenario in 365.4 seconds**, with
+zero failures/errors/skips, finishing **20:13:20+04** (Maven **6m07s**).
+`restore-currency/restore-result.json` records successful target removal,
+ID-producing traffic disabled, **11,537 orders**, **11,535 permanent ledger
+decisions**, **56 retained published commands**, and **11,545 result bindings**.
+All three shard recovery checkpoints reached streaming positions. Original
+missing-slot refusal and unchanged recovery-state digests preceded the explicit
+reset; snapshot and subsequent WAL replay reused the original command/result
+identities, preserving **11,534 ledger entries**. The immutable bundle was
+reopened and its checksums verified after target cleanup.
+
+Exact restore invocation (repository root, same JDK 25 environment):
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+  -Dit.test=KindIT -Dshardshop.kind.snapshot=/tmp/shardshop-6.3-live/snapshot \
+  -Dshardshop.kind.cluster=shardshop \
+  -Dshardshop.backup.directory=/Users/nikita.lipatov/.local/share/shardshop/backups/2026-10-26-step63/backup \
+  -Dshardshop.backup.allocator=/Users/nikita.lipatov/.local/share/shardshop/allocator-latest.json \
+  -Dshardshop.restore.directory=/Users/nikita.lipatov/.local/share/shardshop/backups/2026-10-26-step63/restore-currency \
+  -Dshardshop.restore.target=shardshop-restore-step63-currency-20261026 \
+  -Dshardshop.kind.tags=kind-restore
+```
+
+The final gate invocation reused the Maven/snapshot selection above with
+`'-Dshardshop.kind.tags=kind-infrastructure | kind-deployment | kind-drills-idle'`.
+**Seven of eight cases passed**; the reader gate failed its unchanged fresh,
+complete all-OK **>=180/s** interval after 75 seconds. The suite took
+**216.2 seconds** (Maven **3m49s**) and finished **20:18:15+04**. Bounded saved
+reader logs show early under-rate all-OK intervals at **174.1, 168.9 and 169.5/s**,
+a later interval with two deadlines, then a **30.0-second, 6,000-read all-OK
+interval at 200.0/s** at **20:18:10+04**. This later evidence supports one focused
+workload recheck; it does not retroactively pass the failed gate. Logs and control
+readback remain in `/tmp/shardshop-6.3-restore-currency/reader-after-gate*`.
+
+Allocator refresh and automatic cleanup passed. The source stopped at
+**20:18:54+04**; the wrapper reports **702.678 seconds** elapsed, qualification
+false and no cleanup errors. The independent
+`audit-partial-qualification-cleanup.py` passed all resource/primary/profile
+restoration checks while explicitly preserving the failed overall result.
+
+Within the same approved phase, `python3 /tmp/shardshop-6.3-reader-final/run.py`
+rechecks only `'-Dshardshop.kind.tags=kind-workload & !kind-saga'`: catalog/deployment
+and the existing reader gate, with unchanged assertions. The wrapper waits only
+for normal reader catalog-resolution startup, not for a passing rate, then runs
+the gate once. The phase deadline remains **20:26:53+04**. The other seven passing
+gates and the successful restore are reused; no restore, backup or image build
+is repeated. Final qualification remains pending this focused result and cleanup.
+
+
+The focused workload recheck **passed both cases**, zero failures/errors/skips,
+in **64.32 seconds** (Maven **1m08s**), finishing **20:23:15+04**. It used the same
+existing catalog/deployment and fresh complete all-OK >=180/s reader assertions;
+no rate, sample, time-window or error assertion was relaxed. Exact command:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+  -Dit.test=KindIT -Dshardshop.kind.snapshot=/tmp/shardshop-6.3-live/snapshot \
+  '-Dshardshop.kind.tags=kind-workload & !kind-saga'
+```
+
+The separate final allocator refresh passed **one case in 4.616 seconds**
+(Maven **7.537s**), finishing **20:23:25+04**:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+  -Dit.test=KindIT -Dshardshop.kind.snapshot=/tmp/shardshop-6.3-live/snapshot \
+  -Dshardshop.kind.cluster=shardshop \
+  -Dshardshop.backup.allocator=/Users/nikita.lipatov/.local/share/shardshop/allocator-latest.json \
+  -Dshardshop.kind.tags=kind-backup-allocator
+```
+
+The wrapper restored exact saved controls, stopped all four original nodes at
+**20:23:36+04**, and reported **178.498 seconds**, `passed: true`, and no cleanup
+errors. `python3 /tmp/shardshop-6.3-reader-final/audit-restoration.py` passed: all
+original cluster/PVC/deployment identities and specifications, primary and fence
+state, routing, primary-read profile and backing volumes are preserved; owned
+locks/finalizers are absent and no database pod UID changed. An independent
+Docker check confirmed all three captured restore/broker container IDs removed
+and all source nodes stopped. The corrected source hashes are unchanged:
+`shasum -a 256 -c /tmp/shardshop-6.3-restore-currency/source-files.sha256` passed,
+as did `git diff --check`. No application rebuild or extra full reactor was run.
+
+**Step 6.3 is Done.** Evidence combines the successful coordinated backup,
+complete isolated restore/CDC recovery, seven initially passing final gates and
+the successful focused workload recheck; it does not relabel the failed eight-case
+run as passing. Failed results above remain intact. The valid 48 focused checks
+apply to the unchanged Java source. The private sealed backup and independent
+latest allocator history remain outside kind and Maven `target`; full live
+records are under `/tmp/shardshop-6.3-live/`,
+`/tmp/shardshop-6.3-restore-currency/` and `/tmp/shardshop-6.3-reader-final/`.
+Older-backup orphan audit/repair remains step 6.4. PITR, production cutover and
+deferred performance qualification are outside this coordinated-baseline result.

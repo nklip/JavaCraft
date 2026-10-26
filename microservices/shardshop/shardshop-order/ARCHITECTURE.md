@@ -16,8 +16,9 @@ writes directly to the ledger database.
   seller shards.
 - **Status:** the HTTP and saga processes implement the workflow, reconciliation,
   transport cleanup and operator reset through milestone 5, with qualified retry,
-  capacity, crash recovery and observability checks. Failover and restore remain
-  planned in steps 6.2–6.4.
+  capacity, crash recovery and observability checks. Synchronous failover passed
+  step 6.2; coordinated backup and isolated restore target checks passed in 6.3,
+  with final source checks and cleanup passing on 2026-10-26. Older-backup audit/repair remains 6.4.
 
 ## Processes
 
@@ -339,7 +340,9 @@ entry and saga, not deletion of the original ledger row.
 > and durable five-attempt enqueue schedule. Step 5.2 implements safe transport
 > cleanup. Step 5.3 adds the manual operator reset. Steps 5.4–5.5 qualify retry,
 > capacity and crash recovery, independent HTTP writes and recovery observability.
-> Promotion/failover and coordinated restore remain steps 6.2–6.4.
+> Synchronous promotion/failover passed 6.2. Coordinated backup/isolated restore
+> target checks passed in 6.3, with final source checks and cleanup passing on 2026-10-26; older-backup
+> audit/repair remains 6.4.
 
 ### Reconciliation schedule
 
@@ -509,10 +512,11 @@ cleanup.
 
 > **Status:** step 4.7 implements reachable-primary orphan quarantine,
 > correlation/conflict checks and the creation lock. Coordinated backups and
-> isolated restores remain step 6.3; the operator audit, restore recovery and
+> isolated target restore checks passed in step 6.3, including final source checks and cleanup on 2026-10-26; the operator audit, older-backup restore recovery and
 > optional asynchronous-loss drill remain step 6.4. Automatic replay is implemented
 > in step 5.1, and manual budget reset in step 5.3. The restore procedures below
-> are required targets, not currently delivered operator tooling.
+> describe the planned 6.4 older-backup repair, distinct from the implemented
+> [6.3 baseline](../shardshop-testing/RUNBOOK.md#coordinated-backup-and-isolated-restore).
 
 ### Orphan results
 

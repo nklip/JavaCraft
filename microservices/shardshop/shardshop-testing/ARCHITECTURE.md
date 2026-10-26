@@ -28,9 +28,9 @@ explain the durability assumptions behind these scenarios.
 | [5](#scenario-5) | Ledger rejection, compensation and replay | Covered by completed saga steps |
 | [6](#scenario-6) | Crash recovery and CDC | Steps 4.4 and 5.5 qualify relay/crash recovery, independent HTTP writes and observability; step 6.2 qualified synchronous promotion/failover on 2026-10-26 |
 | [7](#scenario-7) | Broker retries, dead letters and reconciliation | Step 4.3 verifies broker policies and bounded retry/parking behavior. Step 5.1 adds durable reconciliation and lost-result recovery; step 5.2 adds transport cleanup with CDC checkpoints and retained-decision replay. Step 5.3 adds the restricted manual reset and replay after budget exhaustion. Step 5.4 measures retry timing and verifies shard-outage reconciliation plus unbound/full DLQ pressure and recovery on both application publishers; see the [drill runbook](RUNBOOK.md#retry-and-dlq-capacity-drills) and [dated evidence](../CHANGELOG.md#step-54) |
-| [8](#scenario-8) | Standby loss, promotion, restore and audit | Kind database drills cover standby/quorum behavior; the strict-read drill passed step 6.1 qualification. Step 6.2 qualified synchronous promotion on 2026-10-26; coordinated restore and audit remain steps 6.3–6.4 |
+| [8](#scenario-8) | Standby loss, promotion, restore and audit | Kind database drills cover standby/quorum behavior; the strict-read drill passed step 6.1 qualification. Step 6.2 qualified synchronous promotion on 2026-10-26; step 6.3 qualified coordinated backup/isolated restore; older-backup audit/repair remains step 6.4 |
 | [9](#scenario-9) | HTTP validation and transaction boundaries | Covered by completed validation steps |
-| [10](#scenario-10) | ID generation and service-issued identity | ID generation/allocation and service-issued identity checks exist; step 6.6 requires the complete lifecycle acceptance run. Backup/restore preservation is planned in step 6.3 |
+| [10](#scenario-10) | ID generation and service-issued identity | ID generation/allocation and service-issued identity checks exist; step 6.6 requires the complete lifecycle acceptance run. Backup/restore preservation passed step 6.3 qualification |
 | [11](#scenario-11) | Concurrent stock reservation | Covered by completed reservation steps |
 
 For scenarios 1, 2, 4, 5, 9 and 11, completed lifecycle, routing, saga, validation
@@ -179,6 +179,48 @@ Acceptance scenarios for implementation:
     every supported reserve/release run, each product's `stock` equals its
     `initial_stock` minus its active reserved quantities.
 
+## Coordinated backup and isolated restore
+
+**Step 6.3 is Done**, qualified on 2026-10-26. Coordinated backup, isolated
+restore with explicit CDC recovery, final source checks, independent latest
+allocator export and restoration audit passed. The initial source suite passed
+seven of eight cases; its failed reader gate is preserved, and the subsequent
+two-case workload rerun passed unchanged thresholds. See
+[evidence](../CHANGELOG.md#step-63). Separate
+opt-in `kind-backup` and `kind-restore` tags implement the coordinated baseline;
+neither belongs to `kind-drill` or the default suite. The
+[runbook](RUNBOOK.md#coordinated-backup-and-isolated-restore) defines explicit source,
+external artifact, independent allocator-history and fresh target parameters.
+
+The standalone opt-in `kind-backup-allocator` export refreshes independent latest
+allocator history after ready source JVM restarts, under the host lifecycle lock
+and deployment/saga readiness checks. Run it after final source gates before
+stopping; any subsequent generator restart requires another refresh before
+ID-producing restore use. Target qualification keeps every ID-producing path
+disabled.
+
+Backup holds both host lifecycle and Kubernetes drill locks. It saves/pauses
+producer, reader and interactive-seeder controls, scales writers down, and lets
+saga/ledger drain before stopping them. Every application-vhost queue, including
+DLQs, must be empty: retained dead letters refuse this baseline rather than being
+silently omitted. Four full logical dumps retain all three shards and ledger,
+actual broker definitions, roles, database ACLs, routing/schema/identity metadata
+and complete table fingerprints. Source replicas, controls, topology, identities
+and invariants must recover before the immutable backup is sealed.
+
+Restore validates inventory/schema/Snowflake compatibility, checksums and the
+separate latest allocator lineage/high-water mark before creating a fresh owned
+loopback-only TLS PostgreSQL container with four databases. It verifies complete
+row fingerprints, ownership/ACLs, saga relationships and global consistency.
+Restored CDC first must refuse saved offsets without logical slots. Explicit
+target-only reset/resnapshot then replays original command/result identities and
+proves subsequent streaming with a fresh broker and ledger worker, without any
+ID-producing traffic. The source allocator is never rewound and the owned target
+is removed after verification. Artifacts contain full seed data and broker
+credential hashes; private permissions and exclusion from commits are required.
+Older-backup repair/audit remains step 6.4; PITR and production cutover are outside
+this baseline qualification.
+
 ## Synchronous failover drill
 
 The opt-in `kind-failover-drill`, also selected by `kind-drill`, implements the
@@ -258,8 +300,8 @@ Recovery removes only owned finalizers, restores fences, original primary and
 workload controls, and verifies exact PVC/backing-volume identities, database
 lineage, streaming roles and the final deployment/invariant gates. No data volumes
 are deleted; ordinary HTTP fixture business history remains. Recovery failure
-retains the shared lock. Coordinated backup/restore and restore audit remain
-steps 6.3–6.4.
+retains the shared lock. Coordinated backup/isolated restore passed step 6.3; older-backup restore audit
+remains step 6.4.
 
 ## Strict replica-read drill
 
