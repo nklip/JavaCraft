@@ -33,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -41,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -133,6 +135,73 @@ class CatalogSeederTest {
     }
 
     @Test
+    void retriesReplicaLagForSellerAndProductReadsByIdAndCreationKey() throws Exception {
+        fault("read catalog-v2.US.seller.1", Fault.NOT_FOUND, Fault.NOT_FOUND);
+        fault("lookup catalog-v2.EU.seller.1", Fault.NOT_FOUND);
+        fault("read catalog-v2.US.product.1", Fault.NOT_FOUND);
+        fault("lookup catalog-v2.ASIA.product.1", Fault.NOT_FOUND);
+
+        List<String> completed = new ArrayList<>();
+        SeedReport report = seeder.seed(() -> completed.add("operation"));
+
+        assertEquals(issuedIds(), ids(report));
+        assertEquals(352, stored.size(), "Replica lag must not recreate acknowledged entities");
+        assertEquals(1056, completed.size(), "An operation completes only after its verification succeeds");
+        assertEquals(1061, requests.size());
+        assertEquals(List.of(new ControlStatus.TrafficCategory("creation", 352, 0, 0),
+                new ControlStatus.TrafficCategory("verification", 709, 5, 5)), control.status().traffic());
+        verify(pause, times(4)).sleep(Duration.ofMillis(100));
+        verify(pause).sleep(Duration.ofMillis(150));
+        verifyNoMoreInteractions(pause);
+    }
+
+    @Test
+    void missingEntityStopsVerificationWhenTheRetryBudgetIsExhausted() throws Exception {
+        fault("read catalog-v2.US.seller.1", Fault.NOT_FOUND, Fault.NOT_FOUND, Fault.NOT_FOUND);
+        List<String> completed = new ArrayList<>();
+
+        SeedingException failure = assertThrows(SeedingException.class,
+                () -> seeder.seed(() -> completed.add("operation")));
+
+        assertEquals("Read seller catalog-v2.US.seller.1 failed on attempt 3: HTTP 404 SELLER_NOT_FOUND",
+                failure.getMessage());
+        assertEquals(352, completed.size(), "Only creations completed before the missing first verification");
+        assertEquals(352, stored.size());
+        assertEquals(355, requests.size());
+        assertEquals(new ControlStatus.TrafficCategory("verification", 3, 2, 3), control.status().traffic().get(1));
+        verify(pause).sleep(Duration.ofMillis(100));
+        verify(pause).sleep(Duration.ofMillis(150));
+        verifyNoMoreInteractions(pause);
+    }
+
+    @Test
+    void aStalledReadAfterNotFoundUsesTheRequestDeadlineAndTheSameAttemptBudget() throws Exception {
+        fault("read catalog-v2.US.seller.1", Fault.NOT_FOUND, Fault.NOT_FOUND);
+        AtomicInteger reads = new AtomicInteger();
+        CompletableFuture<HttpResponse<byte[]>> stalled = new CompletableFuture<>();
+        doAnswer(invocation -> {
+            HttpRequest request = invocation.getArgument(0);
+            if (request.method().equals("GET") && reads.incrementAndGet() == 2) {
+                return stalled;
+            }
+            return respond(request);
+        }).when(http).sendAsync(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<byte[]>>any());
+        CatalogSeeder bounded = new CatalogSeeder(new SeederDatasets(
+                new JsonHttpClient(http, URI.create("http://product:8080"), Duration.ofMillis(20)), CatalogDataset.VERSION),
+                new RetryPolicy(3, Duration.ofMillis(100), Duration.ofMillis(150), pause, control));
+
+        SeedingException failure = assertThrows(SeedingException.class, bounded::seed);
+
+        assertEquals("Read seller catalog-v2.US.seller.1 failed on attempt 3: HTTP 404 SELLER_NOT_FOUND",
+                failure.getMessage());
+        assertTrue(stalled.isCancelled(), "The per-attempt deadline must cancel the stalled HTTP response");
+        assertEquals(3, reads.get(), "404 and deadline failures share one finite attempt budget");
+        verify(pause).sleep(Duration.ofMillis(100));
+        verify(pause).sleep(Duration.ofMillis(150));
+        verifyNoMoreInteractions(pause);
+    }
+
+    @Test
     void partialRunKeepsIssuedIdsRegionsAndPayloadsForTheNextRun() throws Exception {
         fault("create catalog-v2.EU.seller.10", Fault.UNAVAILABLE, Fault.UNAVAILABLE, Fault.UNAVAILABLE);
         SeedingException failure = assertThrows(SeedingException.class, seeder::seed);
@@ -173,19 +242,16 @@ class CatalogSeederTest {
     }
 
     @Test
-    void completesOnlyAfterPrimaryReadsConfirmEveryAcknowledgedEntity() throws Exception {
+    void rejectsDifferentIdentitiesAndPayloadsWithoutRetries() throws Exception {
         Map<String, String> failures = new LinkedHashMap<>();
-        failures.put("read catalog-v2.ASIA.seller.50", "Read seller catalog-v2.ASIA.seller.50 failed on attempt 1: HTTP 404 SELLER_NOT_FOUND");
         failures.put("read catalog-v2.EU.seller.7", "Read seller catalog-v2.EU.seller.7 returned a different ID than its acknowledged creation");
         failures.put("lookup catalog-v2.EU.seller.1", "Look up seller catalog-v2.EU.seller.1 returned a different ID than its acknowledged creation");
         failures.put("read catalog-v2.US.product.50", "Read product catalog-v2.US.product.50 returned a different ID than its acknowledged creation");
         failures.put("lookup catalog-v2.ASIA.product.1", "Look up product catalog-v2.ASIA.product.1 returned a different ID than its acknowledged creation");
-        failures.put("lookup catalog-v2.US.product.1", "Look up product catalog-v2.US.product.1 failed on attempt 1: HTTP 404 PRODUCT_NOT_FOUND");
         failures.put("read catalog-v2.EU.product.2", "Read product catalog-v2.EU.product.2 failed on attempt 1: Product response does not match its definition");
         failures.put("lookup catalog-v2.US.seller.3", "Look up seller catalog-v2.US.seller.3 failed on attempt 1: Seller response does not match its definition");
         for (Map.Entry<String, String> expected : failures.entrySet()) {
-            Fault fault = expected.getValue().contains("HTTP 404") ? Fault.NOT_FOUND
-                    : expected.getValue().contains("different ID") ? Fault.OTHER_ID : Fault.CHANGED_PAYLOAD;
+            Fault fault = expected.getValue().contains("different ID") ? Fault.OTHER_ID : Fault.CHANGED_PAYLOAD;
             fault(expected.getKey(), fault);
             assertEquals(expected.getValue(), assertThrows(SeedingException.class, seeder::seed).getMessage());
         }

@@ -5688,3 +5688,195 @@ the passing build, release, application recovery drills and historical upgrade
 proof. Full performance remains unqualified and assigned to planned 6.7–6.9.
 Local advisory acceptance still expires at the October 28 review date; no support
 deadline, scan gate or production-readiness claim changed.
+
+<a id="step-61"></a>
+## Step 6.1 — strict replica-read drill
+
+**2026-10-26 — Done; strict replica qualification and restoration pass.** The seeder
+retries verification `404` responses within its existing shared attempt, backoff
+and response-timeout budget. Creation `404` remains terminal. Tests cover all
+four verification paths, mixed failures, exhaustion and cancellation of a stalled
+response.
+
+The new opt-in `kind-replica-read-drill` captures both product/routing ConfigMaps
+and the full product Deployment template before switching profiles. Recovery
+uses conditional patches, restores every product pod to primary reads, removes
+only invocation-owned products, restores workload controls and executes the
+existing deployment primary assertion before releasing the drill lock. It tests
+primary read-after-write, controlled replay lag, one/both fenced standbys,
+per-pod bounded `503` without primary fallback, peer-shard reads, reader outcome
+classification and a replayed table lock that blocks standby queries. No
+operator, database image, compiler target or dependency version changed.
+
+Commands run from the repository root use the already-qualified tools:
+
+```bash
+export JAVA_HOME=/Users/nikita.lipatov/.sdkman/candidates/java/25.0.5-tem
+export PATH="$JAVA_HOME/bin:/opt/homebrew/opt/node@24/bin:$PATH"
+
+mvn -B -ntp -f microservices/shardshop/pom.xml \
+  -pl shardshop-workload/shardshop-product-seeder -am \
+  -Dtest=RetryPolicyTest,CatalogSeederTest -Dsurefire.failIfNoSpecifiedTests=false test
+
+mvn -B -ntp -f microservices/shardshop/pom.xml \
+  -pl shardshop-workload/shardshop-product-seeder -am test
+
+mvn -B -ntp -f microservices/shardshop/pom.xml \
+  -pl shardshop-testing,shardshop-workload/shardshop-product-seeder -am \
+  -Dshardshop.infrastructureOnly=true \
+  '-Dtest=KindReplica*Test,RetryPolicyTest,CatalogSeederTest' \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test
+
+mvn -B -ntp -f microservices/shardshop/pom.xml \
+  -pl shardshop-testing,shardshop-workload/shardshop-product-seeder -am \
+  -Dshardshop.infrastructureOnly=true test
+
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true '-Dtest=KindReplica*Test,KindDeploymentTest' \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test
+```
+
+The first filtered seeder attempt hit the reactor's no-tests gate before seeder
+execution. Initial source validation found and fixed a missing Mockito import,
+nested Mockito stubbing, and a query-block mock matcher. The full module run
+needed local HTTP socket permission; with that permission, all **67 seeder tests**
+passed. Its verification module found a test assertion issue, fixed before the
+focused run. The latest focused run passes **44 tests**, zero failures, errors or
+skips, in 4.309 seconds (`/tmp/shardshop-6.1-drill-unit-final-3.log`). Failed logs
+remain in `/tmp/shardshop-6.1-{seeder-tests,seeder-all,focused,units,units-unrestricted,drill-unit-final}.log`;
+the intermediate passing focused result is `/tmp/shardshop-6.1-focused-2.log`.
+
+The temporary live wrapper is `/tmp/shardshop-6.1-live/run.py`; it records controls
+and node identities, bounds commands, and restores the retained stopped lab on
+exit. Its first resume attempt reached the API before readiness and stopped all
+four nodes without entering deployment. After adding a bounded API-ready wait,
+`bash microservices/shardshop/scripts/up.sh` ran its normal clean build. All
+application modules and **75 packaged startup checks** passed, but the new
+query-block test exposed a scheduler race during verification: it asserted the
+background mock call before thread launch. The test now uses an explicit bounded
+launch latch and `finally` cleanup; the focused 44-test result above includes this
+fix. No deployment or image scan followed that failed build. The wrapper restored
+saved controls and verified stopped nodes with unchanged container IDs, images
+and mounts, with no cleanup errors. These failed attempts remain evidence, not
+passing live qualification.
+
+After the user authorized another 15 minutes, the corrected-test attempt ran:
+
+```bash
+python3 /tmp/shardshop-6.1-retry/run.py
+# The wrapper invokes the normal release entry point:
+bash microservices/shardshop/scripts/up.sh
+```
+
+The clean ShardShop build passed **1,904 unit/provider tests and 75 packaged
+startup checks**, with zero failures/errors/skips. All seven image scan gates
+passed; qualified artifacts reached every kind node and the migration release
+completed. Tested source hashes are in
+`/tmp/shardshop-6.1-retry/source-files.sha256`; the full record is `up.log` in
+that directory. These results do not qualify application runtime or strict reads.
+
+The application rollout failed before its seeder/deployment acceptance and before
+the replica drill. New application pods could not load
+`io.quarkus.bootstrap.runner.QuarkusEntryPoint`. The temporary Python wrapper had
+set `umask(0o077)` for its Maven child: packaged `quarkus-app/lib` directories
+had mode **0744**, while the image's unchanged `COPY . /app` retains their modes
+and the runtime uses UID/GID **10001:10001**. That user cannot traverse the copied
+libraries. This was an agent-authored qualification-wrapper error, not a
+ShardShop Java regression. The wrapper now uses `umask(0o022)` inside its private
+mode-700 evidence directory, and generated package directories have been restored
+to **0755**. Those images remained unqualified; the final attempt below rebuilt them.
+
+The deployment timeout stopped the failed upgrade. Recovery used:
+
+```bash
+helm --kube-context kind-shardshop -n shardshop rollback shardshop-application 4 --wait --timeout 120s
+python3 /tmp/shardshop-6.1-retry/recover.py
+# Recovery repeats the same rollback only after API readiness, then restores controls:
+bash microservices/shardshop/scripts/down.sh
+```
+
+The first rollback overlapped the qualification wrapper's node shutdown after
+controls recovered, so its wait did not finish. The bounded recovery resumed the
+same nodes, completed rollback to the prior release as **application revision 7**,
+verified ready/current replicas, restored all three saved workload controls and
+confirmed no drill lock. It then stopped all four retained nodes and verified
+unchanged container IDs, node images and mounts. `recovery-result.json` is
+`{"passed":true,"failure":null}`; `recovery.log`, `recovered-deployments.json` and
+`recovered-helm-history.json` retain the evidence. Historical revision 5 is failed
+and revision 6 records the interrupted rollback; revision 7 was deployed at recovery.
+
+Two optional permission-probe commands did not run their checks: the kind
+manifest digest was absent from the host Docker store, and the local runtime
+image has no `/bin/sh`. Their logs remain in the same private evidence directory;
+they are not passing probes. The mode/UID/COPY observations above establish the
+permission problem. At that checkpoint, step 6.1 remained **Blocked** pending a
+corrected deployment and live drill. The user then approved the final bounded
+30-minute attempt below.
+
+### Final retained-lab qualification
+
+The corrected wrapper completed in **1,333.64 seconds (22m14s)**, from
+2026-10-26T11:53:34+04 through 12:15:47+04. It uses `umask(0o022)` while keeping
+its evidence directory private. All six generated Quarkus packages passed the
+readable/traversable permission check; the rebuilt applications then started
+successfully as the configured runtime user. No repository build configuration
+was changed to repair the temporary wrapper.
+
+Exact commands, using the Java/Node environment above:
+
+```bash
+python3 /tmp/shardshop-6.1-final/run.py
+# The wrapper invokes the normal release entry point:
+bash microservices/shardshop/scripts/up.sh
+
+# Reuse the observer compiled by up.sh and its freshly deployed application images:
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+  -Dit.test=KindIT -Dshardshop.kind.snapshot=/tmp/shardshop-6.1-final/snapshot \
+  -Dshardshop.kind.tags=kind-replica-read-drill
+
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+  -Dit.test=KindIT -Dshardshop.kind.snapshot=/tmp/shardshop-6.1-final/snapshot \
+  '-Dshardshop.kind.tags=kind-deployment | kind-drills-idle'
+
+bash microservices/shardshop/scripts/down.sh
+```
+
+| Check | Result | Evidence under `/tmp/shardshop-6.1-final/` |
+|---|---|---|
+| Normal `up.sh` build and release | **1,904 unit/provider tests**, **75 packaged startup checks**, seven image scan gates and migrations passed. Application revision **8** deployed; all six release acceptance cases passed in **118.8s**, with zero failures/errors/skips. | `up.log`, `source-files.sha256`, `package-permissions.json` |
+| Strict replica-read drill | **One scenario passed in 339.5s**; Maven completed in 5m49s. | `drill.log`, `drill-reports/`, `snapshot/` |
+| Final primary deployment and idle gates | **Six cases passed in 69.39s**, with zero failures/errors/skips; Maven completed in 1m12s at 12:15:36+04. | `final-gates.log`, `final-reports/` |
+| Cleanup and prior lab state | Wrapper exited **0**; `passed: true`, `cleanupErrors: []`. All four retained nodes stopped with unchanged container IDs, node images and mounts. | `session.log`, `controls-before.json`, `nodes-before.json`, `down.log`, `result.json` |
+
+The drill selected `shard-a`. An acknowledged primary write was immediately
+readable (`200`, 17ms). Paused replay made a primary-confirmed product absent on
+both standbys and returned `404` in 67ms; after replay resumed it returned `200`
+in 65ms. One fenced standby preserved reads and a new write. With both standbys
+fenced, the two product pods returned **`503 READ_REPLICA_UNAVAILABLE` in 105ms
+and 209ms**, while peer-shard reads returned `200`. Restored standbys resumed
+successful reads.
+
+The replayed table lock independently exercised hung queries. The two product
+pods returned the same **`503` in 3,114ms and 3,128ms**, below the four-second
+server requirement and five-second reader deadline. The complete reader interval
+ending 08:13:03 UTC recorded **719 OK and 291 REPLICA_UNAVAILABLE** outcomes,
+with p95 3,003ms and maximum 3,137ms; it contained no deadline, transport or other
+unexpected outcome. The final clean interval ending 08:14:03 UTC recorded
+**5,716 OK requests at 195.9/s**, p95 11ms, above the drill's unchanged 180/s
+minimum for a 200/s target. `reader-intervals.log` retains these observations.
+The earlier startup interval with one transport failure is also retained; the
+drill qualifies fresh complete intervals after rollout and each fault boundary.
+
+Guard recovery removed the query block, restored WAL replay and fence state,
+restored exact ConfigMap data and the full product pod template, verified primary
+configuration on all ready product pods, removed invocation-owned products and
+restored the saved workload controls. The explicit primary deployment assertion
+passed before the drill lock was released. The final deployment/idle gates then
+passed, and wrapper cleanup again restored controls before stopping the retained
+lab. Source hashes matched the candidate built and tested by `up.sh`; subsequent
+edits only record this evidence and mark the plan Done.
+
+This completes step **6.1**. Promotion/failover remains step 6.2, including its
+separate CNPG maintenance gate; the deferred capacity criteria remain unchanged.

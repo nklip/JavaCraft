@@ -23,12 +23,12 @@ explain the durability assumptions behind these scenarios.
 |---:|---|---|
 | [1](#scenario-1) | Seeding gate and product traffic | Covered by completed lifecycle steps |
 | [2](#scenario-2) | Regional placement, routing, schemas and roles | Covered by completed routing steps |
-| [3](#scenario-3) | Primary and replica reads | Primary/replica read behavior exists; the complete deployed strict-replica-read drill is planned in step 6.1 |
+| [3](#scenario-3) | Primary and replica reads | Primary/replica read behavior and the opt-in deployed strict-replica-read drill passed step 6.1 qualification |
 | [4](#scenario-4) | Confirmed order effects | Covered by completed saga steps |
 | [5](#scenario-5) | Ledger rejection, compensation and replay | Covered by completed saga steps |
 | [6](#scenario-6) | Crash recovery and CDC | Steps 4.4 and 5.5 qualify relay/crash recovery, independent HTTP writes and observability; promotion/failover cases remain step 6.2 |
 | [7](#scenario-7) | Broker retries, dead letters and reconciliation | Step 4.3 verifies broker policies and bounded retry/parking behavior. Step 5.1 adds durable reconciliation and lost-result recovery; step 5.2 adds transport cleanup with CDC checkpoints and retained-decision replay. Step 5.3 adds the restricted manual reset and replay after budget exhaustion. Step 5.4 measures retry timing and verifies shard-outage reconciliation plus unbound/full DLQ pressure and recovery on both application publishers; see the [drill runbook](RUNBOOK.md#retry-and-dlq-capacity-drills) and [dated evidence](../CHANGELOG.md#step-54) |
-| [8](#scenario-8) | Standby loss, promotion, restore and audit | Current kind database drills cover standby/quorum behavior. Complete strict-read, promotion, coordinated restore and audit requirements remain in steps 6.1–6.4 |
+| [8](#scenario-8) | Standby loss, promotion, restore and audit | Kind database drills cover standby/quorum behavior; the strict-read drill passed step 6.1 qualification. Promotion remains step 6.2; coordinated restore and audit remain steps 6.3–6.4 |
 | [9](#scenario-9) | HTTP validation and transaction boundaries | Covered by completed validation steps |
 | [10](#scenario-10) | ID generation and service-issued identity | ID generation/allocation and service-issued identity checks exist; step 6.6 requires the complete lifecycle acceptance run. Backup/restore preservation is planned in step 6.3 |
 | [11](#scenario-11) | Concurrent stock reservation | Covered by completed reservation steps |
@@ -178,6 +178,31 @@ Acceptance scenarios for implementation:
     changes, reactivation or deletion, and database `TRUNCATE` is refused. After
     every supported reserve/release run, each product's `stock` equals its
     `initial_stock` minus its active reserved quantities.
+
+## Strict replica-read drill
+
+The opt-in `kind-replica-read-drill` scenario, also selected by `kind-drill`,
+covers the deployed read portions of scenarios 3 and 8 and passed
+[step 6.1 retained-lab qualification on 2026-10-26](../CHANGELOG.md#step-61).
+[Invocation and recovery](RUNBOOK.md#strict-replica-read-drill) are documented in
+the runbook. Promotion remains step 6.2.
+
+The shared guard registers exact restoration of product/routing ConfigMap data
+and the full product Deployment template before switching every literal profile
+source, including environment and JVM command/argument overrides. Primary checks
+reject indirect/external sources; conditional patches reject concurrent edits.
+Fresh 200/s reader observations establish clean traffic before and after the
+fault phases. Controlled replay lag must yield a stale `404` for an acknowledged
+write, followed by success after replay resumes. One fenced standby must preserve
+reads and writes; both fenced standbys and a replayed `ACCESS EXCLUSIVE` query
+block must yield per-product-pod `503` responses in less than four seconds.
+Peer reads must continue, and fresh reader reports must distinguish replica
+unavailability without deadline or transport failures.
+
+Recovery restores database state and the exact profile, waits for primary
+configuration on the Deployment and every ready product pod, removes invocation-owned
+fixtures, restores workload controls and runs the primary deployment gate before
+unlocking. Failed restoration retains the shared lock.
 
 ## Test levels
 

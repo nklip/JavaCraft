@@ -3,25 +3,26 @@
 ## 1. Implementation milestones
 
 This is the implementation checklist for `microservices/shardshop`, updated on
-2026-10-25. Every step starts as **Planned**; existing design documents and routing
+2026-10-26. Every step starts as **Planned**; existing design documents and routing
 vectors do not mean the corresponding application behavior is implemented.
 
 ### Current position
 
-- **Completed:** milestones 0–5. The current deployment has
+- **Completed:** milestones 0–5 and steps 6.0–6.1. The current deployment has
   two order HTTP pods and one separate `shardshop-order-saga` pod, using the same
   order image. The [overview](ARCHITECTURE.md) and module designs describe current
   behavior; dated completion notes below describe what passed at that time. The
   older-lab foundation upgrade for 5.3 now passes in the isolated 6.0 rehearsal,
   including retained identities/data, restricted reset and once-only replay.
-- **Current:** step **6.0, version maintenance and retained-upgrade qualification**
-  is **Done under the user's reduced local-maintenance scope**: final kind gates
-  passed nine cases with no failures/errors/skips, and the stopped retained lab
-  was restored. Next is **6.1 Strict replica-read drill — Planned**. The user
-  deferred capacity qualification to 6.7/6.8/6.9; full performance remains
-  unqualified. Local advisory acceptance ends October 28; CNPG/database changes
-  remain excluded.
-- **Remaining:** milestone 6 qualifies replica reads, failover, backup/restore
+- **Current:** step **6.1, strict replica-read drill, is Done**. The retained-lab
+  drill passed controlled lag, standby loss and hung-query checks, restored the
+  exact primary profile and workload controls, and passed six final gates before
+  returning the lab to its stopped state. See [6.1 evidence](CHANGELOG.md#step-61).
+  Step **6.0 remains Done under the user's reduced local-maintenance scope**.
+  The user deferred capacity qualification to 6.7/6.8/6.9; full performance remains
+  unqualified. Local advisory acceptance ends October 28. Step **6.2 is Planned**,
+  with its separately scoped CNPG maintenance gate still required.
+- **Remaining:** milestone 6 qualifies failover, backup/restore
   and HTTP/2; step **6.7** owns 10/s order-write latency correction and **6.8** owns sustained 30/s writes and **6.9** owns 1,000/s reads. AWS remains optional and
   starts only after local step 6.6. These steps remain **Planned**.
 - **Current performance (2026-10-25):** the maintained deployment achieved
@@ -344,7 +345,7 @@ reader; step 4.9 adds order, ledger and the order producer when they are functio
 | Step / deliverable | Depends on | Status | Acceptance condition |
 |---|---|---|---|
 | 6.0 Application maintenance and retained-upgrade evidence | 5.5 | Done | Complete the October 28 component review with support/advisory/artifact evidence, including Node.js, and record RabbitMQ successor planning by November 2 with its January 15 qualification deadline. Retain the application/build patches, safe isolated-lab tooling and completed pre-5.3 data/operator proof. **Scope exclusion:** keep CNPG operator/chart and managed PostgreSQL image/configuration at the retained baseline; no operator upgrade, foundation reconciliation, database pod replacement, fencing, failover or new upgrade rehearsal belongs to 6.0. Qualify application maintenance through the passing release/recovery evidence and final kind gates; the user explicitly deferred all capacity qualification to 6.7/6.8/6.9. Reuse valid prior results; preserve failed runs and unresolved advisory dispositions. **2026-10-25:** source maintenance and the historical upgrade proof are implemented; one normal application release now passes (1,875 unit/provider checks, 75 startup checks, seven scan gates and six live release cases); both application recovery drills also pass. A corrected single 10/s capture met duration/sample eligibility (120.058077s, 1,177 post-warmup writes) but write p95 133.783 ms exceeded <100 ms. Both HTTP write-metrics endpoints were captured. The user deferred 10/s latency to 6.7, all 30/s writes to 6.8 and 1,000/s reads to 6.9. The incomplete 30/s attempt and failed reader qualification remain evidence, not current capacity claims. Final kind gates passed nine cases (0 failures/errors/skips, 108.2s), finishing 2026-10-25T19:18:48+04; wrapper exit/restoration 0 verified original stopped nodes, IDs/images/volumes/kubeconfig and no owned labs. 6.0 is Done under this explicit reduced scope; capacity remains unqualified. The user accepted the saved JRE, K3s and Flyway-driver findings for this local lab through October 28 without changing scan gates. CNPG successor availability is not a 6.0 acceptance condition. See the [bounded finish proposal](#minimum-completion-of-60) and [evidence](CHANGELOG.md#step-60). |
-| 6.1 Strict replica-read drill | 6.0, 3.9, 4.13 | Planned | Deploy product's implemented strict replica profile on the lab and test it with the reader. Add the limited `404` retry for seeder verification reads required by the [seeder contract](shardshop-workload/shardshop-product-seeder/ARCHITECTURE.md); startup lookups already wait. Complete the read checks of scenarios [3](shardshop-testing/ARCHITECTURE.md#scenario-3) and [8](shardshop-testing/ARCHITECTURE.md#scenario-8): controlled lag, one/both unavailable standbys, hung queries and bounded `503` without primary fallback. Before mutation, the drill guard captures all profile sources (ConfigMap, environment and JVM overrides) and registers their exact restoration. Restore the primary profile and saved workload controls, wait for all product pods to use the restored configuration, and pass the explicit `kind-deployment` primary-profile assertion before releasing the drill lock. |
+| 6.1 Strict replica-read drill | 6.0, 3.9, 4.13 | Done | Deploy product's implemented strict replica profile on the lab and test it with the reader. Add the limited `404` retry for seeder verification reads required by the [seeder contract](shardshop-workload/shardshop-product-seeder/ARCHITECTURE.md); startup lookups already wait. Complete the read checks of scenarios [3](shardshop-testing/ARCHITECTURE.md#scenario-3) and [8](shardshop-testing/ARCHITECTURE.md#scenario-8): controlled lag, one/both unavailable standbys, hung queries and bounded `503` without primary fallback. Before mutation, the drill guard captures all profile sources (ConfigMap, environment and JVM overrides) and registers their exact restoration. Restore the primary profile and saved workload controls, wait for all product pods to use the restored configuration, and pass the explicit `kind-deployment` primary-profile assertion before releasing the drill lock. **2026-10-26:** 1,904 unit/provider tests, 75 packaged startup checks and the 339.5s live drill pass. Controlled lag, one/both fenced standbys and hung queries meet the contract, including per-pod `503` below four seconds. Exact profile/control restoration and six final gates pass; the retained lab is stopped. [Evidence](CHANGELOG.md#step-61) |
 | 6.2 Synchronous failover drills | 6.0, 5.5, 6.1 | Planned | Complete the failover parts of scenarios [6](shardshop-testing/ARCHITECTURE.md#scenario-6) and [8](shardshop-testing/ARCHITECTURE.md#scenario-8) for real switchover and primary-failure promotion. Prove acknowledged saga commits survive and CDC continues from synchronized logical slots; reconnecting to `-rw` alone is insufficient. Verify CDC pauses while either standby is absent even when quorum writes continue. The former primary rejoins safely, no shard has two writable primaries, and an unconfirmed survivor is not automatically promoted after losing the primary and another standby. Before this step, resolve the separately scoped CNPG maintenance/support gate; do not reintroduce it into 6.0. Follow the failover contract of the explicitly qualified operator version and update the [1.30 reference](https://cloudnative-pg.io/docs/1.30/failover/) if that version changes. |
 | 6.3 Coordinated backup and isolated restore | 5.3, 6.2 | Planned | Implement the [coordinated backup policy](#7-replication-and-backup-policy) with artifacts outside kind and isolated restore targets. Retain schema/routing metadata, permanent outcomes, quarantine, replay identities and the latest allocator high-water mark. Quiesce writes and drain saga/relay work for the baseline. Logical dumps contain CDC offsets but no slot: require explicit CDC recovery before restored traffic, never silently skip retained commands. Checks prove schema/routing compatibility and order/saga/ledger consistency; older-backup orphan auditing and repair belong to 6.4. |
 | 6.4 Restore audit and recovery | 6.3 | Planned | Implement the [operator audit and recovery](shardshop-order/ARCHITECTURE.md#operator-audit-planned) required by [scenario 8](shardshop-testing/ARCHITECTURE.md#scenario-8). Pause order writes; compare exported permanent ledger decisions with all primary orders by ID/fingerprint, quarantine missing/mismatched pairs and list orphan stock reservations. Recover original order/saga identities before replay; clear quarantine only after identity/outcome agreement. Retain unrecoverable ledger history and an unresolved incident. Verify detection after an older restore even when results were already acknowledged. This step also owns the optional asynchronous-loss drill. |
@@ -379,9 +380,10 @@ Reuse the passing release/recovery/gate evidence while its inputs remain valid.
 The user deferred 10/s write latency to 6.7, sustained 30/s writes to 6.8 and
 1,000/s reads to 6.9; all remain Planned with unchanged acceptance criteria.
 Failed/incomplete performance evidence remains, and full performance readiness is
-unqualified. The next step is 6.1, still Planned. Local advisory acceptance ends
-October 28; scan gates and support deadlines remain unchanged. CNPG/operator,
-managed PostgreSQL and further database recovery/rehearsal remain excluded;
+unqualified. Step 6.1 subsequently passed on October 26; see its separate
+[evidence](CHANGELOG.md#step-61). Local advisory acceptance ends October 28;
+scan gates and support deadlines remain unchanged. CNPG/operator, managed
+PostgreSQL and further database recovery/rehearsal were excluded from 6.0;
 the separately recorded CNPG maintenance gate still precedes 6.2.
 
 ### Milestone 7: AWS deployment (optional, advanced)

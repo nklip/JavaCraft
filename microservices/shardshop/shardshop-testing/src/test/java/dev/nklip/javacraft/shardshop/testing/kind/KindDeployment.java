@@ -191,7 +191,10 @@ public final class KindDeployment {
     }
 
     void cleanInterval(JsonNode reader, Instant boundary) throws IOException, InterruptedException {
-        double minimum = minimumRate(reader);
+        cleanInterval(reader, boundary, minimumRate(reader));
+    }
+
+    void cleanInterval(JsonNode reader, Instant boundary, double minimum) throws IOException, InterruptedException {
         Duration interval = readerInterval(reader);
         lab.await("a fresh complete all-OK reader interval at " + minimum + "/s", interval.multipliedBy(2).plusSeconds(15), () -> {
             List<JsonNode> current = pods("app.kubernetes.io/name=shardshop-product-reader");

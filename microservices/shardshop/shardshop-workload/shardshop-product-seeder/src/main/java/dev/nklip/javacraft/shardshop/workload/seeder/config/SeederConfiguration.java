@@ -23,7 +23,7 @@ public interface SeederConfiguration {
     @WithDefault("5s")
     Duration requestTimeout();
 
-    /** Attempts for each request, 1..10. The seeder repeats only transport failures and 503 responses. */
+    /** Attempts for each request, 1..10. Repeats transport failures, 503 and verification-only 404 responses. */
     @WithDefault("5")
     int maxAttempts();
 

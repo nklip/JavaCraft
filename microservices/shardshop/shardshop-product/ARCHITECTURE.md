@@ -12,8 +12,9 @@ describes how those writes use catalog storage.
   state never determines correctness.
 - **Owns:** sellers, products and their creation keys in schema `catalog`, on the
   home shard of each seller, and the zero-balance setup of seller profit.
-- **Status:** implemented. The deployed strict replica-read drill is planned in
-  steps 6.1 and 6.2.
+- **Status:** implemented. The deployed strict replica-read drill passed
+  [step 6.1 qualification on 2026-10-26](../CHANGELOG.md#step-61).
+  Promotion and failover qualification remain step 6.2.
 
 ## Product API
 
@@ -146,8 +147,9 @@ spans shards, and `CONFIRMED` can precede eventual balance application.
 
 ## Read profiles, TLS and deadlines
 
-> **Status:** the optional strict replica read profile is implemented. Its
-> retained-lab read and failover qualification remains planned in steps 6.1 and 6.2.
+> **Status:** the strict replica read profile and opt-in deployed read drill passed
+> [step 6.1 qualification on 2026-10-26](../CHANGELOG.md#step-61).
+> Promotion and failover qualification remain step 6.2.
 
 All writes, order validation, order status reads, and saga processing use `-rw`.
 Product reads also use `-rw` by default. An optional load-test profile uses `-ro`
@@ -175,6 +177,23 @@ Discard broken connections and reconnect to `-ro` when a standby becomes ready.
 Record these failures separately from stale/missing products and continue requests
 to unaffected shards. This keeps the measured primary and replica workloads
 distinct. See [CNPG Service roles](https://cloudnative-pg.io/docs/1.30/service_management/).
+
+The opt-in [`kind-replica-read-drill`](../shardshop-testing/RUNBOOK.md#strict-replica-read-drill),
+also selected by `kind-drill`, checks immediate primary reads after acknowledged
+writes, controlled replica lag (`404` until replay resumes), clean 200/s reader
+traffic, reads/writes with one fenced standby, and per-product-pod `503` responses
+in less than four seconds with both standbys fenced. A replayed `ACCESS EXCLUSIVE`
+lock on `catalog.products` exercises hung queries separately. Outage reader reports
+must preserve successful peer reads and record replica unavailability without
+client deadline or transport faults.
+
+The drill captures exact ConfigMap data and the full pod template, converts literal
+environment/JVM overrides under the shared recovery guard, and rejects indirect
+configuration and concurrent edits. Recovery restores replay, fencing and the
+original profile, checks every ready product pod, removes owned fixtures, restores
+workload controls and passes the primary deployment gate before unlocking. The
+2026-10-26 retained-lab run passed these checks and six final deployment/idle gates,
+then restored the lab to its stopped state.
 
 ## Regional currency policy
 

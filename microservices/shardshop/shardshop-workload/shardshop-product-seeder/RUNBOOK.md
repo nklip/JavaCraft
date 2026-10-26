@@ -11,8 +11,9 @@ then the products in that seller's policy currencies. Each POST has the definiti
 After all creations, the seeder reads each seller and product by its returned ID
 and by its creation key. Each read must return the acknowledged ID and the dataset
 payload. In the default product read profile, these GETs read the primaries.
-Step 6.1 plans to make the seeder repeat a verification read that gets `404` for a
-limited time, because replica-profile reads can lag.
+The seeder repeats a verification read that gets `404` within its configured
+retry budget, because replica-profile reads can lag. This applies to seller and
+product reads by both ID and creation key; creation requests never retry `404`.
 
 The seeder keeps no local state. A new run sends the same keys and payloads again.
 Product returns `200` with the stored ID for an entity that exists and creates only
@@ -23,6 +24,7 @@ and payloads that the failed run received.
 |---|---|
 | `201` or `200` with a valid ID and the dataset payload | Keep the returned entity |
 | `503`, a response timeout, or a refused or closed connection | Send the same request again after a backoff, up to `max-attempts` attempts |
+| `404` from a post-write verification read | Repeat the same GET with the same backoff and shared `max-attempts` budget |
 | A different status, an invalid response, or a read with a different ID or payload | Stop the run at once |
 
 ## Configuration
@@ -39,7 +41,10 @@ and payloads that the failed run received.
 | `shardshop.seeder.request-rate` | `100` | Outgoing HTTP requests per second, including repeated attempts, 0–1000; positive for the Job |
 | `shardshop.seeder.interactive` | `false` | `true` serves the [control page](../../shardshop-core/workload-control/README.md) and seeds only on operator request |
 
-With the defaults, one request stops after a maximum of approximately 33 seconds.
+With the defaults, one request stops after a maximum of approximately 33 seconds
+of HTTP attempts and backoff, including repeated verification `404` responses.
+Rate pacing and an operator pause can extend wall-clock time; the bootstrap Job
+also has its overall deadline.
 At 100 requests/s, the 1,056 requests of a complete run take approximately 11 seconds.
 The Job deadline of 300 seconds limits the complete run. Environment
 variables such as `SHARDSHOP_SEEDER_PRODUCT_URL` also set these properties.

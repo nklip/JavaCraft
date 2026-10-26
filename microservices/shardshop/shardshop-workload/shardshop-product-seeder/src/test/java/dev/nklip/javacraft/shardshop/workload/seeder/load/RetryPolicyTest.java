@@ -27,6 +27,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class RetryPolicyTest {
@@ -110,12 +111,55 @@ class RetryPolicyTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {400, 404, 409, 422, 500})
+    @ValueSource(ints = {400, 409, 422, 500})
     void neverRetriesOtherStatuses(int status) throws Exception {
         HttpResponseException rejected = status(status, null);
         when(request.send()).thenThrow(rejected);
         SeedingException failure = assertThrows(SeedingException.class, () -> retry.call(CatalogSeeder.VERIFICATION, "Look up product key", request));
         assertEquals("Look up product key failed on attempt 1: HTTP " + status, failure.getMessage());
+        verify(request).send();
+        verifyNoInteractions(pause);
+    }
+
+    @Test
+    void retriesNotFoundOnlyForVerificationAndSharesTheAttemptBudgetWithOtherFailures() throws Exception {
+        HttpResponseException absent = status(404, "SELLER_NOT_FOUND");
+        HttpResponseException unavailable = status(503, null);
+        when(request.send()).thenThrow(absent, unavailable, new HttpTimeoutException("deadline"), absent)
+                .thenReturn("visible");
+        assertEquals("visible", retry.call(CatalogSeeder.VERIFICATION, "Read seller key", request));
+        verify(request, times(5)).send();
+        InOrder order = inOrder(pause);
+        order.verify(pause).sleep(Duration.ofMillis(500));
+        order.verify(pause).sleep(Duration.ofMillis(1000));
+        order.verify(pause, times(2)).sleep(Duration.ofMillis(1500));
+        order.verifyNoMoreInteractions();
+        assertEquals(new ControlStatus.TrafficCategory("verification", 5, 4, 4), control.status().traffic().get(1));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 5})
+    void stopsMissingVerificationAtTheConfiguredAttemptLimit(int attempts) throws Exception {
+        RetryPolicy bounded = new RetryPolicy(attempts, Duration.ofMillis(500), Duration.ofMillis(1500), pause, control);
+        HttpResponseException absent = status(404, "PRODUCT_NOT_FOUND");
+        when(request.send()).thenThrow(absent);
+        SeedingException failure = assertThrows(SeedingException.class,
+                () -> bounded.call(CatalogSeeder.VERIFICATION, "Look up product key", request));
+        assertEquals("Look up product key failed on attempt " + attempts + ": HTTP 404 PRODUCT_NOT_FOUND",
+                failure.getMessage());
+        assertSame(absent, failure.getCause());
+        verify(request, times(attempts)).send();
+        verify(pause, times(attempts - 1)).sleep(any());
+        verifyNoMoreInteractions(pause);
+    }
+
+    @Test
+    void neverRetriesNotFoundFromCreation() throws Exception {
+        HttpResponseException absent = status(404, "SELLER_NOT_FOUND");
+        when(request.send()).thenThrow(absent);
+        SeedingException failure = assertThrows(SeedingException.class,
+                () -> retry.call(CatalogSeeder.CREATION, "Create product key", request));
+        assertEquals("Create product key failed on attempt 1: HTTP 404 SELLER_NOT_FOUND", failure.getMessage());
         verify(request).send();
         verifyNoInteractions(pause);
     }

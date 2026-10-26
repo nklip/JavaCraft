@@ -23,14 +23,13 @@ that seeds only on operator request.
   and verified through product reads, by returned ID and by creation key. In the
   default profile, these reads use primaries.
 - A retry repeats the same creation keys and payloads and recovers the same IDs.
-  Within a run, the seeder sends a request again only after a transport failure or
-  a `503` response, with bounded backoff.
+  Within a run, the seeder sends a request again after a transport failure or
+  a `503` response, with bounded backoff. Post-write verification reads also retry
+  `404`, because a standby can replay an acknowledged commit later in the replica
+  profile. Creation requests never retry `404`. All retryable failures share the
+  configured attempt limit, capped backoff and per-attempt response deadline.
 - Other statuses and reads that differ from the acknowledged ID or payload stop
   the run.
-
-> **Planned (step 6.1):** repeat a verification read that gets `404` for a limited
-> time, because a standby can replay a commit later in the replica profile. The
-> current seeder retries only transport failures and `503`.
 
 The [shared lifecycle](../ARCHITECTURE.md#workload-lifecycle) defines deployment
 ordering and completed Jobs. The [workload control architecture](../../shardshop-core/workload-control/ARCHITECTURE.md#seeder-modes)

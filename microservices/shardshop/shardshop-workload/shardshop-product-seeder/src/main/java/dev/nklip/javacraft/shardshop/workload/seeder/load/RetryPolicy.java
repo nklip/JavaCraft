@@ -9,6 +9,7 @@ import java.util.Objects;
 
 /**
  * Repeats one idempotent request after a transport failure or a 503 response, with capped exponential backoff.
+ * Verification reads also retry 404 responses, because a replica can lag an acknowledged creation.
  * Other HTTP statuses and invalid responses fail at once. Each attempt waits for its start in the live paced schedule
  * and counts as one outgoing request of its traffic category.
  */
@@ -39,7 +40,9 @@ public final class RetryPolicy {
             try {
                 return send(category, attempt > 1, request);
             } catch (HttpResponseException failure) {
-                if (failure.statusCode() != 503 || attempt == maxAttempts) {
+                boolean retryable = failure.statusCode() == 503
+                        || failure.statusCode() == 404 && CatalogSeeder.VERIFICATION.equals(category);
+                if (!retryable || attempt == maxAttempts) {
                     throw failed(operation, attempt, failure);
                 }
             } catch (IOException failure) {

@@ -191,7 +191,8 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind 
 ```
 
 Disruptive scenarios require explicit selection; `kind-drill` combines
-`kind-database-drill`, `kind-workload-drill`, `kind-saga-drill` and `kind-retry-drill`:
+`kind-database-drill`, `kind-workload-drill`, `kind-saga-drill`, `kind-retry-drill`
+and `kind-replica-read-drill`:
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
@@ -229,11 +230,13 @@ including environment and JVM property overrides; indirect profile/JVM settings 
 external configuration locations (including routing-config overrides) fail the check.
 Both mounted ConfigMaps must contain nonempty application.properties. Unrelated environment and JVM
 settings remain allowed. This validates declared deployment configuration, not an
-introspection of the running JVM's resolved configuration. The complete deployed
-strict-replica-read drill remains step 6.1. That drill must capture the exact prior
-profile sources, register their restoration before changing them, and verify the
-restored Deployment and ready pods before releasing the shared drill lock. Helm
-alone cannot remove a profile environment variable added outside the release.
+introspection of the running JVM's resolved configuration. The opt-in
+[strict replica-read drill](#strict-replica-read-drill) implements the deployed
+step 6.1 checks, which passed [live qualification on 2026-10-26](../CHANGELOG.md#step-61).
+It captures the exact prior profile sources, registers restoration before changing
+them, and verifies the restored Deployment and ready pods before releasing the
+shared drill lock. Helm alone cannot remove a profile environment variable added
+outside the release.
 
 All drill families share the `shardshop-kind-drill` ConfigMap lock. Recovery
 registers before each temporary mutation and runs in reverse order on failure or
@@ -392,6 +395,58 @@ both standbys to observe available and blocked quorum commits. Reads and writes
 are disrupted during the drill. It restores standbys and removes its temporary
 SQL objects and slots without deleting a PVC. The shared lock and failure recovery
 rules in the [snapshot runbook](#kind-verification-snapshot) apply.
+
+## Strict replica-read drill
+
+Step 6.1 passed retained-lab qualification on 2026-10-26, including exact primary
+profile/control restoration and six final deployment/idle gates. The lab was
+returned to its stopped state. See the [evidence](../CHANGELOG.md#step-61).
+Prepare the [kind verification snapshot](#kind-verification-snapshot) and explicitly
+select the disruptive drill, which is also included in `kind-drill`:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
+    -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-replica-read-drill \
+    -Dshardshop.kind.drillShard=shard-b
+```
+
+Omit `shardshop.kind.drillShard` to select the first inventory shard. The drill
+requires the deployed primary-read gate, two ready product pods, the existing
+HTTP workloads and three instances per shard. It saves and pauses producer,
+reader and interactive-seeder controls, then waits for in-flight work and the
+producer's nonterminal backlog to drain. It checks an acknowledged product write
+with an immediate primary read before changing profiles.
+
+Before any profile mutation, it validates both product/routing ConfigMaps, the
+Deployment template and ready product pods with the primary-read gate. It captures
+exact ConfigMap data and the full product pod template, including literal profile
+environment settings and JVM `-D` overrides in option variables, commands and
+arguments. It registers recovery before converting every applicable source to
+`replica`; indirect/external configuration fails the gate. JSON patches test the
+resource UID, resource version and saved field, so concurrent edits prevent an
+overwrite. Snapshot evidence stores identities and hashes; private temporary patch
+files avoid exposing environment values in command arguments.
+
+After a completed profile rollout, the reader runs at 200 requests/s and must
+produce a fresh complete all-OK interval at at least 180/s with traffic on both
+product pods. Paused replay on both selected standbys establishes a committed
+primary write that replica reads return as `404 PRODUCT_NOT_FOUND`; resuming replay
+must make it readable. Fencing one standby must preserve reads and writes. Fencing
+both must yield `503 READ_REPLICA_UNAVAILABLE` on each product pod in less than four
+seconds, before the five-second client deadline, while peer-shard reads succeed.
+A separate bounded `ACCESS EXCLUSIVE` lock on `catalog.products`, replayed onto both
+standbys, checks the same response contract for hung queries. During each outage,
+a fresh reader interval must contain both successful peer reads and replica
+unavailability, with no deadline, transport or other unexpected outcomes. Restored
+standbys must resume reads, followed by another clean 200/s reader observation.
+
+Recovery removes the query block, restores replay/fencing and the exact original
+profile, and awaits the Deployment plus the primary configuration of every ready
+product pod. It removes only invocation-owned product fixtures, including creations
+whose response was lost, then restores saved workload controls. The final
+`kind-deployment` primary gate must pass before the shared lock is released. Failed
+recovery retains the lock under the [shared recovery rules](#kind-verification-snapshot).
+Primary promotion and failover qualification remain step 6.2.
 
 ## Saga gate and drill
 
