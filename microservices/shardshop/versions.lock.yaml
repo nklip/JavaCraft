@@ -19,6 +19,11 @@ deployment_scope: The retained database baseline is unchanged. Cleanup of the la
   writes) and 6.9 (1000 reads/s); full performance/deployment readiness remains
   unqualified, so deployment_ready stays false. CNPG/managed PostgreSQL changes
   remain excluded, and existing advisory/support deadlines are unchanged.
+  Step 6.2 synchronous failover qualified on 2026-10-26 under the recorded user
+  decision for the existing CNPG pin. The complete drill, automatic recovery
+  and eight final gates passed; original primaries, controls, routing/profile,
+  deployment specifications and retained volumes were restored before shutdown.
+  Backup/restore and final capacity/readiness acceptance remain unqualified.
 scope:
   host_platform: darwin/arm64
   container_platform: linux/arm64
@@ -1921,8 +1926,18 @@ maintenance_review_6_0:
     successor: "unavailable"
     upgrade_by: "2026-11-30"
     status: "excluded_from_6_0_by_user"
-    blocks: ["6.2"]
-    finding: "October 25 review found no compatible successor. Upgrade/recovery requires a separate scope before 6.2; no operator, chart or managed-PostgreSQL change belongs to 6.0. Existing support/advisory deadlines remain."
+    blocks: []
+    existing_version_qualification:
+      step: "6.2"
+      authorized_on: "2026-10-26"
+      latest_ga_verified_on: "2026-10-26"
+      latest_ga: "1.30.1"
+      sources:
+      - "https://github.com/cloudnative-pg/cloudnative-pg/releases"
+      - "https://github.com/cloudnative-pg/cloudnative-pg/releases/tag/v1.30.1"
+      - "https://cloudnative-pg.io/docs/1.30/supported_releases/"
+      decision: "User authorizes 6.2 qualification on pinned 1.30.1/chart 0.29.1 despite saved 2 critical/9 high operator findings, conditional on 1.30.1 being latest GA; verified. 1.31 remains upcoming. No unaffected claim, artifact change, scan-gate bypass or deadline extension; no failover result qualified by this decision."
+    finding: "October 25 review found no compatible successor; October 26 verified 1.30.1 remains latest GA. The user decision clears the gate only for existing-version 6.2 qualification. Upgrade/recovery needs its own scope; no operator, chart or managed-PostgreSQL change belongs to 6.0. November 30 maintenance and existing support/advisory deadlines remain."
   rabbitmq_plan:
     target: "4.4.0"
     planned_on: "2026-10-25"

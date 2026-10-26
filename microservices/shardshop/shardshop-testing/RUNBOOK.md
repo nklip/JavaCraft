@@ -191,8 +191,8 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind 
 ```
 
 Disruptive scenarios require explicit selection; `kind-drill` combines
-`kind-database-drill`, `kind-workload-drill`, `kind-saga-drill`, `kind-retry-drill`
-and `kind-replica-read-drill`:
+`kind-database-drill`, `kind-workload-drill`, `kind-saga-drill`, `kind-retry-drill`,
+`kind-replica-read-drill` and `kind-failover-drill`:
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
@@ -446,7 +446,193 @@ product pod. It removes only invocation-owned product fixtures, including creati
 whose response was lost, then restores saved workload controls. The final
 `kind-deployment` primary gate must pass before the shared lock is released. Failed
 recovery retains the lock under the [shared recovery rules](#kind-verification-snapshot).
-Primary promotion and failover qualification remain step 6.2.
+Primary promotion is implemented by the [synchronous failover drill](#synchronous-failover-drill); step 6.2 passed [retained-lab qualification on 2026-10-26](../CHANGELOG.md#step-62).
+
+## Synchronous failover drill
+
+**Step 6.2 passed retained-lab qualification on 2026-10-26**, including automatic
+recovery and eight final gates. See the [evidence](../CHANGELOG.md#step-62). This drill
+is disruptive and opt-in, including through `kind-drill`. Prepare the
+[kind verification snapshot](#kind-verification-snapshot) against the deployed
+retained lab, then select it explicitly:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true -Pkind verify \
+  -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-failover-drill \
+  -Dshardshop.kind.drillShard=shard-b
+```
+
+Omit `shardshop.kind.drillShard` to select the first inventory shard. The drill
+requires the pinned CNPG 1.30.1 operator image, three instances on the selected
+shard, failover quorum and the normal primary-profile deployment/ledger policy.
+The [October 26 decision](../VERSIONS.md#step-62-existing-version-decision--2026-10-26)
+permits qualification on the existing operator pin; it does not supply a passing
+result or change advisory/support deadlines.
+
+`KindFailoverDrill` acquires the shared lock, saves and pauses all three live
+controls (producer, reader and interactive seeder), and drains in-flight work and
+the producer's nonterminal backlog. `KindFailoverWitness` creates a buyer on the
+selected shard and orders through the HTTP API against a seeded peer-shard
+product. It retains a confirmed anchor and the original pending command across
+both a planned switchover and primary-failure promotion. With each standby absent
+in turn, a ten-second observation must show CDC blocked while a real HTTP order
+commits through the surviving synchronous quorum. After recovery, the original
+order/saga/command/result IDs, immutable order data and outbox envelope must
+survive and complete exactly one business effect. The synchronized logical slot
+must cover the saved durable checkpoint; permanent reader history and the offset
+partition must stay unchanged, and the durable streaming position must advance.
+
+`KindFailoverCluster` uses CNPG's switchover status contract. Primary failure uses
+UID/resource-version guarded pod deletion with an invocation-owned finalizer,
+observing PostgreSQL termination before allowing replacement. It checks for at
+most one writable primary and safe rejoin of the former primary. The separate
+unsafe-survivor phase fences one standby before a synchronous witness commit,
+then holds the aligned standby and primary deleted. It verifies that the survivor
+actually lacks the acknowledged witness. Throughout 180 seconds plus configured
+failover delay (at most 60 seconds), the survivor must remain read-only, never be
+nominated and have no ready writable-service endpoint.
+
+After promotion, the drill reconciles logical slots on known former primaries
+before declaring the topology healthy or switching back. A captured slot may be
+retired there only when the authoritative server is still the stable primary,
+the former primary is a read-only standby, both retain the original database
+lineage, and slot name/database/plugin match the captured identity. The local
+confirmed LSN must lie between the captured and current authoritative positions;
+the source must not have moved backwards. Unknown logical slots cause refusal.
+Only inactive, valid, permanent failover slots that are not already synchronized
+qualify. A conditional SQL statement rechecks recovery role, slot identity,
+flags and exact observed LSN at retirement. The authoritative primary slot is
+preserved; native synchronization must restore synchronized copies on the demoted
+server before healthy-topology checks and switchback proceed.
+
+An invocation-owned `failover_slot_*` logical slot, publication and probe schema
+exercise the former-primary reconciliation branch independently of the business
+slot. The probe is initialized and synchronized before promotion. During native
+resynchronization, a missing, temporary or null-confirmed-LSN probe copy causes
+priming of only the invocation-owned probe on the authoritative primary, while
+the captured required source LSN stays fixed. The business slot is never consumed
+by this priming. Recovery drops
+only that named probe slot on the current primary, awaits its absence on all
+three instances, then removes its publication/schema and captured probe entry
+before the final business-slot switchback. This reconciliation passed the final
+complete drill. Earlier failed reader and incomplete promotion attempts remain
+historical evidence with their own recorded outcomes.
+
+Fence updates use at most three conditional attempts within a forty-second total
+bound. Every reread checks the original cluster UID and verifies that the fence
+is original or invocation-owned. The conditional patch tests the original UID
+and exact observed fence value, avoiding a global resource-version test. When
+the fence key is absent it tests the observed annotations map; when that map is
+missing it uses a protected metadata fallback. Unrelated annotations are
+preserved. If the target state is already observed, the
+update accepts a possibly lost successful response. A retry is allowed only
+when the observed resource version changed; unchanged command failures, foreign
+fence changes and cluster replacement stop the operation. An unclassified command
+failure alone does not establish concurrency as its cause.
+
+The 10:00 UTC live attempt completed planned switchover, actual primary-failure
+promotion and their CDC checks, then failed while restoring a fence before the
+unsafe-survivor observation window began. Later recovery callbacks restored the
+original primary and fence; the owned unsafe-survivor schema was subsequently
+removed manually. This partial evidence does not qualify the complete drill or
+the unsafe-survivor observation. Step 6.2 was pending live qualification at that point;
+exact commands and final recovery outcomes belong to the dated changelog.
+
+The later 10:50 UTC attempt passed planned switchover but failed lifting a fence
+during primary failure after three observed resource-version changes. Its guard
+completed all cleanup without cleanup errors, released the lock and returned the
+lab to its stopped state. Earlier actual-primary-failure evidence remains
+separately recorded. The redacted command output does not establish the raw API
+failure cause. The revised fence patch still required complete live qualification at that point.
+
+The later semantic-fence attempt passed planned switchover, actual primary
+failure, the complete 180-second unsafe-survivor observation and database
+recovery, then failed on a `503` from the final new allocation POST before final
+gates. Guard cleanup completed without errors and restored the stopped lab and
+original state. This remains partial evidence, not complete 6.2 qualification.
+
+The HTTP witness now retries synchronously on the guard thread with a separate
+180-second recovery budget for allocation POST and for order PUT, keeping the
+allocation run/ordinal fixed and replaying the same order PUT ID/body. Observing
+the committed outbox has an additional 60-second bound; these are separate phase
+budgets, not an overall `accepted()` SLA. Retry is limited to `503` and selected transient transport
+failures; permanent errors fail immediately. Initial success requires allocation
+`201` and PUT `202`; `200` replay is allowed only after an uncertain request.
+Focused verification passed 57 checks in 7.866 seconds at 2026-10-26 15:24:09+04.
+The revised witness still required a complete live run and final gates at that point.
+
+The later HTTP-fixed attempt passed the entire drill body, including the full
+180-second unsafe-survivor observation and fresh HTTP order. Its guard-close
+producer-control restoration then failed with EOF. The wrapper restored controls
+manually; seven recovery gates passed in 126.6 seconds at 2026-10-26 15:47:42+04,
+the idle check passed, and the lab was stopped by 15:47:57+04 without leftovers.
+This manual recovery does not qualify the revised automatic callback.
+
+Control restoration now opens a fresh tunnel for each attempt and reads back the
+exact saved rate and paused state. Each workload has at most three attempts within
+one shared 180-second budget. Only `503` and classified transient transport
+failures permit retry; other responses and readback mismatches are terminal.
+Focused verification passed 61 checks in 9.379 seconds at
+2026-10-26 15:46:02+04. At that point, complete live qualification still required
+a fresh run with successful automatic callbacks and final gates.
+
+The subsequent controls-fixed attempt passed planned switchover and promoted a
+primary after failure, but owned-probe decoding emitted SQLSTATE `55000` warning
+output while waiting on inactive physical standby slot `_cnpg_shard_a_1`
+(PostgreSQL log PID 5231). The query reached a consistent point about 1.5 seconds
+later; the strict `successfulSql` check rejected its warning output. This records
+the observed failure without treating that query as a qualified probe pass.
+Automatic guard cleanup, including the corrected control callbacks, completed:
+the lock was absent and original primary, profile and fences were restored. The
+wrapper stopped the nodes without cleanup errors after 463.700 seconds. Failsafe
+reported 375.5 seconds, Maven 6:18, finishing 2026-10-26 18:06:56+04. Earlier
+complete drill-body evidence remained preserved, but step 6.2 was still unqualified
+at that point.
+At that point, the warning-free retry/barrier correction was pending and the
+prior 61 focused checks were the latest recorded result; the corrected candidate
+and its subsequent focused verification are recorded below.
+
+The warning correction now checks that both physical slots are active/streaming
+and exactly match `synchronized_standby_slots` before owned-probe priming. Verbose
+probe decode retries at most three times only for the exact SQLSTATE `55000`
+missing-`active_pid` warning naming an expected physical slot, with exit zero and
+a numeric count. A final warning-free decode is mandatory. Other warnings, mixed
+warnings and nonzero exits are terminal. Reads and mutations share the existing
+convergence deadline with thirty-second reserves; decode has an explicit
+twenty-second bound. The business slot is never consumed and required synchronized
+slot properties remain unchanged.
+
+The isolated regression first failed on the expected generic SQL-warning check
+in 4.079 seconds at 2026-10-26 18:12:47+04
+(`/tmp/shardshop-6.2-owned-warning-before.log`). The corrected candidate passed
+64 focused checks in 9.538 seconds at 18:15:48+04
+(`/tmp/shardshop-6.2-owned-warning-after.log`), including readiness, terminal-error
+and three-attempt bounds. Peer review reported no issues. Source hashes remained
+unchanged for the final live qualification.
+
+The final `/tmp/shardshop-6.2-slot-ready` run passed the complete drill: one case
+in 743.7 seconds, Maven 12:27, finishing 2026-10-26 18:34:44+04. All eight final
+gates passed in 111.4 seconds, Maven 1:55, finishing 18:36:42+04. The wrapper
+reported `passed: true`, no cleanup errors and 920.281 seconds elapsed, returning
+the lab to its stopped state at 18:36:54+04. The restoration audit passed every
+check: cluster UID/spec, original primaries/fences, PVC UID/spec/backing PV,
+Deployment UID/spec, routing/profile configuration, and absence of owned
+finalizers and the drill lock. Database pod UIDs for shard-a instances 2 and 3
+were recreated as expected; their PVCs were preserved. This complete run
+qualifies step 6.2; coordinated backup/restore and restore audit remain planned
+in steps 6.3–6.4. Exact commands, artifacts and preserved failures are in the
+[dated evidence](../CHANGELOG.md#step-62).
+
+Recovery removes only this invocation's finalizers, restores the exact original
+fence state, original primary and saved controls, and checks database lineage,
+original instance membership, exact PVC/backing-volume identities, streaming
+roles, deployment readiness and saga invariants before releasing the shared lock.
+It deletes no PVCs or PVs. The temporary unsafe-survivor probe schema is removed;
+normal HTTP fixture buyers, allocations, orders and their permanent business
+history remain. A recovery failure retains the lock under the
+[shared recovery rules](#kind-verification-snapshot). Coordinated backup/restore
+and restore audit remain steps 6.3–6.4.
 
 ## Saga gate and drill
 
@@ -520,7 +706,7 @@ through the independent HTTP JVM while the consumer JVM is suspended. The existi
 CDC cases cover each shard, snapshot handoff, rollback, metadata changes,
 mandatory returns, connection loss, exclusive ownership and missing/invalid durable
 state. Slot/offset/WAL destruction happens only in these disposable databases.
-Promotion and synchronized-slot failover remain step 6.2.
+Promotion and synchronized-slot failover use the separate [synchronous failover drill](#synchronous-failover-drill); step 6.2 passed [retained-lab qualification on 2026-10-26](../CHANGELOG.md#step-62).
 
 After deploying with `scripts/up.sh`, prepare the [kind snapshot](#kind-verification-snapshot):
 

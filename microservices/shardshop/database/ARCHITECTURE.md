@@ -361,7 +361,8 @@ loss of that member's storage. Persistent volumes and backups remain necessary;
 broker high availability needs three brokers and three-member quorum queues, and
 ledger high availability requires its own replication design.
 
-The broker and ledger availability limits are present today. The optional
-asynchronous-loss demonstration, complete promotion drills, isolated restores and
-operator audit are planned acceptance work; see [scenarios 3, 6 and 8](../shardshop-testing/ARCHITECTURE.md#scenario-3)
+The broker and ledger availability limits are present today. Synchronous promotion and primary-failure drills passed
+[step 6.2 qualification on 2026-10-26](../CHANGELOG.md#step-62). The optional
+asynchronous-loss demonstration, isolated restores and operator audit remain
+planned acceptance work; see [scenarios 3, 6 and 8](../shardshop-testing/ARCHITECTURE.md#scenario-3)
 and [PLAN milestone 6](../PLAN.md#milestone-6-read-profiles-failover-restore-and-operation).

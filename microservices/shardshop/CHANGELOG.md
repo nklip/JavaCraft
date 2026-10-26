@@ -5880,3 +5880,645 @@ edits only record this evidence and mark the plan Done.
 
 This completes step **6.1**. Promotion/failover remains step 6.2, including its
 separate CNPG maintenance gate; the deferred capacity criteria remain unchanged.
+
+<a id="step-62"></a>
+## Step 6.2 — synchronous failover drills
+
+**2026-10-26 — In Progress; live qualification pending.** The user authorized
+qualification on the current CNPG 1.30.1 pin despite its saved security findings,
+conditional on it being the latest release. The official release inventory still
+lists 1.30.1 as latest GA; the [version decision](VERSIONS.md#step-62-existing-version-decision--2026-10-26)
+records that check. Operator/chart/database artifacts and maintenance deadlines
+are unchanged.
+
+The new opt-in `kind-failover-drill` uses acknowledged HTTP orders and their
+original saga, command, outbox and result identities. It verifies CDC pauses with
+each standby absent while quorum writes continue, carries a pending command
+across planned switchover and primary failure, checks synchronized logical slots
+and durable reader history/offsets, and verifies single permanent business effects.
+A separate acknowledged SQL witness is deliberately absent from the survivor
+when the primary and aligned standby stop; the survivor must remain read-only
+and unpromoted for 180 seconds plus the configured failover delay (at most 60s).
+
+The shared guard registers recovery before faults. CNPG performs promotion;
+UID/resource-version guarded pod deletion and owned finalizers hold failed
+instances down without deleting PVCs. Recovery removes only owned finalizers,
+restores fences, the original primary and workload controls, verifies original
+PVC/lineage identities and passes the primary deployment gate before unlocking.
+Normal HTTP fixture orders remain as evidence; the temporary SQL schema is removed.
+
+Validation commands from the repository root:
+
+```bash
+export JAVA_HOME=/Users/nikita.lipatov/.sdkman/candidates/java/25.0.5-tem
+export PATH="$JAVA_HOME/bin:/opt/homebrew/opt/node@24/bin:$PATH"
+
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true \
+  '-Dtest=KindFailover*Test,KindDrillGuardTest,KindTopologyTest' \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test
+
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true test
+```
+
+The first focused run compiled but found a Mockito restubbing error in the new
+dual-primary fixture. `doReturn` fixes the fixture without changing its failure
+assertions. Its failed log remains `/tmp/shardshop-6.2-focused.log`; the corrected
+run passed **33 tests** in 5.080s (`/tmp/shardshop-6.2-focused-2.log`). Review then
+added a handover regression: sequential role samples may straddle a clean
+promotion, so multiple writable candidates are immediately rechecked before
+reporting a persistent split brain. Sampling does not prove continuous absence
+of overlap between observations.
+
+The broader module-selected run passed **291 common tests and 284 verification
+tests (575 total)** with zero failures/errors/skips in **1m26s**, finishing
+2026-10-26T12:51:43+04 (`/tmp/shardshop-6.2-verification-unit.log`). PostgreSQL 18
+[documents](https://www.postgresql.org/docs/18/view-pg-replication-slots.html) that
+`synced` can remain true after promotion; the witness accepts either primary value
+while requiring a synchronized standby slot. Its regression test and the exact
+`WaitForStandbyConfirmation` observation are included.
+
+The live wrapper is prepared at `/tmp/shardshop-6.2-live/run.py`. Only the observer
+and documentation changed, so it reuses the unchanged application images accepted
+in 6.1 instead of rebuilding or redeploying them. Read-only prerequisites found
+Docker 29.9.2 with 12 CPUs and 13,580,972,032 bytes of VM memory, all four retained
+nodes stopped and about 101 GiB host disk space available. Live qualification and
+its final infrastructure/deployment/idle gates have not run yet.
+
+Final source review added synchronized-slot readiness before every switchover,
+including recovery back to the original primary. The source must have permanent
+failover logical slots; the target must preserve each captured slot's identity,
+validity and confirmed WAL position. Missing, invalid, temporary or lagging slots
+prevent the status mutation. The final focused command above passed **37 tests**
+with zero failures/errors/skips in **4.318s**, finishing 12:55:52+04; log:
+`/tmp/shardshop-6.2-focused-final.log`. This narrower rerun covers the added guard
+and its regressions; the unchanged common/other verification results are reused.
+The eight new observer/feature source hashes are saved in
+`/tmp/shardshop-6.2-live/source-files.sha256`. `git diff --check` and all 11 changed
+local documentation links pass. A 30-minute live-phase checkpoint is pending;
+no live drill or cluster mutation has run for 6.2 yet.
+
+The user approved the 30-minute live phase. The first wrapper attempt stopped
+at the initial deployment assertion because a product replica was still becoming
+ready after resuming the nodes. No fault injection ran. In
+`/tmp/shardshop-6.2-live/`, `result.json` records `passed: false`, no cleanup
+errors and 44.60s elapsed; saved controls and the stopped retained nodes were
+restored. The corrected wrapper at `/tmp/shardshop-6.2-live-ready/run.py` adds a
+bounded 180s wait for all deployments' ready/current replica counts before the
+unchanged drill. This addresses the observed startup race without rebuilding
+images or weakening the deployment assertion.
+
+### First live phase and recovery
+
+The readiness-corrected attempt reached both standby-loss checks and promoted
+`shard-a-1` to `shard-a-3`. The new primary had an active logical reader and the
+observed sagas had confirmed, but the immediate order-status GET returned `503`
+during reconnect. This failed the scenario before primary-failure and unsafe-survivor
+qualification. The observer now retries transient `503` within its existing
+180s recovery budget and still requires `200/CONFIRMED`; other HTTP errors fail
+immediately. Three regressions cover transient recovery, pending-to-confirmed
+reads and a terminal `403`.
+
+Guard recovery then refused to switch back: `shard-a-1` retained an inactive,
+valid failover logical slot with **`synced=false`** at **`0/71057D70`**, while the
+new primary and synchronized peer advanced beyond **`0/720E95E8`**. The slot
+readiness check timed out after 180s. The shard already had
+`replicationSlots.highAvailability.synchronizeLogicalDecoding=true`; the ledger
+cluster's omitted flag is irrelevant. The retained lock correctly reported
+incomplete recovery. `drill.log` records **one failed scenario, 351.3s**, Maven
+5m55s; `result.json` records 412.20s and the remaining-lock cleanup error. These
+are failed results, not passing promotion qualification.
+
+PostgreSQL rejects synchronization over an existing same-name local slot whose
+`synced` flag is false ([source](https://github.com/postgres/postgres/blob/REL_18_STABLE/src/backend/replication/logical/slotsync.c#L637-L651)).
+The inspected CNPG 1.30.1 configuration/demotion/slot paths did not retire that
+copy. Its logical-decoding setting configures synchronized physical standby
+slots; this observation is an unhandled former-primary slot lifecycle in the
+selected combination, not a verified upstream issue report.
+[Configuration](https://github.com/cloudnative-pg/cloudnative-pg/blob/v1.30.1/pkg/management/postgres/configuration.go#L363-L386),
+[demotion](https://github.com/cloudnative-pg/cloudnative-pg/blob/v1.30.1/internal/management/controller/instance_controller.go#L576-L639),
+[slot reconciliation](https://github.com/cloudnative-pg/cloudnative-pg/blob/v1.30.1/internal/management/controller/slots/reconciler/replicationslot.go).
+
+Necessary cleanup resumed the same nodes and ran:
+
+```bash
+python3 /tmp/shardshop-6.2-live-ready/recover-primary.py
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+  -Dit.test=KindIT -Dshardshop.kind.snapshot=/tmp/shardshop-6.2-live-ready/snapshot \
+  '-Dshardshop.kind.tags=kind-infrastructure | kind-deployment'
+python3 /tmp/shardshop-6.2-live-ready/finish-cleanup.py
+python3 /tmp/shardshop-6.2-live-ready/stop-restored.py
+```
+
+The recovery script verified the stable primary, identical database lineage and
+standby role before retiring only the obsolete inactive standby slot copy. It
+preserved the authoritative primary slot and durable offsets. Native synchronization
+recreated the standby copy with `synced=true`, advancing from **1,896,185,200** to
+**1,929,576,312**, past the captured primary position **1,929,572,016**. Only then
+did CNPG restore `shard-a-1` as primary. `slot-repair-before.json`,
+`slot-repair-after.json` and `primary-recovery.json` record those checks.
+
+The recovery gates passed **six of seven cases**; the reader gate failed its
+unchanged 180/s all-OK interval requirement. Saved reader logs include healthy
+200/s intervals, a 142.3/s interval, one interval with an unavailable response,
+and later 179.7/s and 187.3/s intervals. No repeat-until-pass or threshold change
+was made. The saved controls were unchanged (reader 200/s, producer 0.5/s,
+interactive seeder 100/s, all unpaused) and were explicitly restored again.
+The original cluster specs/identities/primaries/fences and database pod
+identities/volume mounts matched; no owned finalizers remained.
+
+After the primary deployment check and exact restoration, cleanup removed only
+the original owned lock. Its direct Failsafe `kind-drills-idle` gate passed
+**one case in 0.456s** (Maven 2.811s), then `scripts/down.sh` stopped all four
+nodes. `recovery-result.json` confirms recovery completed at
+**2026-10-26T13:25:06+04**, with original node IDs/images/mounts preserved, while
+qualification and the reader recovery gate remain explicitly false.
+
+The corrected HTTP observer and a fail-fast CNPG-management prerequisite passed
+**41 focused checks** in **9.751s**, with zero failures/errors/skips
+(`/tmp/shardshop-6.2-focused-recovery.log`). The user approved one additional
+30-minute phase to implement guarded demoted-slot reconciliation and retry the
+full drill plus final gates. The next run must exercise that path with an owned
+probe logical slot, since necessary cleanup already repaired the original
+business-slot copy. No operator, database or application image changes are proposed.
+
+
+#### Guarded former-primary slot recovery candidate
+
+The corrected helper remembers each primary's permanent failover logical slots
+before transition. On its demoted standby it requires a stable other primary,
+matching database lineage and slot identity, a valid authoritative slot at or
+past the captured position, and an inactive, permanent, valid, nonsynchronized
+local copy within that position range. A conditional SQL statement rechecks
+role, identity, position and slot state before retiring only that copy. Native
+slot synchronization must then create a durable synchronized copy at or past
+the saved authoritative position. Unknown slots and changed identities fail
+closed; the primary slot and durable CDC offsets are preserved.
+
+An invocation-owned publication/schema and permanent failover logical slot
+exercise the obsolete-copy path even though prior cleanup repaired the business
+slot. Recovery removes those exact owned objects and all synchronized copies
+before switching back and releasing the drill lock. No SQL function or trigger
+is introduced.
+
+The corrected candidate passed **45 focused checks** with zero failures,
+errors or skips in **5.954s**, finishing **2026-10-26T13:34:51+04**:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true \
+  '-Dtest=KindFailover*Test,KindDrillGuardTest,KindTopologyTest' \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test
+```
+
+Log: `/tmp/shardshop-6.2-focused-reconciled.log`. The unchanged broader
+575-check result remains valid for the other module behavior. The corrected
+live wrapper and source hashes are retained in `/tmp/shardshop-6.2-reconciled/`;
+its absolute phase deadline is 09:59 UTC, with cleanup reserved. It reuses the
+existing application release and retained nodes without an image rebuild.
+
+
+#### Reconciliation retry and probe correction
+
+The retry reused the unchanged release and retained nodes. Its first standby-loss
+CDC boundary passed and CNPG switched from `shard-a-1` to `shard-a-3`. The owned
+probe was initially `synced=false` on the former primary and `synced=true` on the
+candidate. Guarded retirement succeeded: PostgreSQL created a new synchronized
+copy on the demoted server. However, that new copy remained temporary with no
+confirmed position: its restart position was `0/7608D660`, beyond the idle
+probe source's `0/76034050` confirmed position. The business failover slot was
+healthy and advancing. Saved `*-planned-slots.txt` and `*-post-switch-slots.txt`
+observations distinguish this owned-fixture failure from business-slot recovery.
+
+Qualification was interrupted for cleanup and remains failed/incomplete; primary
+failure and unsafe-survivor phases were not reached. The wrapper restored workload
+controls and stopped the nodes, but reported the retained drill lock in
+`result.json` (492.474s). Its process-group termination did not complete in-JVM
+recovery before shutdown, so necessary cleanup resumed the same nodes. The first
+cleanup-only probe-advance command ran while the API was stopped and made no
+change. The later exact owned-slot removal succeeded on the current primary;
+native synchronization removed all standby copies, then the owned publication
+and schema were removed. The business slots and durable offsets were preserved.
+
+The corrected helper now primes only its owned probe on the authoritative primary
+when a recreated standby copy is missing/temporary or lacks a confirmed position.
+It keeps the required authoritative LSN boundary fixed, performs mutations on the
+guard thread, and still requires durable native synchronized copies. It never
+consumes the business slot. Partial setup cleanup is covered after a lost slot
+creation response.
+
+The focused command above passed **47 checks** in **6.627s** at
+**2026-10-26T13:44:28+04** (`/tmp/shardshop-6.2-focused-probe-recovery.log`).
+A regression check temporarily restored the previous reconciliation wait (source
+restored in `finally`) and ran the same Maven selector with:
+
+```text
+-Dtest=KindFailoverClusterTest#recreatedTemporaryOwnedSlotIsPrimedWithoutConsumingTheBusinessSlot
+```
+
+That check failed because the newly temporary probe never became a persistent
+synchronized copy (`/tmp/shardshop-6.2-probe-regression-before.log`). After restoring
+the fix, all **47 focused checks** passed again in **8.603s** at
+**2026-10-26T13:47:42+04** (`/tmp/shardshop-6.2-probe-regression-after.log`).
+`corrected-probe-source-files.sha256` preserves this corrected candidate separately
+from the failed live candidate. A full corrected live drill is still required;
+no passing qualification is inferred from these focused tests.
+
+
+Cleanup commands and verification for this retry were:
+
+```bash
+python3 /tmp/shardshop-6.2-reconciled/resume-and-remove-probe.py
+python3 /tmp/shardshop-6.2-reconciled/restore-primary.py
+python3 /tmp/shardshop-6.2-reconciled/finish-cleanup.py
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+  -Dit.test=KindIT -Dshardshop.kind.snapshot=/tmp/shardshop-6.2-reconciled/snapshot \
+  '-Dshardshop.kind.tags=kind-infrastructure | kind-deployment'
+python3 /tmp/shardshop-6.2-reconciled/stop-restored.py
+```
+
+All **seven infrastructure/deployment recovery cases passed** in **98.61s**
+(Maven **1m41s**), finishing **2026-10-26T13:50:18+04**. This includes the
+unchanged reader gate; it is a separate passing recovery observation and does
+not erase the previous failed reader run. The exact original primary, controls,
+cluster identities/specifications/fences, database pod identities and volumes
+were restored. No owned finalizers remained. After the matching owned lock was
+removed, the same Failsafe command with `-Dshardshop.kind.tags=kind-drills-idle`
+passed **one case in 0.888s** (Maven **3.361s**), then `scripts/down.sh` stopped
+all four nodes. `recovery-result.json` records completion at
+**2026-10-26T13:51:20+04**, with original node IDs/images/mounts preserved and
+`qualificationPassed: false`.
+
+The next wrapper is prepared at `/tmp/shardshop-6.2-probe-fixed/run.py` and has
+not been launched. On interruption it now waits for the complete owned process
+group, including the forked JVM's recovery hook, before shutting down the lab.
+A further bounded 30-minute qualification phase was requested because the
+remaining current phase cannot accommodate the full corrected drill, final
+gates and cleanup. Step 6.2 remains In Progress and unqualified until the entire
+corrected drill passes; primary-failure and unsafe-survivor phases remain untested.
+
+
+#### Corrected probe qualification: promotion passed, fence update blocked the final phase
+
+The user authorized another 30-minute phase at **2026-10-26T13:58+04**.
+The unchanged 47-check candidate ran from `/tmp/shardshop-6.2-probe-fixed/`:
+
+```bash
+python3 /tmp/shardshop-6.2-probe-fixed/run.py
+# The wrapper's drill command:
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+  -Dit.test=KindIT -Dshardshop.kind.snapshot=/tmp/shardshop-6.2-probe-fixed/snapshot \
+  -Dshardshop.kind.tags=kind-failover-drill
+```
+
+Both standby-loss CDC boundaries, planned switchover, actual primary-failure
+promotion, acknowledged saga preservation and CDC recovery completed. The owned
+probe now resynchronized successfully. CNPG promoted `shard-a-2` after loss of
+`shard-a-3`; the former primary rejoined on its retained volume. The unsafe-survivor
+phase then failed while removing its owned fence, **before** the required
+read-only/no-promotion observation window. This is an incomplete qualification,
+not evidence that CNPG promoted an unsafe survivor.
+
+The fence patch and its first recovery attempt returned exit 1; the generic
+command API deliberately redacted output. A resource-version race is a plausible
+cause, not an established diagnosis. Later guard actions restored the original
+primary/fence and removed the logical probe, but an earlier cleanup failure left
+the unsafe-witness schema and shared lock. Failsafe reported **one error in
+519.3s**, Maven **8m43s**, finishing **14:08:25+04**. The wrapper restored controls,
+stopped the nodes and reported the lock (`result.json`, **607.543s**).
+
+Necessary cleanup resumed the same nodes, removed only the recorded unsafe
+schema, confirmed all owned logical-slot/publication/schema copies absent, and
+verified original cluster identities/specifications/primaries/fences and controls.
+The recreated database pods correctly had new pod UIDs and generated Kubernetes
+service-account projection names. The local audit initially compared those
+names literally and failed; comparison now normalizes only that generated name,
+preserving exact checks of all projection settings and persistent-volume claims.
+No application or database assertion was weakened.
+
+```bash
+python3 /tmp/shardshop-6.2-probe-fixed/finish-owned-sql-cleanup.py
+python3 /tmp/shardshop-6.2-probe-fixed/finish-cleanup.py
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+  -Dit.test=KindIT -Dshardshop.kind.snapshot=/tmp/shardshop-6.2-probe-fixed/snapshot \
+  '-Dshardshop.kind.tags=kind-infrastructure | kind-deployment'
+python3 /tmp/shardshop-6.2-probe-fixed/stop-restored.py
+```
+
+All **seven recovery cases passed** in **94.30s** (Maven **1m36s**) at
+**14:19:46+04**, including reader and saga gates. The idle check then passed one
+case in **0.426s** (Maven **2.519s**). `recovery-result.json` confirms complete
+cleanup and stopped retained nodes at **14:20:17+04**, with original node
+IDs/images/mounts preserved and qualification explicitly false.
+
+The next candidate bounds fence convergence to three conditional attempts and
+40 seconds. Every reread verifies original cluster UID and owned fence state.
+An already-observed target resolves a lost successful response; a retry requires
+an observed resourceVersion change. Unchanged errors, foreign fences and replacement
+clusters fail closed. Status and finalizer mutation guards are unchanged.
+The same focused Maven command passed **49 tests** in **7.331s** at **14:17:35+04**
+(`/tmp/shardshop-6.2-focused-fence-recovery.log`). Restoring the previous fence
+method temporarily made
+`KindFailoverClusterTest#fenceRetriesOnlyObservedConcurrentVersionChangesAndAcceptsALostSuccessfulResponse`
+fail on the simulated concurrent update (`/tmp/shardshop-6.2-fence-regression-before.log`).
+After restoring the correction, all **49 focused tests** passed in **6.563s** at
+**14:19:08+04** (`/tmp/shardshop-6.2-fence-regression-after.log`).
+
+The candidate and wrapper are prepared in `/tmp/shardshop-6.2-fence-fixed/`, with
+source hashes and additional before/after PVC snapshots configured. They have
+not been run live. Step 6.2 remains In Progress: the full corrected drill,
+particularly the unsafe-survivor observation, still requires qualification.
+
+
+A bounded **20-minute** corrected qualification phase was requested, based on the
+observed promotion-run duration plus the remaining observation and final gates.
+The prepared wrapper reserves four minutes for final gates/cleanup; no further
+live run is authorized until the checkpoint is answered.
+
+
+#### Bounded fence-retry run: complete cleanup, qualification still blocked
+
+The user approved a 20-minute phase beginning **2026-10-26T14:50+04**.
+`python3 /tmp/shardshop-6.2-fence-fixed/run.py` ran the same direct Failsafe
+command with snapshot `/tmp/shardshop-6.2-fence-fixed/snapshot` and tag
+`kind-failover-drill`, reusing the existing images and retained nodes.
+Planned switchover and its saga/CDC checks passed. During the primary-failure
+case, lifting the owned fence exhausted all three attempts after observed
+resourceVersion changes. The raw API error remains unavailable because the
+command API redacts output; the observed version churn does not establish every
+underlying API diagnostic. The whole-resource precondition nevertheless couples
+this annotation update to unrelated CNPG status updates.
+
+Failsafe reported **one error in 320.2s**, Maven **5m23s**, finishing
+**14:57:19+04**. The unsafe-survivor window and separate final gates were not run.
+Unlike previous failed attempts, every guard recovery action completed: original
+primary, owned SQL fixtures, fences, finalizers, controls and final in-guard
+profile/topology/saga checks recovered, and the shared lock was released. The
+wrapper stopped the retained nodes with preserved IDs/images/mounts and
+**no cleanup errors** (`result.json`, **409.934s**). An offline comparison of the
+saved snapshots independently confirmed original cluster identities/specs/primaries/
+fences, absence of owned finalizers and lock, and unchanged primary-profile and
+routing config (`restoration-audit.json`). No manual live recovery was necessary.
+
+The next candidate changes only fence patch preconditions: original cluster UID
+plus the exact observed fence value. An absent fence key is protected by comparing
+the observed annotations map; a missing map uses a metadata comparison before
+creation. Unrelated status changes no longer invalidate ordinary fence changes,
+while foreign fences, replaced clusters and concurrent annotation changes remain
+protected. Status and pod-finalizer mutations retain their existing guards.
+The three-attempt/40-second bound remains.
+
+
+The corrected candidate first passed **52 focused checks** in **6.806s** at
+**15:00:48+04** (`/tmp/shardshop-6.2-focused-semantic-fence.log`). The first
+regression simulated a single status update and exposed an extra retry; it was
+strengthened to simulate sustained status churn on **every** patch and assert
+successful fencing/restoration with unrelated annotations preserved. Restoring
+the previous whole-resource precondition made that regression exhaust all three
+attempts and error, matching the observed failure class
+(`/tmp/shardshop-6.2-sustained-fence-before.log`). Restoring the correction passed
+all **52 focused checks** in **5.921s** at **15:03:43+04**
+(`/tmp/shardshop-6.2-sustained-fence-after.log`). The focused Maven command remains
+the one recorded above; the isolated regression selector was:
+
+```text
+-Dtest=KindFailoverClusterTest#fenceSemanticComparisonIgnoresStatusChurnAndPreservesOtherAnnotations
+```
+
+Source hashes and an unlaunched 20-minute wrapper are prepared in
+`/tmp/shardshop-6.2-semantic-fence/`. The current phase has insufficient time for
+another full drill plus final gates and cleanup. The lab is already restored and
+stopped; full 6.2 qualification, including the unsafe-survivor observation,
+remains pending a further bounded run.
+
+
+#### Full fault sequence passed; post-recovery HTTP allocation remained transiently unavailable
+
+The next user-approved 20-minute phase began **2026-10-26T15:06+04** and ran
+`python3 /tmp/shardshop-6.2-semantic-fence/run.py`, with the direct Failsafe
+`kind-failover-drill` command using that directory's snapshot. Source hashes
+matched the 52-check candidate. Both standby-loss boundaries, planned
+switchover, primary-failure promotion, synchronized slots, acknowledged saga
+preservation and CDC recovery passed. The corrected fence precondition passed
+both failure transitions. The complete **180-second** unsafe-survivor window
+then passed, followed by database recovery and healthy topology checks.
+
+`unsafe-survivor-observation.json` separately records the survivor `shard-a-1`
+as `pg_is_in_recovery=true` and `transaction_read_only=on`, with **zero** witness
+rows and no ready writable endpoints while `shard-a-2` and `shard-a-3` containers
+were terminated. This is supplementary evidence to the full timed test.
+
+The final fresh order check failed on allocation POST with **503**, before its
+expected 201 response. The run therefore remains failed/incomplete and separate
+final gates were not run. Failsafe reported **one error in 709.5s**, Maven
+**11m52s**, finishing **15:19:57+04**. All guard recovery actions completed,
+including the original primary, exact controls, owned SQL fixtures, fences,
+finalizers, shared lock and in-guard topology/profile/saga assertions. The
+wrapper stopped the retained nodes at **15:20:20+04**, preserving node IDs/images/
+mounts and reporting **no cleanup errors** (`result.json`, **809.655s**).
+`failed-run-restoration-audit.json` independently confirms the saved cluster
+identities/specifications/primaries/fences and routing/profile config.
+
+The [allocation contract](shardshop-order/ARCHITECTURE.md#service-issued-order-allocations)
+and `OrderService.allocateOrder` establish durable idempotency under
+`(buyer_id, run_name, request_ordinal)`, including unknown commits. The correction
+freezes those coordinates before retry, and freezes the subsequent PUT order ID
+and body. It reuses the same immutable HTTP request synchronously on the guard
+thread, with a 180-second total budget, 10-second request and 3-second connect
+timeouts, and bounded jittered waits. Only 503 and selected transient transport
+failures retry. New allocation/PUT responses remain 201/202; replay 200 is accepted
+only after an uncertain attempt. Other HTTP errors remain terminal. No application
+assertions or final gates were relaxed.
+
+The same focused Maven command passed **57 checks** with zero failures/errors/
+skips in **7.866s**, finishing **15:24:09+04**
+(`/tmp/shardshop-6.2-focused-http-write.log`). New tests cover exact request reuse,
+unknown-commit replay, terminal errors and deterministic deadline exhaustion.
+The failed live feature is the before-fix regression evidence; its complete
+passing rerun remains outstanding. The unlaunched candidate, source hashes and
+20-minute wrapper are prepared in `/tmp/shardshop-6.2-http-fixed/`.
+
+
+#### All drill assertions passed; transient control-restoration failure retained the lock
+
+The user approved a further 20-minute phase at **2026-10-26T15:27+04**.
+`python3 /tmp/shardshop-6.2-http-fixed/run.py` ran the unchanged 57-check candidate
+with the direct Failsafe command and that directory's snapshot. **Every drill-body
+assertion passed**, including both promotion cases, the 180-second unsafe-survivor
+window, post-recovery fresh allocation/PUT/confirmation and final saga invariants.
+The saved unsafe-survivor snapshot again shows read-only recovery, zero witness
+rows and no writable endpoints while the other two containers were terminated.
+
+The scenario failed only in guard cleanup: restoring the producer rate received
+an HTTP transport EOF (`HTTP/1.1 header parser received no bytes`). The old callback
+made one request and failed; the guard retained its lock. All other callbacks,
+including original-primary and final topology/profile/saga checks, completed.
+Failsafe recorded **one error in 732.0s**, Maven **12m14s**, finishing
+**15:40:49+04**. The wrapper subsequently restored all saved controls through the
+API proxy, stopped the nodes and reported the lock (`result.json`, **820.315s**).
+No passing scenario is claimed from the successful body alone.
+
+Mandatory cleanup resumed the same nodes and ran:
+
+```bash
+python3 /tmp/shardshop-6.2-http-fixed/complete-recovery.py
+# Recovery gates invoked by that wrapper:
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+  -Dit.test=KindIT -Dshardshop.kind.snapshot=/tmp/shardshop-6.2-http-fixed/snapshot \
+  '-Dshardshop.kind.tags=kind-infrastructure | kind-deployment'
+```
+
+The original primaries/specifications/identities/fences and exact controls were
+verified; all owned SQL schemas, slots and publications were absent. All **seven
+recovery gates passed** in **126.6s** (Maven **2m11s**) at **15:47:42+04**. The
+matching owned lock was then removed, the idle gate passed, and the lab returned
+to its stopped state at **15:47:57+04**, preserving original node IDs/images/mounts.
+Necessary cleanup completed slightly beyond the phase; no further fault experiment
+was started. `recovery-result.json` keeps overall qualification false.
+
+The corrected control callback opens a fresh tunnel/client per attempt and
+reapplies only the exact saved rate and pause/resume setting. Strict readback must
+match. Restoration remains synchronous on the guard thread, with at most three
+attempts and a shared 180-second budget **per workload**. Only 503 and classified
+transient connection/EOF/timeout failures retry; other statuses and readback
+mismatches fail immediately. Recovery is still registered before pausing traffic.
+
+The focused Maven selector above passed **61 checks** with zero failures/errors/
+skips in **9.379s**, finishing **15:46:02+04**
+(`/tmp/shardshop-6.2-focused-controls.log`). Four new tests cover a lost rate-update
+response, partial resume, strict terminal/readback failures and bounded exhaustion.
+The failed live scenario is the before-fix evidence; a complete passing run with
+the corrected callback remains required. Candidate hashes and the unlaunched
+20-minute wrapper are in `/tmp/shardshop-6.2-controls-fixed/`.
+
+#### Automatic cleanup passed; owned probe encountered a reconnect warning
+
+The user approved the next 20-minute phase at **2026-10-26T17:59+04**.
+`python3 /tmp/shardshop-6.2-controls-fixed/run.py` reused the unchanged 61-check
+candidate and application release. Standby-loss and planned-switchover checks
+passed. During primary-failure recovery, the owned probe's logical-decoding query
+emitted PostgreSQL **WARNING 55000** because physical slot `_cnpg_shard_a_1`
+temporarily had no active sender. The same backend reached a consistent decoding
+point about 1.5 seconds later, but the harness's strict SQL helper rejected the
+warning. No active-logical-slot conflict or statement timeout was reported for
+that backend. The retained stopped-node logs and selected PID 5231 evidence are
+in `owned-probe-warning-evidence.json` under that run directory.
+
+Failsafe recorded **one error in 375.5s**; Maven took **6m18s**, finishing
+**18:06:56+04**. Unsafe-survivor and final release gates were not reached in this
+attempt. The previous run's complete drill-body evidence remains valid historical
+evidence, but does not qualify this failed scenario.
+
+Automatic guard cleanup, including the corrected workload-control callback,
+completed successfully. The wrapper stopped the retained nodes at **18:07:08+04**,
+preserved node identities/images/mounts and reported **no cleanup errors** in
+**463.700s**. `failed-run-restoration-audit.json` confirms original cluster
+identities/specifications/primaries/fences, unchanged routing/primary-profile
+configuration, and absence of owned finalizers and the drill lock. Failed
+Cucumber and Failsafe reports were copied into this run directory before any
+subsequent test invocation. Step 6.2 remains **In Progress**.
+
+The correction waits for both expected physical standby slots to be active and
+streaming, with `synchronized_standby_slots` matching those identities. Only the
+owned probe uses verbose decoding diagnostics. An exit-zero numeric result with
+the exact observed standby-wait warning permits another attempt; unknown or
+mixed warnings and nonzero exits remain terminal. At most three attempts share
+the caller's existing convergence deadline, and a final warning-free decode is
+required even if slot synchronization has already advanced. Each default-bound
+command reserves thirty seconds; decoding has an explicit twenty-second command
+bound. All mutations remain on the guard thread, and business slots are never
+consumed by this recovery.
+
+The regression was run before implementation:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true \
+  '-Dtest=KindFailoverClusterTest#ownedDecodeRequiresWarningFreeSuccessAfterOnlyTheDocumentedStandbyWaitWarning' \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test
+```
+
+It failed on the expected SQL-warning rejection in **4.079s** at **18:12:47+04**
+(`/tmp/shardshop-6.2-owned-warning-before.log`). After the correction, the focused
+suite passed **64 checks**, with no failures/errors/skips, in **9.538s** at
+**18:15:48+04**:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true \
+  '-Dtest=KindFailover*Test,KindDrillGuardTest,KindTopologyTest' \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test
+```
+
+The after-fix log is `/tmp/shardshop-6.2-owned-warning-after.log`. New tests cover
+warning-free completion after the observed warning, both-standby readiness,
+terminal unknown/mixed warnings and SQL errors, and three-attempt exhaustion.
+Peer review confirmed the per-command deadline reservations. The next unlaunched
+candidate, source hashes and twenty-minute wrapper are prepared in
+`/tmp/shardshop-6.2-slot-ready/`; complete live qualification and final gates
+remain pending. No application images were rebuilt.
+
+#### Complete corrected qualification passed — 2026-10-26
+
+The user approved the next bounded twenty-minute phase. The tested source hashes
+were verified before launch, and `python3 /tmp/shardshop-6.2-slot-ready/run.py`
+resumed the same four retained nodes. Application Helm revision **8**, its images,
+CNPG **1.30.1** and chart **0.29.1** were reused unchanged. The run used JDK
+**25.0.5-tem** and the existing snapshot procedure:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+  -Dit.test=KindIT -Dshardshop.kind.snapshot=/tmp/shardshop-6.2-slot-ready/snapshot \
+  -Dshardshop.kind.tags=kind-failover-drill
+
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+  -Dit.test=KindIT -Dshardshop.kind.snapshot=/tmp/shardshop-6.2-slot-ready/snapshot \
+  '-Dshardshop.kind.tags=kind-infrastructure | kind-deployment | kind-drills-idle'
+```
+
+The complete failover scenario passed with **zero failures/errors/skips** in
+**743.7 seconds** (Maven **12m27s**), finishing **18:34:44+04**. It proved CDC pauses
+with either standby absent while quorum writes continue, real planned switchover
+and actual primary-failure promotion, preserved acknowledged sagas and original
+pending commands, durable slot/history/offset continuity, former-primary rejoin,
+the complete **180-second unsafe-survivor window**, fresh post-recovery orders,
+and successful automatic guard cleanup. An independent read-only snapshot at
+**18:30:47+04** records the lagging survivor as `t|on`, zero acknowledged witness
+rows and no writable endpoints while both other PostgreSQL containers were
+terminated (`unsafe-survivor-observation.json`). This snapshot supplements the
+drill's full-window assertions; it is not a continuous-observation claim itself.
+
+All **eight final infrastructure/deployment/idle cases passed**, with zero
+failures/errors/skips, in **111.4 seconds** (Maven **1m55s**), finishing
+**18:36:42+04**. The wrapper restored the saved controls and stopped all four
+retained nodes at **18:36:54+04**, preserving their IDs, images and mounts.
+`result.json` reports `passed: true`, an empty `cleanupErrors` list and total
+elapsed time **920.281 seconds**, within the authorized phase.
+
+`python3 /tmp/shardshop-6.2-slot-ready/audit-restoration.py` passed. It confirms
+every original cluster UID/specification/primary/fence, every PVC UID/specification
+and backing volume, every deployment UID/specification, unchanged routing and
+primary-profile configuration, and absence of owned finalizers and the drill
+lock. Recreated database pod UIDs for `shard-a-2` and `shard-a-3` are expected;
+their persistent claims and backing volumes are preserved. Guard and wrapper
+readbacks verified the saved reader **200/s**, producer **0.5/s**, and seeder
+**100/s**, all unpaused. The saved Cucumber reports independently contain one
+passing drill scenario and eight passing final scenarios.
+
+Evidence is retained under `/tmp/shardshop-6.2-slot-ready/`: `drill.log`,
+`final-gates.log`, `wrapper.log`, `drill-reports/`, `final-reports/`, `result.json`,
+`restoration-audit.json`, before/after resource snapshots and source hashes.
+`shasum -a 256 -c /tmp/shardshop-6.2-slot-ready/source-files.sha256` and
+`git diff --check` passed after the run. The 64 focused checks remain valid for
+the unchanged tested source. All earlier failed and incomplete evidence above is
+preserved. **Step 6.2 is Done.** Backup/restore, operator audit, deferred capacity
+and final deployment readiness remain outside this qualification; version-policy
+exceptions and deadlines are unchanged.

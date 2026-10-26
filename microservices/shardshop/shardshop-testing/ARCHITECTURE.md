@@ -26,9 +26,9 @@ explain the durability assumptions behind these scenarios.
 | [3](#scenario-3) | Primary and replica reads | Primary/replica read behavior and the opt-in deployed strict-replica-read drill passed step 6.1 qualification |
 | [4](#scenario-4) | Confirmed order effects | Covered by completed saga steps |
 | [5](#scenario-5) | Ledger rejection, compensation and replay | Covered by completed saga steps |
-| [6](#scenario-6) | Crash recovery and CDC | Steps 4.4 and 5.5 qualify relay/crash recovery, independent HTTP writes and observability; promotion/failover cases remain step 6.2 |
+| [6](#scenario-6) | Crash recovery and CDC | Steps 4.4 and 5.5 qualify relay/crash recovery, independent HTTP writes and observability; step 6.2 qualified synchronous promotion/failover on 2026-10-26 |
 | [7](#scenario-7) | Broker retries, dead letters and reconciliation | Step 4.3 verifies broker policies and bounded retry/parking behavior. Step 5.1 adds durable reconciliation and lost-result recovery; step 5.2 adds transport cleanup with CDC checkpoints and retained-decision replay. Step 5.3 adds the restricted manual reset and replay after budget exhaustion. Step 5.4 measures retry timing and verifies shard-outage reconciliation plus unbound/full DLQ pressure and recovery on both application publishers; see the [drill runbook](RUNBOOK.md#retry-and-dlq-capacity-drills) and [dated evidence](../CHANGELOG.md#step-54) |
-| [8](#scenario-8) | Standby loss, promotion, restore and audit | Kind database drills cover standby/quorum behavior; the strict-read drill passed step 6.1 qualification. Promotion remains step 6.2; coordinated restore and audit remain steps 6.3–6.4 |
+| [8](#scenario-8) | Standby loss, promotion, restore and audit | Kind database drills cover standby/quorum behavior; the strict-read drill passed step 6.1 qualification. Step 6.2 qualified synchronous promotion on 2026-10-26; coordinated restore and audit remain steps 6.3–6.4 |
 | [9](#scenario-9) | HTTP validation and transaction boundaries | Covered by completed validation steps |
 | [10](#scenario-10) | ID generation and service-issued identity | ID generation/allocation and service-issued identity checks exist; step 6.6 requires the complete lifecycle acceptance run. Backup/restore preservation is planned in step 6.3 |
 | [11](#scenario-11) | Concurrent stock reservation | Covered by completed reservation steps |
@@ -179,13 +179,95 @@ Acceptance scenarios for implementation:
     every supported reserve/release run, each product's `stock` equals its
     `initial_stock` minus its active reserved quantities.
 
+## Synchronous failover drill
+
+The opt-in `kind-failover-drill`, also selected by `kind-drill`, implements the
+promotion portions of scenarios 6 and 8. **Step 6.2 passed retained-lab
+qualification on 2026-10-26**, including automatic recovery and eight final gates.
+See the [evidence](../CHANGELOG.md#step-62). The [runbook](RUNBOOK.md#synchronous-failover-drill)
+describes invocation and recovery. The operator contract is pinned to the existing
+CNPG 1.30.1 image under the [October 26 decision](../VERSIONS.md#step-62-existing-version-decision--2026-10-26).
+
+The shared guard saves, pauses and drains producer, reader and interactive-seeder
+controls. Real HTTP orders establish a confirmed anchor and original pending
+commands. Each standby's absence must pause CDC for ten seconds while quorum
+writes still commit. Planned switchover and primary failure must preserve the
+acknowledged orders, immutable snapshots and command/result identities, then
+complete their single stock, ledger and profit effects. Synchronized logical
+slots must cover the saved resume position; permanent reader history and offset
+partition identity must survive, and durable streaming offsets must advance.
+
+After a promotion, guarded reconciliation may retire only an obsolete logical
+slot on a known former primary. It requires stable authoritative-primary roles,
+the original database lineage, matching slot name/database/plugin and confirmed
+LSNs bounded by the captured and authoritative positions. Unknown, active,
+temporary, invalidated or already synchronized copies are not retirement targets.
+The conditional SQL rechecks the standby role and observed slot properties before
+retirement; native slot synchronization must recreate valid synchronized copies
+before healthy-topology checks and switchback. An invocation-owned failover slot,
+publication and probe schema exercise this branch, with exact cleanup before the
+final business-slot switchback. If its recreated copy is missing, temporary or
+lacks a confirmed LSN, only this owned probe is primed while the required source
+LSN remains fixed. The business slot is never consumed by probe priming. This
+mechanism passed the complete retained-lab drill; earlier failed/incomplete
+evidence remains preserved in the dated [record](../CHANGELOG.md#step-62).
+
+Owned-probe priming first requires both physical slots active/streaming and an
+exact `synchronized_standby_slots` readiness barrier. Its verbose decode permits
+at most three attempts for only the exact SQLSTATE `55000` warning about a missing
+`active_pid` on an expected physical slot, with exit zero and numeric count.
+Final success must be warning-free; other or mixed warnings and nonzero exits
+are terminal. The existing convergence deadline is shared, reserving thirty
+seconds per read/mutation and bounding decode explicitly to twenty seconds.
+These checks never consume the business slot or weaken required slot properties.
+
+Fence updates allow at most three conditional attempts within forty seconds.
+Each reread verifies the original cluster UID and owned fence state. The patch
+tests that UID and the exact observed fence value rather than the global resource
+version. An absent fence key is protected by the observed annotations map; a
+missing annotations map uses a protected metadata fallback. Unrelated annotations
+are preserved. An observed
+target state accepts a lost successful response; retry requires an observed
+resource-version change. Unchanged failures, foreign fence edits and cluster
+replacement stop the update. These bounds do not establish a concurrency root
+cause for an unclassified command failure.
+
+HTTP witness retries run synchronously on the guard thread with a separate
+180-second recovery budget for allocation POST and for order PUT; this is not an
+overall acceptance-time bound. Observing the committed outbox has an additional
+60-second bound.
+An allocation keeps its original run/ordinal and an order PUT keeps the same ID
+and body. Only `503` and selected transient transport failures permit retry;
+permanent errors fail immediately. Initial success requires allocation `201` and
+PUT `202`; replay `200` is accepted only after an uncertain request. The complete
+live drill and final gates passed on October 26.
+
+Workload-control restoration opens a fresh tunnel per attempt and verifies the
+exact saved rate and paused state by readback. Each workload allows at most three
+attempts within one shared 180-second budget, retrying only `503` or classified
+transient transport failures. Other responses and readback mismatches terminate
+restoration. Automatic recovery passed in the final qualified run. Earlier
+warning-rejected probe and incomplete recovery attempts remain historical evidence.
+
+Failure injection holds deleted pods with invocation-owned finalizers until
+PostgreSQL termination is observed. A separate failover-quorum check establishes
+an acknowledged witness absent from one survivor, then removes the primary and
+aligned standby. For the bounded 180–240 second observation, that survivor must
+remain read-only, receive no writable-service endpoint and never be nominated.
+Recovery removes only owned finalizers, restores fences, original primary and
+workload controls, and verifies exact PVC/backing-volume identities, database
+lineage, streaming roles and the final deployment/invariant gates. No data volumes
+are deleted; ordinary HTTP fixture business history remains. Recovery failure
+retains the shared lock. Coordinated backup/restore and restore audit remain
+steps 6.3–6.4.
+
 ## Strict replica-read drill
 
 The opt-in `kind-replica-read-drill` scenario, also selected by `kind-drill`,
 covers the deployed read portions of scenarios 3 and 8 and passed
 [step 6.1 retained-lab qualification on 2026-10-26](../CHANGELOG.md#step-61).
 [Invocation and recovery](RUNBOOK.md#strict-replica-read-drill) are documented in
-the runbook. Promotion remains step 6.2.
+the runbook. Promotion passed step 6.2 qualification through the separate failover drill above.
 
 The shared guard registers exact restoration of product/routing ConfigMap data
 and the full product Deployment template before switching every literal profile

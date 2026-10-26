@@ -4,8 +4,8 @@
 
 ShardShop is a local system-design lab. It runs a regional product catalog,
 sharded orders and an asynchronous ledger on one kind cluster. This overview
-describes the implemented architecture on **2026-10-24**. Remaining work in
-milestones 6–7 covers replica reads, failover/restore qualification and cloud features; the
+describes the implemented architecture on **2026-10-26**. Remaining work in
+milestones 6–7 covers backup/restore, HTTP/2, operation and cloud features; the
 [detailed documents](#detailed-design-documents) identify the planned behavior.
 
 - **Shape:** six Quarkus applications, three regional PostgreSQL shards, one
@@ -199,7 +199,8 @@ data inside a shard; it does not distribute rows between regions.
 See [routing](shardshop-core/sharding/ARCHITECTURE.md),
 [ID generation](shardshop-core/idgen/ARCHITECTURE.md) and
 [database consistency](database/ARCHITECTURE.md#consistency-and-failure-boundaries)
-for the contracts and the remaining failover and restore requirements.
+for the contracts, [qualified synchronous failover](CHANGELOG.md#step-62),
+and the remaining backup/restore requirements.
 
 ## 4. Performance
 

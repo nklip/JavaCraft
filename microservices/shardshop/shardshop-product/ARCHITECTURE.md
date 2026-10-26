@@ -14,7 +14,7 @@ describes how those writes use catalog storage.
   home shard of each seller, and the zero-balance setup of seller profit.
 - **Status:** implemented. The deployed strict replica-read drill passed
   [step 6.1 qualification on 2026-10-26](../CHANGELOG.md#step-61).
-  Promotion and failover qualification remain step 6.2.
+  Promotion and failover passed [step 6.2 qualification on 2026-10-26](../CHANGELOG.md#step-62).
 
 ## Product API
 
@@ -149,7 +149,7 @@ spans shards, and `CONFIRMED` can precede eventual balance application.
 
 > **Status:** the strict replica read profile and opt-in deployed read drill passed
 > [step 6.1 qualification on 2026-10-26](../CHANGELOG.md#step-61).
-> Promotion and failover qualification remain step 6.2.
+> Promotion and failover passed [step 6.2 qualification on 2026-10-26](../CHANGELOG.md#step-62).
 
 All writes, order validation, order status reads, and saga processing use `-rw`.
 Product reads also use `-rw` by default. An optional load-test profile uses `-ro`

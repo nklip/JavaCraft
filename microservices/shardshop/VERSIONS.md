@@ -4,8 +4,9 @@ Initial support and artifact inventory: **2026-09-28**. The [step 6.0 review](#s
 selections, checksums, image digests, sources, and review deadlines are now in
 [versions.lock.yaml](versions.lock.yaml). Step **0.1 is Done**: kind 1.36.4 is selected under the user-authorized fallback,
 and Canonical OpenJDK 25 JDK/JRE images are pinned and smoke-tested.
-The initial inventory is complete. Local deployment through step 5.5 is qualified;
-milestone 6 failover, restore and final acceptance remain planned. Later dated
+The initial inventory is complete. Local deployment through step 6.2 is qualified,
+including [synchronous failover on 2026-10-26](CHANGELOG.md#step-62). Backup/restore
+and final acceptance remain planned. Later dated
 records below supersede the initial artifact-only verification scope.
 Docker Desktop is updated, and the kind node image's advisory findings are
 accepted for the local, loopback-only lab. Recheck upstream information before
@@ -807,8 +808,9 @@ verify checksums/signatures and record native CPU-architecture compatibility.
 **2026-10-25 scope revision:** [step 6.0](PLAN.md#minimum-completion-of-60)
 owns the application/tool review and RabbitMQ planning. The user excludes CNPG
 operator/chart and managed PostgreSQL changes. Their findings and the
-**2026-11-30** upgrade deadline remain separate maintenance obligations before
-6.2; they are not 6.0 acceptance conditions. The October 25 review did not confirm
+**2026-11-30** upgrade deadline remain separate maintenance obligations; they
+are not 6.0 acceptance conditions. The October 26 decision below permits 6.2
+qualification on the existing pin. The October 25 review did not confirm
 a compatible successor. Any later operator/broker change invalidates affected
 completed failover/restore evidence until those drills pass again.
 
@@ -1306,13 +1308,28 @@ by **2027-01-15**, with upgrade before **2027-01-31**.
 The October 25 review found **1.30.1 / chart 0.29.1**, with no confirmed compatible
 successor. Its recorded matrix covers Kubernetes 1.34–1.36 and PostgreSQL 14–18.
 The **2026-11-30** upgrade deadline and operator advisory findings remain a separate
-maintenance obligation before 6.2. That future work needs its own explicit scope,
+maintenance obligation. That future upgrade work needs its own explicit scope,
 compatible GA artifact, retained-data rehearsal and recovery/restore validation;
 it is not authorization to modify CNPG during 6.0. Do not renew support dates or
 silently count an unreleased roadmap version as qualified.
 [Releases](https://github.com/cloudnative-pg/cloudnative-pg/releases),
 [recorded support matrix](https://cloudnative-pg.io/docs/1.30/supported_releases/),
 [upgrade procedure](https://cloudnative-pg.io/docs/1.30/installation_upgrade/).
+
+### Step 6.2 existing-version decision — 2026-10-26
+
+The user authorized proceeding with step 6.2 despite the saved operator findings
+(**2 critical/9 high**) if **1.30.1** is the latest release. The official
+[release inventory](https://github.com/cloudnative-pg/cloudnative-pg/releases) and
+[1.30.1 release](https://github.com/cloudnative-pg/cloudnative-pg/releases/tag/v1.30.1)
+were checked on October 26: 1.30.1 is the latest GA release; 1.31 is upcoming.
+The [1.30 support matrix](https://cloudnative-pg.io/docs/1.30/supported_releases/)
+still covers Kubernetes 1.34–1.36 and PostgreSQL 14–18, with approximate December
+2026 EOL. This resolves the maintenance gate only for 6.2 qualification of the
+currently pinned **1.30.1 / chart 0.29.1** in the local lab. It does not qualify
+failover results, change artifacts, declare packages unaffected, bypass scan
+gates or extend any advisory/support deadline. The **2026-11-30** maintenance
+obligation and the historical 6.0 exclusions remain unchanged.
 
 ### Review boundaries and open findings
 

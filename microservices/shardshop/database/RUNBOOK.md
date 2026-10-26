@@ -341,7 +341,9 @@ writes use `order_app`. The precreated `ordering.debezium_offset_storage` follow
 the [Debezium JDBC offset-store column contract](https://debezium.io/documentation/reference/3.7/configuration/storage.html#_offset_table_defaults).
 The implemented Debezium relay sets `offset.storage.jdbc.table.name` to that
 qualified name and disables publication auto-creation. Step 4.4 qualified the
-connector and step 5.5 its crash recovery; failover qualification remains in 6.2.
+connector and step 5.5 its crash recovery. Synchronous promotion and failover
+passed [step 6.2 qualification on 2026-10-26](../CHANGELOG.md#step-62), including
+acknowledged sagas, synchronized logical slots and CDC continuation.
 
 ## Ledger schema and replay records
 
