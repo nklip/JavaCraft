@@ -27,7 +27,15 @@ the focused two-case source rerun passed with unchanged thresholds. See
 `kind-backup`, `kind-restore` and the standalone `kind-backup-allocator` history
 export are separately
 opt-in and are not selected by `kind-drill` or the default kind suite. See the [workflow and private-artifact requirements](RUNBOOK.md#coordinated-backup-and-isolated-restore).
-Step 6.2 remains qualified. Older-backup audit/repair remains step 6.4.
+Step 6.2 remains qualified. Step 6.4 is Done; see [evidence](../CHANGELOG.md#step-64).
+
+## Older-backup audit and selected repair
+
+Step **6.4 is Done**; 60 focused checks and live older-backup recovery qualification pass. Separate opt-in `kind-recovery-record`, `kind-recovery-audit`,
+`kind-recovery-repair` and `kind-recovery-drill` operate only on fresh isolated
+targets and retain private review evidence. The focused `kind-recovery-schema`
+checks native schema restoration. All five are excluded from `kind-drill`.
+See the [recovery workflow](RUNBOOK.md#older-backup-audit-and-selected-repair).
 
 ## JavaScript page checks
 

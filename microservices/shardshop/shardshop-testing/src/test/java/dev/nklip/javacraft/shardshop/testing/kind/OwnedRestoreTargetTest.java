@@ -16,6 +16,15 @@ class OwnedRestoreTargetTest {
     @TempDir Path temporary;
 
     @Test
+    void orderingReplacementCannotSelectTheLedgerOrAnArbitraryDatabase() {
+        for (String shard : List.of("shard-a", "shard-b", "shard-c")) OwnedRestoreTarget.validateOrderingSource(shard);
+        for (String source : List.of("ledger-db", "postgres", "shard_a", "shard-a;DROP DATABASE postgres")) {
+            assertThrows(IllegalArgumentException.class, () -> OwnedRestoreTarget.validateOrderingSource(source));
+        }
+        assertThrows(IllegalArgumentException.class, () -> OwnedRestoreTarget.validateOrderingSource(null));
+    }
+
+    @Test
     void qualifiedFullyNamedDigestIsAcceptedByThePostgresContainerWithoutStartingDocker() {
         String image = "docker.io/library/postgres@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336";
         assertDoesNotThrow(() -> new org.testcontainers.postgresql.PostgreSQLContainer(OwnedRestoreTarget.qualifiedImage(image)));

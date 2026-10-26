@@ -42,6 +42,7 @@ public final class OwnedRestoreTarget implements AutoCloseable {
     private final String password = UUID.randomUUID().toString();
     private final Map<String, String> passwords = new HashMap<>();
     private final Set<String> restored = new HashSet<>();
+    private final Map<String, Map<Path, String>> orderingDumps = new HashMap<>();
     private final Path certificate;
     private final Path work;
     private String containerId;
@@ -363,6 +364,101 @@ public final class OwnedRestoreTarget implements AutoCloseable {
     private void restoreInput(String database, Path dump) throws IOException, InterruptedException {
         BackupProcesses.transfer(new ProcessBuilder("docker", "exec", "-i", containerId, "pg_restore", "--exit-on-error", "--username=postgres",
                 "--dbname=" + database), dump, null, Duration.ofMinutes(3));
+    }
+
+    /** Exports an operator recovery output; the caller separately records its metadata and completeness. */
+    public synchronized void dumpDatabase(String source, Path dump) throws IOException, InterruptedException {
+        String database = databaseName(source);
+        requireOwned();
+        if (!restored.contains(source)) throw new IOException("Database export requires a completed isolated restore");
+        if (dump == null || !dump.isAbsolute() || !dump.equals(dump.normalize()) || dump.getParent() == null) {
+            throw new IllegalArgumentException("Owned database dump requires an absolute normalized file");
+        }
+        privateDirectory(dump.getParent());
+        Files.createFile(dump, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+        BackupProcesses.transfer(new ProcessBuilder("docker", "exec", containerId, "pg_dump", "--format=custom",
+                "--username=postgres", "--dbname=" + database), null, dump, Duration.ofMinutes(3));
+    }
+
+    /** Qualification-only earlier ordering state, exported from this owned server. */
+    public synchronized void dumpOrdering(String source, Path dump) throws IOException, InterruptedException, SQLException {
+        requireOrderingSource(source);
+        if (dump == null || !dump.isAbsolute() || !dump.equals(dump.normalize()) || dump.getParent() == null) {
+            throw new IllegalArgumentException("Owned ordering dump requires an absolute normalized file");
+        }
+        privateDirectory(dump.getParent());
+        requireOrderingIdle(source);
+        Files.createFile(dump, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+        BackupProcesses.transfer(new ProcessBuilder("docker", "exec", containerId, "pg_dump", "--format=custom",
+                "--username=postgres", "--schema=ordering", "--dbname=" + databaseName(source)), null, dump, Duration.ofMinutes(3));
+        orderingDumps.computeIfAbsent(source, ignored -> new HashMap<>()).put(dump, orderingDigest(dump));
+    }
+
+    /** Replaces only ordering with this target's own unchanged custom dump; catalog and ledger remain untouched. */
+    public synchronized void restoreOrdering(String source, Path dump) throws IOException, InterruptedException, SQLException {
+        requireOrderingSource(source);
+        String captured = orderingDumps.getOrDefault(source, Map.of()).get(dump);
+        if (captured == null) throw new IllegalArgumentException("Ordering restore requires this target's captured dump");
+        BackupArtifacts.requirePrivateFile(dump);
+        if (!captured.equals(orderingDigest(dump))) throw new IOException("Captured ordering dump changed");
+        requireOrderingIdle(source);
+        List<String> publications = new ArrayList<>();
+        try (Connection connection = connection(source); Statement statement = connection.createStatement();
+             var rows = statement.executeQuery("SELECT pubname FROM pg_publication_tables WHERE schemaname='ordering' AND tablename='order_outbox'")) {
+            while (rows.next()) {
+                String publication = rows.getString(1);
+                if (!publication.matches("[a-z_][a-z0-9_]*")) throw new IOException("Unexpected ordering publication name");
+                publications.add(publication);
+            }
+        }
+        try (Connection connection = connection(source); Statement statement = connection.createStatement()) {
+            statement.execute("DROP SCHEMA ordering CASCADE");
+        }
+        // This target captured and pinned an ordering-only dump. A pg_restore schema filter
+        // omits the namespace's own CREATE/OWNER/ACL entries after DROP SCHEMA.
+        BackupProcesses.transfer(new ProcessBuilder("docker", "exec", "-i", containerId, "pg_restore", "--exit-on-error",
+                "--username=postgres", "--dbname=" + databaseName(source)), dump, null, Duration.ofMinutes(3));
+        try (Connection connection = connection(source); Statement statement = connection.createStatement()) {
+            for (String publication : publications) {
+                try (var query = connection.prepareStatement("SELECT count(*) FROM pg_publication_tables WHERE pubname=? AND schemaname='ordering' AND tablename='order_outbox'")) {
+                    query.setString(1,publication);
+                    try (var rows = query.executeQuery()) {
+                        rows.next();
+                        if (rows.getLong(1) == 0) statement.execute("ALTER PUBLICATION " + publication + " ADD TABLE ONLY ordering.order_outbox");
+                    }
+                }
+            }
+        }
+    }
+
+    static void validateOrderingSource(String source) {
+        if (source == null || !List.of("shard-a", "shard-b", "shard-c").contains(source)) throw new IllegalArgumentException("Ordering loss is restricted to buyer shards");
+    }
+
+    private static String orderingDigest(Path file) throws IOException {
+        try {
+            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            try (var input = new java.security.DigestInputStream(Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS), digest)) {
+                input.transferTo(java.io.OutputStream.nullOutputStream());
+            }
+            return java.util.HexFormat.of().formatHex(digest.digest());
+        } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+    }
+
+    private void requireOrderingSource(String source) throws IOException {
+        validateOrderingSource(source);
+        requireOwned();
+        if (!restored.contains(source)) throw new IOException("Ordering qualification requires a completed isolated restore");
+    }
+
+    void requireOrderingIdle(String source) throws IOException, SQLException {
+        requireOrderingSource(source);
+        try (Connection connection = connection(source); Statement statement = connection.createStatement();
+             var rows = statement.executeQuery("SELECT "
+                     + "(SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid()),"
+                     + "(SELECT count(*) FROM pg_replication_slots WHERE database=current_database())")) {
+            if (!rows.next() || rows.getLong(1) != 0 || rows.getLong(2) != 0) throw new IOException("Ordering dump/restore requires stopped target workers and no logical slots");
+        }
     }
 
     private void requireOwned() throws IOException {

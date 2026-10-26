@@ -18,7 +18,7 @@ writes directly to the ledger database.
   transport cleanup and operator reset through milestone 5, with qualified retry,
   capacity, crash recovery and observability checks. Synchronous failover passed
   step 6.2; coordinated backup and isolated restore target checks passed in 6.3,
-  with final source checks and cleanup passing on 2026-10-26. Older-backup audit/repair remains 6.4.
+  with final source checks and cleanup passing on 2026-10-26. Older-backup audit/repair is qualified in 6.4; see [evidence](../CHANGELOG.md#step-64).
 
 ## Processes
 
@@ -342,7 +342,7 @@ entry and saga, not deletion of the original ledger row.
 > capacity and crash recovery, independent HTTP writes and recovery observability.
 > Synchronous promotion/failover passed 6.2. Coordinated backup/isolated restore
 > target checks passed in 6.3, with final source checks and cleanup passing on 2026-10-26; older-backup
-> audit/repair remains 6.4.
+> audit/repair is qualified in 6.4; see [evidence](../CHANGELOG.md#step-64).
 
 ### Reconciliation schedule
 
@@ -511,12 +511,11 @@ cleanup.
 ## Orders lost by asynchronous failover or restore
 
 > **Status:** step 4.7 implements reachable-primary orphan quarantine,
-> correlation/conflict checks and the creation lock. Coordinated backups and
-> isolated target restore checks passed in step 6.3, including final source checks and cleanup on 2026-10-26; the operator audit, older-backup restore recovery and
-> optional asynchronous-loss drill remain step 6.4. Automatic replay is implemented
-> in step 5.1, and manual budget reset in step 5.3. The restore procedures below
-> describe the planned 6.4 older-backup repair, distinct from the implemented
-> [6.3 baseline](../shardshop-testing/RUNBOOK.md#coordinated-backup-and-isolated-restore).
+> correlation/conflict checks and the creation lock. Coordinated backup and isolated
+> restore passed 6.3; older-backup audit and selected recovery passed
+> [6.4](../CHANGELOG.md#step-64). Optional physical asynchronous loss remains
+> unqualified. Automatic replay is implemented in 5.1 and manual budget reset in
+> 5.3. The procedures below describe the qualified isolated recovery workflow.
 
 ### Orphan results
 
@@ -542,7 +541,13 @@ quarantine while holding that lock so concurrent creation cannot bypass it.
 Catalog lookups occur before the final creation transaction and lock, followed by
 the re-check described in the validation sequence above.
 
-### Operator audit (planned)
+<a id="operator-audit-planned"></a>
+### Operator audit
+
+Step 6.4 is Done: isolated audit/selected-repair tooling and live qualification
+passed. The [recovery runbook](../shardshop-testing/RUNBOOK.md#older-backup-audit-and-selected-repair)
+defines explicit immutable inputs, frozen owned targets and private review-only
+outputs. No source connection/write or production traffic authorization is made.
 
 Missing orders cannot be discovered by scanning pending sagas alone. After every
 asynchronous-loss drill or shard restore, pause order writes and run an operator
@@ -560,12 +565,23 @@ on all primaries by ID and fingerprint.
 - It also lists stock reservations whose order is missing; they are released only
   after that order's fate is decided.
 
-### Restore recovery (planned)
+<a id="restore-recovery-planned"></a>
+### Restore recovery
+
+The implemented 6.4 repair restores one verified original order/saga in a fresh
+isolated target. Missing original history/costs, conflicts or unproved catalog
+effects remain unresolved. Authentic pending outcomes are applied only when
+existing catalog effects provably agree. Review dumps retain quarantine and repair
+state with `trafficAuthorized: false` before target deletion. Isolated recovery
+qualification passed [6.4](../CHANGELOG.md#step-64); the optional physical
+asynchronous-loss drill remains unqualified.
 
 Restore the order and original saga identity from a verified backup or retained
-creation record. If the restored saga is pending, reset its reconciliation budget,
-so that the ledger sends its stored result again. Clear quarantine only after the
-identities and outcome agree. If the original order cannot be recovered,
+creation record. For an authentic pending saga, the repair verifies the permanent
+ledger result and existing catalog effects, then applies that outcome and resets
+reconciliation metadata in the buyer-shard transaction. Missing catalog effects
+remain unresolved. Replay uses the original command and result identities. Clear
+quarantine only after the identities and outcome agree. If the original order cannot be recovered,
 retain the ledger entry and unresolved incident for an explicit business decision.
 Never silently delete a ledger row, fabricate a confirmed order, or treat absence
 as cancellation. Automatic reconciliation repairs missing messages; it cannot

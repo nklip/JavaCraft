@@ -28,7 +28,7 @@ explain the durability assumptions behind these scenarios.
 | [5](#scenario-5) | Ledger rejection, compensation and replay | Covered by completed saga steps |
 | [6](#scenario-6) | Crash recovery and CDC | Steps 4.4 and 5.5 qualify relay/crash recovery, independent HTTP writes and observability; step 6.2 qualified synchronous promotion/failover on 2026-10-26 |
 | [7](#scenario-7) | Broker retries, dead letters and reconciliation | Step 4.3 verifies broker policies and bounded retry/parking behavior. Step 5.1 adds durable reconciliation and lost-result recovery; step 5.2 adds transport cleanup with CDC checkpoints and retained-decision replay. Step 5.3 adds the restricted manual reset and replay after budget exhaustion. Step 5.4 measures retry timing and verifies shard-outage reconciliation plus unbound/full DLQ pressure and recovery on both application publishers; see the [drill runbook](RUNBOOK.md#retry-and-dlq-capacity-drills) and [dated evidence](../CHANGELOG.md#step-54) |
-| [8](#scenario-8) | Standby loss, promotion, restore and audit | Kind database drills cover standby/quorum behavior; the strict-read drill passed step 6.1 qualification. Step 6.2 qualified synchronous promotion on 2026-10-26; step 6.3 qualified coordinated backup/isolated restore; older-backup audit/repair remains step 6.4 |
+| [8](#scenario-8) | Standby loss, promotion, restore and audit | Kind database drills cover standby/quorum behavior; the strict-read drill passed step 6.1 qualification. Steps 6.2–6.4 qualified synchronous promotion, coordinated backup/isolated restore and older-backup audit/repair on 2026-10-26 |
 | [9](#scenario-9) | HTTP validation and transaction boundaries | Covered by completed validation steps |
 | [10](#scenario-10) | ID generation and service-issued identity | ID generation/allocation and service-issued identity checks exist; step 6.6 requires the complete lifecycle acceptance run. Backup/restore preservation passed step 6.3 qualification |
 | [11](#scenario-11) | Concurrent stock reservation | Covered by completed reservation steps |
@@ -218,8 +218,38 @@ proves subsequent streaming with a fresh broker and ledger worker, without any
 ID-producing traffic. The source allocator is never rewound and the owned target
 is removed after verification. Artifacts contain full seed data and broker
 credential hashes; private permissions and exclusion from commits are required.
-Older-backup repair/audit remains step 6.4; PITR and production cutover are outside
+Older-backup repair/audit passed step 6.4; PITR and production cutover are outside
 this baseline qualification.
+
+## Older-backup audit and selected repair
+
+**Step 6.4 is Done; 60 focused checks and live recovery qualification pass.** Four operator/drill tags export original records, audit, repair one selected order,
+and run the causal older-dump drill. A fifth focused tag, `kind-recovery-schema`,
+checks native repeated schema restore, namespace grants, publication membership
+and all database fingerprints without applications or a broker. They are excluded from `kind-drill`. Verified 6.3
+bundles and independent latest allocator history create only fresh owned isolated
+targets; no source connection or source write is made. Audit/repair replace the
+older ledger database with a same-or-later verified ledger bundle. Targets remain
+frozen with application traffic absent except the explicit isolated replay probes.
+
+The drill selects three acknowledged witnesses, constructs an older ordering
+dump, restores the later state to establish their existence, then actually applies
+the older dump losing two orders and introduces a third fingerprint mismatch.
+An exported permanent-ledger audit must quarantine all three before late delivery
+and report orphan reservations. Late acknowledgement and HTTP `409` preserve
+blocking incidents; conflicting or absent original records refuse repair. One
+verified original order/saga is recovered and replayed with unchanged IDs, while
+whole-catalog fingerprints and ledger entry cardinality stay unchanged. Missing
+history/costs, conflicting target state or unproved catalog effects remain
+unresolved. Authentic pending outcomes apply only when existing catalog effects
+provably agree.
+
+Audit/repair retain reports, quarantine and repaired rows in full database review
+dumps before target removal. Bundles carry `purpose: recovery-review-only` and
+`trafficAuthorized: false`; they authorize no production cutover. The optional
+physical asynchronous-loss drill is outside current qualification, and the default
+synchronous profile is unchanged. See the
+[operational workflow](RUNBOOK.md#older-backup-audit-and-selected-repair).
 
 ## Synchronous failover drill
 
@@ -300,8 +330,8 @@ Recovery removes only owned finalizers, restores fences, original primary and
 workload controls, and verifies exact PVC/backing-volume identities, database
 lineage, streaming roles and the final deployment/invariant gates. No data volumes
 are deleted; ordinary HTTP fixture business history remains. Recovery failure
-retains the shared lock. Coordinated backup/isolated restore passed step 6.3; older-backup restore audit
-remains step 6.4.
+retains the shared lock. Coordinated backup/isolated restore passed step 6.3;
+older-backup audit/recovery passed [6.4](../CHANGELOG.md#step-64).
 
 ## Strict replica-read drill
 

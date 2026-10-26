@@ -6817,3 +6817,305 @@ records are under `/tmp/shardshop-6.3-live/`,
 `/tmp/shardshop-6.3-restore-currency/` and `/tmp/shardshop-6.3-reader-final/`.
 Older-backup orphan audit/repair remains step 6.4. PITR, production cutover and
 deferred performance qualification are outside this coordinated-baseline result.
+
+
+<a id="step-64"></a>
+## 2026-10-26 — Step 6.4 restore audit and recovery (Done)
+
+Implemented four explicit Maven/Cucumber entrypoints for verified original-record
+export, permanent-ledger audit, selected repair and an older-dump recovery drill.
+They restore verified backups into fresh owned PostgreSQL containers and remove
+those containers on every exit. The source lab stays stopped. Audit/repair retain
+private review dumps with `trafficAuthorized: false`; production cutover is outside
+this workflow. Inputs and the latest allocator history are immutable.
+
+The audit compares all primary orders against permanent ledger decisions, including
+previously acknowledged outcomes, persists missing/mismatched pairs in existing
+quarantine, and lists orphan reservations without releasing them. Recovery requires
+complete original ordering rows, including original costs and identities; ledger
+commands cannot supply missing acceptance-time history. Repair rejects conflicting
+rows or unproved catalog effects. It resolves incidents last in the shard transaction,
+and leaves unrecoverable decisions and incidents intact. Pending outcomes are
+applied only from authentic permanent results with already-agreeing catalog effects.
+Original-command replay must preserve ledger identities, entries and catalog effects.
+
+The deterministic drill captures an older ordering dump with two acknowledged orders
+missing, restores pristine history first, then actually restores the older dump and
+asserts the orders disappeared. A third order has a conflicting fingerprint. It must
+prove audit discovery before late results, idempotent quarantine, HTTP reuse blocking,
+verified recovery of one order, once-only original-command replay and retained
+unrecoverable incidents. Full catalog fingerprints must remain unchanged. The
+optional physical asynchronous-loss profile is not implemented or qualified here.
+
+### Focused validation
+
+Using Java 25.0.5 and Node 24 from the repository root:
+
+```sh
+export JAVA_HOME=/Users/nikita.lipatov/.sdkman/candidates/java/25.0.5-tem
+export PATH="$JAVA_HOME/bin:/opt/homebrew/opt/node@24/bin:$PATH"
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true \
+  '-Dtest=Recovery*Test,KindRecoveryTest,OwnedRestoreTargetTest,KindBackupRestoreTest,Restore*Test,BackupArtifactsTest,BackupProcessesTest' \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test
+```
+
+**56 tests passed**, none skipped, in 5.397 seconds at 20:59:46+04; log
+`/tmp/shardshop-6.4-focused-final.log`. Earlier compile diagnostics and the macOS
+canonical-path test failure remain in `/tmp/shardshop-6.4-focused.log` and
+`/tmp/shardshop-6.4-focused-fixed.log`; the test now passes a canonical temporary
+path without weakening production symlink refusal. After output-separation and
+lifecycle edits, the same command with
+`-Dtest=RecoveryReplayTest,KindRecoveryTest,OwnedRestoreTargetTest,RecoveryLossFixtureTest`
+passed **19 tests**, none skipped, in 3.913 seconds at 21:04:36+04
+(`/tmp/shardshop-6.4-lifecycle-final.log`). `git diff --check` passed.
+
+No application, migration, image or compiler-target changes were required. Existing
+packaged applications and digest-pinned PostgreSQL/RabbitMQ images are reused.
+The sealed 6.3 backup, independent latest allocator and all four stopped retained
+source nodes passed inexpensive prerequisite checks.
+
+### Isolated qualification phase
+
+The user approved one bounded 20-minute phase, including cleanup, on October 26.
+Prepared wrapper: `python3 /tmp/shardshop-6.4-live/run.py`; exact Maven arguments,
+source hashes, log, reports and cleanup evidence are retained beside it. It selects
+only `KindIT` with `shardshop.kind.tags=kind-recovery-drill`, invokes both
+`failsafe:integration-test` and `failsafe:verify`, and uses explicit source/allocator,
+private output and owned target arguments. Execution is bounded to 18 minutes with
+a cleanup reserve. Live qualification is pending; no pass is claimed.
+
+The live wrapper did **not execute**. Automatic permission review timed out on the
+first launch and explicitly allowed one retry. That retry returned HTTP 403 from
+the approval service and prohibited bypassing the check. These are review-service
+failures, not reported safety findings. No drill log, result, private step64 archive
+or owned target was created by either launch. No live qualification result exists,
+and no application/image rebuild or source-lab operation was attempted. The
+implementation remains In Progress; resume the prepared isolated qualification
+after the tool approval service is available.
+
+### Resumed isolated qualification — 2026-10-26
+
+The user requested completion after the approval-service failure. At 21:27+04,
+normal permission review succeeded and the prepared wrapper launched. Source
+hashes still match the focused-test candidate; no previous live output existed.
+The wrapper confirmed the four retained source nodes were stopped, then started
+only the fresh owned PostgreSQL target. A separate read-only observer records exact
+owned volume names and Maven process groups, then checks their removal and retained
+source lifecycle events after execution. Qualification is in progress.
+
+The first executed live attempt was stopped after **368.731 seconds** during the
+baseline audit, before older-dump mutation or broker probes. Restore, baseline
+consistency, original-record capture and permanent-ledger export completed. Audit
+opened three fresh TLS connections per order lookup, repeated for every ledger
+decision and stock reservation. A read-only `pg_stat_database.sessions` observation
+showed 3,685/3,682/3,681 sessions on shard-a/b/c while still auditing the first
+baseline, making the complete repeated audit unsuitable for the approved window.
+No live recovery assertion is claimed passing.
+
+The exact owned wrapper was interrupted with SIGINT, which terminated its Maven
+process group and triggered registered cleanup. The wrapper's immediate check
+raced target deletion and reported `Owned target remains`; preserve that failed
+result in `/tmp/shardshop-6.4-live/result.json`. The independent observer and subsequent
+`post-stop-cleanup.json` verify the captured PostgreSQL container and its exact
+anonymous volume are gone, no owned Maven/worker process remains, all four source
+nodes are still stopped with identical IDs/images/mounts, and no source-node start,
+restart or unpause event occurred during the run. Cleanup is complete.
+
+A checkpoint asks permission to fix per-audit connection reuse and run a regression
+within the remaining phase. A new live retry is not yet authorized. The wrapper
+also needs a bounded wait for asynchronous JVM cleanup before its final inspection.
+
+### Connection-budget correction — 2026-10-26
+
+The user approved using the remaining phase for connection reuse and regression
+validation, with a separate checkpoint before any live retry. A full-audit fixture
+uses a verified empty ledger export and 60 orphan reservations under a ten-physical-
+connection limit. With the old implementation, the exact focused command
+
+```sh
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true \
+  '-Dtest=RecoveryAuditTest#auditCompletesAllReservationsWithinTenPhysicalConnections' \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test
+```
+
+failed explicitly with `physical acquisitions=11, permitted=10, budget exhausted=true`
+(`/tmp/shardshop-6.4-connections-before-explicit.log`). The initial regression failure
+with a sanitized cause is retained in `/tmp/shardshop-6.4-connections-before.log`.
+This proves the resource exhaustion rather than relying only on incidental mock
+call counts. The implementation preserves separate lookup, streaming cursor and
+quarantine transaction sessions for one frozen-target audit.
+
+A separate prepared retry wrapper at `/tmp/shardshop-6.4-retry/run.py` uses new output
+and target names, preserving the failed evidence. It waits up to 90 seconds for
+JVM-hook cleanup to remove containers and processes before final verification.
+Two deterministic wrapper checks prove eventual removal succeeds and an expired
+cleanup deadline fails. Syntax checks pass; this wrapper has not run live.
+
+After the correction, the broad focused command recorded above passed **60 tests**,
+zero failures/errors/skips, in **5.083 seconds** at **21:44:49+04**. Log:
+`/tmp/shardshop-6.4-connections-focused.log`. The 60-reservation regression now
+completes within its ten-connection budget; acquisition, readiness and close-failure
+cases verify owned connections are closed. A subsequent indentation-only cleanup
+was checked to preserve every non-whitespace source character. No assertions were
+removed and no application images changed. Live qualification is still pending.
+
+### Corrected isolated qualification — 2026-10-26
+
+The user approved a fresh bounded 20-minute phase, including cleanup. At
+21:50:25+04 the candidate hashes matched the passing focused checks; the new
+output and target paths were unused. `python3 /tmp/shardshop-6.4-retry/run.py`
+launched through normal permission review at 21:50+04, with the independent
+read-only cleanup observer alongside it. The same sealed 6.3 backup, latest allocator,
+packaged applications and image digests are reused; earlier failed evidence is
+retained. Qualification is running; no passing result is claimed yet.
+
+The corrected run finished unsuccessfully after **165.948 seconds**. It passed
+restore/baseline consistency and the full permanent-ledger audit: **11,535 decisions,
+11,535 matching orders, zero quarantined/unresolved/orphan reservations**. Thus the
+connection-reuse fix progressed beyond the prior runtime blocker. It captured both
+ordering dumps, then `pg_restore` of the pristine ordering dump failed at
+`OwnedRestoreTarget.restoreOrdering`, before the older-dump loss assertions. The
+strict native-process helper rejected nonzero exit or stderr diagnostics; it did
+not expose private payloads. Failsafe reports one error and no passing scenario.
+
+Automatic cleanup passed with no errors and the source remained stopped. The
+independent observer verified removal of the exact owned PostgreSQL container,
+anonymous volume and Maven process group, with no retained-node start/restart/
+unpause events. Input manifest and latest allocator hashes remain unchanged.
+Evidence: `/tmp/shardshop-6.4-retry/{drill.log,result.json,independent-cleanup.json,immutable-inputs-after.json}`.
+A checkpoint requests permission for a bounded native-restore investigation and
+focused correction within the remaining phase; no additional live retry is authorized.
+
+### Native schema-restore correction — 2026-10-26
+
+The user approved a bounded investigation and focused fix within the same phase.
+The first hypothesis was confirmed without touching a server: rendering the retained
+ordering-only archive with `pg_restore --schema-only --schema=ordering` omitted
+`CREATE SCHEMA ordering` and its owner/ACL entries; rendering the same archive
+without that redundant restore filter included them. The target drops ordering
+before restoration, so the filtered restore had no namespace.
+
+`OwnedRestoreTarget.restoreOrdering` now restores the complete ordering-only archive
+that this exact owned target captured and checksum-pinned. The dump-time ordering
+filter, source/shard validation, unchanged-dump guard, stopped-worker checks, strict
+exit/stderr handling and publication restoration remain intact. No warning or
+restore assertion is weakened.
+
+A small native regression used one owned PostgreSQL container with synthetic rows.
+Its initial fixture setup failed before testing; a stricter TCP readiness probe
+then reached the final server. The old filtered restore failed with the expected
+missing-schema error. The corrected command passed twice, preserving the original
+row/owner, publication membership and unrelated catalog/ledger sentinels. Exact
+owned container/volume cleanup passed. Private evidence is under
+`/tmp/shardshop-6.4-restore-diagnostic/`; no source lab operation occurred.
+
+Added persistent opt-in `kind-recovery-schema` coverage through the existing
+Maven/Cucumber entrypoint. It restores the sealed backup into a fresh target,
+restores one ordering dump twice, compares namespace owner/ACL and publication
+settings, and verifies all four original database fingerprints after each restore.
+It starts no application or RabbitMQ process. All **60 focused checks** passed in
+**5.521 seconds**, at **22:01:30+04**, using the broad focused command above
+(`/tmp/shardshop-6.4-schema-focused.log`).
+
+The approved narrow integration run is `python3 /tmp/shardshop-6.4-schema/run.py`,
+selecting only `kind-recovery-schema` with explicit fresh output/target names and
+a six-minute execution limit plus cleanup. Exact Maven arguments, source hashes
+and independent cleanup evidence are retained beside that wrapper. Full 6.4
+requalification remains pending.
+
+The persistent native schema regression **passed**, one scenario, zero failures/
+errors/skips, at **22:02:02+04** (Maven 12.444 seconds; wrapper 13.964 seconds).
+It completed both schema restores with unchanged namespace owner/grants, publication
+settings and all four database fingerprints. Automatic cleanup and the independent
+container/volume/process/lifecycle audit passed. Source nodes remained stopped;
+source backup-manifest and latest allocator hashes remain unchanged. Evidence is
+in `/tmp/shardshop-6.4-schema/`, with private result/data evidence under the separate
+`2026-10-26-step64-schema` backup directory. The synthetic native before/after
+regression also passed and removed its exact owned container and volume.
+
+The corrected complete-drill wrapper is prepared at
+`/tmp/shardshop-6.4-schema-fixed/run.py`, using new output/target names, the tested
+source hashes and the same immutable inputs. It has **not** been run. Full loss,
+quarantine, verified repair and original-command replay qualification remains
+pending a separate bounded phase; step 6.4 remains In Progress.
+
+### Full qualification after schema correction — 2026-10-26
+
+The user approved another bounded 20-minute full qualification phase, including
+cleanup. At 22:04:25+04, source hashes and immutable inputs matched the tested
+candidate, and fresh output paths were unused.
+`python3 /tmp/shardshop-6.4-schema-fixed/run.py` launched through normal permission
+review alongside its independent cleanup observer. This run reuses the sealed
+backup and packaged applications, with no source startup or image rebuild.
+Qualification is running; no passing result is recorded yet.
+
+### Qualified completion — 2026-10-26
+
+The complete corrected older-restore drill **passed** at **22:12:09+04**, one
+scenario with zero failures/errors/skips. Maven took 7 minutes 36 seconds; the wrapper
+completed in **458.471 seconds** with zero cleanup errors. The exact selected
+acceptance invocation from the repository root was:
+
+```sh
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind \
+  -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
+  -Dit.test=KindIT \
+  -Dshardshop.kind.snapshot=/tmp/shardshop-6.3-live/snapshot \
+  -Dshardshop.backup.directory=/Users/nikita.lipatov/.local/share/shardshop/backups/2026-10-26-step63/backup \
+  -Dshardshop.backup.allocator=/Users/nikita.lipatov/.local/share/shardshop/allocator-latest.json \
+  -Dshardshop.recovery.directory=/Users/nikita.lipatov/.local/share/shardshop/backups/2026-10-26-step64-schema-fixed/recovery \
+  -Dshardshop.restore.target=shardshop-restore-step64-schema-fixed-20261026 \
+  -Dshardshop.kind.tags=kind-recovery-drill
+```
+
+The unchanged Java 25.0.5/Node 24 environment and existing packaged applications
+were reused. `/tmp/shardshop-6.4-schema-fixed/command.json` retains the argument
+vector; `source-hashes.json` and `final-hash-audit.json` tie the results to the tested
+source and unchanged source-backup manifest/latest allocator. No application or
+image rebuild was performed for these test-harness corrections.
+
+The qualified run verifies:
+
+- Baseline consistency for **11,537 orders**, **11,535 ledger decisions**,
+  **56 retained published commands** and **11,545 result bindings**. All permanent
+  decisions initially match their primary orders, with no audit findings.
+- Actual older-dump restoration removes two previously acknowledged orders after
+  their later state was independently restored and checked. A third order retains
+  its deliberately conflicting fingerprint. Audit discovers all three before late
+  delivery, retaining **three unresolved incidents and two orphan reservations**.
+  Repeating the audit preserves the original incident identities.
+- Exact original late results are acknowledged while quarantine remains unresolved.
+  HTTP order reuse returns `409 ORDER_RECONCILIATION_REQUIRED`. Conflicting original
+  rows and missing original-record evidence are refused.
+- Verified original recovery restores **seven rows** and resolves **one matching
+  incident**. The exact original command is replayed through the packaged ledger
+  and result consumer; command/result identities and accepted result binding remain
+  unchanged, no permanent ledger entry is added, and all catalog table fingerprints
+  remain identical (including stock, reservations and seller profit data).
+- The final audit retains **two unresolved cases and one orphan reservation**.
+  The unrecoverable order remains absent, its ledger history survives, and recovery
+  does not resolve another order's incident.
+
+Automatic cleanup verified all **five logged owned container IDs** are absent and
+no process remains in the Maven group. Independent observation captured four of
+those containers while running (one bootstrap helper was shorter-lived), all three
+owned persistent/anonymous volumes and the process group; their cleanup checks
+passed. The wrapper also verifies the short-lived helper's removal by its exact
+logged ID. All four retained source nodes have unchanged IDs/images/mounts and
+remain stopped; Docker events show no source start, restart or unpause. No Java
+process references the owned replay configurations. Both the source manifest and
+latest allocator hashes are unchanged. The narrow native-schema regression and
+synthetic before/after probe also removed their owned resources.
+
+Detailed reports, commands and cleanup/hash evidence are in
+`/tmp/shardshop-6.4-schema-fixed/`. Private database/evidence artifacts remain in
+`~/.local/share/shardshop/backups/2026-10-26-step64-schema-fixed/recovery/`, outside
+Git and Maven cleanup. Previous failed attempts remain recorded above.
+
+**Step 6.4 is Done.** This qualifies isolated older-backup audit and selected verified
+recovery; review dumps still carry `trafficAuthorized: false`. Missing original
+history/costs or unproved catalog effects remain unresolved. Optional physical
+asynchronous-loss qualification, production cutover, HTTP/2 and deferred capacity
+work are not claimed by this result.

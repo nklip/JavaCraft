@@ -240,11 +240,21 @@ workers, but it checks the CDC credentials. Tests can set
 these passwords as `secretKeyRef` environment variables.
 Step 5.5 qualifies abrupt process crashes at publication/checkpoint and consumer
 commit/acknowledgement boundaries in the [crash suite](../shardshop-testing/RUNBOOK.md#crash-recovery-and-observability).
-Synchronized-standby failover remains step 6.2. A process restart is safe with
+Synchronized-standby failover passed step 6.2. A process restart is safe with
 intact compatible durable state; it cannot repair a missing slot, offset or WAL.
 For those incidents, preserve the state and investigate the explicit recovery
-log and metrics before attempting any resnapshot. Automated restore/audit tooling
-belongs to steps 6.3–6.4; step 5.5 does not add a destructive reset shortcut.
+log and metrics before attempting any resnapshot. Coordinated baseline restore passed step 6.3. Isolated older-backup audit and
+selected repair passed [step 6.4 qualification](../CHANGELOG.md#step-64), including
+60 focused checks and the full live drill. Use the
+[explicit recovery workflow](../shardshop-testing/RUNBOOK.md#older-backup-audit-and-selected-repair):
+verified ordering/ledger bundles, independent latest allocator history and original
+records feed a fresh frozen owned target. No source connection/write occurs.
+Audit/repair retain full review dumps and quarantine with
+`purpose: recovery-review-only`, `trafficAuthorized: false` before target deletion.
+Missing history/costs, conflicts and unproved catalog effects remain unresolved;
+only authentic outcomes whose existing catalog effects agree may be applied.
+Step 5.5 supplies no destructive reset shortcut; optional physical asynchronous
+loss and production cutover are not qualified by the current implementation.
 Run the relay acceptance against disposable PostgreSQL and RabbitMQ containers:
 
 ```bash

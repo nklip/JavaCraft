@@ -602,6 +602,65 @@ The initial sandboxed process/sysctl attempt was blocked; the reviewed host run
 passed. Exact evidence is recorded in the [changelog](../CHANGELOG.md#step-63).
 Focused checks do not establish live capture/restore qualification.
 
+## Older-backup audit and selected repair
+
+**Step 6.4 is Done.** Sixty focused checks, repeated native schema restoration and
+the full older-backup recovery drill passed on 2026-10-26, with verified cleanup
+and unchanged stopped source nodes. See [evidence](../CHANGELOG.md#step-64). All five
+`kind-recovery-*` tags below are explicitly opt-in and excluded from `kind-drill`.
+Use the verified [6.3 bundle and private-artifact rules](#coordinated-backup-and-isolated-restore),
+latest independent allocator file and invocation snapshot. Packaged applications
+and generated broker fixture are required for the drill's replay probes.
+
+Every operation creates a fresh owned isolated target, reads only supplied backup
+files/snapshot metadata and makes no source database connection or write. Choose
+a new mode-700 private output directory outside Maven `target`, separate from all
+input bundles, allocator file and original record. Do not precreate the output;
+its existing parent must be private. Use a fresh `shardshop-restore-*` target name.
+Common invocation, with `$recoveryTag` set to exactly one tag described below:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true -Pkind verify \
+  -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags="$recoveryTag" \
+  -Dshardshop.backup.directory="$backup" -Dshardshop.backup.allocator="$allocator" \
+  -Dshardshop.restore.target="$restoreTarget" -Dshardshop.recovery.directory="$recovery"
+```
+
+- `kind-recovery-schema`: common inputs suffice. This focused native regression
+  restores one captured ordering schema twice and checks its owner/grants,
+  publication membership and all four original database fingerprints. It runs no
+  application or broker processes and is separate from full recovery qualification.
+- `kind-recovery-record`: additionally pass
+  `-Dshardshop.recovery.order-id="$orderId"`. Exports verified original rows to
+  `$recovery/original-record` before disposing the target.
+- `kind-recovery-audit`: additionally pass
+  `-Dshardshop.recovery.ledger-backup="$ledgerBackup"`. This verified bundle must
+  be the same age or later than the ordering bundle; its ledger replaces the
+  older ledger, then permanent outcomes are exported and audited against orders,
+  fingerprints and stock reservations.
+- `kind-recovery-repair`: pass the ledger-backup option plus
+  `-Dshardshop.recovery.record="$originalRecord"` and
+  `-Dshardshop.recovery.order-id="$orderId"`. Select exactly one canonical positive
+  ID and its verified original-record directory. Foreign/conflicting records,
+  missing original history/costs and unproved catalog effects remain unresolved;
+  pending authentic outcomes apply only when retained catalog effects agree.
+- `kind-recovery-drill`: common inputs suffice. It creates a causal older dump
+  from three acknowledged witnesses, proves later state existed, then restores
+  the older dump losing two orders and mismatches the third fingerprint. Audit
+  precedes late delivery; quarantine, orphan reservations, late acknowledgement,
+  HTTP `409`, refusal of conflicting/missing records and recovery of one original
+  order are checked. Replay keeps command/result IDs, ledger cardinality and all
+  catalog table fingerprints unchanged. Other incidents stay unresolved.
+
+Audit/repair retain full four-database review dumps, reports and quarantine/repair
+state before deleting their owned target. The sealed review bundle is explicitly
+`purpose: recovery-review-only`, `trafficAuthorized: false`. Protect its complete
+data and credential material; never commit it or use it as production-cutover
+authorization. All ordinary application traffic is absent from the frozen target;
+only explicit isolated replay probes run. Optional physical asynchronous-loss
+qualification is separate and does not change the default synchronous profile.
+
 ## Synchronous failover drill
 
 **Step 6.2 passed retained-lab qualification on 2026-10-26**, including automatic
@@ -775,7 +834,8 @@ Deployment UID/spec, routing/profile configuration, and absence of owned
 finalizers and the drill lock. Database pod UIDs for shard-a instances 2 and 3
 were recreated as expected; their PVCs were preserved. This complete run
 qualifies step 6.2; coordinated backup/isolated restore subsequently passed
-step 6.3, while older-backup restore audit remains planned in 6.4. Exact commands, artifacts and preserved failures are in the
+step 6.3, and older-backup audit/recovery passed [6.4](../CHANGELOG.md#step-64).
+Exact commands, artifacts and preserved failures for failover are in the
 [dated evidence](../CHANGELOG.md#step-62).
 
 Recovery removes only this invocation's finalizers, restores the exact original
@@ -786,7 +846,7 @@ It deletes no PVCs or PVs. The temporary unsafe-survivor probe schema is removed
 normal HTTP fixture buyers, allocations, orders and their permanent business
 history remain. A recovery failure retains the lock under the
 [shared recovery rules](#kind-verification-snapshot). Coordinated backup/restore
-passed step 6.3; older-backup restore audit remains step 6.4.
+passed step 6.3; older-backup audit/recovery passed [6.4](../CHANGELOG.md#step-64).
 
 ## Saga gate and drill
 

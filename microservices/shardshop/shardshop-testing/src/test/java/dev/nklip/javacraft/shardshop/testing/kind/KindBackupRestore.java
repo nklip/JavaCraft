@@ -136,7 +136,7 @@ public final class KindBackupRestore {
         require(names.equals(DATABASES), "Backup must contain all three shards and the ledger");
     }
 
-    private static void verifyFingerprint(OwnedRestoreTarget target, JsonNode database) throws Exception {
+    static void verifyFingerprint(OwnedRestoreTarget target, JsonNode database) throws Exception {
         try (Connection connection = target.connection(database.path("name").asText())) {
             try (var statement = connection.createStatement()) { statement.execute("SET timezone='UTC'"); }
             Set<String> actual = new HashSet<>();

@@ -487,7 +487,8 @@ and preserve the latest mark without rollback.
 Coordinated database backup and isolated restore are implemented in step 6.3;
 backup/target checks passed, with final source checks and cleanup passing on 2026-10-26. Use the
 [verification workflow](../shardshop-testing/RUNBOOK.md#coordinated-backup-and-isolated-restore).
-Older-backup restore audits remain step 6.4; these lifecycle commands create no backups. If storage is lost,
+Older-backup audit and selected recovery passed [step 6.4](../CHANGELOG.md#step-64);
+these lifecycle commands create no backups. If storage is lost,
 retain any surviving volumes and independent recovery artifacts before attempting
 restoration. The [backup policy](../PLAN.md#7-replication-and-backup-policy) requires
 external dumps with routing/schema identities and separate latest allocator
