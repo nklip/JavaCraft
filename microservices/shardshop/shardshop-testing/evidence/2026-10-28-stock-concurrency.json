@@ -1,0 +1,1809 @@
+{
+  "methodology": "Same packaged candidate; fresh three-shard databases per arm; local three-item orders; 24 warmup orders; 288 timed preaccepted orders; eligibility gate release included in drain duration; startup and HTTP acceptance excluded; single PostgreSQL container; balanced arm order 1,3,3,1; no CDC or ledger",
+  "recordedAtUtc": "2026-10-28T07:24:31.499835Z",
+  "javaVersion": "25.0.5",
+  "postgresImage": "docker.io/library/postgres@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336",
+  "poolSizePerShard": 4,
+  "batchSize": 8,
+  "pollIntervalMillis": 250,
+  "arms": [
+    {
+      "runIndex": 1,
+      "shardConcurrency": 1,
+      "backlogSamples": [
+        {
+          "elapsedSeconds": 0.0,
+          "pendingPerShard": {
+            "shard-a": 96,
+            "shard-b": 96,
+            "shard-c": 96
+          }
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 96,
+            "shard-b": 96,
+            "shard-c": 96
+          },
+          "elapsedSeconds": 0.032017584
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 96,
+            "shard-b": 96,
+            "shard-c": 96
+          },
+          "elapsedSeconds": 0.159934
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 88,
+            "shard-b": 96,
+            "shard-c": 96
+          },
+          "elapsedSeconds": 0.277268584
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 88,
+            "shard-b": 88,
+            "shard-c": 95
+          },
+          "elapsedSeconds": 0.395100542
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 88,
+            "shard-b": 88,
+            "shard-c": 88
+          },
+          "elapsedSeconds": 0.52004825
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 88,
+            "shard-b": 88,
+            "shard-c": 88
+          },
+          "elapsedSeconds": 0.640614042
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 88,
+            "shard-b": 88,
+            "shard-c": 88
+          },
+          "elapsedSeconds": 0.781748834
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 81,
+            "shard-b": 88,
+            "shard-c": 88
+          },
+          "elapsedSeconds": 0.89924
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 80,
+            "shard-b": 80,
+            "shard-c": 87
+          },
+          "elapsedSeconds": 1.018125875
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 80,
+            "shard-b": 80,
+            "shard-c": 80
+          },
+          "elapsedSeconds": 1.137548209
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 80,
+            "shard-b": 80,
+            "shard-c": 80
+          },
+          "elapsedSeconds": 1.262338792
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 80,
+            "shard-b": 80,
+            "shard-c": 80
+          },
+          "elapsedSeconds": 1.396760625
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 72,
+            "shard-b": 78,
+            "shard-c": 80
+          },
+          "elapsedSeconds": 1.515414875
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 72,
+            "shard-b": 72,
+            "shard-c": 76
+          },
+          "elapsedSeconds": 1.630272292
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 72,
+            "shard-b": 72,
+            "shard-c": 72
+          },
+          "elapsedSeconds": 1.75223575
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 72,
+            "shard-b": 72,
+            "shard-c": 72
+          },
+          "elapsedSeconds": 1.893852584
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 68,
+            "shard-b": 72,
+            "shard-c": 72
+          },
+          "elapsedSeconds": 2.012227209
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 64,
+            "shard-b": 68,
+            "shard-c": 72
+          },
+          "elapsedSeconds": 2.12848625
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 64,
+            "shard-b": 64,
+            "shard-c": 67
+          },
+          "elapsedSeconds": 2.248161292
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 64,
+            "shard-b": 64,
+            "shard-c": 64
+          },
+          "elapsedSeconds": 2.371726209
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 64,
+            "shard-b": 64,
+            "shard-c": 64
+          },
+          "elapsedSeconds": 2.499693292
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 58,
+            "shard-b": 64,
+            "shard-c": 64
+          },
+          "elapsedSeconds": 2.614824709
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 56,
+            "shard-b": 56,
+            "shard-c": 64
+          },
+          "elapsedSeconds": 2.737035959
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 56,
+            "shard-b": 56,
+            "shard-c": 56
+          },
+          "elapsedSeconds": 2.858300625
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 56,
+            "shard-b": 56,
+            "shard-c": 56
+          },
+          "elapsedSeconds": 2.989871125
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 56,
+            "shard-b": 56,
+            "shard-c": 56
+          },
+          "elapsedSeconds": 3.121686667
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 48,
+            "shard-b": 55,
+            "shard-c": 56
+          },
+          "elapsedSeconds": 3.237159542
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 48,
+            "shard-b": 48,
+            "shard-c": 53
+          },
+          "elapsedSeconds": 3.351972209
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 48,
+            "shard-b": 48,
+            "shard-c": 48
+          },
+          "elapsedSeconds": 3.471228125
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 48,
+            "shard-b": 48,
+            "shard-c": 48
+          },
+          "elapsedSeconds": 3.600608584
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 45,
+            "shard-b": 48,
+            "shard-c": 48
+          },
+          "elapsedSeconds": 3.723011375
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 40,
+            "shard-b": 42,
+            "shard-c": 48
+          },
+          "elapsedSeconds": 3.839952084
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 40,
+            "shard-b": 40,
+            "shard-c": 40
+          },
+          "elapsedSeconds": 3.965964625
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 40,
+            "shard-b": 40,
+            "shard-c": 40
+          },
+          "elapsedSeconds": 4.106596125
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 40,
+            "shard-b": 40,
+            "shard-c": 40
+          },
+          "elapsedSeconds": 4.251162709
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 32,
+            "shard-b": 40,
+            "shard-c": 40
+          },
+          "elapsedSeconds": 4.37144675
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 32,
+            "shard-b": 32,
+            "shard-c": 37
+          },
+          "elapsedSeconds": 4.487302709
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 32,
+            "shard-b": 32,
+            "shard-c": 32
+          },
+          "elapsedSeconds": 4.6096225
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 32,
+            "shard-b": 32,
+            "shard-c": 32
+          },
+          "elapsedSeconds": 4.744164959
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 30,
+            "shard-b": 32,
+            "shard-c": 32
+          },
+          "elapsedSeconds": 4.872337417
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 24,
+            "shard-b": 28,
+            "shard-c": 32
+          },
+          "elapsedSeconds": 4.986665834
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 24,
+            "shard-b": 24,
+            "shard-c": 24
+          },
+          "elapsedSeconds": 5.100672
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 24,
+            "shard-b": 24,
+            "shard-c": 24
+          },
+          "elapsedSeconds": 5.233693209
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 24,
+            "shard-b": 24,
+            "shard-c": 24
+          },
+          "elapsedSeconds": 5.380378334
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 16,
+            "shard-b": 23,
+            "shard-c": 24
+          },
+          "elapsedSeconds": 5.497416792
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 16,
+            "shard-b": 16,
+            "shard-c": 21
+          },
+          "elapsedSeconds": 5.611679542
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 16,
+            "shard-b": 16,
+            "shard-c": 16
+          },
+          "elapsedSeconds": 5.739527125
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 16,
+            "shard-b": 16,
+            "shard-c": 16
+          },
+          "elapsedSeconds": 5.880383959
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 13,
+            "shard-b": 16,
+            "shard-c": 16
+          },
+          "elapsedSeconds": 6.022259792
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 8,
+            "shard-b": 13,
+            "shard-c": 16
+          },
+          "elapsedSeconds": 6.13684575
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 8,
+            "shard-b": 8,
+            "shard-c": 10
+          },
+          "elapsedSeconds": 6.251624
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 8,
+            "shard-b": 8,
+            "shard-c": 8
+          },
+          "elapsedSeconds": 6.382638
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 8,
+            "shard-b": 8,
+            "shard-c": 8
+          },
+          "elapsedSeconds": 6.521105
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 2,
+            "shard-b": 8,
+            "shard-c": 8
+          },
+          "elapsedSeconds": 6.635487959
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 0,
+            "shard-b": 0,
+            "shard-c": 7
+          },
+          "elapsedSeconds": 6.749372959
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 0,
+            "shard-b": 0,
+            "shard-c": 0
+          },
+          "elapsedSeconds": 6.871505167
+        }
+      ],
+      "elapsedSeconds": 6.871516459,
+      "timedOrders": 288,
+      "ordersPerSecond": 41.912145844137605,
+      "verifiedShards": [
+        {
+          "shard": "shard-a",
+          "completedOrders": 104,
+          "outboxRows": 104,
+          "reservationRows": 312,
+          "stockFailures": 0,
+          "remainingStockPerProduct": 16
+        },
+        {
+          "shard": "shard-b",
+          "completedOrders": 104,
+          "outboxRows": 104,
+          "reservationRows": 312,
+          "stockFailures": 0,
+          "remainingStockPerProduct": 16
+        },
+        {
+          "shard": "shard-c",
+          "completedOrders": 104,
+          "outboxRows": 104,
+          "reservationRows": 312,
+          "stockFailures": 0,
+          "remainingStockPerProduct": 16
+        }
+      ],
+      "outcome": "passed"
+    },
+    {
+      "runIndex": 2,
+      "shardConcurrency": 3,
+      "backlogSamples": [
+        {
+          "elapsedSeconds": 0.0,
+          "pendingPerShard": {
+            "shard-a": 96,
+            "shard-b": 96,
+            "shard-c": 96
+          }
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 96,
+            "shard-b": 96,
+            "shard-c": 96
+          },
+          "elapsedSeconds": 0.039745666
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 96,
+            "shard-b": 96,
+            "shard-c": 95
+          },
+          "elapsedSeconds": 0.161872916
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 90,
+            "shard-b": 89,
+            "shard-c": 89
+          },
+          "elapsedSeconds": 0.279333916
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 88,
+            "shard-b": 88,
+            "shard-c": 88
+          },
+          "elapsedSeconds": 0.402341375
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 88,
+            "shard-b": 88,
+            "shard-c": 88
+          },
+          "elapsedSeconds": 0.53157975
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 83,
+            "shard-b": 83,
+            "shard-c": 83
+          },
+          "elapsedSeconds": 0.649826291
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 80,
+            "shard-b": 80,
+            "shard-c": 80
+          },
+          "elapsedSeconds": 0.774993208
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 80,
+            "shard-b": 80,
+            "shard-c": 80
+          },
+          "elapsedSeconds": 0.905255375
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 78,
+            "shard-b": 78,
+            "shard-c": 77
+          },
+          "elapsedSeconds": 1.023351083
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 72,
+            "shard-b": 72,
+            "shard-c": 72
+          },
+          "elapsedSeconds": 1.1437615
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 72,
+            "shard-b": 72,
+            "shard-c": 72
+          },
+          "elapsedSeconds": 1.265451
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 72,
+            "shard-b": 72,
+            "shard-c": 72
+          },
+          "elapsedSeconds": 1.390717166
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 65,
+            "shard-b": 65,
+            "shard-c": 65
+          },
+          "elapsedSeconds": 1.510787541
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 64,
+            "shard-b": 64,
+            "shard-c": 64
+          },
+          "elapsedSeconds": 1.633190166
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 64,
+            "shard-b": 64,
+            "shard-c": 64
+          },
+          "elapsedSeconds": 1.787133041
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 58,
+            "shard-b": 58,
+            "shard-c": 57
+          },
+          "elapsedSeconds": 1.903515833
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 56,
+            "shard-b": 56,
+            "shard-c": 56
+          },
+          "elapsedSeconds": 2.028254083
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 56,
+            "shard-b": 56,
+            "shard-c": 56
+          },
+          "elapsedSeconds": 2.168795583
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 52,
+            "shard-b": 52,
+            "shard-c": 51
+          },
+          "elapsedSeconds": 2.286862125
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 48,
+            "shard-b": 48,
+            "shard-c": 48
+          },
+          "elapsedSeconds": 2.411562041
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 48,
+            "shard-b": 48,
+            "shard-c": 48
+          },
+          "elapsedSeconds": 2.544012791
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 45,
+            "shard-b": 44,
+            "shard-c": 44
+          },
+          "elapsedSeconds": 2.662136083
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 40,
+            "shard-b": 40,
+            "shard-c": 40
+          },
+          "elapsedSeconds": 2.785201625
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 40,
+            "shard-b": 40,
+            "shard-c": 40
+          },
+          "elapsedSeconds": 2.915118333
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 39,
+            "shard-b": 39,
+            "shard-c": 38
+          },
+          "elapsedSeconds": 3.038356083
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 33,
+            "shard-b": 32,
+            "shard-c": 32
+          },
+          "elapsedSeconds": 3.154237291
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 32,
+            "shard-b": 32,
+            "shard-c": 32
+          },
+          "elapsedSeconds": 3.318059666
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 32,
+            "shard-b": 31,
+            "shard-c": 31
+          },
+          "elapsedSeconds": 3.444561375
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 25,
+            "shard-b": 24,
+            "shard-c": 24
+          },
+          "elapsedSeconds": 3.55926375
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 24,
+            "shard-b": 24,
+            "shard-c": 24
+          },
+          "elapsedSeconds": 3.693664291
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 24,
+            "shard-b": 24,
+            "shard-c": 24
+          },
+          "elapsedSeconds": 3.83943975
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 19,
+            "shard-b": 19,
+            "shard-c": 18
+          },
+          "elapsedSeconds": 3.96806825
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 16,
+            "shard-b": 16,
+            "shard-c": 16
+          },
+          "elapsedSeconds": 4.09453175
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 16,
+            "shard-b": 16,
+            "shard-c": 16
+          },
+          "elapsedSeconds": 4.237860208
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 13,
+            "shard-b": 12,
+            "shard-c": 12
+          },
+          "elapsedSeconds": 4.358043333
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 8,
+            "shard-b": 8,
+            "shard-c": 8
+          },
+          "elapsedSeconds": 4.482530333
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 8,
+            "shard-b": 8,
+            "shard-c": 8
+          },
+          "elapsedSeconds": 4.613975833
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 7,
+            "shard-b": 6,
+            "shard-c": 6
+          },
+          "elapsedSeconds": 4.733205791
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 0,
+            "shard-b": 0,
+            "shard-c": 0
+          },
+          "elapsedSeconds": 4.855121458
+        }
+      ],
+      "elapsedSeconds": 4.855132,
+      "timedOrders": 288,
+      "ordersPerSecond": 59.318675578748426,
+      "verifiedShards": [
+        {
+          "shard": "shard-a",
+          "completedOrders": 104,
+          "outboxRows": 104,
+          "reservationRows": 312,
+          "stockFailures": 0,
+          "remainingStockPerProduct": 16
+        },
+        {
+          "shard": "shard-b",
+          "completedOrders": 104,
+          "outboxRows": 104,
+          "reservationRows": 312,
+          "stockFailures": 0,
+          "remainingStockPerProduct": 16
+        },
+        {
+          "shard": "shard-c",
+          "completedOrders": 104,
+          "outboxRows": 104,
+          "reservationRows": 312,
+          "stockFailures": 0,
+          "remainingStockPerProduct": 16
+        }
+      ],
+      "outcome": "passed"
+    },
+    {
+      "runIndex": 3,
+      "shardConcurrency": 3,
+      "backlogSamples": [
+        {
+          "elapsedSeconds": 0.0,
+          "pendingPerShard": {
+            "shard-a": 96,
+            "shard-b": 96,
+            "shard-c": 96
+          }
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 96,
+            "shard-b": 96,
+            "shard-c": 96
+          },
+          "elapsedSeconds": 0.035348667
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 96,
+            "shard-b": 96,
+            "shard-c": 96
+          },
+          "elapsedSeconds": 0.167342208
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 90,
+            "shard-b": 90,
+            "shard-c": 90
+          },
+          "elapsedSeconds": 0.285742042
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 88,
+            "shard-b": 88,
+            "shard-c": 88
+          },
+          "elapsedSeconds": 0.410244792
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 88,
+            "shard-b": 88,
+            "shard-c": 88
+          },
+          "elapsedSeconds": 0.54219775
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 85,
+            "shard-b": 85,
+            "shard-c": 85
+          },
+          "elapsedSeconds": 0.673174958
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 80,
+            "shard-b": 80,
+            "shard-c": 80
+          },
+          "elapsedSeconds": 0.797643542
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 80,
+            "shard-b": 80,
+            "shard-c": 80
+          },
+          "elapsedSeconds": 0.927796417
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 80,
+            "shard-b": 80,
+            "shard-c": 79
+          },
+          "elapsedSeconds": 1.05762325
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 74,
+            "shard-b": 74,
+            "shard-c": 73
+          },
+          "elapsedSeconds": 1.189512542
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 72,
+            "shard-b": 72,
+            "shard-c": 72
+          },
+          "elapsedSeconds": 1.315819708
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 72,
+            "shard-b": 72,
+            "shard-c": 72
+          },
+          "elapsedSeconds": 1.455454708
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 67,
+            "shard-b": 67,
+            "shard-c": 67
+          },
+          "elapsedSeconds": 1.573342875
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 64,
+            "shard-b": 64,
+            "shard-c": 64
+          },
+          "elapsedSeconds": 1.699618208
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 64,
+            "shard-b": 64,
+            "shard-c": 64
+          },
+          "elapsedSeconds": 1.832842958
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 61,
+            "shard-b": 61,
+            "shard-c": 61
+          },
+          "elapsedSeconds": 1.955798333
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 56,
+            "shard-b": 56,
+            "shard-c": 56
+          },
+          "elapsedSeconds": 2.081737208
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 56,
+            "shard-b": 56,
+            "shard-c": 56
+          },
+          "elapsedSeconds": 2.209540958
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 56,
+            "shard-b": 56,
+            "shard-c": 55
+          },
+          "elapsedSeconds": 2.355630958
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 49,
+            "shard-b": 49,
+            "shard-c": 49
+          },
+          "elapsedSeconds": 2.477108458
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 48,
+            "shard-b": 48,
+            "shard-c": 48
+          },
+          "elapsedSeconds": 2.599129458
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 48,
+            "shard-b": 48,
+            "shard-c": 48
+          },
+          "elapsedSeconds": 2.736025875
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 43,
+            "shard-b": 43,
+            "shard-c": 42
+          },
+          "elapsedSeconds": 2.855323875
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 40,
+            "shard-b": 40,
+            "shard-c": 40
+          },
+          "elapsedSeconds": 2.985672625
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 40,
+            "shard-b": 40,
+            "shard-c": 40
+          },
+          "elapsedSeconds": 3.125215625
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 37,
+            "shard-b": 36,
+            "shard-c": 36
+          },
+          "elapsedSeconds": 3.243683333
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 32,
+            "shard-b": 32,
+            "shard-c": 32
+          },
+          "elapsedSeconds": 3.365109542
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 32,
+            "shard-b": 32,
+            "shard-c": 32
+          },
+          "elapsedSeconds": 3.531630458
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 29,
+            "shard-b": 29,
+            "shard-c": 28
+          },
+          "elapsedSeconds": 3.652411167
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 24,
+            "shard-b": 24,
+            "shard-c": 24
+          },
+          "elapsedSeconds": 3.780727625
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 24,
+            "shard-b": 24,
+            "shard-c": 24
+          },
+          "elapsedSeconds": 3.914699083
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 23,
+            "shard-b": 22,
+            "shard-c": 22
+          },
+          "elapsedSeconds": 4.04300175
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 16,
+            "shard-b": 16,
+            "shard-c": 16
+          },
+          "elapsedSeconds": 4.206456125
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 16,
+            "shard-b": 16,
+            "shard-c": 16
+          },
+          "elapsedSeconds": 4.325884667
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 15,
+            "shard-b": 15,
+            "shard-c": 14
+          },
+          "elapsedSeconds": 4.456875167
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 8,
+            "shard-b": 8,
+            "shard-c": 8
+          },
+          "elapsedSeconds": 4.574876417
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 8,
+            "shard-b": 8,
+            "shard-c": 8
+          },
+          "elapsedSeconds": 4.703779958
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 8,
+            "shard-b": 8,
+            "shard-c": 8
+          },
+          "elapsedSeconds": 4.839411917
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 1,
+            "shard-b": 1,
+            "shard-c": 1
+          },
+          "elapsedSeconds": 4.961464292
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 0,
+            "shard-b": 0,
+            "shard-c": 0
+          },
+          "elapsedSeconds": 5.078092333
+        }
+      ],
+      "elapsedSeconds": 5.078101583,
+      "timedOrders": 288,
+      "ordersPerSecond": 56.71410768231574,
+      "verifiedShards": [
+        {
+          "shard": "shard-a",
+          "completedOrders": 104,
+          "outboxRows": 104,
+          "reservationRows": 312,
+          "stockFailures": 0,
+          "remainingStockPerProduct": 16
+        },
+        {
+          "shard": "shard-b",
+          "completedOrders": 104,
+          "outboxRows": 104,
+          "reservationRows": 312,
+          "stockFailures": 0,
+          "remainingStockPerProduct": 16
+        },
+        {
+          "shard": "shard-c",
+          "completedOrders": 104,
+          "outboxRows": 104,
+          "reservationRows": 312,
+          "stockFailures": 0,
+          "remainingStockPerProduct": 16
+        }
+      ],
+      "outcome": "passed"
+    },
+    {
+      "runIndex": 4,
+      "shardConcurrency": 1,
+      "backlogSamples": [
+        {
+          "elapsedSeconds": 0.0,
+          "pendingPerShard": {
+            "shard-a": 96,
+            "shard-b": 96,
+            "shard-c": 96
+          }
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 96,
+            "shard-b": 96,
+            "shard-c": 96
+          },
+          "elapsedSeconds": 0.029354166
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 96,
+            "shard-b": 96,
+            "shard-c": 96
+          },
+          "elapsedSeconds": 0.162828791
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 95,
+            "shard-b": 96,
+            "shard-c": 96
+          },
+          "elapsedSeconds": 0.291247958
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 88,
+            "shard-b": 95,
+            "shard-c": 96
+          },
+          "elapsedSeconds": 0.406101791
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 88,
+            "shard-b": 88,
+            "shard-c": 94
+          },
+          "elapsedSeconds": 0.5226735
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 88,
+            "shard-b": 88,
+            "shard-c": 88
+          },
+          "elapsedSeconds": 0.644445666
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 88,
+            "shard-b": 88,
+            "shard-c": 88
+          },
+          "elapsedSeconds": 0.773666958
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 87,
+            "shard-b": 88,
+            "shard-c": 88
+          },
+          "elapsedSeconds": 0.897886083
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 80,
+            "shard-b": 87,
+            "shard-c": 88
+          },
+          "elapsedSeconds": 1.016140333
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 80,
+            "shard-b": 80,
+            "shard-c": 85
+          },
+          "elapsedSeconds": 1.1314345
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 80,
+            "shard-b": 80,
+            "shard-c": 80
+          },
+          "elapsedSeconds": 1.254408541
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 80,
+            "shard-b": 80,
+            "shard-c": 80
+          },
+          "elapsedSeconds": 1.383410416
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 79,
+            "shard-b": 80,
+            "shard-c": 80
+          },
+          "elapsedSeconds": 1.557232333
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 72,
+            "shard-b": 79,
+            "shard-c": 80
+          },
+          "elapsedSeconds": 1.676118958
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 72,
+            "shard-b": 72,
+            "shard-c": 76
+          },
+          "elapsedSeconds": 1.793213875
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 72,
+            "shard-b": 72,
+            "shard-c": 72
+          },
+          "elapsedSeconds": 1.916234333
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 72,
+            "shard-b": 72,
+            "shard-c": 72
+          },
+          "elapsedSeconds": 2.058862083
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 70,
+            "shard-b": 72,
+            "shard-c": 72
+          },
+          "elapsedSeconds": 2.175852791
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 64,
+            "shard-b": 68,
+            "shard-c": 72
+          },
+          "elapsedSeconds": 2.292984583
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 64,
+            "shard-b": 64,
+            "shard-c": 66
+          },
+          "elapsedSeconds": 2.409227458
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 64,
+            "shard-b": 64,
+            "shard-c": 64
+          },
+          "elapsedSeconds": 2.538275583
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 64,
+            "shard-b": 64,
+            "shard-c": 64
+          },
+          "elapsedSeconds": 2.662297208
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 59,
+            "shard-b": 64,
+            "shard-c": 64
+          },
+          "elapsedSeconds": 2.783644291
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 56,
+            "shard-b": 58,
+            "shard-c": 64
+          },
+          "elapsedSeconds": 2.899287333
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 56,
+            "shard-b": 56,
+            "shard-c": 56
+          },
+          "elapsedSeconds": 3.019825958
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 56,
+            "shard-b": 56,
+            "shard-c": 56
+          },
+          "elapsedSeconds": 3.17623875
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 56,
+            "shard-b": 56,
+            "shard-c": 56
+          },
+          "elapsedSeconds": 3.303045791
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 48,
+            "shard-b": 54,
+            "shard-c": 56
+          },
+          "elapsedSeconds": 3.419736416
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 48,
+            "shard-b": 48,
+            "shard-c": 53
+          },
+          "elapsedSeconds": 3.53628425
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 48,
+            "shard-b": 48,
+            "shard-c": 48
+          },
+          "elapsedSeconds": 3.66179875
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 48,
+            "shard-b": 48,
+            "shard-c": 48
+          },
+          "elapsedSeconds": 3.794616958
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 47,
+            "shard-b": 48,
+            "shard-c": 48
+          },
+          "elapsedSeconds": 3.930848583
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 40,
+            "shard-b": 47,
+            "shard-c": 48
+          },
+          "elapsedSeconds": 4.048416791
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 40,
+            "shard-b": 40,
+            "shard-c": 47
+          },
+          "elapsedSeconds": 4.169118916
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 40,
+            "shard-b": 40,
+            "shard-c": 40
+          },
+          "elapsedSeconds": 4.290834
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 40,
+            "shard-b": 40,
+            "shard-c": 40
+          },
+          "elapsedSeconds": 4.417704
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 40,
+            "shard-b": 40,
+            "shard-c": 40
+          },
+          "elapsedSeconds": 4.554420791
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 32,
+            "shard-b": 39,
+            "shard-c": 40
+          },
+          "elapsedSeconds": 4.67344525
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 32,
+            "shard-b": 32,
+            "shard-c": 37
+          },
+          "elapsedSeconds": 4.793658125
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 32,
+            "shard-b": 32,
+            "shard-c": 32
+          },
+          "elapsedSeconds": 4.911448208
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 32,
+            "shard-b": 32,
+            "shard-c": 32
+          },
+          "elapsedSeconds": 5.060257458
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 30,
+            "shard-b": 32,
+            "shard-c": 32
+          },
+          "elapsedSeconds": 5.176640875
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 24,
+            "shard-b": 29,
+            "shard-c": 32
+          },
+          "elapsedSeconds": 5.296964083
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 24,
+            "shard-b": 24,
+            "shard-c": 28
+          },
+          "elapsedSeconds": 5.414900625
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 24,
+            "shard-b": 24,
+            "shard-c": 24
+          },
+          "elapsedSeconds": 5.557484583
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 24,
+            "shard-b": 24,
+            "shard-c": 24
+          },
+          "elapsedSeconds": 5.688056291
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 20,
+            "shard-b": 24,
+            "shard-c": 24
+          },
+          "elapsedSeconds": 5.813531291
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 16,
+            "shard-b": 19,
+            "shard-c": 24
+          },
+          "elapsedSeconds": 5.930384875
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 16,
+            "shard-b": 16,
+            "shard-c": 18
+          },
+          "elapsedSeconds": 6.044548833
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 16,
+            "shard-b": 16,
+            "shard-c": 16
+          },
+          "elapsedSeconds": 6.190465916
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 16,
+            "shard-b": 16,
+            "shard-c": 16
+          },
+          "elapsedSeconds": 6.3354825
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 10,
+            "shard-b": 16,
+            "shard-c": 16
+          },
+          "elapsedSeconds": 6.452380583
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 8,
+            "shard-b": 8,
+            "shard-c": 15
+          },
+          "elapsedSeconds": 6.567637625
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 8,
+            "shard-b": 8,
+            "shard-c": 8
+          },
+          "elapsedSeconds": 6.701983125
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 8,
+            "shard-b": 8,
+            "shard-c": 8
+          },
+          "elapsedSeconds": 6.826790375
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 8,
+            "shard-b": 8,
+            "shard-c": 8
+          },
+          "elapsedSeconds": 6.956473416
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 0,
+            "shard-b": 8,
+            "shard-c": 8
+          },
+          "elapsedSeconds": 7.073899125
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 0,
+            "shard-b": 0,
+            "shard-c": 6
+          },
+          "elapsedSeconds": 7.189969
+        },
+        {
+          "pendingPerShard": {
+            "shard-a": 0,
+            "shard-b": 0,
+            "shard-c": 0
+          },
+          "elapsedSeconds": 7.314088083
+        }
+      ],
+      "elapsedSeconds": 7.31410275,
+      "timedOrders": 288,
+      "ordersPerSecond": 39.375984976421066,
+      "verifiedShards": [
+        {
+          "shard": "shard-a",
+          "completedOrders": 104,
+          "outboxRows": 104,
+          "reservationRows": 312,
+          "stockFailures": 0,
+          "remainingStockPerProduct": 16
+        },
+        {
+          "shard": "shard-b",
+          "completedOrders": 104,
+          "outboxRows": 104,
+          "reservationRows": 312,
+          "stockFailures": 0,
+          "remainingStockPerProduct": 16
+        },
+        {
+          "shard": "shard-c",
+          "completedOrders": 104,
+          "outboxRows": 104,
+          "reservationRows": 312,
+          "stockFailures": 0,
+          "remainingStockPerProduct": 16
+        }
+      ],
+      "outcome": "passed"
+    }
+  ],
+  "outcome": "passed",
+  "sourceState": {
+    "baseRevision": "2ec27369a472070f17530f4e6440ef0a9c8b4160",
+    "files": {
+      "microservices/shardshop/shardshop-order/src/main/java/dev/nklip/javacraft/shardshop/order/config/StockWorker.java": "8681f43f121713b93ebae64d6b5164501561cf368b5664b17d70445995b1a4c1",
+      "microservices/shardshop/shardshop-order/src/main/java/dev/nklip/javacraft/shardshop/order/config/OrderConfiguration.java": "0c75b13e3f01f18154696db78cf80aefca3efe60209329544b6b36495e6061d3",
+      "microservices/shardshop/shardshop-order/src/main/java/dev/nklip/javacraft/shardshop/order/config/OrderWiring.java": "0739827b6fdae083c0388d91e80f16f4d342a4d67de7f144552848912fbc96e4",
+      "microservices/shardshop/shardshop-testing/src/test/java/dev/nklip/javacraft/shardshop/testing/cucumber/step/StockThroughputStepDefinitions.java": "d468f70178ae0916d4605d8cd9e053b3735ca835d934391c53b6fba421500de3",
+      "microservices/shardshop/shardshop-testing/src/test/java/dev/nklip/javacraft/shardshop/testing/cucumber/world/OrderRuntime.java": "a098be7ccfe1c1fca999d0d4bfd77ec267355c80ff232b8057c9267c33344bc3"
+    },
+    "jdk": "Temurin25.0.5+8",
+    "maven": "3.9.16",
+    "dockerCpus": 12,
+    "dockerMemoryBytes": 13580972032,
+    "retainedLabInitiallyStopped": true
+  },
+  "aggregate": {
+    "1": {
+      "runs": 2,
+      "timedOrders": 576,
+      "totalElapsedSeconds": 14.185619209,
+      "meanDrainSeconds": 7.0928096045,
+      "pooledOrdersPerSecond": 40.604501750234455
+    },
+    "3": {
+      "runs": 2,
+      "timedOrders": 576,
+      "totalElapsedSeconds": 9.933233583,
+      "meanDrainSeconds": 4.9666167915,
+      "pooledOrdersPerSecond": 57.9871594870961
+    }
+  },
+  "comparison": {
+    "throughputIncreasePercent": 42.80968116241268,
+    "drainTimeReductionPercent": 29.976736040553618,
+    "scope": "Observed stock-stage comparison only; not full-saga capacity or latency qualification",
+    "limitations": [
+      "Two runs per mode with short warmup",
+      "One PostgreSQL container without replication",
+      "Region-local sellers; no cross-buyer-shard seller contention",
+      "No CDC, ledger, profit or concurrent reads",
+      "Startup and HTTP acceptance excluded",
+      "Eligibility-release SQL, poll alignment and observer overhead included"
+    ]
+  },
+  "validation": [
+    {
+      "command": "mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am -Dtest=StockWorkerTest,StockCoordinatorTest,OrderProcessWiringTest -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test",
+      "outcome": "36 selected tests passed",
+      "log": "/tmp/shardshop-stock-parallel.zO2WMd/focused-tests.log",
+      "logSha256": "1944d36e45447c6fead2163ecdd9731772f139f4a6da4bd39663eb884487d48c"
+    },
+    {
+      "command": "mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am verify",
+      "outcome": "397 order unit/provider tests and 47 packaged startup tests passed; upstream dependencies passed",
+      "log": "/tmp/shardshop-stock-parallel.zO2WMd/order-verify.log",
+      "logSha256": "4b182b385e1ce9a20540bd3a3f1d09013454eb48b311244faaab0601973edd23"
+    },
+    {
+      "command": "mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify -Dit.test=CucumberIT,StockThroughputMeasurement -Dfailsafe.failIfNoSpecifiedTests=false '-Dcucumber.filter.tags=@stock-reservation or @stock-throughput'",
+      "outcome": "8 stock-reservation scenarios and 1 comparison scenario passed; 152 unrelated Cucumber scenarios excluded by tag; selected reactor checks passed",
+      "log": "/tmp/shardshop-stock-parallel.zO2WMd/stock-integration-measurement.log",
+      "logSha256": "45e3871f240d7fb6b50d818f28d26d920c38c8e1d299c80af1f8b34fd2cd5985"
+    }
+  ],
+  "validationNotes": [
+    "Non-critical Cucumber classpath-resource discovery warnings; no test failures or application warnings/errors",
+    "Retained kind lab stayed stopped; full-lab qualification not run",
+    "After completion Docker reported no running containers; all four retained kind nodes remained exited; no test application JVM remained"
+  ]
+}

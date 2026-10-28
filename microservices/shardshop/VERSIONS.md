@@ -232,9 +232,9 @@ only when a check covers every package of the base image and a review handles th
 advisories. [OSV](https://osv.dev/),
 [Ubuntu CVE tracker](https://ubuntu.com/security/cves).
 
-### Step 6.5 request balancer candidates
+### Step 6.8 request balancer candidates
 
-Step 6.5 needs a request-level balancer for HTTP/2, because a Kubernetes Service
+Step 6.8 needs a request-level balancer for HTTP/2, because a Kubernetes Service
 balances only TCP connections. The review on 2026-10-08 found these candidates:
 
 - Istio ambient mode with a waypoint: Istio 1.30 supports Kubernetes 1.32–1.36.
@@ -244,11 +244,11 @@ balances only TCP connections. The review on 2026-10-08 found these candidates:
 - Cilium replaces the kind network plugin. Thus it needs a new cluster without the
   current PVCs.
 
-Step 6.5 selects the component and records its versions, support window and
+Step 6.8 selects the component and records its versions, support window and
 resource use here.
 
 The dated candidate list is not deployment approval. Ambient can enroll a pod
-or a namespace; step 6.5 must explicitly enroll only its HTTP participants and
+or a namespace; step 6.8 must explicitly enroll only its HTTP participants and
 prove the database, broker, saga, ledger and migration paths remain outside that
 enrollment. A non-enrolled database does not by itself prove that an enrolled
 client's outbound SQL avoids a node proxy. Record the actual paths and repeat
@@ -312,7 +312,7 @@ After the validation fixes, qualification passes 165 order unit/provider tests, 
 packaged startup checks and all 51 Cucumber scenarios, including nine order
 scenarios. The bounded JDBC phase engine that product and order now share in
 `shardshop-common` uses only the JDK's `java.sql` module, thus common gains no
-dependency. HTTP/1.1 is explicit; HTTP/2 qualification remains step 6.5. No order
+dependency. HTTP/1.1 is explicit; HTTP/2 qualification remains step 6.8. No order
 container image or Kubernetes deployment is introduced before step 4.9.
 The CycloneDX goal emitted Maven's existing blocked HTTP snapshot-metadata
 warning for the internal parent POM; SBOM generation and validation succeeded.
@@ -1233,7 +1233,7 @@ and final gates were unqualified and no higher-rate or final-gate run had follow
 the failed single-point check. Passing build, release and drill results remain reusable.
 
 At the user's explicit request, all capacity qualification is deferred: 10/s
-write latency to 6.7, sustained 30/s writes to 6.8, and 1,000/s reads to 6.9.
+write latency to 6.5, sustained 30/s writes to 6.6, and 1,000/s reads to 6.7.
 6.0 is **Done under the explicit reduced local-maintenance scope**. Final
 `kind-infrastructure | kind-deployment | kind-release | kind-drills-idle` gates
 passed nine cases, zero failures/errors/skips, in 108.2s, finishing

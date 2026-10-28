@@ -7119,3 +7119,450 @@ recovery; review dumps still carry `trafficAuthorized: false`. Missing original
 history/costs or unproved catalog effects remain unresolved. Optional physical
 asynchronous-loss qualification, production cutover, HTTP/2 and deferred capacity
 work are not claimed by this result.
+
+## Stock-worker concurrency — 2026-10-28
+
+StockWorker now processes independent buyer-home shards concurrently, with one
+non-overlapping lane per shard and a bounded pool. The new
+`shardshop.order.stock.shard-concurrency` defaults to `3`, accepts `1..32` and is
+capped by shard count. Value `1` preserves the original serial global scan and
+delay. Each shard's batch and each order's stock operations remain sequential;
+durable claims, leases and reservation idempotency remain in place. Shutdown
+interrupts active work, stops further batch claims and waits up to five seconds.
+ProfitWorker is unchanged.
+
+The user selected a stock-stage A/B comparison before full-lab qualification.
+The opt-in `StockThroughputMeasurement` runner uses the same packaged candidate
+in balanced order `1,3,3,1`, with fresh equivalent databases per arm, three
+buyer-home shards, three region-local products per order, four pool connections
+per shard, batch size eight and a 250 ms delay. Each arm warms up with 24 orders,
+then drains 288 preaccepted orders. Startup and HTTP acceptance are excluded;
+eligibility-release SQL, scheduling alignment and observer overhead are included.
+
+| Run | Concurrent shard lanes | Drain seconds | Orders/s |
+|---|---:|---:|---:|
+| 1 | 1 | 6.872 | 41.91 |
+| 2 | 3 | 4.855 | 59.32 |
+| 3 | 3 | 5.078 | 56.71 |
+| 4 | 1 | 7.314 | 39.38 |
+
+Pooling both runs per setting gives **40.60 → 57.99 orders/s**, an observed
+**42.8% throughput increase**. Mean drain time is **7.093 → 4.967 seconds**, a
+**30.0% reduction**. All four arms verified completed stock-stage state, zero
+stock failures, unique outbox/result identities, reservation counts and stock
+conservation. The [retained JSON evidence](shardshop-testing/evidence/2026-10-28-stock-concurrency.json)
+includes every backlog sample, correctness counts, aggregation, source hashes,
+environment, exact commands and log hashes.
+
+This is a bounded local comparison with two runs per mode and short warmup.
+All shard databases share one PostgreSQL container; replication, CDC, ledger,
+profit, concurrent product reads and seller contention across buyer shards are
+absent. The 100 ms observation interval and database observation overhead limit
+precision. These results do not establish full-saga latency, sustained capacity
+or a production SLO. Existing full-lab capacity evidence is not requalified.
+
+Validation used Temurin **25.0.5+8**, Maven **3.9.16** and Node 24 on Docker with
+12 CPUs and 13,580,972,032 bytes of memory. Exact commands from the repository root:
+
+```sh
+export JAVA_HOME=/Users/nikita.lipatov/.sdkman/candidates/java/25.0.5-tem
+export PATH="$JAVA_HOME/bin:/opt/homebrew/opt/node@24/bin:$PATH"
+
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am \
+  -Dtest=StockWorkerTest,StockCoordinatorTest,OrderProcessWiringTest \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test
+
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am verify
+
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  -Dit.test=CucumberIT,StockThroughputMeasurement -Dfailsafe.failIfNoSpecifiedTests=false \
+  '-Dcucumber.filter.tags=@stock-reservation or @stock-throughput'
+```
+
+All commands passed. The focused run passed **36 tests** in 9.739 seconds.
+Order verification passed **397 unit/provider tests and 47 packaged startup
+tests**, plus upstream checks, in 1 minute 8 seconds. Selected integration
+verification passed **eight stock-reservation scenarios and one four-arm
+comparison**, plus reactor checks, in 6 minutes 17 seconds; 152 unrelated
+Cucumber scenarios were excluded by the tag filter. Non-critical Cucumber
+classpath-resource discovery warnings remain; there were no test failures or
+application warnings/errors in the comparison.
+
+Logs remain under `/tmp/shardshop-stock-parallel.zO2WMd/` as
+`focused-tests.log`, `order-verify.log` and `stock-integration-measurement.log`.
+After completion Docker reported no running containers, all four retained kind
+nodes remained stopped, and no packaged test application JVM remained. No lab
+deployment or full-kind measurement was performed.
+
+## Profit-worker concurrency — 2026-10-28
+
+ProfitWorker now uses one non-overlapping lane per buyer-home shard with a bounded
+pool. `shardshop.order.profit.shard-concurrency` defaults to `3`, accepts `1..32`
+and is capped by shard count. Value `1` preserves the original serial global
+scan. Intents within a shard remain sequential, including seller commit before
+home marking. Outage tracking is thread-safe; shutdown interrupts work, stops
+further intents and waits up to five seconds. StockWorker is unchanged by this
+follow-up.
+
+Initial validation used Temurin 25.0.5+8, Maven 3.9.16 and Node 24.22.1 with the
+retained kind lab stopped. These exact commands ran from the repository root:
+
+```sh
+export JAVA_HOME=/Users/nikita.lipatov/.sdkman/candidates/java/25.0.5-tem
+export PATH="$JAVA_HOME/bin:/opt/homebrew/opt/node@24/bin:$PATH"
+
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am \
+  -Dtest=ProfitWorkerTest,ProfitCoordinatorTest,JdbcProfitSessionTest,OrderProcessWiringTest,StockWorkerTest \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test
+
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am verify
+
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  -Dit.test=CucumberIT,ProfitThroughputMeasurement -Dfailsafe.failIfNoSpecifiedTests=false \
+  '-Dcucumber.filter.tags=@order-results or @profit-throughput'
+```
+
+The focused command passed **42 tests** in 10.282 seconds. Order verification
+passed **409 unit/provider tests and 49 packaged startup tests** in 1 minute
+10 seconds. The combined integration command passed all **25 selected correctness
+scenarios** (136 unrelated scenarios excluded), including shared-seller
+concurrency, unknown seller commits, outages, crash recovery, reconciliation and
+transport cleanup. The new shared-seller scenario observes three simultaneous
+buyer-home updates waiting on one seller balance, then verifies three unique
+credits totaling 44.70 and unchanged effects after replay/restart.
+
+The combined command **failed** after 22 minutes 27 seconds because the first
+profit-measurement arm's strict log check caught an intentional shutdown
+interruption reported as a database availability warning. Drain and replay
+correctness checks completed, but that attempt provides **no valid A/B performance result**.
+The [failed attempt](shardshop-testing/evidence/2026-10-28-profit-concurrency-attempt1.json)
+retains its measurements, failure summary, source hashes and validation commands.
+Logs and original reports remain in `/tmp/shardshop-profit-parallel.YMs50x/`.
+
+A narrow correction suppresses a warning only when the worker is closed,
+the current thread is interrupted and the failure has an `InterruptedException`
+cause. Genuine failures remain visible. Four latch-driven regression cases cover
+polling/posting cancellation and genuine SQL failures during shutdown. The user
+approved a bounded extension at the repository's 30-minute checkpoint. Full order
+verification then passed **413 unit/provider tests and 49 packaged startup tests**
+in 1 minute 6 seconds. The benchmark-only rerun reused unchanged compiled test
+artifacts with the corrected package and **passed all four arms** in 1 minute
+35 seconds. The 25 passing integration scenarios were retained for this logging
+correction; no persistence or profit protocol changed.
+
+Exact follow-up commands, in the same JDK/Node environment:
+
+```sh
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am verify
+
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing \
+  -Dshardshop.infrastructureOnly=true -Pintegration \
+  failsafe:integration-test failsafe:verify -Dit.test=ProfitThroughputMeasurement
+```
+
+The second command deliberately reuses already compiled test classes, resolved
+test dependencies and the current packaged applications. A fresh checkout should
+use the complete command in the measurement runbook. Logs are
+`order-verify-shutdown-fix.log` and `profit-measurement-shutdown-fix.log` under the
+same temporary evidence directory; the initial failed log/report remains intact.
+
+Each arm drains **3,168 timed profit intents** (1,056 three-item orders) after
+72 warmup intents. It uses the lab's 100 ms polling, batch size 32 and four pool
+connections per shard. Balanced arm order and fresh equivalent databases give:
+
+| Run | Concurrent shard lanes | Drain seconds | Intents/s |
+|---|---:|---:|---:|
+| 1 | 1 | 16.692 | 189.79 |
+| 2 | 3 | 9.841 | 321.91 |
+| 3 | 3 | 11.338 | 279.41 |
+| 4 | 1 | 18.066 | 175.36 |
+
+Pooling both successful runs per setting gives **182.29 → 299.16 intents/s**,
+an observed **64.1% throughput increase**. Mean drain time is
+**17.379 → 10.590 seconds**, a **39.1% reduction**. All twelve shard checks
+passed with zero failures or blocked intents, exact seller-credit identities and
+balances, and unchanged effects after retrying already credited work. The
+[successful evidence](shardshop-testing/evidence/2026-10-28-profit-concurrency.json)
+retains all backlog samples, source hashes, aggregation, commands and log hashes;
+the failed first attempt is excluded from the comparison.
+
+The [measurement protocol](shardshop-testing/RUNBOOK.md#profit-worker-concurrency-comparison)
+uses prepared confirmed intents with synthetic fixture IDs, independent local
+sellers and one PostgreSQL container; it excludes end-to-end saga work. Two runs
+per setting, short warmup and 100 ms observations limit precision. This does not
+establish full-saga gains or hot-seller capacity, and its percentage cannot be
+added to the separate stock-stage result. After both attempts, no running
+containers or packaged test JVMs remained, and all four retained kind nodes were
+still stopped. No lab deployment occurred.
+
+## Combined worker concurrency: kind measurement — 2026-10-28
+
+Deployed the StockWorker and ProfitWorker changes together, each with three
+bounded buyer-shard lanes, in an owned disposable lab. The retained four-node
+lab remained stopped. The proposed sequence was target **10 → 20 → 30 new
+orders/s**, with **200 product reads/s**, unchanged two order HTTP replicas,
+one saga replica, four submission workers, two observers, 100 outstanding orders
+and four pool connections per shard/JVM. Each phase had a fixed 20s warmup,
+then 120s at 10/s or 90s at higher rates, and required >=1,024 new write samples.
+
+The first release failed before measurement because the temporary orchestration
+wrapper inherited `umask 077` into packaging. Quarkus directories became `0744`,
+which the image's UID 10001 could not traverse; application pods reported
+`ClassNotFoundException: QuarkusEntryPoint`. Tests and scans had passed. The
+owned Helm rollout was stopped and that disposable lab removed. The corrected
+attempt used `umask 022`; all six packaged application trees passed a nonroot
+read/traverse permission check. This was an orchestration correction, with no
+application source or assertion change. Preserve the
+[first-attempt evidence](shardshop-testing/evidence/2026-10-28-parallel-workers-kind-attempt1.json).
+
+The corrected release passed **2,043 unit/provider checks, 79 packaged startup
+checks, seven image scan gates and six live release/deployment scenarios**.
+One product pod restarted before measurement following a generator-registry
+read failure; its underlying cause was not established. It subsequently became
+ready, and application identities/restart counts stayed unchanged across the
+complete measurement samples. Startup counters already contained five producer
+errors and nine reader errors; the observation added none.
+
+The 10/s phase hit backpressure at the 100-order outstanding bound and stopped
+the sequence. **20/s and 30/s were not attempted.**
+
+| Diagnostic observation | Result |
+|---|---:|
+| Post-warmup observation before stop | 50.040870s of the required 120s |
+| New accepted writes | 212, approximately 4.24/s |
+| Confirmed orders | 153, approximately 3.06/s |
+| Producer nonterminal backlog | 40 → 99, plus one submission in flight |
+| Final rolling write / saga p95 | 2,075.536 / 28,470.758 ms |
+| New errors / cancellations / recoveries | 0 / 0 / 0 |
+| Observed product requests, last complete 40.178s window | 4,452, approximately 110.81/s against target 200/s |
+
+These are **incomplete diagnostics, not sustainable capacity or qualified
+percentiles**. Only 443 total writes existed in the final rolling window, so
+the >=1,024 post-warmup sample gate also failed. The last sample contains only
+producer data because its safety check stopped collection. Post-abort backlog
+drain and interval outcome logs were not measured; do not infer them from the
+successful pre-measurement drain. Both HTTP write-metrics endpoints were saved
+in each complete sample. Reader counter timings are approximately aligned with
+the producer observation, not exact interval-log measurements.
+
+Stock was sufficient: the least-stocked product in each currency had 991–995
+units before the matrix, above the conservative per-product requirements.
+There were no exhausted products or cancellations in complete observations.
+Database pending orders grew 50 → 94 and unpublished command outbox rows
+44 → 88; sampled unapplied profits ranged 0–31, with none blocked.
+
+Host pressure was substantial. Over **42.366 seconds**, macOS `vm_stat` recorded
+**12.157 GiB swapped in and 12.247 GiB swapped out**, with approximately 26.3 GiB
+of swap occupied on the 16 GiB host. Node CPU observations were also high;
+asynchronous Docker percentages are not a precise whole-host utilization.
+All **50 exported pool-awaiting snapshots were zero**; sparse snapshots cannot
+exclude short waits, and acquisition-timeout counters were not exported. This
+supports checking host memory/CPU headroom before further application tuning,
+but does not prove the cause of the failed load or a worker regression. Fresh
+stock, database history, JVM age and collection overhead also differ from the
+historical runs. The isolated stock/profit A/B gains remain separate evidence;
+this run establishes no combined throughput gain.
+
+From the repository root, the owned wrapper ran:
+
+```bash
+bash microservices/shardshop/scripts/cluster-create.sh
+bash microservices/shardshop/scripts/up.sh
+bash /private/tmp/shardshop-parallel-load-9gi3pvig/capture-capacity.sh \
+  --context kind-shardshop-test-parallel-x9th3pi1 \
+  --kubeconfig /private/tmp/shardshop-parallel-retry.x9th3pi1/config \
+  --snapshot /private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/current-invocation-snapshot \
+  --cluster shardshop-test-parallel-x9th3pi1 --minimum-vnd-stock 768
+bash microservices/shardshop/scripts/cluster-destroy.sh
+```
+
+The lifecycle commands used paired `SHARDSHOP_TEST_CLUSTER` and
+`SHARDSHOP_TEST_KUBECONFIG` values matching those arguments, Temurin 25.0.5,
+Node 24 and the Docker kind provider. Provisioning/release passed; the collector
+exited 1 at its backpressure guard. Both collector control restoration and
+owned-lab cleanup returned 0. The original retained node IDs, images, mounts,
+stopped state and default kubeconfig were verified unchanged. Native logs are
+under `/private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/`; raw samples
+are under `/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/`.
+The [measurement evidence](shardshop-testing/evidence/2026-10-28-parallel-workers-kind.json)
+records exact inputs, image/source hashes, results, limitations and restoration.
+Steps 6.5 and 6.6 remain unqualified. The next comparison should first establish
+host headroom, then measure serial and parallel settings under equivalent
+conditions; no further optimization or rerun was performed here.
+
+## Combined worker concurrency: retry after closing apps — 2026-10-28
+
+The user closed applications and requested another run. Before provisioning,
+30.041s of host observation showed **4.547 MiB swapped in and zero swapped out**.
+The owned fresh lab used the same six application image digests and unchanged
+worker sources/settings as the prior attempt. The normal release again passed
+**2,043 unit/provider checks, 79 startup checks, seven image scan gates and six
+live release scenarios**; packaged directory permissions were verified.
+
+This attempt added an explicit pre-write readiness check: pause/drain the
+producer, leave the seeder idle, set the reader to 200/s, settle for a fixed
+60s, then measure exactly one 60s window. Reader delivery had to be >=190/s,
+with no new errors or pod identity/restart changes. The assistant also chose a
+conservative **256 MiB combined swap-in/out limit** for that window. This extra
+operational limit is **not a repository application SLO or macOS health standard**.
+Compressor growth was recorded only as a diagnostic. Neither window was extended
+or repeated until passing.
+
+The reader passed: **12,023 completed reads over a conservative 60.194787s
+counter window, 199.735/s**, no new reader errors and stable application pods.
+Paging improved but exceeded the extra guard:
+
+| Fixed window | Swap in | Swap out | Combined |
+|---|---:|---:|---:|
+| Settling minute | 1,647.56 MiB | 1,964.25 MiB | 3,611.81 MiB |
+| Readiness minute | 719.41 MiB | 376.75 MiB | 1,096.16 MiB |
+
+The readiness minute's final 30s had **190.61 MiB swap-ins and no swap-outs**;
+earlier intervals still contained fresh swap-out bursts. Net swap occupancy and
+compressor occupancy fell. This supports improvement and partial recovery, not
+a claim of continuous bidirectional thrashing or a proven application capacity
+limit. **The custom readiness guard stopped this attempt before any 10/20/30
+write phase. There is no new write-capacity or write-latency result.**
+
+Before restoration, the collector saved a bounded producer pause plus parallel
+control, SQL and scoped-log diagnostics. Every diagnostic completed successfully;
+the paused producer had no in-flight/nonterminal work, all shard pending/profit/
+command outboxes and the ledger result outbox were zero, and the scoped logs
+contained no matched errors or publication failures. This is a readiness/abort
+snapshot, not proof that a write-load phase drained.
+
+The commands were the standard `bash microservices/shardshop/scripts/cluster-create.sh`,
+`bash microservices/shardshop/scripts/up.sh`, and cleanup via
+`bash microservices/shardshop/scripts/cluster-destroy.sh`, with the private paired
+target `shardshop-test-cleanhost-zp26fj`, kubeconfig
+`/private/tmp/shardshop-cleanhost-run.zP26FJ/config`, Temurin 25.0.5, Node 24,
+Docker provider and build `umask 022`. The collector command was:
+
+```bash
+bash /private/tmp/shardshop-parallel-cleanhost-sel1mxoj/capture-capacity.sh \
+  --context kind-shardshop-test-cleanhost-zp26fj \
+  --kubeconfig /private/tmp/shardshop-cleanhost-run.zP26FJ/config \
+  --snapshot /private/tmp/shardshop-cleanhost-run.zP26FJ/invocation/current-invocation-snapshot \
+  --cluster shardshop-test-cleanhost-zp26fj --minimum-vnd-stock 768
+```
+
+Collector exit was 1 for the paging precondition; control restoration and
+owned-lab cleanup both returned 0. The retained nodes stayed stopped with their
+IDs, images, mounts and default kubeconfig unchanged. No application changes
+or further load attempts followed this readiness result. Exact inputs, native
+log/sample hashes, interval paging counters, the guard's purpose and cleanup
+are in the [retry evidence](shardshop-testing/evidence/2026-10-28-parallel-workers-kind-cleanhost.json).
+Steps 6.5 and 6.6 remain unqualified; the earlier failed write observation remains
+preserved separately.
+
+## Combined worker concurrency: paging diagnostic load test — 2026-10-28
+
+The user authorized the fixed **10/20/30 new orders/s** sequence with paging
+recorded only as a diagnostic and all other criteria unchanged. Preparation
+passed **2,043 unit/provider checks, 79 startup checks, seven image scan gates
+and six live release scenarios**. Live acceptance took 723.3s; the user approved
+12 additional minutes after the original 35-minute phase. The six application
+image digests match the preceding clean-host attempt, with unchanged worker
+sources and three stock/profit shard lanes. No application optimization was
+made during this attempt.
+
+The single readiness minute delivered **199.893 reads/s**, without new reader
+errors or application UID/restart changes. The idle seeder and initial stock
+passed preconditions. Every write phase used a fixed 20s warmup, then 120s at
+10/s or 90s at 20/30/s, with concurrent reader target 200/s. No window was
+extended or repeated. **All three phases passed the requested criteria.**
+
+| Target new orders/s | Post-warmup accepted writes | Monotonic observation | Accepted orders/s | Final rolling write p95 | Final rolling saga p95 |
+|---:|---:|---:|---:|---:|---:|
+| 10 | 1,201 | 120.031668s | 10.0057 | 38.466 ms | 1,532.789 ms |
+| 20 | 1,796 | 90.028681s | 19.9492 | 62.206 ms | 1,788.303 ms |
+| 30 | 2,643 | 90.039492s | 29.3538 | 85.702 ms | 2,228.357 ms |
+
+Each phase exceeded 95% of its target and 1,024 post-warmup accepted writes.
+Write p95 is the producer's final rolling 1,024 allocation-through-successful-PUT
+samples, all after warmup; saga completion is a separate metric. Confirmed-order
+deltas were 1,200 / 1,799 / 2,645; boundary pending work explains their difference
+from accepted counts. New errors, cancellations and recovered orders were zero,
+and there was no observed backpressure or failed workload state.
+
+The fully contained native reader intervals delivered **199.700 / 199.317 /
+199.733 reads/s**, all `OK`; these cover 90 / 60 / 60 seconds within the respective
+write observations. All saved application UID/restart snapshots were stable.
+Producer backlog ranges were **6–14 / 20–26 / 30–50**, below the 100-order bound.
+SQL pending-order ranges were **7–13 / 17–33 / 40–56**; unapplied-profit ranges
+were **0–12 / 1–16 / 6–16**, with zero blocked profit intents. Command/result
+outboxes remained bounded. Every phase passed the bounded producer-plus-SQL
+drain check, with pending orders, unapplied/blocked profit intents and both
+outbox types zero. The successful SQL drain collections started 3.304 / 2.894 /
+3.936 seconds after each final producer sample began. Stock never exhausted;
+the final load-sample minimum VND stock was 466 units (462 after drain), and
+all currencies remained positive. The evidence records complete per-currency initial/final stock.
+
+Paging did not affect qualification:
+
+| Write target | Swap in over saved observation | Swap out |
+|---:|---:|---:|
+| 10/s | 299.422 MiB | 0 MiB |
+| 20/s | 836.828 MiB | 804.422 MiB |
+| 30/s | 322.516 MiB | 208.063 MiB |
+
+All saved pool-awaiting gauges were zero; snapshots cannot exclude unsampled
+waits. This establishes a passing local operating point at target 30/s, not a
+hardware-independent maximum or a causal full-lab speedup from parallel workers.
+There was no equivalent full-lab serial/parallel A/B; earlier failed evidence
+remains preserved. Read qualification at 1,000/s and milestone closure were
+outside this measurement request, so milestone statuses were not changed.
+
+Commands ran from the repository root with Temurin 25.0.5, Node 24, Docker
+provider, build `umask 022`, and the private paired target below:
+
+```bash
+export SHARDSHOP_TEST_CLUSTER=shardshop-test-pagingdiag-qiqsdz
+export SHARDSHOP_TEST_KUBECONFIG=/private/tmp/shardshop-pagingdiag-run.QIqSDz/config
+export KUBECONFIG="$SHARDSHOP_TEST_KUBECONFIG"
+bash microservices/shardshop/scripts/cluster-create.sh
+bash microservices/shardshop/scripts/up.sh
+bash /private/tmp/shardshop-parallel-pagingdiag-hyfmz0gx/capture-capacity.sh \
+  --context kind-shardshop-test-pagingdiag-qiqsdz \
+  --kubeconfig /private/tmp/shardshop-pagingdiag-run.QIqSDz/config \
+  --snapshot /private/tmp/shardshop-pagingdiag-run.QIqSDz/invocation/current-invocation-snapshot \
+  --cluster shardshop-test-pagingdiag-qiqsdz --minimum-vnd-stock 768
+bash microservices/shardshop/scripts/cluster-destroy.sh
+```
+
+Collector and lifecycle exit/restoration statuses were all **0**. Saved workload
+controls were restored, owned forwards stopped and the disposable cluster
+removed. The four retained nodes remained stopped with their IDs, images and
+mounts unchanged; the default kubeconfig hash was unchanged. No further lab run
+was performed. The [reviewed evidence](shardshop-testing/evidence/2026-10-28-parallel-workers-kind-pagingdiag.json)
+contains exact artifact identities, commands, fixed windows, stock/backlog
+observations, diagnostics, native evidence hashes and restoration results.
+
+## Steps 6.5 and 6.6 — acceptance closure — 2026-10-28
+
+A follow-up review of the [passing fixed load sequence](#combined-worker-concurrency-paging-diagnostic-load-test--2026-10-28)
+against the plan closes **6.5 and 6.6 as Done**. The earlier measurement entry
+accurately records that their statuses were unchanged at the end of the run;
+this review updates the plan and performance overview without another load run.
+
+- **6.5:** 1,201 post-warmup accepted writes in 120.031668s (10.0057/s), with
+  final rolling write p95 **38.466 ms**, below 100 ms.
+- **6.6:** 2,643 post-warmup accepted writes in 90.039492s (**29.3538/s**), above
+  the required 28.5/s, with final rolling write p95 **85.702 ms**, below 100 ms.
+
+Both used the fixed warmup, unchanged workload/process bounds, concurrent
+reads near 200/s and adequate stock. Error, cancellation, recovery, backpressure,
+bounded-backlog, drain and restoration requirements passed. Both HTTP
+write-metrics endpoints were captured; the producer metric remains authoritative.
+Release and relevant worker regression evidence is retained with the run.
+
+The lack of a matched full-lab serial/parallel comparison limits attribution of
+speedup to the worker changes; it does not invalidate these measured acceptance
+criteria. No causal percentage improvement is claimed and earlier failed runs
+remain preserved. **6.7, qualifying 1,000 reads/s, is next**; full performance
+qualification still requires its separate acceptance.
+
+Validation: reviewed the existing plan and recorded measurement evidence, then
+ran `git diff --check` and assertions that only 6.5/6.6 changed to Done while
+6.7 remained Planned. This is a documentation-only closure; no build, image scan
+or lab test was repeated.

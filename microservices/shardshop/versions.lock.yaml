@@ -15,8 +15,8 @@ deployment_scope: The retained database baseline is unchanged. Cleanup of the la
   both application recovery drills. The later 30/s attempt failed throughput/backpressure and is incomplete.
   Step 6.0 reduced local maintenance passed, including nine final kind-gate cases
   with zero failures/errors/skips and verified restoration of the stopped lab.
-  User-deferred capacity qualification remains in 6.7 (10/s latency), 6.8 (30/s
-  writes) and 6.9 (1000 reads/s); full performance/deployment readiness remains
+  User-deferred capacity qualification remains in 6.5 (10/s latency), 6.6 (30/s
+  writes) and 6.7 (1000 reads/s); full performance/deployment readiness remains
   unqualified, so deployment_ready stays false. CNPG/managed PostgreSQL changes
   remain excluded, and existing advisory/support deadlines are unchanged.
   Step 6.2 synchronous failover qualified on 2026-10-26 under the recorded user
@@ -1918,7 +1918,7 @@ maintenance_review_6_0:
     corrected_single10: "User-authorized collector correction and one 10/s check: monotonic duration 120.058077s, 1177 post-warmup write samples, zero new errors/cancellations/recoveries. Measurement eligibility passed; write p95 133.783ms failed unchanged <100ms requirement. Both HTTP write-metrics endpoints captured. Collector/fixture/node restoration all passed; original producer template and controls restored, owned lock/tunnels removed, lab stopped. No 30/s, 1000 reads/s or final gates followed."
     deferred_capacity_attempts: "30/s: 40.044426s, 987 new orders (~24.65/s), backpressured at 100 outstanding; incomplete (<90s/<1024 samples), not a sustained maximum. Rolling p95 154.613ms diagnostic only. Reads: first eligible 30s window 28446 requests/948.2/s/p95 10ms, second 28676/955.8/s/p95 9ms, all OK/pool pending0. First failed >=950/s, missing third passing window; unqualified, not a server-capacity limit. Both phases restored saved controls/template, identities/volumes/kubeconfig/stopped state. Full artifacts/cleanup records: CHANGELOG.md#step-60."
     final_gates: "Approved /private/tmp/shardshop-60-final-gates-a94y85l5/run-maintenance.sh --user-approved-final-gates exited0. Scoped direct Failsafe: 9 cases, 0 failures/errors/skips, 108.2s; finished 2026-10-25T19:18:48+04. Wrapper restoration0 verified STOPPED original node IDs/images/volumes/kubeconfig and no owned labs. No capacity rerun, application rebuild or recovery-drill repeat. Exact command and artifacts: CHANGELOG.md#step-60."
-    remaining: "Reduced local maintenance complete. User-deferred performance remains Planned: 6.7 10/s sub100ms latency, 6.8 sustained 30/s writes including sub100ms p95, 6.9 unchanged 1000reads/s criteria. Retain failed/incomplete evidence and no full performance/deployment-readiness claim. Local advisory acceptance expires 2026-10-28; recorded support and RabbitMQ planning/qualification deadlines remain. CNPG/managed PostgreSQL and database drills remain excluded."
+    remaining: "Reduced local maintenance complete. User-deferred performance remains Planned: 6.5 10/s sub100ms latency, 6.6 sustained 30/s writes including sub100ms p95, 6.7 unchanged 1000reads/s criteria. Retain failed/incomplete evidence and no full performance/deployment-readiness claim. Local advisory acceptance expires 2026-10-28; recorded support and RabbitMQ planning/qualification deadlines remain. CNPG/managed PostgreSQL and database drills remain excluded."
     evidence: "CHANGELOG.md#step-60"
   deferred_cnpg_maintenance:
     current: "1.30.1"

@@ -55,6 +55,7 @@ public interface OrderConfiguration {
         @WithDefault("true") boolean enabled();
         @WithDefault("250ms") Duration pollInterval();
         @WithDefault("8") int batchSize();
+        @WithDefault("3") int shardConcurrency();
     }
 
     interface Stock {
@@ -69,6 +70,9 @@ public interface OrderConfiguration {
 
         @WithDefault("8")
         int batchSize();
+
+        @WithDefault("3")
+        int shardConcurrency();
     }
 
     Map<String, Connection> connections();

@@ -40,7 +40,8 @@ public class ResultWiring {
     @Startup(ObserverMethod.DEFAULT_PRIORITY - 1)
     ProfitWorker.Settings profitSettings(OrderConfiguration order) {
         var profit = order.profit();
-        return new ProfitWorker.Settings(order.process() == OrderConfiguration.Process.SAGA && profit.enabled(), profit.pollInterval(), profit.batchSize());
+        return new ProfitWorker.Settings(order.process() == OrderConfiguration.Process.SAGA && profit.enabled(),
+                profit.pollInterval(), profit.batchSize(), profit.shardConcurrency());
     }
 
     @Produces

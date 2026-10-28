@@ -33,6 +33,11 @@ public final class OrderRuntime implements Disposable {
     private PackagedApplication saga;
     private Path configuration;
     private boolean stockEnabled;
+    private int stockShardConcurrency = 3;
+    private int maxPoolSize = 1;
+    private boolean stockMeasurement;
+    private boolean profitMeasurement;
+    private int profitShardConcurrency = 3;
     private RabbitMqBroker cdcBroker;
     private RabbitMqBroker resultsBroker;
     private boolean profitEnabled;
@@ -52,15 +57,23 @@ public final class OrderRuntime implements Disposable {
         values.add("shardshop.routing.shards=" + shards.all().stream().map(CatalogShards.Shard::name)
                 .collect(Collectors.joining(",")));
         values.add("shardshop.routing.regions=" + String.join(",", shards.regions()));
-        values.add("shardshop.order.max-pool-size=1");
+        values.add("shardshop.order.max-pool-size=" + maxPoolSize);
+        if (stockMeasurement) {
+            values.add("shardshop.order.stock.shard-concurrency=" + stockShardConcurrency);
+            values.add("shardshop.order.stock.batch-size=8");
+            values.add("shardshop.order.stock.poll-interval=250ms");
+        }
         values.add("shardshop.order.catalog-deadline=PT3S");
         // The step 4.1 scenarios inspect atomic acceptance before any saga worker runs.
         values.add("shardshop.order.stock.enabled=" + stockEnabled);
         values.add("shardshop.order.cdc.enabled=" + (cdcBroker != null));
         values.add("shardshop.order.results.enabled=" + (resultsBroker != null));
         values.add("shardshop.order.profit.enabled=" + profitEnabled);
-        values.add("shardshop.order.profit.poll-interval=PT0.25S");
-        values.add("shardshop.order.profit.batch-size=8");
+        values.add("shardshop.order.profit.poll-interval=" + (profitMeasurement ? "100ms" : "PT0.25S"));
+        values.add("shardshop.order.profit.batch-size=" + (profitMeasurement ? 32 : 8));
+        if (profitMeasurement) {
+            values.add("shardshop.order.profit.shard-concurrency=" + profitShardConcurrency);
+        }
         values.add("shardshop.order.reconciliation.enabled=" + reconciliationEnabled);
         values.add("shardshop.order.reconciliation.poll-interval=100ms");
         values.add("shardshop.order.reconciliation.batch-size=8");
@@ -119,6 +132,30 @@ public final class OrderRuntime implements Disposable {
     public void restart(Set<String> unavailableShards) throws IOException, InterruptedException {
         stop();
         start(unavailableShards);
+    }
+
+    /** Configures the isolated stock-stage comparison before the next start. */
+    public void configureStockMeasurement(int concurrency, int poolSize) {
+        stockMeasurement = true;
+        stockShardConcurrency = concurrency;
+        maxPoolSize = poolSize;
+    }
+
+    /** Configures the isolated profit comparison with the lab's 100ms/32 scan profile. */
+    public void configureProfitMeasurement(int concurrency, int poolSize) {
+        profitMeasurement = true;
+        profitShardConcurrency = concurrency;
+        maxPoolSize = poolSize;
+    }
+
+    /** Sets the per-shard pool capacity before the next start without changing worker settings. */
+    public void configurePoolSize(int poolSize) {
+        maxPoolSize = poolSize;
+    }
+
+    /** Log artifacts survive disposable database cleanup, including failed comparisons. */
+    public List<Path> applicationLogs() {
+        return applications.stream().map(PackagedApplication::log).toList();
     }
 
     /** Enables the production reservation coordinator on subsequent starts, including restarts. */

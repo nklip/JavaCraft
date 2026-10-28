@@ -10,9 +10,9 @@ import dev.nklip.javacraft.shardshop.sharding.ShardRouter;
 import dev.nklip.javacraft.shardshop.sharding.ShardTopology;
 
 import java.time.Duration;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -26,10 +26,11 @@ public final class ProfitWorker implements AutoCloseable {
     private final ShardTopology topology;
     private final Settings settings;
     /** Shards with a logged failure; a later completed intent on such a shard logs that posting resumed. */
-    private final Set<String> unavailable = new HashSet<>();
+    private final Set<String> unavailable = ConcurrentHashMap.newKeySet();
     private ScheduledExecutorService executor;
+    private volatile boolean closed;
 
-    public record Settings(boolean enabled, Duration interval, int batchSize) {
+    public record Settings(boolean enabled, Duration interval, int batchSize, int shardConcurrency) {
         public Settings {
             if (interval == null || interval.compareTo(Duration.ofMillis(100)) < 0
                     || interval.compareTo(Duration.ofSeconds(30)) > 0) {
@@ -37,6 +38,9 @@ public final class ProfitWorker implements AutoCloseable {
             }
             if (batchSize < 1 || batchSize > 100) {
                 throw new IllegalArgumentException("Profit batch size must be between 1 and 100");
+            }
+            if (shardConcurrency < 1 || shardConcurrency > 32) {
+                throw new IllegalArgumentException("Profit shard concurrency must be between 1 and 32");
             }
         }
     }
@@ -50,12 +54,21 @@ public final class ProfitWorker implements AutoCloseable {
     }
 
     public synchronized void start() {
-        if (!settings.enabled() || executor != null) {
+        if (!settings.enabled() || executor != null || closed) {
             return;
         }
-        executor = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon()
-                .name("order-profit-worker").factory());
-        executor.scheduleWithFixedDelay(this::poll, 0, settings.interval().toMillis(), TimeUnit.MILLISECONDS);
+        executor = Executors.newScheduledThreadPool(Math.min(settings.shardConcurrency(), topology.shards().size()),
+                Thread.ofPlatform().daemon().name("order-profit-worker-", 0).factory());
+        if (settings.shardConcurrency() == 1) {
+            // Preserve the original global scan and delay as an operational rollback baseline.
+            executor.scheduleWithFixedDelay(this::poll, 0, settings.interval().toMillis(), TimeUnit.MILLISECONDS);
+        } else {
+            for (var home : topology.shards()) {
+                // A periodic task never overlaps itself, even when other home lanes are still busy.
+                executor.scheduleWithFixedDelay(() -> pollShard(home), 0,
+                        settings.interval().toMillis(), TimeUnit.MILLISECONDS);
+            }
+        }
     }
 
     void poll() {
@@ -63,21 +76,31 @@ public final class ProfitWorker implements AutoCloseable {
             if (Thread.currentThread().isInterrupted()) {
                 return;
             }
-            List<PendingCredit> pending;
-            try {
-                pending = store.pendingProfit(home, settings.batchSize());
-            } catch (RuntimeException failure) {
-                unavailable(home, "polling", failure);
-                continue;
+            pollShard(home);
+        }
+    }
+
+    void pollShard(Shard home) {
+        if (Thread.currentThread().isInterrupted()) {
+            return;
+        }
+        List<PendingCredit> pending;
+        try {
+            pending = store.pendingProfit(home, settings.batchSize());
+        } catch (RuntimeException failure) {
+            unavailable(home, "polling", failure);
+            return;
+        }
+        for (var credit : pending) {
+            if (Thread.currentThread().isInterrupted()) {
+                return;
             }
-            for (var credit : pending) {
-                try {
-                    report(home, credit, coordinator.process(home, credit));
-                } catch (RuntimeException failure) {
-                    // The home shard could not save the retry time or the block, thus it failed as well.
-                    // An unavailable seller must not stop other sellers or home shards.
-                    unavailable(home, "posting", failure);
-                }
+            try {
+                report(home, credit, coordinator.process(home, credit));
+            } catch (RuntimeException failure) {
+                // The home shard could not save the retry time or the block, thus it failed as well.
+                // An unavailable seller must not stop other sellers or home shards.
+                unavailable(home, "posting", failure);
             }
         }
     }
@@ -97,6 +120,14 @@ public final class ProfitWorker implements AutoCloseable {
     }
 
     private void unavailable(Shard shard, String work, Throwable failure) {
+        if (closed && Thread.currentThread().isInterrupted()) {
+            // DatabasePhases preserves interruption and wraps its cause when shutdown cancels a phase.
+            for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+                if (cause instanceof InterruptedException) {
+                    return;
+                }
+            }
+        }
         if (unavailable.add(shard.clusterName())) {
             LOG.log(System.Logger.Level.WARNING, () -> "Profit " + work + " unavailable for " + shard.clusterName()
                     + "; durable intents will retry: " + Failures.describe(failure));
@@ -111,9 +142,16 @@ public final class ProfitWorker implements AutoCloseable {
 
     @Override
     public synchronized void close() {
+        closed = true;
         if (executor != null) {
             executor.shutdownNow();
-            executor = null;
+            try {
+                if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                    LOG.log(System.Logger.Level.WARNING, "Profit worker did not stop within five seconds");
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 }

@@ -385,10 +385,16 @@ The ledger's result-outbox relay polls its own database.
   result consumption. Every JVM reserves its own generator slot. The
   [order architecture](../shardshop-order/ARCHITECTURE.md#processes) describes the
   split.
-- The lab has one saga replica with one stock worker thread, thus it reserves
-  stock in sequence.
-- The lab's serial profit worker polls every 100 ms with at most 32 intents per
-  buyer shard. The standalone defaults remain 250 ms and eight intents. Capacity
+- The saga process supports one non-overlapping stock scan per buyer shard, with
+  at most three concurrent shard scans by default. Sagas within a shard's batch
+  remain sequential; `shardshop.order.stock.shard-concurrency=1` restores the
+  original serial global scan. Historical lab capacity used that serial worker.
+- The lab's profit worker polls every 100 ms with at most 32 intents per
+  buyer shard. A separate bounded pool permits three concurrent buyer-shard scans
+  by default, with one non-overlapping scan per shard and sequential intents
+  within each scan. `shardshop.order.profit.shard-concurrency=1` restores the
+  original serial global scan. The standalone polling defaults remain 250 ms and
+  eight intents. Stock and profit share the per-shard database pools. Capacity
   checks include unapplied profit intents as well as non-terminal orders and
   unpublished commands: confirmation can precede seller-profit posting, so a flat
   order backlog alone does not establish sustainable throughput.

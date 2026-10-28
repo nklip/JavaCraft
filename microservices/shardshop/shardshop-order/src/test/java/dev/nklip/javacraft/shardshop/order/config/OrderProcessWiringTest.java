@@ -40,8 +40,10 @@ class OrderProcessWiringTest {
         when(stock.pollInterval()).thenReturn(Duration.ofMillis(250));
         when(stock.lease()).thenReturn(Duration.ofSeconds(30));
         when(stock.batchSize()).thenReturn(8);
+        when(stock.shardConcurrency()).thenReturn(3);
         when(profit.pollInterval()).thenReturn(Duration.ofMillis(250));
         when(profit.batchSize()).thenReturn(8);
+        when(profit.shardConcurrency()).thenReturn(3);
         var cdc = mock(CdcConfiguration.class);
         var broker = mock(CdcConfiguration.Broker.class);
         when(cdc.broker()).thenReturn(broker);
@@ -53,7 +55,9 @@ class OrderProcessWiringTest {
         when(broker.timeout()).thenReturn(Duration.ofSeconds(5));
         boolean saga = process == OrderConfiguration.Process.SAGA;
         assertEquals(saga, new OrderWiring().stockSettings(order).enabled());
+        assertEquals(3, new OrderWiring().stockSettings(order).shardConcurrency());
         assertEquals(saga, new ResultWiring().profitSettings(order).enabled());
+        assertEquals(3, new ResultWiring().profitSettings(order).shardConcurrency());
         assertEquals(saga, new ResultWiring().resultSettings(order, cdc).enabled());
         assertEquals(saga, new ReconciliationWiring().settings(order).enabled());
         assertEquals(saga, new CleanupWiring().settings(order).enabled());

@@ -1,0 +1,206 @@
+{
+  "recordedAt": "2026-10-28",
+  "purpose": "Combined StockWorker and ProfitWorker deployment before fixed write-capacity matrix",
+  "outcome": "Deployment failed before any load measurement; disposable cluster removed and retained state verified unchanged",
+  "cluster": "shardshop-test-parallel-qvdldh",
+  "startedAt": "2026-10-28T08:47:26Z",
+  "finishedAt": "2026-10-28T09:11:28Z",
+  "orchestrationExit": 1,
+  "restorationStatus": 0,
+  "build": {
+    "checks": [
+      {
+        "kind": "surefire",
+        "module": "shardshop-common",
+        "tests": 291,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "kind": "surefire",
+        "module": "shardshop-idgen",
+        "tests": 158,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "kind": "surefire",
+        "module": "shardshop-sharding",
+        "tests": 54,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "kind": "surefire",
+        "module": "shardshop-workload-control",
+        "tests": 64,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "kind": "surefire",
+        "module": "shardshop-datasets",
+        "tests": 39,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "kind": "surefire",
+        "module": "shardshop-product-seeder",
+        "tests": 67,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "kind": "surefire",
+        "module": "shardshop-product-reader",
+        "tests": 84,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "kind": "surefire",
+        "module": "shardshop-order-producer",
+        "tests": 151,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "kind": "surefire",
+        "module": "shardshop-product",
+        "tests": 280,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "kind": "failsafe",
+        "module": "shardshop-product",
+        "tests": 30,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "kind": "surefire",
+        "module": "shardshop-order",
+        "tests": 413,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "kind": "failsafe",
+        "module": "shardshop-order",
+        "tests": 49,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "kind": "surefire",
+        "module": "shardshop-ledger",
+        "tests": 62,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "kind": "surefire",
+        "module": "shardshop-testing",
+        "tests": 380,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "totals": {
+      "surefire": 2043,
+      "failsafe": 79
+    }
+  },
+  "failure": {
+    "evidence": [
+      "[pod/shardshop-order-76d5b5bfcf-kxrv5/order] Error: Could not find or load main class io.quarkus.bootstrap.runner.QuarkusEntryPoint",
+      "[pod/shardshop-order-76d5b5bfcf-kxrv5/order] Caused by: java.lang.ClassNotFoundException: io.quarkus.bootstrap.runner.QuarkusEntryPoint",
+      "[pod/shardshop-order-76d5b5bfcf-n2fvz/order] Error: Could not find or load main class io.quarkus.bootstrap.runner.QuarkusEntryPoint",
+      "[pod/shardshop-order-76d5b5bfcf-n2fvz/order] Caused by: java.lang.ClassNotFoundException: io.quarkus.bootstrap.runner.QuarkusEntryPoint"
+    ],
+    "artifactModes": [
+      "drwxr--r--@  7 nikita.lipatov  staff  224 Oct 28 12:57 microservices/shardshop/shardshop-order/target/quarkus-app",
+      "drwxr--r--@  4 nikita.lipatov  staff  128 Oct 28 12:57 microservices/shardshop/shardshop-order/target/quarkus-app/lib",
+      "drwxr--r--@ 18 nikita.lipatov  staff  576 Oct 28 12:57 microservices/shardshop/shardshop-order/target/quarkus-app/lib/boot"
+    ],
+    "cause": "Temporary orchestration wrapper inherited umask077 into build; packaged directories0744 lack search permission for runtime UID10001. No application source failure was established.",
+    "stop": "Owned Helm rollout terminated after capturing repeated startup failure; wrapper removed only the owned disposable lab.",
+    "retryCorrection": "Normal umask022 for build and release, in new private directory; no source or assertion changes."
+  },
+  "capacity": "Not attempted; no throughput or latency qualification",
+  "commands": [
+    "bash microservices/shardshop/scripts/cluster-create.sh",
+    "bash microservices/shardshop/scripts/up.sh",
+    "bash microservices/shardshop/scripts/cluster-destroy.sh"
+  ],
+  "environment": {
+    "JAVA_HOME": "/Users/nikita.lipatov/.sdkman/candidates/java/25.0.5-tem",
+    "Node": "24.22.1",
+    "KIND_EXPERIMENTAL_PROVIDER": "docker",
+    "SHARDSHOP_TEST_CLUSTER": "shardshop-test-parallel-qvdldh",
+    "SHARDSHOP_TEST_KUBECONFIG": "/private/tmp/shardshop-parallel-fresh.qvdLDH/config"
+  },
+  "nativeEvidence": {
+    "create.log": {
+      "path": "/private/tmp/shardshop-parallel-fresh.qvdLDH/invocation/create.log",
+      "sha256": "763db6523edc1ac7b685d403e3e57b490b7bd2024d58f400b1301569d75bfbc6"
+    },
+    "up.log": {
+      "path": "/private/tmp/shardshop-parallel-fresh.qvdLDH/invocation/up.log",
+      "sha256": "9efebbbb67455b752284472cc3d2c0d6a29f04dd5402df25d3f4cf6cac125f50"
+    },
+    "startup-failure.log": {
+      "path": "/private/tmp/shardshop-parallel-fresh.qvdLDH/invocation/startup-failure.log",
+      "sha256": "c886f7dacc9533d29c120fb9f02d76be3f262e19f2fc8aac334c9eeca63ff23c"
+    },
+    "artifact-modes.txt": {
+      "path": "/private/tmp/shardshop-parallel-fresh.qvdLDH/invocation/artifact-modes.txt",
+      "sha256": "2e9bf8a41369e6df56298390df12d0ab90528992fbd73ae6193fc84f35c725c5"
+    },
+    "destroy.log": {
+      "path": "/private/tmp/shardshop-parallel-fresh.qvdLDH/invocation/destroy.log",
+      "sha256": "ae4b3a76b04412e24376868cfed2ab7dc9bc99248e523a5f8e27abad3fc26e0a"
+    },
+    "retained.before.json": {
+      "path": "/private/tmp/shardshop-parallel-fresh.qvdLDH/invocation/retained.before.json",
+      "sha256": "2135ef47b12fd9aa961a42df1b927bdf791e6a2b9c86fc670abeaa44c2e510db"
+    },
+    "retained.after.json": {
+      "path": "/private/tmp/shardshop-parallel-fresh.qvdLDH/invocation/retained.after.json",
+      "sha256": "2135ef47b12fd9aa961a42df1b927bdf791e6a2b9c86fc670abeaa44c2e510db"
+    },
+    "default-kubeconfig.before.sha256": {
+      "path": "/private/tmp/shardshop-parallel-fresh.qvdLDH/invocation/default-kubeconfig.before.sha256",
+      "sha256": "7f92b14ad5e4101c24fb9c7f2b614f979fb3fdb4eb7654f05864944cefaa71cd"
+    },
+    "default-kubeconfig.after.sha256": {
+      "path": "/private/tmp/shardshop-parallel-fresh.qvdLDH/invocation/default-kubeconfig.after.sha256",
+      "sha256": "7f92b14ad5e4101c24fb9c7f2b614f979fb3fdb4eb7654f05864944cefaa71cd"
+    },
+    "source.before.sha256": {
+      "path": "/private/tmp/shardshop-parallel-fresh.qvdLDH/invocation/source.before.sha256",
+      "sha256": "1ca441e084eb55ebe56989ad7e981ad6c9ed6a38e5bd6a673da474e595bade12"
+    },
+    "build-checks.json": {
+      "path": "/private/tmp/shardshop-parallel-fresh.qvdLDH/invocation/build-checks.json",
+      "sha256": "348d8dfb8a5ebecb6271f77aa8a11fff78fe06e9f74f1cfffc116560ceca92fe"
+    }
+  },
+  "originalWrapper": "/private/tmp/shardshop-parallel-fresh.qvdLDH/run-attempt1.sh"
+}

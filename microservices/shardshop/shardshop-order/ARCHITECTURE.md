@@ -226,10 +226,15 @@ The implementation uses a database-clock lease with a monotonically increasing
 - The ordering V3 migration adds stock ownership, retry time and failure count;
   these retries back off from one to thirty seconds independently of the ledger's
   five-attempt reconciliation budget.
-- Process restart resumes eligible durable work after lease expiry. The bounded
-  worker runs in the saga process, outside HTTP request threads. The lab runs one
-  stock worker thread, thus it reserves stock in sequence; this serial work limits
-  the current [order throughput](../ARCHITECTURE.md#4-performance).
+- Process restart resumes eligible durable work after lease expiry. The worker
+  runs in the saga process, outside HTTP request threads. Each buyer shard has
+  one non-overlapping scheduled scan; a bounded pool permits three concurrent
+  shard scans by default, with sequential sagas within each batch. The configured
+  limit is capped by shard count. `shard-concurrency=1` retains the original serial
+  all-shards scan and polling delay. Shared database pools still bound IO, and
+  different buyer shards can contend on the same seller. The historical
+  [order-throughput measurements](../ARCHITECTURE.md#4-performance) used the serial
+  worker; stock-stage measurements do not requalify full-order capacity.
 
 ### Successful order
 
@@ -507,6 +512,24 @@ cleanup.
 - If quarantine persistence fails, do not acknowledge: use the bounded retry/DLQ
   path in the [delivery policy](../infra/ARCHITECTURE.md#rabbitmq-and-delivery-reliability).
   Malformed unrouteable envelopes use the source queue's DLQ instead.
+
+### Seller-profit posting
+
+Confirmation creates durable per-item margin intents on the buyer's home shard.
+ProfitWorker runs outside HTTP request threads, with one non-overlapping scan
+per buyer shard and a bounded pool of three concurrent scans by default. Intents
+within a shard remain sequential. `shardshop.order.profit.shard-concurrency=1`
+preserves the original serial all-shards scan and delay; larger values use a
+separate delay after each shard's scan. The configured limit is capped by shard
+count and is independent of StockWorker's limit.
+
+Each intent commits an idempotent seller credit and atomic balance increment
+before marking completion in a separate home-shard transaction. No connection
+or transaction spans those phases. Multiple buyer shards can target one seller,
+so the permanent credit identity and database balance-row locking protect replay
+and concurrent updates. Shared pools and hot seller rows can limit throughput;
+the existing deadlines and durable retry handling remain in effect. Stage-only
+measurements do not establish full-saga capacity.
 
 ## Orders lost by asynchronous failover or restore
 

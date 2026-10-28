@@ -63,7 +63,7 @@ result returns `503`; clients retain the same key, allocation or order payload
 when retrying. Request validation rejects malformed/duplicate/unknown
 fields, numeric IDs, fractional quantities and invalid Unicode before database
 access. Bodies are limited to 256 KiB, enough for the contract's 1,000 items.
-HTTP/2 is disabled until its qualification in step 6.5.
+HTTP/2 is disabled until its qualification in step 6.8.
 
 | Property | Default | Purpose |
 |---|---|---|
@@ -75,6 +75,7 @@ HTTP/2 is disabled until its qualification in step 6.5.
 | `shardshop.order.stock.poll-interval` | `250ms` | Delay between scans, 100 ms–30 s |
 | `shardshop.order.stock.lease` | `30s` | Durable per-saga ownership, renewed before each catalog phase; 10 s–5 min |
 | `shardshop.order.stock.batch-size` | `8` | Maximum sagas processed per shard per scan, 1–100 |
+| `shardshop.order.stock.shard-concurrency` | `3` | Maximum concurrent buyer-shard scans, 1–32 and capped by shard count; `1` restores the original serial global scan |
 | `shardshop.order.connections.<shard>.primary-url` | `jdbc:postgresql://<shard>-rw:5432/shardshop` | Primary endpoint for both ordering and catalog IO |
 | `shardshop.order.connections.<shard>.username` | `order_app` | Runtime role with ordering and catalog grants |
 | `shardshop.order.connections.<shard>.password` | Empty | Supply through protected runtime configuration |
@@ -122,6 +123,17 @@ durable versioned lease in a short transaction, then reserves each seller shard'
 items in ascending product-ID order. Reservation insertion and conditional stock
 decrement share one `READ COMMITTED` transaction. Retries of an existing active
 reservation keep its original quantity and do not decrement again.
+
+With `shard-concurrency` above one, each buyer shard has one non-overlapping
+scheduled scan. A bounded pool runs up to the configured number of scans at once;
+sagas within a shard's batch remain sequential. Each shard waits `poll-interval`
+after its own scan finishes. Setting concurrency to `1` preserves the original
+all-shards scan followed by one polling delay, for rollback and comparison.
+Stock and profit still share the bounded database pools with other saga work;
+buyer shards can target the same seller shard, so more lanes do not guarantee
+more throughput. Shutdown interrupts scans and waits at most five seconds;
+durable leases protect unfinished work. Profit posting has its own concurrency
+setting described below.
 
 Once every reservation succeeds, a single buyer-shard transaction changes the
 order and saga to `PENDING_LEDGER`, reserves distinct transport/result IDs, and
@@ -310,7 +322,11 @@ quarantined for investigation. No partial confirmation or profit intent survives
 a failed transaction. `CONFIRMED` can be visible before seller balances catch up.
 
 The profit worker reads bounded batches from each buyer shard, releases the
-connection, and posts each intent on its seller's shard. The seller transaction
+connection, and posts each intent on its seller's shard. With `shard-concurrency`
+above one, a bounded pool runs independent non-overlapping scans for buyer shards;
+intents within each shard remain sequential. Each shard waits `poll-interval`
+after its scan. Value `1` restores the original all-shards serial scan followed
+by one polling delay. The seller transaction
 inserts immutable `catalog.profit_credits` keyed by `(order_id, product_id)` and
 increments the matching currency balance only for a new credit. A matching
 existing credit is a no-op. Only after that commit does a separate home-shard
@@ -333,12 +349,17 @@ shardshop.order.results.enabled=true
 shardshop.order.profit.enabled=true
 shardshop.order.profit.poll-interval=250ms
 shardshop.order.profit.batch-size=8
+shardshop.order.profit.shard-concurrency=3
 ```
 
 The lab chart overrides profit polling to `100ms` and the batch to `32` per
 buyer shard. The earlier `250ms`/`8` settings accumulated profit intents at
-30 orders/s even while orders reached `CONFIRMED`. Posting remains serial and
-idempotent; these settings change only its bounded polling schedule.
+30 orders/s even while orders reached `CONFIRMED`. Shard concurrency now defaults
+to three, accepts 1–32 and is capped by shard count. Seller credits remain
+idempotent. Stock, profit and other saga work share each shard's bounded database
+pool, and buyer shards may target the same seller balance; contention can limit
+gains. Shutdown interrupts scans, stops starting further intents and waits at
+most five seconds. A later process resumes unfinished durable intents.
 
 The consumer shares the `shardshop.order.cdc.broker.*` connection settings and
 credentials with CDC; it can run when CDC is disabled. Profit polling allows

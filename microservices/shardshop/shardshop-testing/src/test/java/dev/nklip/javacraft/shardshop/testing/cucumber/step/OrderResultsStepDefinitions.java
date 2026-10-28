@@ -1148,6 +1148,95 @@ public final class OrderResultsStepDefinitions {
         assertEquals(new BigDecimal("7.45"), balance(us));
     }
 
+    @Then("three buyer homes concurrently credit one seller without lost or duplicate profit")
+    public void concurrentSharedSellerProfit() throws Exception {
+        record Confirmed(String buyerId, CatalogShards.Shard home, String orderId, ObjectNode result) { }
+        List<String> buyers = new ArrayList<>(List.of(buyer));
+        for (String region : List.of("US", "ASIA")) {
+            ObjectNode profile = Json.object("{\"firstName\":\"Shared\",\"surname\":\"Seller\","
+                    + "\"email\":\"shared@example.com\",\"phone\":\"+12025550123\",\"region\":\"" + region + "\","
+                    + "\"address\":{\"line1\":\"1 Example Road\",\"city\":\"Example City\","
+                    + "\"postalCode\":\"00001\",\"countryCode\":\"US\"}}");
+            buyers.add(body(http("POST", "/api/v1/buyers", "shared-seller-" + region, profile), 201)
+                    .path("buyerId").asText());
+        }
+        assertEquals(3, buyers.stream().map(shards::ofSeller).distinct().count());
+        // Leave profit concurrency at its production default; enough connections expose balance-row contention.
+        order.configurePoolSize(4);
+        startWorkers(false);
+        List<Confirmed> confirmed = new ArrayList<>();
+        for (int index = 0; index < buyers.size(); index++) {
+            buyer = buyers.get(index);
+            String id = accept(index + 1, us);
+            awaitStatus(id, "PENDING_LEDGER");
+            ObjectNode envelope = result(command(id), "RECORDED");
+            publishResult(envelope);
+            awaitStatus(id, "CONFIRMED");
+            assertEquals(1, scalar(home(), "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id
+                    + " AND applied_at IS NULL AND blocked_reason IS NULL"));
+            try (Connection gate = shards.superuser(home()); PreparedStatement delay = gate.prepareStatement(
+                    "UPDATE ordering.profit_intents SET next_attempt_at=clock_timestamp()+INTERVAL '1 hour' "
+                            + "WHERE order_id=?")) {
+                delay.setLong(1, Long.parseLong(id));
+                assertEquals(1, delay.executeUpdate());
+            }
+            confirmed.add(new Confirmed(buyer, home(), id, envelope));
+        }
+        var seller = shards.ofSeller(us.seller().id());
+        assertEquals(new BigDecimal("0.00"), balance(us));
+        try (Connection holder = shards.superuser(seller); PreparedStatement lock = holder.prepareStatement(
+                "SELECT amount FROM catalog.seller_profits WHERE seller_id=? AND currency='USD' FOR UPDATE")) {
+            holder.setAutoCommit(false);
+            lock.setLong(1, Long.parseLong(us.seller().id()));
+            try (ResultSet rows = lock.executeQuery()) {
+                assertTrue(rows.next());
+            }
+            order.enableProfit();
+            order.restart(Set.of());
+            for (var saved : confirmed) {
+                try (Connection gate = shards.superuser(saved.home()); PreparedStatement release = gate.prepareStatement(
+                        "UPDATE ordering.profit_intents SET next_attempt_at=clock_timestamp() WHERE order_id=?")) {
+                    release.setLong(1, Long.parseLong(saved.orderId()));
+                    assertEquals(1, release.executeUpdate());
+                }
+            }
+            // Three blocked UPDATEs prove the real worker reaches this shared balance from three home lanes.
+            long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+            boolean overlapping = false;
+            do {
+                overlapping = scalar(seller, "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() "
+                        + "AND usename='order_app' AND wait_event_type='Lock' "
+                        + "AND query ILIKE 'UPDATE catalog.seller_profits%'") >= 3;
+                if (overlapping) break;
+                Thread.sleep(25);
+            } while (System.nanoTime() < deadline);
+            assertTrue(overlapping, "Three buyer-home credits must concurrently wait on the same seller balance");
+            holder.rollback();
+        }
+        for (var saved : confirmed) {
+            await("home completion for shared-seller order " + saved.orderId(), () -> scalar(saved.home(),
+                    "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + saved.orderId()
+                            + " AND applied_at IS NOT NULL AND blocked_reason IS NULL") == 1);
+            assertEquals(1, credits(us, saved.orderId()));
+        }
+        String creditFilter = " FROM catalog.profit_credits WHERE seller_id=" + us.seller().id() + " AND currency='USD'";
+        assertEquals(3, scalar(seller, "SELECT count(*)" + creditFilter));
+        assertEquals(3, scalar(seller, "SELECT count(DISTINCT order_id)" + creditFilter));
+        assertEquals(new BigDecimal("44.70"), decimal(seller.database(), "SELECT sum(amount)" + creditFilter));
+        assertEquals(new BigDecimal("44.70"), balance(us));
+        for (var saved : confirmed) publishResult(saved.result());
+        await("duplicate results are acknowledged", () -> broker.queue(RESULT_QUEUE).path("messages").asInt(-1) == 0);
+        order.restart(Set.of());
+        assertEquals(3, scalar(seller, "SELECT count(*)" + creditFilter));
+        assertEquals(new BigDecimal("44.70"), balance(us));
+        for (var saved : confirmed) {
+            buyer = saved.buyerId();
+            assertEquals("CONFIRMED", status(saved.orderId()));
+            assertEquals(1, scalar(saved.home(), "SELECT count(*) FROM ordering.profit_intents WHERE order_id="
+                    + saved.orderId() + " AND applied_at IS NOT NULL AND blocked_reason IS NULL"));
+        }
+    }
+
     private void profitGrants() throws Exception {
         String database = shards.ofSeller(us.seller().id()).database();
         assertTrue(columnPrivilege(database, "order_app", "catalog.profit_credits", "amount", "INSERT"));

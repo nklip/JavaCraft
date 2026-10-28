@@ -210,7 +210,31 @@ These figures are **local-lab evidence, not a hardware-independent maximum**. On
 host ran the complete lab: 12 Docker CPUs, 12.65 GiB Docker memory and 16 GB
 physical memory.
 
-**Current measurement (2026-10-25, step 6.0):** target 10 orders/s produced
+**Latest combined-worker load test (2026-10-28):** the fixed 10/20/30 sequence
+passed with paging diagnostic only. Accepted rates were **10.006 / 19.949 /
+29.354 orders/s**, with final rolling write p95 **38.466 / 62.206 / 85.702 ms**
+and saga p95 **1.533 / 1.788 / 2.228 s**. Concurrent reads held near 200/s.
+Duration, sample and delivery gates passed; there were no new errors,
+cancellations or recoveries, no observed backpressure, no stock exhaustion,
+and bounded backlogs drained. These are local operating points, not a causal
+serial/parallel comparison or a new hardware-independent maximum. Controls
+and retained state were restored; see [load-test evidence](CHANGELOG.md#combined-worker-concurrency-paging-diagnostic-load-test--2026-10-28).
+
+**Earlier combined-worker diagnostics (2026-10-28):** with three stock lanes and
+three profit lanes, the fresh lab hit the 100-order backpressure bound at target
+10/s after 50.040870s: 212 new accepted writes (~4.24/s), backlog 40 → 99. The
+20/30 phases were not attempted. Reads delivered approximately 110.81/s against
+target 200/s; host swap-ins and swap-outs each exceeded 12 GiB in 42.366s. This
+short run does not qualify throughput/latency or establish a causal change from
+worker concurrency. Check host headroom before further tuning; see
+[measurement and cleanup evidence](CHANGELOG.md#combined-worker-concurrency-kind-measurement--2026-10-28).
+A subsequent retry after closing apps delivered **199.735 reads/s**, with no
+new errors and stable pods. An extra conservative paging precondition stopped
+that retry before writes (1,096.16 MiB swap traffic in the readiness minute,
+with improving later intervals). It adds no write-capacity or application SLO
+finding; see [retry evidence](CHANGELOG.md#combined-worker-concurrency-retry-after-closing-apps--2026-10-28).
+
+**Earlier duration/sample-eligible write measurement (2026-10-25, step 6.0):** target 10 orders/s produced
 **1,177 new writes in 120.058077 seconds (~9.8/s)**, with reads configured at
 200/s. Final rolling write **p95 was 133.783 ms** (mean 38.337 ms), exceeding the
 **<100 ms** requirement; saga p95 was 2.031 s. There were no new errors,
@@ -228,16 +252,19 @@ window logged before pause delivered **955.8/s** (28,676 requests), all OK,
 p95 **9 ms**. It does not waive the failed first window or missing third passing
 window. This is not a server-capacity limit.
 
-At the user's explicit request, all capacity qualification is deferred:
-[step 6.7](PLAN.md#milestone-6-read-profiles-failover-restore-and-operation) owns
-write p95 <100 ms at 10/s; 6.8 owns sustained 30/s writes with reads at 200/s,
+At the user's earlier explicit request, capacity qualification was deferred from 6.0:
+[step 6.5](PLAN.md#milestone-6-read-profiles-failover-restore-and-operation) owns
+write p95 <100 ms at 10/s; 6.6 owns sustained 30/s writes with reads at 200/s,
 controlled stock, no errors/backpressure, bounded backlogs and write p95 <100 ms;
-6.9 owns three eligible 1,000/s read windows each >=950/s, all OK and p95 <100 ms.
+6.7 owns three eligible 1,000/s read windows each >=950/s, all OK and p95 <100 ms.
 6.0 is **Done under the explicit reduced local-maintenance scope**: all nine
 final kind-gate cases passed with no failures/errors/skips, and the original
-stopped retained lab was restored. Next is 6.5. Full performance
-remains unqualified. The short 30/s capture's rolling 154.613 ms p95 is diagnostic
-only; the latest valid 10/s latency remains 133.783 ms. Write latency covers
+stopped retained lab was restored. Steps **6.5 and 6.6 are Done**, qualified by
+the October 28 load sequence above. Next is **6.7 (1,000/s reads)**; full
+performance qualification still requires that separate read acceptance.
+The short earlier 30/s capture's rolling 154.613 ms p95 is diagnostic
+only; the earlier valid 10/s latency was 133.783 ms, superseded by the
+38.466 ms local result above. Write latency covers
 allocation through PUT acceptance; saga completion is separate. See
 [maintenance evidence](CHANGELOG.md#step-60) for failed checks and restoration.
 
@@ -269,9 +296,20 @@ Different kinds of figures answer different questions:
   19.64/s for each buyer shard. These are derived HTTP rates, not SQL writes or
   storage IOPS: stock, saga, ledger and profit work add database writes on buyer
   and seller shards.
-- **Bottleneck.** The single saga process reserves stock in sequence. This serial
-  stock work limits the current complete-order pipeline. Some orders were
-  cancelled because the finite stock ran out, thus the confirmed rate matters.
+- **Historical bottleneck.** These measurements used one serial stock worker in
+  the saga process. The source now supports bounded concurrent buyer-shard scans;
+  this does not requalify the complete-order pipeline. Some measured orders were
+  cancelled because finite stock ran out, thus the confirmed rate matters.
+- **Stock-stage comparison.** A separate disposable PostgreSQL comparison on
+  2026-10-28 observed 40.60 → 57.99 orders/s with one versus three stock lanes
+  (+42.8% throughput, 30.0% shorter drain). This excludes CDC, ledger, profit and
+  replication; see the [evidence and limits](CHANGELOG.md#stock-worker-concurrency--2026-10-28).
+- **Profit-stage comparison.** A separate prepared-intent comparison on 2026-10-28
+  observed 182.29 → 299.16 intents/s with one versus three profit lanes (+64.1%
+  throughput, 39.1% shorter drain). It uses independent sellers and the lab's
+  100 ms/32 polling profile; see the
+  [evidence and limits](CHANGELOG.md#profit-worker-concurrency--2026-10-28).
+  Neither stage result requalifies full-saga capacity, and their gains cannot be added.
 - **Lower bound.** 963 reads/s is the highest *passing* read target, a verified
   lower bound under the stated criteria. It is not the highest observed rate.
 - **No sum.** Peak reads and peak writes were measured separately. Do not add

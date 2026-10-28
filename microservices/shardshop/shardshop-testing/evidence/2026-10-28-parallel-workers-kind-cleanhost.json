@@ -1,0 +1,1960 @@
+{
+  "date": "2026-10-28",
+  "purpose": "User-requested retry after closing applications; unchanged StockWorker and ProfitWorker concurrency3",
+  "outcome": "Readiness reader check passed; custom paging guard failed; no10/20/30write matrix started",
+  "readinessProtocol": {
+    "settleSeconds": 60,
+    "singleObservationSeconds": 60,
+    "minimumCompletedReadsPerSecond": 190,
+    "readerTarget": 200,
+    "maximumCombinedSwapTrafficMiB": 256,
+    "pagingThresholdNature": "Assistant-selected conservative operational precondition; not a repository application SLO or macOS health standard",
+    "compressorGrowth": "Diagnostic only",
+    "producer": "Paused and drained",
+    "repetition": "Exactly one gate; no extension until passing"
+  },
+  "gateResult": {
+    "minimumObservationSeconds": 60.0487,
+    "maximumCounterWindowSeconds": 60.194786999956705,
+    "completedReadDelta": 12023,
+    "readerRate": 199.73490395453427,
+    "newReaderErrors": 0,
+    "readerRequirementMet": true,
+    "applicationIdentitiesStable": true,
+    "pagingGuardImplemented": true,
+    "pagingGuardPurpose": "conservative operational comparison precondition, not a macOS standard or application SLO",
+    "hostMinimumObservationSeconds": 60.1915840000147,
+    "pageSizeBytes": 16384,
+    "combinedSwapTrafficBytes": 1149403136,
+    "compressorOccupiedGrowthBytes": -76136448,
+    "maximumCombinedSwapTrafficBytes": 268435456,
+    "compressorGrowthDiagnosticThresholdBytes": 134217728,
+    "compressorGrowthAboveDiagnosticThreshold": false,
+    "compressorGrowthRole": "diagnostic only; not a readiness gate or application SLO",
+    "pagingRequirementMet": false
+  },
+  "paging": {
+    "settle": {
+      "swapInMiB": 1647.5625,
+      "swapOutMiB": 1964.25,
+      "compressorOccupiedGrowthMiB": -300.0625
+    },
+    "gate": {
+      "swapInMiB": 719.40625,
+      "swapOutMiB": 376.75,
+      "compressorOccupiedGrowthMiB": -72.609375
+    },
+    "gateIntervals": [
+      {
+        "from": 0,
+        "to": 10,
+        "swapInMiB": 330.421875,
+        "swapOutMiB": 77.9375,
+        "compressorOccupiedGrowthMiB": 524.265625
+      },
+      {
+        "from": 10,
+        "to": 20,
+        "swapInMiB": 62.46875,
+        "swapOutMiB": 0.0,
+        "compressorOccupiedGrowthMiB": -411.53125
+      },
+      {
+        "from": 20,
+        "to": 30,
+        "swapInMiB": 135.90625,
+        "swapOutMiB": 298.8125,
+        "compressorOccupiedGrowthMiB": 52.96875
+      },
+      {
+        "from": 30,
+        "to": 40,
+        "swapInMiB": 65.296875,
+        "swapOutMiB": 0.0,
+        "compressorOccupiedGrowthMiB": -430.703125
+      },
+      {
+        "from": 40,
+        "to": 50,
+        "swapInMiB": 34.46875,
+        "swapOutMiB": 0.0,
+        "compressorOccupiedGrowthMiB": 484.640625
+      },
+      {
+        "from": 50,
+        "to": 60,
+        "swapInMiB": 90.84375,
+        "swapOutMiB": 0.0,
+        "compressorOccupiedGrowthMiB": -292.25
+      }
+    ],
+    "last30Seconds": {
+      "swapInMiB": 190.609375,
+      "swapOutMiB": 0.0,
+      "compressorOccupiedGrowthMiB": -238.3125
+    },
+    "interpretation": "Paging improved with later intervals showing no swap-outs; earlier bursts and continued swap-ins remained. This does not prove an application capacity limit or sustained bidirectional thrashing."
+  },
+  "hostBeforeProvisioning": {
+    "samples": [
+      {
+        "monotonic": 646709.615139875,
+        "vmStat": {
+          "Pages free": 5065,
+          "Pages active": 191561,
+          "Pages inactive": 183249,
+          "Pages speculative": 7140,
+          "Pages throttled": 0,
+          "Pages wired down": 218255,
+          "Pages purgeable": 2,
+          "\"Translation faults\"": 25705076667,
+          "Pages copy-on-write": 737343223,
+          "Pages zero filled": 7472577955,
+          "Pages reactivated": 8850874745,
+          "Pages purged": 718788288,
+          "File-backed pages": 115024,
+          "Anonymous pages": 266926,
+          "Pages stored in compressor": 1500319,
+          "Pages occupied by compressor": 388743,
+          "Decompressions": 12672868978,
+          "Compressions": 13208994991,
+          "Pageins": 342990717,
+          "Pageouts": 7288261,
+          "Swapins": 479643150,
+          "Swapouts": 495102242
+        },
+        "pageSize": 16384,
+        "swapUsage": "vm.swapusage: total = 7168.00M  used = 6003.06M  free = 1164.94M  (encrypted)"
+      },
+      {
+        "monotonic": 646724.633024375,
+        "vmStat": {
+          "Pages free": 3692,
+          "Pages active": 177615,
+          "Pages inactive": 175483,
+          "Pages speculative": 949,
+          "Pages throttled": 0,
+          "Pages wired down": 233782,
+          "Pages purgeable": 2,
+          "\"Translation faults\"": 25705392303,
+          "Pages copy-on-write": 737355087,
+          "Pages zero filled": 7472844083,
+          "Pages reactivated": 8850971862,
+          "Pages purged": 718806184,
+          "File-backed pages": 113369,
+          "Anonymous pages": 240678,
+          "Pages stored in compressor": 1516227,
+          "Pages occupied by compressor": 402460,
+          "Decompressions": 12672973980,
+          "Compressions": 13209131343,
+          "Pageins": 342995984,
+          "Pageouts": 7288429,
+          "Swapins": 479643369,
+          "Swapouts": 495102242
+        },
+        "pageSize": 16384,
+        "swapUsage": "vm.swapusage: total = 7168.00M  used = 5987.06M  free = 1180.94M  (encrypted)"
+      },
+      {
+        "monotonic": 646739.656334541,
+        "vmStat": {
+          "Pages free": 8575,
+          "Pages active": 194557,
+          "Pages inactive": 188202,
+          "Pages speculative": 4216,
+          "Pages throttled": 0,
+          "Pages wired down": 203549,
+          "Pages purgeable": 1412,
+          "\"Translation faults\"": 25705560385,
+          "Pages copy-on-write": 737360771,
+          "Pages zero filled": 7472943964,
+          "Pages reactivated": 8850999203,
+          "Pages purged": 718823185,
+          "File-backed pages": 120154,
+          "Anonymous pages": 266821,
+          "Pages stored in compressor": 1503537,
+          "Pages occupied by compressor": 395024,
+          "Decompressions": 12673016751,
+          "Compressions": 13209173559,
+          "Pageins": 343001190,
+          "Pageouts": 7288663,
+          "Swapins": 479643441,
+          "Swapouts": 495102242
+        },
+        "pageSize": 16384,
+        "swapUsage": "vm.swapusage: total = 7168.00M  used = 5987.06M  free = 1180.94M  (encrypted)"
+      }
+    ],
+    "delta": {
+      "seconds": 30.04119466606062,
+      "swapInMiB": 4.546875,
+      "swapOutMiB": 0.0,
+      "compressorGrowthMiB": 98.140625
+    }
+  },
+  "collectorSummary": {
+    "evidenceDirectory": "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence",
+    "overallQualification": "No write measurement: custom operational paging precondition failed; application write SLO/capacity not assessed.",
+    "phases": [],
+    "limitations": [
+      "Producer p95 is the final rolling 1024 new-write window, not an interval percentile.",
+      "Saga p95 and per-pod endpoint p95 may contain earlier samples; endpoint p95s cannot be added.",
+      "Rates use producer baseline-receipt to final-request-start monotonic duration; reader counters are sampled slightly later.",
+      "Missing evidence remains null. Sampled backpressure absence does not establish continuous absence.",
+      "Confirmed/cancelled deltas include completions of earlier pending writes; they need not equal accepted writes. Nonzero recovered deltas require manual replay review.",
+      "Reader outcomes come from interval logs, not starts/request counters. Fully contained reports omit boundary intervals.",
+      "SQL totals require all three shards. Drain evidence is associated by monotonic directory timestamp."
+    ],
+    "preflightStock": null,
+    "beforeMatrixStock": {
+      "source": "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/stock-before",
+      "shardsRead": 0,
+      "shardsExpected": 3,
+      "pending": null,
+      "profitUnapplied": null,
+      "profitBlocked": null,
+      "commandOutboxUnpublished": null,
+      "resultOutboxUnpublished": null,
+      "stockByCurrency": {}
+    },
+    "lastRecordedDrainProducer": {
+      "workload": "order-producer",
+      "unit": "new order starts/s",
+      "state": "PAUSED",
+      "targetRate": 0.5,
+      "paused": true,
+      "effectiveRate": 0,
+      "defaultRate": 0.5,
+      "maximumRate": 30,
+      "rateStep": 0.1,
+      "achievedRate": 0.5,
+      "starts": 82,
+      "inFlight": 0,
+      "requests": 3933,
+      "errors": 4,
+      "traffic": [
+        {
+          "category": "startup",
+          "requests": 3356,
+          "retries": 1,
+          "errors": 4
+        },
+        {
+          "category": "allocation",
+          "requests": 82,
+          "retries": 0,
+          "errors": 0
+        },
+        {
+          "category": "submission",
+          "requests": 82,
+          "retries": 0,
+          "errors": 0
+        },
+        {
+          "category": "polling",
+          "requests": 413,
+          "retries": 0,
+          "errors": 0
+        }
+      ],
+      "limit": null,
+      "run": null,
+      "producer": {
+        "submissionConcurrency": 4,
+        "observerConcurrency": 2,
+        "maxNonTerminalOrders": 100,
+        "nonTerminalBacklog": 0,
+        "backpressured": false,
+        "recoveredOrders": 0,
+        "confirmedOrders": 82,
+        "cancelledOrders": 0,
+        "writeLatency": {
+          "samples": 82,
+          "meanMillis": 57.131,
+          "p95Millis": 139.867
+        },
+        "sagaLatency": {
+          "samples": 82,
+          "meanMillis": 1366.551,
+          "p95Millis": 2516.523
+        }
+      },
+      "revision": 1
+    },
+    "lastRecordedDrainProducerScope": "May be only the initial pre-matrix drain record; does not prove a post-abort drain.",
+    "readiness": {
+      "gateResult": {
+        "minimumObservationSeconds": 60.0487,
+        "maximumCounterWindowSeconds": 60.194786999956705,
+        "completedReadDelta": 12023,
+        "readerRate": 199.73490395453427,
+        "newReaderErrors": 0,
+        "readerRequirementMet": true,
+        "applicationIdentitiesStable": true,
+        "pagingGuardImplemented": true,
+        "pagingGuardPurpose": "conservative operational comparison precondition, not a macOS standard or application SLO",
+        "hostMinimumObservationSeconds": 60.1915840000147,
+        "pageSizeBytes": 16384,
+        "combinedSwapTrafficBytes": 1149403136,
+        "compressorOccupiedGrowthBytes": -76136448,
+        "maximumCombinedSwapTrafficBytes": 268435456,
+        "compressorGrowthDiagnosticThresholdBytes": 134217728,
+        "compressorGrowthAboveDiagnosticThreshold": false,
+        "compressorGrowthRole": "diagnostic only; not a readiness gate or application SLO",
+        "pagingRequirementMet": false
+      },
+      "abortFinal": {
+        "source": "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final",
+        "at": "2026-10-28T11:02:37.633215904Z",
+        "finishedAt": "2026-10-28T11:02:37.967170000Z",
+        "status": {
+          "exitStatus": 1,
+          "phaseComplete": false,
+          "observationQualified": false,
+          "drainProven": false,
+          "reason": "Aborted phase; final evidence captured before restoring saved controls"
+        },
+        "producer": {
+          "workload": "order-producer",
+          "unit": "new order starts/s",
+          "state": "PAUSED",
+          "targetRate": 0.5,
+          "paused": true,
+          "effectiveRate": 0,
+          "defaultRate": 0.5,
+          "maximumRate": 30,
+          "rateStep": 0.1,
+          "achievedRate": 0.0,
+          "starts": 82,
+          "inFlight": 0,
+          "requests": 3933,
+          "errors": 4,
+          "traffic": [
+            {
+              "category": "startup",
+              "requests": 3356,
+              "retries": 1,
+              "errors": 4
+            },
+            {
+              "category": "allocation",
+              "requests": 82,
+              "retries": 0,
+              "errors": 0
+            },
+            {
+              "category": "submission",
+              "requests": 82,
+              "retries": 0,
+              "errors": 0
+            },
+            {
+              "category": "polling",
+              "requests": 413,
+              "retries": 0,
+              "errors": 0
+            }
+          ],
+          "limit": null,
+          "run": null,
+          "producer": {
+            "submissionConcurrency": 4,
+            "observerConcurrency": 2,
+            "maxNonTerminalOrders": 100,
+            "nonTerminalBacklog": 0,
+            "backpressured": false,
+            "recoveredOrders": 0,
+            "confirmedOrders": 82,
+            "cancelledOrders": 0,
+            "writeLatency": {
+              "samples": 82,
+              "meanMillis": 57.131,
+              "p95Millis": 139.867
+            },
+            "sagaLatency": {
+              "samples": 82,
+              "meanMillis": 1366.551,
+              "p95Millis": 2516.523
+            }
+          },
+          "revision": 2
+        },
+        "reader": {
+          "workload": "product-reader",
+          "unit": "product read starts/s",
+          "state": "RUNNING",
+          "targetRate": 200,
+          "paused": false,
+          "effectiveRate": 200,
+          "defaultRate": 200,
+          "maximumRate": 10000,
+          "rateStep": 10,
+          "achievedRate": 197.9,
+          "starts": 60471,
+          "inFlight": 3,
+          "requests": 60479,
+          "errors": 8,
+          "traffic": [
+            {
+              "category": "reads",
+              "requests": 60479,
+              "retries": 8,
+              "errors": 8
+            }
+          ],
+          "limit": null,
+          "run": null,
+          "producer": null,
+          "revision": 2
+        },
+        "sql": {
+          "source": "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql",
+          "shardsRead": 3,
+          "shardsExpected": 3,
+          "pending": 0,
+          "profitUnapplied": 0,
+          "profitBlocked": 0,
+          "commandOutboxUnpublished": 0,
+          "resultOutboxUnpublished": 0,
+          "stockByCurrency": {
+            "USD": {
+              "currency": "USD",
+              "products": 50,
+              "initial_units": 50000,
+              "units": 49834,
+              "empty_products": 0,
+              "minimum_units": 991
+            },
+            "EUR": {
+              "currency": "EUR",
+              "products": 50,
+              "initial_units": 50000,
+              "units": 49866,
+              "empty_products": 0,
+              "minimum_units": 992
+            },
+            "GBP": {
+              "currency": "GBP",
+              "products": 50,
+              "initial_units": 50000,
+              "units": 49976,
+              "empty_products": 0,
+              "minimum_units": 994
+            },
+            "CNY": {
+              "currency": "CNY",
+              "products": 32,
+              "initial_units": 32000,
+              "units": 31898,
+              "empty_products": 0,
+              "minimum_units": 991
+            },
+            "JPY": {
+              "currency": "JPY",
+              "products": 14,
+              "initial_units": 14000,
+              "units": 13984,
+              "empty_products": 0,
+              "minimum_units": 994
+            },
+            "KRW": {
+              "currency": "KRW",
+              "products": 4,
+              "initial_units": 4000,
+              "units": 3981,
+              "empty_products": 0,
+              "minimum_units": 994
+            },
+            "VND": {
+              "currency": "VND",
+              "products": 1,
+              "initial_units": 1000,
+              "units": 995,
+              "empty_products": 0,
+              "minimum_units": 995
+            }
+          }
+        },
+        "logs": [
+          {
+            "source": "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/ledger.log",
+            "bytes": 0,
+            "readerIntervalReports": null
+          },
+          {
+            "source": "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/order-producer.log",
+            "bytes": 0,
+            "readerIntervalReports": null
+          },
+          {
+            "source": "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/order-saga.log",
+            "bytes": 0,
+            "readerIntervalReports": null
+          },
+          {
+            "source": "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/order.log",
+            "bytes": 0,
+            "readerIntervalReports": null
+          },
+          {
+            "source": "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/product-reader.log",
+            "bytes": 2041,
+            "readerIntervalReports": [
+              {
+                "endTime": "2026-10-28T11:01:03.135201635Z",
+                "seconds": 30.0,
+                "requests": 5915,
+                "reportedRate": 197.2,
+                "outcomes": {
+                  "OK": 5915
+                },
+                "latencyMillis": {
+                  "p50": 2,
+                  "p95": 17,
+                  "p99": 86,
+                  "max": 428
+                },
+                "fullyWithinObservation": false
+              },
+              {
+                "endTime": "2026-10-28T11:01:33.132280260Z",
+                "seconds": 30.0,
+                "requests": 5952,
+                "reportedRate": 198.4,
+                "outcomes": {
+                  "OK": 5952
+                },
+                "latencyMillis": {
+                  "p50": 2,
+                  "p95": 7,
+                  "p99": 37,
+                  "max": 384
+                },
+                "fullyWithinObservation": false
+              },
+              {
+                "endTime": "2026-10-28T11:02:03.134514802Z",
+                "seconds": 30.0,
+                "requests": 5998,
+                "reportedRate": 199.9,
+                "outcomes": {
+                  "OK": 5998
+                },
+                "latencyMillis": {
+                  "p50": 2,
+                  "p95": 4,
+                  "p99": 18,
+                  "max": 127
+                },
+                "fullyWithinObservation": false
+              },
+              {
+                "endTime": "2026-10-28T11:02:33.138887719Z",
+                "seconds": 30.0,
+                "requests": 5993,
+                "reportedRate": 199.8,
+                "outcomes": {
+                  "OK": 5993
+                },
+                "latencyMillis": {
+                  "p50": 2,
+                  "p95": 6,
+                  "p99": 28,
+                  "max": 126
+                },
+                "fullyWithinObservation": false
+              }
+            ]
+          },
+          {
+            "source": "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/product.log",
+            "bytes": 0,
+            "readerIntervalReports": null
+          }
+        ],
+        "diagnosticsStatus": "0",
+        "interpretation": "Abort snapshot, not a qualified observation or proof of drain."
+      },
+      "gateSamples": [
+        {
+          "sample": "gate-0",
+          "at": "2026-10-28T11:01:37.185750007Z",
+          "reader": {
+            "workload": "product-reader",
+            "unit": "product read starts/s",
+            "state": "RUNNING",
+            "targetRate": 200,
+            "paused": false,
+            "effectiveRate": 200,
+            "defaultRate": 200,
+            "maximumRate": 10000,
+            "rateStep": 10,
+            "achievedRate": 198.7,
+            "starts": 48383,
+            "inFlight": 0,
+            "requests": 48391,
+            "errors": 8,
+            "traffic": [
+              {
+                "category": "reads",
+                "requests": 48391,
+                "retries": 8,
+                "errors": 8
+              }
+            ],
+            "limit": null,
+            "run": null,
+            "producer": null,
+            "revision": 2
+          },
+          "applicationIdentities": [
+            {
+              "containers": [
+                {
+                  "name": "ledger",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-ledger-7cd85f9f98-88dmj",
+              "ready": true,
+              "uid": "be72d58e-874d-4b75-9598-6faf4b0348f9"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-57c5f6f9d8-csx9w",
+              "ready": true,
+              "uid": "d8b42155-0491-4fc1-8bbc-8e396792c4f1"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-57c5f6f9d8-dcxgd",
+              "ready": true,
+              "uid": "7d3638d9-76ef-4473-82c9-a93b1da991e1"
+            },
+            {
+              "containers": [
+                {
+                  "name": "producer",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-producer-6885b876b8-5bb8l",
+              "ready": true,
+              "uid": "cefa30a4-08c6-4ad9-819c-0806410e319a"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-saga-588f465c8c-l5lkr",
+              "ready": true,
+              "uid": "79dcf4ec-77f3-4cf2-9385-45c5962125e2"
+            },
+            {
+              "containers": [
+                {
+                  "name": "product",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-694cf9cd5b-8jkx2",
+              "ready": true,
+              "uid": "5075647e-f3bb-4fee-ae3a-ac04aa49937e"
+            },
+            {
+              "containers": [
+                {
+                  "name": "product",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-694cf9cd5b-s2pfh",
+              "ready": true,
+              "uid": "e56246f7-927d-4984-93ff-8d47ec1f1f7e"
+            },
+            {
+              "containers": [
+                {
+                  "name": "reader",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-reader-5ffcb9d758-dxtxt",
+              "ready": true,
+              "uid": "b4515c02-c586-4afa-a258-097242feb252"
+            }
+          ]
+        },
+        {
+          "sample": "gate-10",
+          "at": "2026-10-28T11:01:47.313505887Z",
+          "reader": {
+            "workload": "product-reader",
+            "unit": "product read starts/s",
+            "state": "RUNNING",
+            "targetRate": 200,
+            "paused": false,
+            "effectiveRate": 200,
+            "defaultRate": 200,
+            "maximumRate": 10000,
+            "rateStep": 10,
+            "achievedRate": 199.3,
+            "starts": 50409,
+            "inFlight": 1,
+            "requests": 50417,
+            "errors": 8,
+            "traffic": [
+              {
+                "category": "reads",
+                "requests": 50417,
+                "retries": 8,
+                "errors": 8
+              }
+            ],
+            "limit": null,
+            "run": null,
+            "producer": null,
+            "revision": 2
+          },
+          "applicationIdentities": [
+            {
+              "containers": [
+                {
+                  "name": "ledger",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-ledger-7cd85f9f98-88dmj",
+              "ready": true,
+              "uid": "be72d58e-874d-4b75-9598-6faf4b0348f9"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-57c5f6f9d8-csx9w",
+              "ready": true,
+              "uid": "d8b42155-0491-4fc1-8bbc-8e396792c4f1"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-57c5f6f9d8-dcxgd",
+              "ready": true,
+              "uid": "7d3638d9-76ef-4473-82c9-a93b1da991e1"
+            },
+            {
+              "containers": [
+                {
+                  "name": "producer",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-producer-6885b876b8-5bb8l",
+              "ready": true,
+              "uid": "cefa30a4-08c6-4ad9-819c-0806410e319a"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-saga-588f465c8c-l5lkr",
+              "ready": true,
+              "uid": "79dcf4ec-77f3-4cf2-9385-45c5962125e2"
+            },
+            {
+              "containers": [
+                {
+                  "name": "product",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-694cf9cd5b-8jkx2",
+              "ready": true,
+              "uid": "5075647e-f3bb-4fee-ae3a-ac04aa49937e"
+            },
+            {
+              "containers": [
+                {
+                  "name": "product",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-694cf9cd5b-s2pfh",
+              "ready": true,
+              "uid": "e56246f7-927d-4984-93ff-8d47ec1f1f7e"
+            },
+            {
+              "containers": [
+                {
+                  "name": "reader",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-reader-5ffcb9d758-dxtxt",
+              "ready": true,
+              "uid": "b4515c02-c586-4afa-a258-097242feb252"
+            }
+          ]
+        },
+        {
+          "sample": "gate-20",
+          "at": "2026-10-28T11:01:57.322833061Z",
+          "reader": {
+            "workload": "product-reader",
+            "unit": "product read starts/s",
+            "state": "RUNNING",
+            "targetRate": 200,
+            "paused": false,
+            "effectiveRate": 200,
+            "defaultRate": 200,
+            "maximumRate": 10000,
+            "rateStep": 10,
+            "achievedRate": 199.7,
+            "starts": 52410,
+            "inFlight": 1,
+            "requests": 52418,
+            "errors": 8,
+            "traffic": [
+              {
+                "category": "reads",
+                "requests": 52418,
+                "retries": 8,
+                "errors": 8
+              }
+            ],
+            "limit": null,
+            "run": null,
+            "producer": null,
+            "revision": 2
+          },
+          "applicationIdentities": [
+            {
+              "containers": [
+                {
+                  "name": "ledger",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-ledger-7cd85f9f98-88dmj",
+              "ready": true,
+              "uid": "be72d58e-874d-4b75-9598-6faf4b0348f9"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-57c5f6f9d8-csx9w",
+              "ready": true,
+              "uid": "d8b42155-0491-4fc1-8bbc-8e396792c4f1"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-57c5f6f9d8-dcxgd",
+              "ready": true,
+              "uid": "7d3638d9-76ef-4473-82c9-a93b1da991e1"
+            },
+            {
+              "containers": [
+                {
+                  "name": "producer",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-producer-6885b876b8-5bb8l",
+              "ready": true,
+              "uid": "cefa30a4-08c6-4ad9-819c-0806410e319a"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-saga-588f465c8c-l5lkr",
+              "ready": true,
+              "uid": "79dcf4ec-77f3-4cf2-9385-45c5962125e2"
+            },
+            {
+              "containers": [
+                {
+                  "name": "product",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-694cf9cd5b-8jkx2",
+              "ready": true,
+              "uid": "5075647e-f3bb-4fee-ae3a-ac04aa49937e"
+            },
+            {
+              "containers": [
+                {
+                  "name": "product",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-694cf9cd5b-s2pfh",
+              "ready": true,
+              "uid": "e56246f7-927d-4984-93ff-8d47ec1f1f7e"
+            },
+            {
+              "containers": [
+                {
+                  "name": "reader",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-reader-5ffcb9d758-dxtxt",
+              "ready": true,
+              "uid": "b4515c02-c586-4afa-a258-097242feb252"
+            }
+          ]
+        },
+        {
+          "sample": "gate-30",
+          "at": "2026-10-28T11:02:07.324631929Z",
+          "reader": {
+            "workload": "product-reader",
+            "unit": "product read starts/s",
+            "state": "RUNNING",
+            "targetRate": 200,
+            "paused": false,
+            "effectiveRate": 200,
+            "defaultRate": 200,
+            "maximumRate": 10000,
+            "rateStep": 10,
+            "achievedRate": 199.7,
+            "starts": 54410,
+            "inFlight": 0,
+            "requests": 54418,
+            "errors": 8,
+            "traffic": [
+              {
+                "category": "reads",
+                "requests": 54418,
+                "retries": 8,
+                "errors": 8
+              }
+            ],
+            "limit": null,
+            "run": null,
+            "producer": null,
+            "revision": 2
+          },
+          "applicationIdentities": [
+            {
+              "containers": [
+                {
+                  "name": "ledger",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-ledger-7cd85f9f98-88dmj",
+              "ready": true,
+              "uid": "be72d58e-874d-4b75-9598-6faf4b0348f9"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-57c5f6f9d8-csx9w",
+              "ready": true,
+              "uid": "d8b42155-0491-4fc1-8bbc-8e396792c4f1"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-57c5f6f9d8-dcxgd",
+              "ready": true,
+              "uid": "7d3638d9-76ef-4473-82c9-a93b1da991e1"
+            },
+            {
+              "containers": [
+                {
+                  "name": "producer",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-producer-6885b876b8-5bb8l",
+              "ready": true,
+              "uid": "cefa30a4-08c6-4ad9-819c-0806410e319a"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-saga-588f465c8c-l5lkr",
+              "ready": true,
+              "uid": "79dcf4ec-77f3-4cf2-9385-45c5962125e2"
+            },
+            {
+              "containers": [
+                {
+                  "name": "product",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-694cf9cd5b-8jkx2",
+              "ready": true,
+              "uid": "5075647e-f3bb-4fee-ae3a-ac04aa49937e"
+            },
+            {
+              "containers": [
+                {
+                  "name": "product",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-694cf9cd5b-s2pfh",
+              "ready": true,
+              "uid": "e56246f7-927d-4984-93ff-8d47ec1f1f7e"
+            },
+            {
+              "containers": [
+                {
+                  "name": "reader",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-reader-5ffcb9d758-dxtxt",
+              "ready": true,
+              "uid": "b4515c02-c586-4afa-a258-097242feb252"
+            }
+          ]
+        },
+        {
+          "sample": "gate-40",
+          "at": "2026-10-28T11:02:17.323004961Z",
+          "reader": {
+            "workload": "product-reader",
+            "unit": "product read starts/s",
+            "state": "RUNNING",
+            "targetRate": 200,
+            "paused": false,
+            "effectiveRate": 200,
+            "defaultRate": 200,
+            "maximumRate": 10000,
+            "rateStep": 10,
+            "achievedRate": 199.8,
+            "starts": 56410,
+            "inFlight": 0,
+            "requests": 56418,
+            "errors": 8,
+            "traffic": [
+              {
+                "category": "reads",
+                "requests": 56418,
+                "retries": 8,
+                "errors": 8
+              }
+            ],
+            "limit": null,
+            "run": null,
+            "producer": null,
+            "revision": 2
+          },
+          "applicationIdentities": [
+            {
+              "containers": [
+                {
+                  "name": "ledger",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-ledger-7cd85f9f98-88dmj",
+              "ready": true,
+              "uid": "be72d58e-874d-4b75-9598-6faf4b0348f9"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-57c5f6f9d8-csx9w",
+              "ready": true,
+              "uid": "d8b42155-0491-4fc1-8bbc-8e396792c4f1"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-57c5f6f9d8-dcxgd",
+              "ready": true,
+              "uid": "7d3638d9-76ef-4473-82c9-a93b1da991e1"
+            },
+            {
+              "containers": [
+                {
+                  "name": "producer",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-producer-6885b876b8-5bb8l",
+              "ready": true,
+              "uid": "cefa30a4-08c6-4ad9-819c-0806410e319a"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-saga-588f465c8c-l5lkr",
+              "ready": true,
+              "uid": "79dcf4ec-77f3-4cf2-9385-45c5962125e2"
+            },
+            {
+              "containers": [
+                {
+                  "name": "product",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-694cf9cd5b-8jkx2",
+              "ready": true,
+              "uid": "5075647e-f3bb-4fee-ae3a-ac04aa49937e"
+            },
+            {
+              "containers": [
+                {
+                  "name": "product",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-694cf9cd5b-s2pfh",
+              "ready": true,
+              "uid": "e56246f7-927d-4984-93ff-8d47ec1f1f7e"
+            },
+            {
+              "containers": [
+                {
+                  "name": "reader",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-reader-5ffcb9d758-dxtxt",
+              "ready": true,
+              "uid": "b4515c02-c586-4afa-a258-097242feb252"
+            }
+          ]
+        },
+        {
+          "sample": "gate-50",
+          "at": "2026-10-28T11:02:27.319833993Z",
+          "reader": {
+            "workload": "product-reader",
+            "unit": "product read starts/s",
+            "state": "RUNNING",
+            "targetRate": 200,
+            "paused": false,
+            "effectiveRate": 200,
+            "defaultRate": 200,
+            "maximumRate": 10000,
+            "rateStep": 10,
+            "achievedRate": 199.6,
+            "starts": 58409,
+            "inFlight": 0,
+            "requests": 58418,
+            "errors": 8,
+            "traffic": [
+              {
+                "category": "reads",
+                "requests": 58418,
+                "retries": 8,
+                "errors": 8
+              }
+            ],
+            "limit": null,
+            "run": null,
+            "producer": null,
+            "revision": 2
+          },
+          "applicationIdentities": [
+            {
+              "containers": [
+                {
+                  "name": "ledger",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-ledger-7cd85f9f98-88dmj",
+              "ready": true,
+              "uid": "be72d58e-874d-4b75-9598-6faf4b0348f9"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-57c5f6f9d8-csx9w",
+              "ready": true,
+              "uid": "d8b42155-0491-4fc1-8bbc-8e396792c4f1"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-57c5f6f9d8-dcxgd",
+              "ready": true,
+              "uid": "7d3638d9-76ef-4473-82c9-a93b1da991e1"
+            },
+            {
+              "containers": [
+                {
+                  "name": "producer",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-producer-6885b876b8-5bb8l",
+              "ready": true,
+              "uid": "cefa30a4-08c6-4ad9-819c-0806410e319a"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-saga-588f465c8c-l5lkr",
+              "ready": true,
+              "uid": "79dcf4ec-77f3-4cf2-9385-45c5962125e2"
+            },
+            {
+              "containers": [
+                {
+                  "name": "product",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-694cf9cd5b-8jkx2",
+              "ready": true,
+              "uid": "5075647e-f3bb-4fee-ae3a-ac04aa49937e"
+            },
+            {
+              "containers": [
+                {
+                  "name": "product",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-694cf9cd5b-s2pfh",
+              "ready": true,
+              "uid": "e56246f7-927d-4984-93ff-8d47ec1f1f7e"
+            },
+            {
+              "containers": [
+                {
+                  "name": "reader",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-reader-5ffcb9d758-dxtxt",
+              "ready": true,
+              "uid": "b4515c02-c586-4afa-a258-097242feb252"
+            }
+          ]
+        },
+        {
+          "sample": "gate-60",
+          "at": "2026-10-28T11:02:37.332221984Z",
+          "reader": {
+            "workload": "product-reader",
+            "unit": "product read starts/s",
+            "state": "RUNNING",
+            "targetRate": 200,
+            "paused": false,
+            "effectiveRate": 200,
+            "defaultRate": 200,
+            "maximumRate": 10000,
+            "rateStep": 10,
+            "achievedRate": 197.3,
+            "starts": 60406,
+            "inFlight": 0,
+            "requests": 60414,
+            "errors": 8,
+            "traffic": [
+              {
+                "category": "reads",
+                "requests": 60414,
+                "retries": 8,
+                "errors": 8
+              }
+            ],
+            "limit": null,
+            "run": null,
+            "producer": null,
+            "revision": 2
+          },
+          "applicationIdentities": [
+            {
+              "containers": [
+                {
+                  "name": "ledger",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-ledger-7cd85f9f98-88dmj",
+              "ready": true,
+              "uid": "be72d58e-874d-4b75-9598-6faf4b0348f9"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-57c5f6f9d8-csx9w",
+              "ready": true,
+              "uid": "d8b42155-0491-4fc1-8bbc-8e396792c4f1"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-57c5f6f9d8-dcxgd",
+              "ready": true,
+              "uid": "7d3638d9-76ef-4473-82c9-a93b1da991e1"
+            },
+            {
+              "containers": [
+                {
+                  "name": "producer",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-producer-6885b876b8-5bb8l",
+              "ready": true,
+              "uid": "cefa30a4-08c6-4ad9-819c-0806410e319a"
+            },
+            {
+              "containers": [
+                {
+                  "name": "order",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-order-saga-588f465c8c-l5lkr",
+              "ready": true,
+              "uid": "79dcf4ec-77f3-4cf2-9385-45c5962125e2"
+            },
+            {
+              "containers": [
+                {
+                  "name": "product",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-694cf9cd5b-8jkx2",
+              "ready": true,
+              "uid": "5075647e-f3bb-4fee-ae3a-ac04aa49937e"
+            },
+            {
+              "containers": [
+                {
+                  "name": "product",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-694cf9cd5b-s2pfh",
+              "ready": true,
+              "uid": "e56246f7-927d-4984-93ff-8d47ec1f1f7e"
+            },
+            {
+              "containers": [
+                {
+                  "name": "reader",
+                  "restartCount": 0
+                }
+              ],
+              "name": "shardshop-product-reader-5ffcb9d758-dxtxt",
+              "ready": true,
+              "uid": "b4515c02-c586-4afa-a258-097242feb252"
+            }
+          ]
+        }
+      ]
+    },
+    "stockPrecheckAbortFinal": null,
+    "outcome": {
+      "outcome": "not-qualified",
+      "reason": "The single readiness gate failed; write matrix was not started",
+      "writeMatrixStarted": false
+    },
+    "collectorQualificationFailedFlag": null
+  },
+  "validation": {
+    "build": {
+      "checks": [
+        {
+          "kind": "surefire",
+          "module": "shardshop-common",
+          "tests": 291,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-idgen",
+          "tests": 158,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-sharding",
+          "tests": 54,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-workload-control",
+          "tests": 64,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-datasets",
+          "tests": 39,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-product-seeder",
+          "tests": 67,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-product-reader",
+          "tests": 84,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-order-producer",
+          "tests": 151,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-product",
+          "tests": 280,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "failsafe",
+          "module": "shardshop-product",
+          "tests": 30,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-order",
+          "tests": 413,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "failsafe",
+          "module": "shardshop-order",
+          "tests": 49,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-ledger",
+          "tests": 62,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-testing",
+          "tests": 380,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      ],
+      "totals": {
+        "surefire": 2043,
+        "failsafe": 79
+      }
+    },
+    "imageScanGates": 7,
+    "liveReleaseCases": 6,
+    "artifactPermissions": [
+      {
+        "module": "shardshop-product",
+        "rootMode": "0o755",
+        "nonrootAccessFailures": []
+      },
+      {
+        "module": "shardshop-order",
+        "rootMode": "0o755",
+        "nonrootAccessFailures": []
+      },
+      {
+        "module": "shardshop-ledger",
+        "rootMode": "0o755",
+        "nonrootAccessFailures": []
+      },
+      {
+        "module": "shardshop-workload/shardshop-product-seeder",
+        "rootMode": "0o755",
+        "nonrootAccessFailures": []
+      },
+      {
+        "module": "shardshop-workload/shardshop-product-reader",
+        "rootMode": "0o755",
+        "nonrootAccessFailures": []
+      },
+      {
+        "module": "shardshop-workload/shardshop-order-producer",
+        "rootMode": "0o755",
+        "nonrootAccessFailures": []
+      }
+    ],
+    "sameSixApplicationImagesAsPreviousAttempt": true,
+    "images": {
+      "images": {
+        "product": "docker.io/library/shardshop-product@sha256:2e32feb12453d67c0dcc93a709ff0290ccd5c96a8ed393f3ddea636d800d95c5",
+        "product-seeder": "docker.io/library/shardshop-product-seeder@sha256:66428e187d1dc1a5e09e2ad6e10d16f2a4f61437e1a29d8aa00ce439235c766e",
+        "product-reader": "docker.io/library/shardshop-product-reader@sha256:435b036b8b965e5daa0bc60f4ddb5852ae93cfbc9684862c9ad5bb2dcbed6098",
+        "order": "docker.io/library/shardshop-order@sha256:ea5fa8eadc36a368e7a56c2ac85a2bb8865dd7b567921a45dba5e5df7e71b32e",
+        "ledger": "docker.io/library/shardshop-ledger@sha256:e5a1b6de3724a0c62c5ca0675f9ae65c1dc0c09594442ce0daed0e509dc06c53",
+        "order-producer": "docker.io/library/shardshop-order-producer@sha256:9e454cc8fa548e29ff12a511eeb8e1db30c65d28bfa661b2e2daa816f0bdead1"
+      },
+      "restartToken": "restart-10c0601a563c9ee2e5a49075"
+    },
+    "sourceVerification": [
+      "microservices/shardshop/shardshop-order/src/main/java/dev/nklip/javacraft/shardshop/order/config/StockWorker.java: OK",
+      "microservices/shardshop/shardshop-order/src/main/java/dev/nklip/javacraft/shardshop/order/config/ProfitWorker.java: OK",
+      "microservices/shardshop/shardshop-order/src/main/java/dev/nklip/javacraft/shardshop/order/config/OrderConfiguration.java: OK",
+      "microservices/shardshop/shardshop-order/src/main/java/dev/nklip/javacraft/shardshop/order/config/OrderWiring.java: OK",
+      "microservices/shardshop/shardshop-order/src/main/java/dev/nklip/javacraft/shardshop/order/config/ResultWiring.java: OK",
+      "microservices/shardshop/shardshop-order/src/main/resources/application.properties: OK"
+    ]
+  },
+  "restoration": {
+    "collector": 0,
+    "lab": 0,
+    "retainedNodesStoppedAndIdentitiesMountsImagesDefaultKubeconfigUnchanged": true,
+    "ownedLabRemoved": true,
+    "abortDiagnosticsStatus": 0
+  },
+  "startedAt": "2026-10-28T10:40:49Z",
+  "finishedAt": "2026-10-28T11:02:44Z",
+  "commands": {
+    "provision": "bash microservices/shardshop/scripts/cluster-create.sh",
+    "release": "bash microservices/shardshop/scripts/up.sh",
+    "collector": "bash /private/tmp/shardshop-parallel-cleanhost-sel1mxoj/capture-capacity.sh --context kind-shardshop-test-cleanhost-zp26fj --kubeconfig /private/tmp/shardshop-cleanhost-run.zP26FJ/config --snapshot /private/tmp/shardshop-cleanhost-run.zP26FJ/invocation/current-invocation-snapshot --cluster shardshop-test-cleanhost-zp26fj --minimum-vnd-stock 768",
+    "cleanup": "bash microservices/shardshop/scripts/cluster-destroy.sh"
+  },
+  "environment": {
+    "JAVA_HOME": "/Users/nikita.lipatov/.sdkman/candidates/java/25.0.5-tem",
+    "PATH_prefix": "$JAVA_HOME/bin:/opt/homebrew/opt/node@24/bin",
+    "KIND_EXPERIMENTAL_PROVIDER": "docker",
+    "SHARDSHOP_TEST_CLUSTER": "shardshop-test-cleanhost-zp26fj",
+    "SHARDSHOP_TEST_KUBECONFIG": "/private/tmp/shardshop-cleanhost-run.zP26FJ/config",
+    "buildUmask": "022"
+  },
+  "priorWriteFailure": "2026-10-28-parallel-workers-kind.json",
+  "nativeEvidence": {
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/nodes.before.json": "9d7d3fbf44dad0770ed838fe15bbc1dbe4343760b8c3d4021de07e2e7a9064f2",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/application-config.before.json": "bc692d8c247ca6e892099808e7fc9cee5284570d514278f719026bc0d0cc7d8c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/pods.before.txt": "ddbaeab7b003cc661e31ad1ca46c7bf18153b5df2bd152b19739193bb59c0ad9",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/rate-1.json": "88bca6487aea688520418cbe34deff74ade954a5b1fe7832994dc025485768f9",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/exit-status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/outcome.json": "763ef842cae860e00c917b1399a3e34ee30112bddc1149b43a51d637e85a69e5",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/host-resources.txt": "112b7e642ce27daf879cf69180e9100a183aa16e64c3f49b48e564a436662c36",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/target-kubeconfig.before.sha256": "0f8d63db6e0466cf5310212d09c796e7f9ec3299ce7029cc627d46d37b43856c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/product-reader.restore-pause-response.json": "e4cf9e814cf6456cfd50fed55cd3e9e6447ee4e0c627279648936ffa207598f3",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/write-reader-resume.json": "a21d7f2080bd415e33dbbc6d65c714f6d675241cdbcdc574c918852f772d7245",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/product-reader.restored.json": "3e710c3f3d14acd8d53e036b74f896fe45717ee88010c4b6f56ce71807105c03",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/snapshot.sha256": "86e1b828121b1f97b583a1647812b054376dd08cf8fcf9af39eceb452fa668ed",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/docker-info.txt": "757ef206f6120da7d311dea621a56ffa886e64dd317b23c5b02af338844895ae",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/order-producer.before.json": "bb9bb3ebfeafb10b09d2af925782c54533419fccc82fd07507901dd5cc0356c1",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-pause.json": "87fbe8a05d6028aaebf48f4f8c19f56a2b507a7307cfce5f54151d9c51d7aa2d",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/restoration-status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/product-seeder.restored.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/product-reader.restore-rate.json": "ccf365a26b9d5338ad58b19517b0b0830640ae38df6c216999d529dd4fd62c06",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/order-producer.restore-pause-response.json": "3588fb569f94fe4760989008a92315e5fc08ab220e320105e7a9124b41dca4fb",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/product-reader.restore-rate-response.json": "bf6173276a5b7f768a17e411ea164ecb7aae7352d8f2043d10e7269b6c00cf1e",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/order-producer.restored.json": "de34b1b737a75389c167c3e9855ae3d382cff0b744b68187d6f4dd86f3330f7a",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-latest.json": "7a16ed773f02c3a6f4e5d18d1b39284ea777323c61efcf9cf771f233714c1e6a",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/default-kubeconfig.before.sha256": "7f92b14ad5e4101c24fb9c7f2b614f979fb3fdb4eb7654f05864944cefaa71cd",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/nodes.after.json": "9d7d3fbf44dad0770ed838fe15bbc1dbe4343760b8c3d4021de07e2e7a9064f2",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/forward-2.log": "8ac40f17044d2ed636f44bd1acc4201b81e9800a5a95797e7ba302c50d405f70",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/product-reader.before.json": "e8efb1be45c7515fb8aeeb15a1cfbdc6c2e5e0e64d9bd2228eb17509c3b13f45",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/forward-1.log": "15b5f157481678185cd4e11cdb71c914cc40652451f353fac8297924265f510a",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/product-seeder.before.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/forward-0.log": "37202db7e097eac738820dc37be18611b51ecde066cd2ed2ba941ecdb1e13572",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/write-reader-rate.json": "6a625ab6705893e80bad30eff7f092dbc0bcc516814ab4a07af512cac8f3b80b",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/order-producer.restore-rate-response.json": "34c79caeec4e3377fc8f34ba1d4ebad660f55870c5f89e4a7654550d8774566f",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/deployments.before.json": "bce979e0ed154495ccfef0f4a713625c6d6fb4715f400c41ea654840d1b599ff",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/order-producer.restore-rate.json": "db9dd0bb7ab3f863332ee60106e20e8daf9bc069e9feb310105226d1443d6491",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/target-kubeconfig.after.sha256": "0f8d63db6e0466cf5310212d09c796e7f9ec3299ce7029cc627d46d37b43856c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/default-kubeconfig.after.sha256": "7f92b14ad5e4101c24fb9c7f2b614f979fb3fdb4eb7654f05864944cefaa71cd",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-sql-749073.389107000/shard-b.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-sql-749073.389107000/shard-a.json": "4a3489a70f43ac1814685ec4ec2bec45943f396c2786f7ef71b352fc57637255",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-sql-749073.389107000/ledger.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-sql-749073.389107000/shard-c.json.primary": "ebff0dfb6f8c93e0caddb2c5d144d7a6915cf2ca1f807e6188b5f94ef54c1c1a",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-sql-749073.389107000/shard-b.json.primary": "3628916e73d583221734f2c253999cce9a44170893ea8df3fb447c417276e958",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-sql-749073.389107000/shard-a.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-sql-749073.389107000/shard-b.json.primary.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-sql-749073.389107000/shard-c.json.primary.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-sql-749073.389107000/shard-c.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-sql-749073.389107000/shard-a.json.primary.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-sql-749073.389107000/shard-a.json.primary": "0f9c1b8f9d2a45bfe1d3bb57fbe00247824792eb41f314124986c2df9edc0fc5",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-sql-749073.389107000/shard-c.json": "2c0c5a3389df7fea40c2eff3dd2e3161d6ae7a8d131d00b268c458ae92baa9b9",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-sql-749073.389107000/ledger.json.primary.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-sql-749073.389107000/ledger.json.primary": "173aac8c184186f42e20e9d6eb000f4bb862c4036bff268a5241aa066a24805c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-sql-749073.389107000/shard-b.json": "75781384bc2e341464d11930035f46a15271eb2e090d543281e8f665a44da1f5",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/drain-sql-749073.389107000/ledger.json": "a7993f07c2f98794b5f683f44b2f9a3a22edb7a8055dffab973f0d04ea9ade74",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-result.json": "4750932634d25baa557c306984efba78e3923dc903c4aa7f4a31b08b86fdc99d",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/order-producer.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/order-saga.log.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/order-saga.log.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/order-producer.json.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/ledger.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/product.log.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/order-producer.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/order-producer.log.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/product-reader.log.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/order-producer.log.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/order-producer.json": "69561a94c6b084392e187dab217163398cfa16e3a68d80dde5262d55f3ac127c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/product-reader.log.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/product.log.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/product-reader.log": "313df17dc119e0d7407002db667e5e38e56ce3c2c5f29bed031659456a5f6474",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/at.txt": "e62935971e5a4ae92b74a5e624662feff508f2a04e2929ba7c8876d0de48fa0e",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/product-reader.json.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/order-saga.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql-collection.stdout.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/ledger.log.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/pause-response.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql-collection.stdout.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/product-reader.json": "317718337763552c581f1d95d215158c329ce64c12b156c604f5ef7aee3b30ad",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/ledger.log.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/pause-response.json.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/product-reader.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/finished-at.txt": "44febd7be8a58a55cfd3180de5c48429c111cd176dedd8d1296a47659f5db0f9",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/order.log.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/status.json": "c143e16191623c5ceaab735305d5f116a38e2994e83bc41182cdbeb32d4594eb",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/pause-response.json": "69561a94c6b084392e187dab217163398cfa16e3a68d80dde5262d55f3ac127c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/order.log.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql-collection.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/product.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/order.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/diagnostics-status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-40/reader-read-end.monotonic": "4d45fc2c95c5dadc941590a42b83cb605917d337989d79b8d0ab862dd4277ff5",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-40/reader-read-start.monotonic": "3d2a494f175ef7fe7e73dfa25369045b68150bfa049945268d9bd6f3aa4af792",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-40/host-swapusage.txt": "cd33c52eb3096ca934b956bd2221d6bf5aa86f235f90096cc329cd52635adc69",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-40/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-40/host-read-start.monotonic": "2c668e76cd693acbba270224bb04739afcdb81279bb1050b2299a31c7ff2b892",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-40/order-producer.json": "0ab0e8a30a430ca1b723a50db50126a3756310e9e6b8e067bb5f8d472443bf2c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-40/at.txt": "d70b133c70ca18b9ab2443193644ef7fc43b8d5273dd32f3bbb0c8f2323a381f",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-40/product-reader.json": "d6d64dfdd12743177c1c962cf600fd7038273eee6a1dd273fb615001bff26591",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-40/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-40/app-identities.json": "99a5e0ebc8307f3149692b5baec1a9135e6b40852888269ae3785d4597f47460",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-40/host-vm-stat.txt": "f8cb6fed9ca58bc3b214a8e495ee044ffb5c72027cd2e1f8d68ee345102f50e9",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-40/host-read-end.monotonic": "579f879503c91f67249a10825a55bb452d3cce187a6df70594648ae696572829",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-40/application-pods.json": "95858fb20747ffda8eb03bcb731c198920fa2df07bf3b970c2af3c7c638c4007",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-40/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-40/reader-read-end.monotonic": "9c057fde9880a024a7c8e9fd404d5df2c9acc44bfb647c98232acbb3667071bb",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-40/reader-read-start.monotonic": "fdfd9bdd801f883941af94a44b1c8af19dc6ad8dc29b368d8ccfc720f94fcbc6",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-40/host-swapusage.txt": "ccdee23865cd06b1abe3b957894e871d3244ddcaf80f306beb28d36fa3ae99f8",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-40/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-40/host-read-start.monotonic": "4d4e66a5dec4a304ce663c1fe4c3b3ec1c3213a7cb20f4ff5a53b77135e47dd9",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-40/order-producer.json": "0ab0e8a30a430ca1b723a50db50126a3756310e9e6b8e067bb5f8d472443bf2c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-40/at.txt": "6833a51b33416c478ce10d68160eb8830bb81f730316ff265916bcabff6f2479",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-40/product-reader.json": "14f0ca81aaedd93b88cbf4c3c469a32c83c3edd1cbc2f5b851639e8843ac37bc",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-40/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-40/app-identities.json": "99a5e0ebc8307f3149692b5baec1a9135e6b40852888269ae3785d4597f47460",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-40/host-vm-stat.txt": "546886b4ade918aab8a33dc98b12c8e93ce0acf8088ee99f1735b0a3dae0a1c3",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-40/host-read-end.monotonic": "3f7601afc80c46ae68651a2c37bc54bbdbd36e0dffa4a24b20684b6d7d68474e",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-40/application-pods.json": "95858fb20747ffda8eb03bcb731c198920fa2df07bf3b970c2af3c7c638c4007",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-40/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-30/reader-read-end.monotonic": "fbabefe768bb442b3ff72bd3e5c5a4e86f2c9350c94fb189c9838834c86656d6",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-30/reader-read-start.monotonic": "0746ae6f2fc4f2d1ae7ed2bad2a60300988eae7884322e68c21340de4a102211",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-30/host-swapusage.txt": "6ae5557f32d8efaa49b01610e22eff3c4f07f066b10a57fdbd4d57e6fb8e39b3",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-30/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-30/host-read-start.monotonic": "bd12074d23d6038448fbb0a8e7fd28ed28286397ac2990cb8959bcf0e54a66f5",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-30/order-producer.json": "0ab0e8a30a430ca1b723a50db50126a3756310e9e6b8e067bb5f8d472443bf2c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-30/at.txt": "68d31da8eabb8569a32f16459eb957d7bf32e576dc720a5590d2ea9df417b845",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-30/product-reader.json": "17872cbdd5e7dc99ad08ee37df0601be36c54fb1ef09f454dc3c5c27100cd7fe",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-30/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-30/app-identities.json": "99a5e0ebc8307f3149692b5baec1a9135e6b40852888269ae3785d4597f47460",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-30/host-vm-stat.txt": "06b059561238e7916c49c58bf915134311d8ade7ccceb2bfa3ac7ad390b588d9",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-30/host-read-end.monotonic": "d03997593978e317a112ddba9def2efac75bd7317ffafb363778d45051dffb70",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-30/application-pods.json": "95858fb20747ffda8eb03bcb731c198920fa2df07bf3b970c2af3c7c638c4007",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-30/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-30/reader-read-end.monotonic": "6e6ce6938a1bebd33b24c0b2bb2e45ac30e33b17d272f457cba42ba5b161ff65",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-30/reader-read-start.monotonic": "5e29d5866dfc39f6ed991c85e5b1b1b4d9966f0bda1fcc4861f49a2fd7c07a7c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-30/host-swapusage.txt": "c3a7d8b70c8bf3889eb747bc70516951e5436ae93d08e6aa6925cbb49e624065",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-30/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-30/host-read-start.monotonic": "5b4fee430a9e2242dbb325750c71ad3b2bcd7b905e05035feb938640f6a24049",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-30/order-producer.json": "0ab0e8a30a430ca1b723a50db50126a3756310e9e6b8e067bb5f8d472443bf2c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-30/at.txt": "9bdce9efd554ddea56c4e3bccd8b1f4ddeb21449cf38656a840a243db480947f",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-30/product-reader.json": "35c0aae2056179ba3febec2d0881a55f31c4a1c6db85366cf4dd440794b791c9",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-30/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-30/app-identities.json": "99a5e0ebc8307f3149692b5baec1a9135e6b40852888269ae3785d4597f47460",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-30/host-vm-stat.txt": "b6ac2866c6c2cd195e8c4d8e45fc79411f31bfce1141ececff2664946c0d6490",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-30/host-read-end.monotonic": "628b30e84c0db2f8a78fa3d36078e42776b31df92e22ae741920dd1c64ff7799",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-30/application-pods.json": "95858fb20747ffda8eb03bcb731c198920fa2df07bf3b970c2af3c7c638c4007",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-30/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-10/reader-read-end.monotonic": "d2fdb4a3edbc1c89a6a16a23f47e3685f6ef79b432754f0d770c6327628c8c2b",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-10/reader-read-start.monotonic": "852d0bbd6436eb18b8baea0c5cf89b957350c5aade537ffd8c5b718c7604c7ff",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-10/host-swapusage.txt": "7cda39edd0e8a4cded606b21d2ae73d4ee0ac9cdbf8af9d63b97ccc1970f22ea",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-10/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-10/host-read-start.monotonic": "9c6644e5b9569320b4573269ed43296d19ed8386639c40f307de24c765f3532e",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-10/order-producer.json": "0ab0e8a30a430ca1b723a50db50126a3756310e9e6b8e067bb5f8d472443bf2c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-10/at.txt": "090163a2f2dc473267cb28c931199e3496974385505a02319135fa3fcfd58579",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-10/product-reader.json": "681e2d7a762ee26d1218c87a524781bef9262fa25d531db48c6d88bf467b9503",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-10/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-10/app-identities.json": "99a5e0ebc8307f3149692b5baec1a9135e6b40852888269ae3785d4597f47460",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-10/host-vm-stat.txt": "32b2525a52b09139cd4b3071f2704bfaef2a40d0794f4c8cf5b7ed08d2c4d967",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-10/host-read-end.monotonic": "d4d696d0fd136ea22877bde01c1104f7c307ab37e26f526604c5f46ee347b5c2",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-10/application-pods.json": "95858fb20747ffda8eb03bcb731c198920fa2df07bf3b970c2af3c7c638c4007",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-10/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-20/reader-read-end.monotonic": "581af23ab01212f4fa4cf77b392e0c12b2f5eb41b7c66384fa603aff87e737cc",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-20/reader-read-start.monotonic": "1716069723a4bab39ea46b15d8df35150a17e85583bce9077d543d056cd3ca79",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-20/host-swapusage.txt": "1e4f1b30614dede4e735fc8e68ee814427298f65f45b657dac9cc59d7afc976c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-20/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-20/host-read-start.monotonic": "ca248dd2b3cd22a114003096eaf816c1b0871f28d14625ee10ed0d61cd38554d",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-20/order-producer.json": "0ab0e8a30a430ca1b723a50db50126a3756310e9e6b8e067bb5f8d472443bf2c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-20/at.txt": "f9531d1904c202a315c048d2e2a369e6fd67fc8a339c94cc67f99d08a05bf748",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-20/product-reader.json": "b24fa3aedc78f1b53d14894530a759d5d1d8a5d96001d081f6f4c88bfbc07673",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-20/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-20/app-identities.json": "99a5e0ebc8307f3149692b5baec1a9135e6b40852888269ae3785d4597f47460",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-20/host-vm-stat.txt": "ac62b9a36ecf9eedcaef2e6b7228ea4add3ec4610fd9e7ae57145058dc20586f",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-20/host-read-end.monotonic": "35808f412d820edd66f1f9e73ffee130cbc0693f6c1fe91e38ab6f7d5f0cb10e",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-20/application-pods.json": "95858fb20747ffda8eb03bcb731c198920fa2df07bf3b970c2af3c7c638c4007",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-20/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-20/reader-read-end.monotonic": "04786dc13ff39bd5f145a594a724de17eda7cf7c11f60a09c4edb60b5fa6b97e",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-20/reader-read-start.monotonic": "8e22967f8f27e60fb8da7b0c7d98865f179d879f1ddfaa07d77a5382f7a8ad3b",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-20/host-swapusage.txt": "4fb13a3bf58167e17358a43438279cdfc719a8e698eab7cd60285ccc7c496580",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-20/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-20/host-read-start.monotonic": "067dc63b5ca72faa67da78cf470dcbe5b92d7b1043e24243f2e49774696b78cd",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-20/order-producer.json": "0ab0e8a30a430ca1b723a50db50126a3756310e9e6b8e067bb5f8d472443bf2c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-20/at.txt": "75923f54ce6141c9877e94cd5e467efdf010a3cfd0c8b796400a936926f8c0d4",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-20/product-reader.json": "51e4d76a0931664740e9618aec891f7019218ec2b7b1eeba0e9bb3bbac8c5963",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-20/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-20/app-identities.json": "99a5e0ebc8307f3149692b5baec1a9135e6b40852888269ae3785d4597f47460",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-20/host-vm-stat.txt": "fe973dc894d7d919a7cd651b347a1ba31bc22a6fce81c6abf60a7929ac666a16",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-20/host-read-end.monotonic": "fbd4078d2f243abe88d7f16857240af2992fd2cdfad0b44f11293f11d191fe9a",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-20/application-pods.json": "95858fb20747ffda8eb03bcb731c198920fa2df07bf3b970c2af3c7c638c4007",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-20/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-0/reader-read-end.monotonic": "8f36a6ef50662b03f3606099ab878ae205c2c49dcb44b252fbf7d911bbf0501a",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-0/reader-read-start.monotonic": "5832006f16244e834778e3a38a4c546d023868c20785051e5c4a9200f56b6da4",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-0/host-swapusage.txt": "78079182e164efb00262d18f36fc2d9b2960739690843212c71dfda2d9232d70",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-0/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-0/host-read-start.monotonic": "4e097fae23a03e0d1dedeac64e811258959af1981dbaf022e46d674ee16d7cfd",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-0/order-producer.json": "b9ea43efecabdc1b31748bfebb081c344d95b19d09669c60db02e6776bf5ccb2",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-0/at.txt": "2e7336b34804825be4dc16a05913d32e6a230d3109363a2dff1626cbd57a4428",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-0/product-reader.json": "d30bcaf2180cf2eb0bb52905c593dc30071bda4f2a9793fa4cc63064216454e0",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-0/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-0/app-identities.json": "99a5e0ebc8307f3149692b5baec1a9135e6b40852888269ae3785d4597f47460",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-0/host-vm-stat.txt": "83f13c228921665ba1b0e55ce6b79a4d14becd062c9b17788f6c2526088a6f10",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-0/host-read-end.monotonic": "dd6a8cf185e727c497b85ac351b6496f63406f72d3f98f0e4a8734bb03dc5155",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-0/application-pods.json": "95858fb20747ffda8eb03bcb731c198920fa2df07bf3b970c2af3c7c638c4007",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-0/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-0/reader-read-end.monotonic": "bc3df7977f9e6488f01929472760e9347e96bcf21ee768f6057f5fdbe6275418",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-0/reader-read-start.monotonic": "bc9a5fe74d3168063309dd325f466f9a518ceae550f71c51fd523427ce93e503",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-0/host-swapusage.txt": "3c845ffff70ddf32ad56cac11de33e3703908f3414b3188f877022f852e39d3e",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-0/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-0/host-read-start.monotonic": "ba85185fd7d641b59dc6bf37f598cd483d52f1d27693242bd9445ec5e06f7161",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-0/order-producer.json": "0ab0e8a30a430ca1b723a50db50126a3756310e9e6b8e067bb5f8d472443bf2c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-0/at.txt": "02b90289ec335bd84cb2fd38281e4ccb2148aa8c25e00131a7fe5f1d607e515d",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-0/product-reader.json": "48b8c405f34a6d96f7408d57c99a6f796723252b223f72a1f4d01e6e1f4bdf6c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-0/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-0/app-identities.json": "99a5e0ebc8307f3149692b5baec1a9135e6b40852888269ae3785d4597f47460",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-0/host-vm-stat.txt": "b0065e8d5461c9807b1d29f9f800a0b7465f6c4bc5820f87ec386a9b6a883efe",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-0/host-read-end.monotonic": "59bd07ba9a0e4dea4e8c55e5494d5bea4a8da01ddb8827ceebf3613efd4f4a3d",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-0/application-pods.json": "95858fb20747ffda8eb03bcb731c198920fa2df07bf3b970c2af3c7c638c4007",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-0/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-10/reader-read-end.monotonic": "6b46461873e5bea540521aa4868570a182ef68e4ce89e119aa1e2b46376a6d26",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-10/reader-read-start.monotonic": "91be8126ba231fc8da443423664ccc552d2b661ccb89bddc68075f920da3fcbf",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-10/host-swapusage.txt": "dcabe4dbc43c50cf048d32bf0833181249ed03184f22b711282c69e2335c7119",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-10/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-10/host-read-start.monotonic": "237f35298473b84de28ea5dd4dbd87ba3de010dab5260b2c71c2a6d333115ae8",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-10/order-producer.json": "0ab0e8a30a430ca1b723a50db50126a3756310e9e6b8e067bb5f8d472443bf2c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-10/at.txt": "db46ff180d2657cc9053d06c70d9d3a642376d619c70443445d60cc836161c08",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-10/product-reader.json": "3726af82fc1caace3a7bcacdd969d9287d5f6b42d96e75311bb15bf16aa807cb",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-10/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-10/app-identities.json": "99a5e0ebc8307f3149692b5baec1a9135e6b40852888269ae3785d4597f47460",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-10/host-vm-stat.txt": "41bae721b5f163ccc1a68efc85d34fd55a644a74308e11f351d0daeaa5d48f8a",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-10/host-read-end.monotonic": "9800d2c79ef7b781f5e386d23b74acc1ca35100a6137e99620ac2b4ee88e4e54",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-10/application-pods.json": "95858fb20747ffda8eb03bcb731c198920fa2df07bf3b970c2af3c7c638c4007",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-10/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-50/reader-read-end.monotonic": "0dfce16891a971b502e84c78895c8a29d792743ec65bdfb4a64f30c18950f771",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-50/reader-read-start.monotonic": "31473a92119d5102cf408450caa054e08d68efe4c2a1e6ef98864a4708f0e3b4",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-50/host-swapusage.txt": "4ca461d371b527998557d296f815ee06ea3c5d45fad038783614952e6e6a698e",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-50/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-50/host-read-start.monotonic": "6d0187bedcd20ae0796db0aca80e12a7bb85d7b723b7d787365969b6161569a7",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-50/order-producer.json": "0ab0e8a30a430ca1b723a50db50126a3756310e9e6b8e067bb5f8d472443bf2c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-50/at.txt": "7af12d4325d9ac437395259abcbd2488543207d9c5dff075f712dd6b1ac2f575",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-50/product-reader.json": "0e5a2e27dedd126ece00b5c7f396a3bdbc542b2cd6d2f5efdcd56958c9760134",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-50/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-50/app-identities.json": "99a5e0ebc8307f3149692b5baec1a9135e6b40852888269ae3785d4597f47460",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-50/host-vm-stat.txt": "91a605516526c908e556b327f90154e3f4792002714d89f9378d7102331ac974",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-50/host-read-end.monotonic": "092b9186e27950d1687e0ec9d4d4d49b0ae14202ed70ab1feb64437f0c934015",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-50/application-pods.json": "95858fb20747ffda8eb03bcb731c198920fa2df07bf3b970c2af3c7c638c4007",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-50/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-60/reader-read-end.monotonic": "8b08495d481416a73815c5c7673ec36d6d98c60ada2b5664d6600741f6066ce5",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-60/reader-read-start.monotonic": "aa27cb116e13d656caa0e7a637797633185b2365fc6717b917762c5db4d428e8",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-60/host-swapusage.txt": "3c845ffff70ddf32ad56cac11de33e3703908f3414b3188f877022f852e39d3e",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-60/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-60/host-read-start.monotonic": "eb0776c9df4c07ff9af3b73f8849a1620072fd8beced4e44c5f0b23c143516ce",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-60/order-producer.json": "0ab0e8a30a430ca1b723a50db50126a3756310e9e6b8e067bb5f8d472443bf2c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-60/at.txt": "1b87160e33538f9f27e0091d12e9d34ae2d62780b77bc51f98593b2306c40a24",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-60/product-reader.json": "1b75b2d8fa4ac52e376f6e5f966625eeeaedbdb314e2677ce621b626473bde31",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-60/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-60/app-identities.json": "99a5e0ebc8307f3149692b5baec1a9135e6b40852888269ae3785d4597f47460",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-60/host-vm-stat.txt": "9a083d2d5d06fe79b55488c744ccb057bf7494837928a144e9a178f713e38f78",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-60/host-read-end.monotonic": "3bc450608776408d4667831a4a9b52714d36cfa7da2193ab366815fc3a01cc9d",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-60/application-pods.json": "95858fb20747ffda8eb03bcb731c198920fa2df07bf3b970c2af3c7c638c4007",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/observe-60/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-60/reader-read-end.monotonic": "19721e9da953235bf3e7ae4730b8f4f267ad19fa8cacf16c7c53850f34d3d342",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-60/reader-read-start.monotonic": "c66ae5e776afa6e8602632fb3906ae087b74a13a5c363428c2392b57265f23c6",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-60/host-swapusage.txt": "061b5063edcabf8a0854e53eba250a86cc47ab4c8f3d2695f86512eb7ea89833",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-60/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-60/host-read-start.monotonic": "e9f9c3fd98fd1c5662aa8a5765ebb5e458584a7097c0292559df267db581d250",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-60/order-producer.json": "0ab0e8a30a430ca1b723a50db50126a3756310e9e6b8e067bb5f8d472443bf2c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-60/at.txt": "b613340c3bf1187eb6f0fd32f283740771a4e4e10db4fa5d03095f4ad1faeb12",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-60/product-reader.json": "6e5e482572c30db7bc81836ffab9bf8d335482eed9012757e1999b423d398118",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-60/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-60/app-identities.json": "99a5e0ebc8307f3149692b5baec1a9135e6b40852888269ae3785d4597f47460",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-60/host-vm-stat.txt": "f153fa5761ade0986bddf69165c3ee4d241903a3787257246bbd6c6d2f9fa5e2",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-60/host-read-end.monotonic": "a7baf2ceb24a1f413eda1ec23c0ca0d9ad6d5c52fcc8e2b2286cd234425e4840",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-60/application-pods.json": "95858fb20747ffda8eb03bcb731c198920fa2df07bf3b970c2af3c7c638c4007",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-60/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-50/reader-read-end.monotonic": "6c0ec34b934f7e6466d952dc02db8627504b80ed0c508d5c7ee4cba9b96ef0e2",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-50/reader-read-start.monotonic": "39637178c5c8e9864fe4ca2109c2a0eba1481259d96c8a5015b600e527854b7f",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-50/host-swapusage.txt": "890352f91af8ac00fa88eeb9a1e40657e0dd7573a29bcae4d19c2abd99fa4622",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-50/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-50/host-read-start.monotonic": "4f7c151c4074487683dcb863256166df651c0fb604211b92f19e30edf5be1369",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-50/order-producer.json": "0ab0e8a30a430ca1b723a50db50126a3756310e9e6b8e067bb5f8d472443bf2c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-50/at.txt": "db93915f314ba7517b7afaf062ab9d609a543789e1086e080f50aff2a76166bb",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-50/product-reader.json": "9469d3e5f35e6f5a52782e17cf21d0c83fea6060d71be0b756d51106c3ed4c25",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-50/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-50/app-identities.json": "99a5e0ebc8307f3149692b5baec1a9135e6b40852888269ae3785d4597f47460",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-50/host-vm-stat.txt": "b9d5c0c18687b71fd2a64f2aa49d3151afcdf5eef89a8df0b0ae8f143aa274a2",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-50/host-read-end.monotonic": "0281c74e8a75cd124644605e518f661478efc40db10e2ae35a1a6c37e2f9b25f",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-50/application-pods.json": "95858fb20747ffda8eb03bcb731c198920fa2df07bf3b970c2af3c7c638c4007",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/gate-50/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql/shard-b.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql/shard-a.json": "58a3466faccadbd47608f2f6b90ddbaa12e00c48e8a177345c7b6c83a6575809",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql/ledger.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql/shard-c.json.primary": "ebff0dfb6f8c93e0caddb2c5d144d7a6915cf2ca1f807e6188b5f94ef54c1c1a",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql/shard-b.json.primary": "3628916e73d583221734f2c253999cce9a44170893ea8df3fb447c417276e958",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql/shard-a.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql/shard-b.json.primary.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql/shard-c.json.primary.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql/shard-c.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql/shard-a.json.primary.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql/shard-a.json.primary": "0f9c1b8f9d2a45bfe1d3bb57fbe00247824792eb41f314124986c2df9edc0fc5",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql/shard-c.json": "7d2cfd7331bb24c8d8142809617c9f8593893d81d00ec16bd4c983af3c73a0e4",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql/ledger.json.primary.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql/ledger.json.primary": "173aac8c184186f42e20e9d6eb000f4bb862c4036bff268a5241aa066a24805c",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql/shard-b.json": "cc07254e748ccc935d91efa174c35163727749a08485f797b124df8ce6a64f17",
+    "/private/tmp/shardshop-parallel-cleanhost-sel1mxoj/evidence/readiness/abort-final/sql/ledger.json": "b08a7ce1505f52c8cb6d8d1ccf27f4d9930e66ebe054efdae0174055a4735a65",
+    "/private/tmp/shardshop-cleanhost-run.zP26FJ/invocation/create.log": "fe36e33c28b576d416e051a5fae61bf2c0ccb89b1ba2d61057656d196308ae4c",
+    "/private/tmp/shardshop-cleanhost-run.zP26FJ/invocation/up.log": "511ba60260d938dd2ca1dd2d380e345898c9890cfcc41d30b7ddad98243163be",
+    "/private/tmp/shardshop-cleanhost-run.zP26FJ/invocation/build-checks.json": "348d8dfb8a5ebecb6271f77aa8a11fff78fe06e9f74f1cfffc116560ceca92fe",
+    "/private/tmp/shardshop-cleanhost-run.zP26FJ/invocation/artifact-permissions.json": "b6213fa20819e35a65345defa52400a4c5540bd55c3c840e8825d34bc7b1332b",
+    "/private/tmp/shardshop-cleanhost-run.zP26FJ/invocation/source.before.sha256": "1ca441e084eb55ebe56989ad7e981ad6c9ed6a38e5bd6a673da474e595bade12",
+    "/private/tmp/shardshop-cleanhost-run.zP26FJ/invocation/source-verification.txt": "b52b764459ba2a297c32fed7edf4b3af4f07dd2e1f193c6c47c478fb9bfeef27",
+    "/private/tmp/shardshop-cleanhost-run.zP26FJ/invocation/collector-source.sha256": "491ea6e66b8c14ca827bb09f5e93cdd49bec1bf28dbbe9449af70958a77ce56a",
+    "/private/tmp/shardshop-cleanhost-run.zP26FJ/invocation/image-comparison.json": "764009dd22bc7b6a3e6bab187b3204358f3ae03b95bbbd632f0b7c497d177482",
+    "/private/tmp/shardshop-cleanhost-run.zP26FJ/invocation/destroy.log": "68f7ea20c3786c5f977d88adbcaf63a0a9243a3b36dfe82c39b96fccff2e3087",
+    "/private/tmp/shardshop-cleanhost-run.zP26FJ/invocation/restoration-status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/private/tmp/shardshop-cleanhost-run.zP26FJ/invocation/exit-status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/private/tmp/shardshop-cleanhost-run.zP26FJ/invocation/retained.before.json": "2135ef47b12fd9aa961a42df1b927bdf791e6a2b9c86fc670abeaa44c2e510db",
+    "/private/tmp/shardshop-cleanhost-run.zP26FJ/invocation/retained.after.json": "2135ef47b12fd9aa961a42df1b927bdf791e6a2b9c86fc670abeaa44c2e510db",
+    "/private/tmp/shardshop-cleanhost-run.zP26FJ/invocation/default-kubeconfig.before.sha256": "7f92b14ad5e4101c24fb9c7f2b614f979fb3fdb4eb7654f05864944cefaa71cd",
+    "/private/tmp/shardshop-cleanhost-run.zP26FJ/invocation/default-kubeconfig.after.sha256": "7f92b14ad5e4101c24fb9c7f2b614f979fb3fdb4eb7654f05864944cefaa71cd",
+    "/private/tmp/shardshop-cleanhost-run.zP26FJ/host-preflight.json": "94bb213580240b8811779bce3d5d10cda3d28c3d358409baedea7ae6a1329735"
+  }
+}

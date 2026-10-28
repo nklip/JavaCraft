@@ -1,0 +1,1862 @@
+{
+  "date": "2026-10-28",
+  "purpose": "Combined StockWorker and ProfitWorker bounded-concurrency kind measurement",
+  "result": "Failed at target10; 20 and30 not attempted after safety stop",
+  "workerConcurrency": {
+    "stock": 3,
+    "profit": 3,
+    "basis": "Qualified source hashes and packaged defaults; saved deployed configuration has no worker-concurrency override."
+  },
+  "protocol": {
+    "targets": [
+      10,
+      20,
+      30
+    ],
+    "readerTarget": 200,
+    "warmupSeconds": 20,
+    "predeterminedObservationSeconds": {
+      "10": 120,
+      "20": 90,
+      "30": 90
+    },
+    "minimumPostWarmupWrites": 1024,
+    "writeP95LimitMillis": 100,
+    "minimumDeliveryFraction": 0.95,
+    "stop": "Producer backpressure/full100-order outstanding bound"
+  },
+  "runtimeLimits": {
+    "orderHttpReplicas": 2,
+    "sagaReplicas": 1,
+    "submissionConcurrency": 4,
+    "observerConcurrency": 2,
+    "maxOutstandingOrders": 100,
+    "poolConnectionsPerShardPerJvm": 4
+  },
+  "qualification": {
+    "evidenceDirectory": "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence",
+    "overallQualification": "Failed; short diagnostic only. No sustainable capacity or causal worker comparison established.",
+    "phases": [
+      {
+        "target": 10,
+        "measurementWindow": null,
+        "fixedObservationCaptured": false,
+        "sampleDirectories": [
+          "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0",
+          "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10",
+          "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20",
+          "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30",
+          "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40",
+          "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-50"
+        ],
+        "observationSeconds": 50.04087000002619,
+        "sampleTimes": [
+          {
+            "sample": "sample-0",
+            "utc": "2026-10-28T09:40:36.653986930Z",
+            "producerReadStartMonotonic": 744275.52706,
+            "producerReadEndMonotonic": 744275.604361
+          },
+          {
+            "sample": "sample-10",
+            "utc": "2026-10-28T09:40:46.794837951Z",
+            "producerReadStartMonotonic": 744285.665923,
+            "producerReadEndMonotonic": 744286.07983
+          },
+          {
+            "sample": "sample-20",
+            "utc": "2026-10-28T09:40:56.778718948Z",
+            "producerReadStartMonotonic": 744295.652625,
+            "producerReadEndMonotonic": 744296.072913
+          },
+          {
+            "sample": "sample-30",
+            "utc": "2026-10-28T09:41:06.791728019Z",
+            "producerReadStartMonotonic": 744305.663532,
+            "producerReadEndMonotonic": 744306.924241
+          },
+          {
+            "sample": "sample-40",
+            "utc": "2026-10-28T09:41:16.820826053Z",
+            "producerReadStartMonotonic": 744315.781979,
+            "producerReadEndMonotonic": 744317.268188
+          },
+          {
+            "sample": "sample-50",
+            "utc": "2026-10-28T09:41:26.779639005Z",
+            "producerReadStartMonotonic": 744325.645231,
+            "producerReadEndMonotonic": 744326.228558
+          }
+        ],
+        "deltas": {
+          "accepted": 212,
+          "confirmed": 153,
+          "cancelled": 0,
+          "recovered": 0,
+          "starts": 212,
+          "errors": 0,
+          "terminal": 153
+        },
+        "includingWarmupDeltas": {
+          "accepted": 360,
+          "confirmed": 261,
+          "cancelled": 0,
+          "recovered": 0,
+          "starts": 360,
+          "errors": 0
+        },
+        "ratesPerSecond": {
+          "accepted": 4.236537054609343,
+          "confirmed": 3.0575007988454224,
+          "cancelled": 0.0,
+          "recovered": 0.0,
+          "starts": 4.236537054609343,
+          "errors": 0.0,
+          "terminal": 3.0575007988454224
+        },
+        "finalWriteP95Millis": 2075.536,
+        "finalSagaP95Millis": 28470.758,
+        "sampledBackpressure": true,
+        "sampledFailedState": false,
+        "producerBacklog": {
+          "min": 40,
+          "max": 99,
+          "final": 99,
+          "presentSamples": 6,
+          "expectedSamples": 6
+        },
+        "databaseBacklogs": {
+          "pending": {
+            "min": 50,
+            "max": 94,
+            "final": null,
+            "presentSamples": 5,
+            "expectedSamples": 6
+          },
+          "profitUnapplied": {
+            "min": 0,
+            "max": 31,
+            "final": null,
+            "presentSamples": 5,
+            "expectedSamples": 6
+          },
+          "profitBlocked": {
+            "min": 0,
+            "max": 0,
+            "final": null,
+            "presentSamples": 5,
+            "expectedSamples": 6
+          },
+          "commandOutboxUnpublished": {
+            "min": 24,
+            "max": 88,
+            "final": null,
+            "presentSamples": 5,
+            "expectedSamples": 6
+          },
+          "resultOutboxUnpublished": {
+            "min": 0,
+            "max": 11,
+            "final": null,
+            "presentSamples": 5,
+            "expectedSamples": 6
+          }
+        },
+        "stockInitial": {
+          "USD": {
+            "currency": "USD",
+            "products": 50,
+            "initial_units": 50000,
+            "units": 49502,
+            "empty_products": 0,
+            "minimum_units": 984
+          },
+          "EUR": {
+            "currency": "EUR",
+            "products": 50,
+            "initial_units": 50000,
+            "units": 49582,
+            "empty_products": 0,
+            "minimum_units": 984
+          },
+          "GBP": {
+            "currency": "GBP",
+            "products": 50,
+            "initial_units": 50000,
+            "units": 49944,
+            "empty_products": 0,
+            "minimum_units": 992
+          },
+          "CNY": {
+            "currency": "CNY",
+            "products": 32,
+            "initial_units": 32000,
+            "units": 31682,
+            "empty_products": 0,
+            "minimum_units": 986
+          },
+          "JPY": {
+            "currency": "JPY",
+            "products": 14,
+            "initial_units": 14000,
+            "units": 13954,
+            "empty_products": 0,
+            "minimum_units": 992
+          },
+          "KRW": {
+            "currency": "KRW",
+            "products": 4,
+            "initial_units": 4000,
+            "units": 3936,
+            "empty_products": 0,
+            "minimum_units": 983
+          },
+          "VND": {
+            "currency": "VND",
+            "products": 1,
+            "initial_units": 1000,
+            "units": 982,
+            "empty_products": 0,
+            "minimum_units": 982
+          }
+        },
+        "stockFinal": {},
+        "stockScope": "First and last sampled post-warmup stock; phase-before-warmup stock unavailable unless separately captured.",
+        "readerCounterDeltas": {
+          "starts": null,
+          "requests": null,
+          "errors": null
+        },
+        "readerCounterRatesPerSecond": {
+          "starts": null,
+          "requests": null,
+          "errors": null
+        },
+        "readerIntervalReports": [],
+        "readerContainedIntervals": {
+          "count": 0,
+          "seconds": 0,
+          "outcomes": {},
+          "actualRate": null
+        },
+        "drainSql": null,
+        "numericGatesOnly": {
+          "durationMet": false,
+          "postWarmupSampleGateMet": false,
+          "delivery95PercentMet": false,
+          "writeP95Below100Millis": false
+        }
+      }
+    ],
+    "limitations": [
+      "Producer p95 is the final rolling 1024 new-write window, not an interval percentile.",
+      "Saga p95 and per-pod endpoint p95 may contain earlier samples; endpoint p95s cannot be added.",
+      "Rates use producer baseline-receipt to final-request-start monotonic duration; reader counters are sampled slightly later.",
+      "Missing evidence remains null. Sampled backpressure absence does not establish continuous absence.",
+      "Confirmed/cancelled deltas include completions of earlier pending writes; they need not equal accepted writes. Nonzero recovered deltas require manual replay review.",
+      "Reader outcomes come from interval logs, not starts/request counters. Fully contained reports omit boundary intervals.",
+      "SQL totals require all three shards. Drain evidence is associated by monotonic directory timestamp."
+    ],
+    "preflightStock": {
+      "requiredMinimumPerProduct": {
+        "USD": 423,
+        "EUR": 378,
+        "GBP": 63,
+        "CNY": 441,
+        "KRW": 594,
+        "JPY": 171,
+        "VND": 768
+      },
+      "observedMinimumPerProduct": {
+        "CNY": 991,
+        "EUR": 992,
+        "GBP": 994,
+        "JPY": 994,
+        "KRW": 994,
+        "USD": 991,
+        "VND": 995
+      },
+      "requirementsMet": true
+    },
+    "beforeMatrixStock": {
+      "source": "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/stock-before",
+      "shardsRead": 3,
+      "shardsExpected": 3,
+      "pending": 0,
+      "profitUnapplied": 0,
+      "profitBlocked": 0,
+      "commandOutboxUnpublished": 0,
+      "resultOutboxUnpublished": 0,
+      "stockByCurrency": {
+        "USD": {
+          "currency": "USD",
+          "products": 50,
+          "initial_units": 50000,
+          "units": 49829,
+          "empty_products": 0,
+          "minimum_units": 991
+        },
+        "EUR": {
+          "currency": "EUR",
+          "products": 50,
+          "initial_units": 50000,
+          "units": 49866,
+          "empty_products": 0,
+          "minimum_units": 992
+        },
+        "GBP": {
+          "currency": "GBP",
+          "products": 50,
+          "initial_units": 50000,
+          "units": 49976,
+          "empty_products": 0,
+          "minimum_units": 994
+        },
+        "CNY": {
+          "currency": "CNY",
+          "products": 32,
+          "initial_units": 32000,
+          "units": 31898,
+          "empty_products": 0,
+          "minimum_units": 991
+        },
+        "JPY": {
+          "currency": "JPY",
+          "products": 14,
+          "initial_units": 14000,
+          "units": 13984,
+          "empty_products": 0,
+          "minimum_units": 994
+        },
+        "KRW": {
+          "currency": "KRW",
+          "products": 4,
+          "initial_units": 4000,
+          "units": 3981,
+          "empty_products": 0,
+          "minimum_units": 994
+        },
+        "VND": {
+          "currency": "VND",
+          "products": 1,
+          "initial_units": 1000,
+          "units": 995,
+          "empty_products": 0,
+          "minimum_units": 995
+        }
+      }
+    },
+    "collectorQualificationFailedFlag": null,
+    "lastRecordedPreMeasurementDrainProducer": {
+      "workload": "order-producer",
+      "unit": "new order starts/s",
+      "state": "PAUSED",
+      "targetRate": 0.5,
+      "paused": true,
+      "effectiveRate": 0,
+      "defaultRate": 0.5,
+      "maximumRate": 30,
+      "rateStep": 0.1,
+      "achievedRate": 0.4,
+      "starts": 83,
+      "inFlight": 0,
+      "requests": 3907,
+      "errors": 5,
+      "traffic": [
+        {
+          "category": "startup",
+          "requests": 3356,
+          "retries": 0,
+          "errors": 4
+        },
+        {
+          "category": "allocation",
+          "requests": 83,
+          "retries": 0,
+          "errors": 0
+        },
+        {
+          "category": "submission",
+          "requests": 84,
+          "retries": 1,
+          "errors": 1
+        },
+        {
+          "category": "polling",
+          "requests": 384,
+          "retries": 0,
+          "errors": 0
+        }
+      ],
+      "limit": null,
+      "run": null,
+      "producer": {
+        "submissionConcurrency": 4,
+        "observerConcurrency": 2,
+        "maxNonTerminalOrders": 100,
+        "nonTerminalBacklog": 0,
+        "backpressured": false,
+        "recoveredOrders": 0,
+        "confirmedOrders": 83,
+        "cancelledOrders": 0,
+        "writeLatency": {
+          "samples": 83,
+          "meanMillis": 233.384,
+          "p95Millis": 423.676
+        },
+        "sagaLatency": {
+          "samples": 83,
+          "meanMillis": 1529.973,
+          "p95Millis": 3237.835
+        }
+      },
+      "revision": 1
+    },
+    "postAbortDrain": "Not measured: safety abort restored controls and removed the disposable lab.",
+    "lastCompleteReaderWindow": {
+      "samples": [
+        0,
+        40
+      ],
+      "approximatelyAlignedSeconds": 40.177617999957874,
+      "requestDelta": 4452,
+      "requestsPerSecond": 110.80796278178234,
+      "newErrors": 0,
+      "configuredTarget": 200,
+      "limitation": "Reader counter samples are taken shortly after producer timestamps. No interval outcome logs were collected after the safety abort."
+    },
+    "lastCompleteStock": {
+      "sample": 40,
+      "currencies": {
+        "USD": {
+          "currency": "USD",
+          "products": 50,
+          "initial_units": 50000,
+          "units": 49140,
+          "empty_products": 0,
+          "minimum_units": 976
+        },
+        "EUR": {
+          "currency": "EUR",
+          "products": 50,
+          "initial_units": 50000,
+          "units": 49239,
+          "empty_products": 0,
+          "minimum_units": 978
+        },
+        "GBP": {
+          "currency": "GBP",
+          "products": 50,
+          "initial_units": 50000,
+          "units": 49898,
+          "empty_products": 0,
+          "minimum_units": 992
+        },
+        "CNY": {
+          "currency": "CNY",
+          "products": 32,
+          "initial_units": 32000,
+          "units": 31437,
+          "empty_products": 0,
+          "minimum_units": 978
+        },
+        "JPY": {
+          "currency": "JPY",
+          "products": 14,
+          "initial_units": 14000,
+          "units": 13905,
+          "empty_products": 0,
+          "minimum_units": 989
+        },
+        "KRW": {
+          "currency": "KRW",
+          "products": 4,
+          "initial_units": 4000,
+          "units": 3902,
+          "empty_products": 0,
+          "minimum_units": 971
+        },
+        "VND": {
+          "currency": "VND",
+          "products": 1,
+          "initial_units": 1000,
+          "units": 968,
+          "empty_products": 0,
+          "minimum_units": 968
+        }
+      },
+      "notFinalAbortSample": true
+    }
+  },
+  "resources": {
+    "resourceSamples": [
+      0,
+      10,
+      20,
+      30,
+      40
+    ],
+    "resourceObservationSeconds": 42.365738,
+    "hostPhysicalGiB": 16,
+    "dockerCPUs": 12,
+    "dockerMemoryGiB": 12.65,
+    "swapInDeltaGiB": 12.156570434570312,
+    "swapOutDeltaGiB": 12.24664306640625,
+    "poolAwaitingSnapshots": 50,
+    "poolAwaitingMaximum": 0.0,
+    "interpretation": "Strong evidence of contemporaneous host paging pressure. A pool-wait bottleneck and causality for the failure are not established; sparse samples may miss short waits.",
+    "rawSummary": [
+      {
+        "sample": 0,
+        "at": "2026-10-28T09:40:37.735359907Z",
+        "dockerCPUPercentSum": 1233.8400000000001,
+        "docker": [
+          {
+            "BlockIO": "279MB / 4.8GB",
+            "CPUPerc": "248.46%",
+            "Container": "shardshop-test-parallel-x9th3pi1-worker3",
+            "ID": "9fa002aa46a9",
+            "MemPerc": "9.60%",
+            "MemUsage": "1.214GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-worker3",
+            "NetIO": "544MB / 296MB",
+            "PIDs": "369"
+          },
+          {
+            "BlockIO": "267MB / 3.77GB",
+            "CPUPerc": "224.97%",
+            "Container": "shardshop-test-parallel-x9th3pi1-control-plane",
+            "ID": "5d0168be09bd",
+            "MemPerc": "11.54%",
+            "MemUsage": "1.46GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-control-plane",
+            "NetIO": "251MB / 127MB",
+            "PIDs": "308"
+          },
+          {
+            "BlockIO": "219MB / 4.64GB",
+            "CPUPerc": "335.79%",
+            "Container": "shardshop-test-parallel-x9th3pi1-worker",
+            "ID": "28ee12f03639",
+            "MemPerc": "12.96%",
+            "MemUsage": "1.639GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-worker",
+            "NetIO": "658MB / 305MB",
+            "PIDs": "457"
+          },
+          {
+            "BlockIO": "285MB / 4.97GB",
+            "CPUPerc": "424.62%",
+            "Container": "shardshop-test-parallel-x9th3pi1-worker2",
+            "ID": "6b4349fe0ce3",
+            "MemPerc": "13.76%",
+            "MemUsage": "1.74GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-worker2",
+            "NetIO": "699MB / 329MB",
+            "PIDs": "511"
+          }
+        ],
+        "swapUsedMiB": 26835.88,
+        "vm": {
+          "Pages free": 1529,
+          "Pages active": 148957,
+          "Pages inactive": 144692,
+          "Pages speculative": 3131,
+          "Pages throttled": 0,
+          "Pages wired down": 249662,
+          "Pages purgeable": 0,
+          "\"Translation faults\"": 25612434141,
+          "Pages copy-on-write": 734953272,
+          "Pages zero filled": 7438959545,
+          "Pages reactivated": 8822035919,
+          "Pages purged": 714356797,
+          "File-backed pages": 102899,
+          "Anonymous pages": 193881,
+          "Pages stored in compressor": 4068561,
+          "Pages occupied by compressor": 445959,
+          "Decompressions": 12631757076,
+          "Compressions": 13164653875,
+          "Pageins": 341254638,
+          "Pageouts": 7263346,
+          "Swapins": 476095650,
+          "Swapouts": 492149693
+        },
+        "metrics": {
+          "shardshop-order-saga-55f9b5f5d5-pfdhs.metrics": {
+            "system_cpu_count": 2.0,
+            "shardshop_order_db_pool_max_used{process=\"saga\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"saga\",shard=\"shard-c\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"saga\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"saga\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"saga\",shard=\"shard-c\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"saga\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_active{process=\"saga\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_active{process=\"saga\",shard=\"shard-c\"}": 2.0,
+            "shardshop_order_db_pool_active{process=\"saga\",shard=\"shard-b\"}": 1.0,
+            "shardshop_order_db_pool_available{process=\"saga\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_available{process=\"saga\",shard=\"shard-c\"}": 2.0,
+            "shardshop_order_db_pool_available{process=\"saga\",shard=\"shard-b\"}": 3.0,
+            "process_cpu_time_ns_total": 98970000000.0,
+            "shardshop_order_db_pool_awaiting{process=\"saga\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"saga\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"saga\",shard=\"shard-b\"}": 0.0,
+            "system_cpu_usage": 0.15652122505985636,
+            "process_cpu_usage": 0.15649920255183414
+          },
+          "shardshop-ledger-84888784f6-bmx7d.metrics": {
+            "shardshop_ledger_pool_active": 1.0,
+            "shardshop_ledger_pool_available": 2.0,
+            "shardshop_ledger_pool_awaiting": 0.0,
+            "process_cpu_usage": 0.07923433874709977,
+            "system_cpu_usage": 0.07914355156431055,
+            "shardshop_ledger_pool_max": 4.0,
+            "process_cpu_time_ns_total": 41970000000.0,
+            "system_cpu_count": 2.0
+          },
+          "shardshop-order-79bf55d5bb-4gxp4.metrics": {
+            "system_cpu_usage": 0.09560266276041667,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-b\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "process_cpu_usage": 0.09602864583333333,
+            "process_cpu_time_ns_total": 54660000000.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-b\"}": 3.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "system_cpu_count": 2.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-b\"}": 1.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-c\"}": 4.0
+          },
+          "shardshop-order-79bf55d5bb-zfd86.metrics": {
+            "system_cpu_count": 2.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-a\"}": 2.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-b\"}": 0.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-c\"}": 1.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-b\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "process_cpu_time_ns_total": 47050000000.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-a\"}": 2.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-b\"}": 3.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-c\"}": 3.0,
+            "system_cpu_usage": 0.14326875,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "process_cpu_usage": 0.14352134146341464
+          },
+          "shardshop-product-7c44d555d6-5gkst.metrics": {
+            "process_cpu_time_ns_total": 71320000000.0,
+            "system_cpu_count": 2.0,
+            "system_cpu_usage": 0.13081277777777778,
+            "process_cpu_usage": 0.13080568720379146
+          },
+          "shardshop-product-7c44d555d6-4znmz.metrics": {
+            "process_cpu_time_ns_total": 80060000000.0,
+            "system_cpu_count": 2.0,
+            "system_cpu_usage": 0.11455588607594937,
+            "process_cpu_usage": 0.11452293094359516
+          }
+        }
+      },
+      {
+        "sample": 10,
+        "at": "2026-10-28T09:40:48.001697063Z",
+        "dockerCPUPercentSum": 1321.44,
+        "docker": [
+          {
+            "BlockIO": "279MB / 4.81GB",
+            "CPUPerc": "252.54%",
+            "Container": "shardshop-test-parallel-x9th3pi1-worker3",
+            "ID": "9fa002aa46a9",
+            "MemPerc": "9.65%",
+            "MemUsage": "1.22GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-worker3",
+            "NetIO": "547MB / 299MB",
+            "PIDs": "359"
+          },
+          {
+            "BlockIO": "267MB / 3.77GB",
+            "CPUPerc": "339.65%",
+            "Container": "shardshop-test-parallel-x9th3pi1-control-plane",
+            "ID": "5d0168be09bd",
+            "MemPerc": "11.54%",
+            "MemUsage": "1.46GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-control-plane",
+            "NetIO": "251MB / 128MB",
+            "PIDs": "308"
+          },
+          {
+            "BlockIO": "219MB / 4.65GB",
+            "CPUPerc": "385.44%",
+            "Container": "shardshop-test-parallel-x9th3pi1-worker",
+            "ID": "28ee12f03639",
+            "MemPerc": "12.99%",
+            "MemUsage": "1.643GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-worker",
+            "NetIO": "662MB / 309MB",
+            "PIDs": "453"
+          },
+          {
+            "BlockIO": "285MB / 4.98GB",
+            "CPUPerc": "343.81%",
+            "Container": "shardshop-test-parallel-x9th3pi1-worker2",
+            "ID": "6b4349fe0ce3",
+            "MemPerc": "14.27%",
+            "MemUsage": "1.805GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-worker2",
+            "NetIO": "703MB / 333MB",
+            "PIDs": "545"
+          }
+        ],
+        "swapUsedMiB": 26818.56,
+        "vm": {
+          "Pages free": 3544,
+          "Pages active": 150545,
+          "Pages inactive": 145569,
+          "Pages speculative": 3523,
+          "Pages throttled": 0,
+          "Pages wired down": 242136,
+          "Pages purgeable": 1,
+          "\"Translation faults\"": 25614577388,
+          "Pages copy-on-write": 734966761,
+          "Pages zero filled": 7439086004,
+          "Pages reactivated": 8823003959,
+          "Pages purged": 714366673,
+          "File-backed pages": 111257,
+          "Anonymous pages": 188380,
+          "Pages stored in compressor": 4069517,
+          "Pages occupied by compressor": 448763,
+          "Decompressions": 12633192981,
+          "Compressions": 13166140731,
+          "Pageins": 341270011,
+          "Pageouts": 7263390,
+          "Swapins": 476288289,
+          "Swapouts": 492342925
+        },
+        "metrics": {
+          "shardshop-order-saga-55f9b5f5d5-pfdhs.metrics": {
+            "system_cpu_count": 2.0,
+            "shardshop_order_db_pool_max_used{process=\"saga\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"saga\",shard=\"shard-c\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"saga\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"saga\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"saga\",shard=\"shard-c\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"saga\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_active{process=\"saga\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_active{process=\"saga\",shard=\"shard-c\"}": 2.0,
+            "shardshop_order_db_pool_active{process=\"saga\",shard=\"shard-b\"}": 2.0,
+            "shardshop_order_db_pool_available{process=\"saga\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_available{process=\"saga\",shard=\"shard-c\"}": 2.0,
+            "shardshop_order_db_pool_available{process=\"saga\",shard=\"shard-b\"}": 2.0,
+            "process_cpu_time_ns_total": 108710000000.0,
+            "shardshop_order_db_pool_awaiting{process=\"saga\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"saga\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"saga\",shard=\"shard-b\"}": 0.0,
+            "system_cpu_usage": 0.44345131818181815,
+            "process_cpu_usage": 0.44279279279279277
+          },
+          "shardshop-ledger-84888784f6-bmx7d.metrics": {
+            "shardshop_ledger_pool_active": 1.0,
+            "shardshop_ledger_pool_available": 2.0,
+            "shardshop_ledger_pool_awaiting": 0.0,
+            "process_cpu_usage": 0.17927927927927928,
+            "system_cpu_usage": 0.17989644144144143,
+            "shardshop_ledger_pool_max": 4.0,
+            "process_cpu_time_ns_total": 45950000000.0,
+            "system_cpu_count": 2.0
+          },
+          "shardshop-order-79bf55d5bb-4gxp4.metrics": {
+            "system_cpu_usage": 0.24691008547008547,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-b\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "process_cpu_usage": 0.24698275862068966,
+            "process_cpu_time_ns_total": 60390000000.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "system_cpu_count": 2.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-b\"}": 0.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-c\"}": 4.0
+          },
+          "shardshop-order-79bf55d5bb-zfd86.metrics": {
+            "system_cpu_count": 2.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-b\"}": 0.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-b\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "process_cpu_time_ns_total": 52990000000.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "system_cpu_usage": 0.2492246218487395,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "process_cpu_usage": 0.24708333333333332
+          },
+          "shardshop-product-7c44d555d6-5gkst.metrics": {
+            "process_cpu_time_ns_total": 75800000000.0,
+            "system_cpu_count": 2.0,
+            "system_cpu_usage": 0.1876707075471698,
+            "process_cpu_usage": 0.18867924528301888
+          },
+          "shardshop-product-7c44d555d6-4znmz.metrics": {
+            "process_cpu_time_ns_total": 83140000000.0,
+            "system_cpu_count": 2.0,
+            "system_cpu_usage": 0.13686349557522123,
+            "process_cpu_usage": 0.13794642857142858
+          }
+        }
+      },
+      {
+        "sample": 20,
+        "at": "2026-10-28T09:40:59.780508995Z",
+        "dockerCPUPercentSum": 1452.32,
+        "docker": [
+          {
+            "BlockIO": "279MB / 4.82GB",
+            "CPUPerc": "358.36%",
+            "Container": "shardshop-test-parallel-x9th3pi1-worker3",
+            "ID": "9fa002aa46a9",
+            "MemPerc": "9.57%",
+            "MemUsage": "1.21GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-worker3",
+            "NetIO": "549MB / 300MB",
+            "PIDs": "356"
+          },
+          {
+            "BlockIO": "267MB / 3.77GB",
+            "CPUPerc": "301.40%",
+            "Container": "shardshop-test-parallel-x9th3pi1-control-plane",
+            "ID": "5d0168be09bd",
+            "MemPerc": "11.52%",
+            "MemUsage": "1.457GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-control-plane",
+            "NetIO": "252MB / 128MB",
+            "PIDs": "308"
+          },
+          {
+            "BlockIO": "219MB / 4.65GB",
+            "CPUPerc": "400.46%",
+            "Container": "shardshop-test-parallel-x9th3pi1-worker",
+            "ID": "28ee12f03639",
+            "MemPerc": "13.01%",
+            "MemUsage": "1.645GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-worker",
+            "NetIO": "665MB / 311MB",
+            "PIDs": "451"
+          },
+          {
+            "BlockIO": "285MB / 4.99GB",
+            "CPUPerc": "392.10%",
+            "Container": "shardshop-test-parallel-x9th3pi1-worker2",
+            "ID": "6b4349fe0ce3",
+            "MemPerc": "13.41%",
+            "MemUsage": "1.697GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-worker2",
+            "NetIO": "705MB / 336MB",
+            "PIDs": "471"
+          }
+        ],
+        "swapUsedMiB": 26643.19,
+        "vm": {
+          "Pages free": 3609,
+          "Pages active": 154467,
+          "Pages inactive": 148672,
+          "Pages speculative": 3916,
+          "Pages throttled": 0,
+          "Pages wired down": 219966,
+          "Pages purgeable": 0,
+          "\"Translation faults\"": 25617320301,
+          "Pages copy-on-write": 734988739,
+          "Pages zero filled": 7439258781,
+          "Pages reactivated": 8824075260,
+          "Pages purged": 714377960,
+          "File-backed pages": 112009,
+          "Anonymous pages": 195046,
+          "Pages stored in compressor": 4079020,
+          "Pages occupied by compressor": 463299,
+          "Decompressions": 12634940530,
+          "Compressions": 13167946897,
+          "Pageins": 341291603,
+          "Pageouts": 7263559,
+          "Swapins": 476541187,
+          "Swapouts": 492582169
+        },
+        "metrics": {
+          "shardshop-order-saga-55f9b5f5d5-pfdhs.metrics": {
+            "system_cpu_count": 2.0,
+            "shardshop_order_db_pool_max_used{process=\"saga\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"saga\",shard=\"shard-c\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"saga\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"saga\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"saga\",shard=\"shard-c\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"saga\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_active{process=\"saga\",shard=\"shard-a\"}": 2.0,
+            "shardshop_order_db_pool_active{process=\"saga\",shard=\"shard-c\"}": 2.0,
+            "shardshop_order_db_pool_active{process=\"saga\",shard=\"shard-b\"}": 2.0,
+            "shardshop_order_db_pool_available{process=\"saga\",shard=\"shard-a\"}": 2.0,
+            "shardshop_order_db_pool_available{process=\"saga\",shard=\"shard-c\"}": 2.0,
+            "shardshop_order_db_pool_available{process=\"saga\",shard=\"shard-b\"}": 2.0,
+            "process_cpu_time_ns_total": 117070000000.0,
+            "shardshop_order_db_pool_awaiting{process=\"saga\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"saga\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"saga\",shard=\"shard-b\"}": 0.0,
+            "system_cpu_usage": 0.3450876859504132,
+            "process_cpu_usage": 0.346218487394958
+          },
+          "shardshop-ledger-84888784f6-bmx7d.metrics": {
+            "shardshop_ledger_pool_active": 0.0,
+            "shardshop_ledger_pool_available": 3.0,
+            "shardshop_ledger_pool_awaiting": 0.0,
+            "process_cpu_usage": 0.08666666666666667,
+            "system_cpu_usage": 0.08590912087912088,
+            "shardshop_ledger_pool_max": 4.0,
+            "process_cpu_time_ns_total": 47530000000.0,
+            "system_cpu_count": 2.0
+          },
+          "shardshop-order-79bf55d5bb-4gxp4.metrics": {
+            "system_cpu_usage": 0.22634444444444443,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-b\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "process_cpu_usage": 0.22431192660550459,
+            "process_cpu_time_ns_total": 65280000000.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-b\"}": 3.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "system_cpu_count": 2.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-b\"}": 1.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-c\"}": 4.0
+          },
+          "shardshop-order-79bf55d5bb-zfd86.metrics": {
+            "system_cpu_count": 2.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-a\"}": 2.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-b\"}": 1.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-b\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "process_cpu_time_ns_total": 58540000000.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-a\"}": 2.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-b\"}": 3.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "system_cpu_usage": 0.2631961904761905,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "process_cpu_usage": 0.2644230769230769
+          },
+          "shardshop-product-7c44d555d6-5gkst.metrics": {
+            "process_cpu_time_ns_total": 79290000000.0,
+            "system_cpu_count": 2.0,
+            "system_cpu_usage": 0.15680013513513513,
+            "process_cpu_usage": 0.1572072072072072
+          },
+          "shardshop-product-7c44d555d6-4znmz.metrics": {
+            "process_cpu_time_ns_total": 85820000000.0,
+            "system_cpu_count": 2.0,
+            "system_cpu_usage": 0.12521342857142856,
+            "process_cpu_usage": 0.12428571428571429
+          }
+        }
+      },
+      {
+        "sample": 30,
+        "at": "2026-10-28T09:41:09.532762050Z",
+        "dockerCPUPercentSum": 1214.65,
+        "docker": [
+          {
+            "BlockIO": "279MB / 4.82GB",
+            "CPUPerc": "293.12%",
+            "Container": "shardshop-test-parallel-x9th3pi1-worker3",
+            "ID": "9fa002aa46a9",
+            "MemPerc": "9.51%",
+            "MemUsage": "1.203GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-worker3",
+            "NetIO": "550MB / 302MB",
+            "PIDs": "352"
+          },
+          {
+            "BlockIO": "268MB / 3.77GB",
+            "CPUPerc": "288.79%",
+            "Container": "shardshop-test-parallel-x9th3pi1-control-plane",
+            "ID": "5d0168be09bd",
+            "MemPerc": "11.55%",
+            "MemUsage": "1.461GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-control-plane",
+            "NetIO": "252MB / 129MB",
+            "PIDs": "308"
+          },
+          {
+            "BlockIO": "219MB / 4.65GB",
+            "CPUPerc": "282.39%",
+            "Container": "shardshop-test-parallel-x9th3pi1-worker",
+            "ID": "28ee12f03639",
+            "MemPerc": "12.91%",
+            "MemUsage": "1.633GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-worker",
+            "NetIO": "667MB / 312MB",
+            "PIDs": "444"
+          },
+          {
+            "BlockIO": "285MB / 4.99GB",
+            "CPUPerc": "350.35%",
+            "Container": "shardshop-test-parallel-x9th3pi1-worker2",
+            "ID": "6b4349fe0ce3",
+            "MemPerc": "14.14%",
+            "MemUsage": "1.788GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-worker2",
+            "NetIO": "707MB / 338MB",
+            "PIDs": "522"
+          }
+        ],
+        "swapUsedMiB": 26785.62,
+        "vm": {
+          "Pages free": 2923,
+          "Pages active": 154189,
+          "Pages inactive": 148991,
+          "Pages speculative": 3904,
+          "Pages throttled": 0,
+          "Pages wired down": 234862,
+          "Pages purgeable": 0,
+          "\"Translation faults\"": 25619492336,
+          "Pages copy-on-write": 735006250,
+          "Pages zero filled": 7439421163,
+          "Pages reactivated": 8824959766,
+          "Pages purged": 714390217,
+          "File-backed pages": 110170,
+          "Anonymous pages": 196914,
+          "Pages stored in compressor": 4081600,
+          "Pages occupied by compressor": 449003,
+          "Decompressions": 12636368692,
+          "Compressions": 13169416451,
+          "Pageins": 341312021,
+          "Pageouts": 7263736,
+          "Swapins": 476709840,
+          "Swapouts": 492762781
+        },
+        "metrics": {
+          "shardshop-order-saga-55f9b5f5d5-pfdhs.metrics": {
+            "system_cpu_count": 2.0,
+            "shardshop_order_db_pool_max_used{process=\"saga\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"saga\",shard=\"shard-c\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"saga\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"saga\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"saga\",shard=\"shard-c\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"saga\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_active{process=\"saga\",shard=\"shard-a\"}": 1.0,
+            "shardshop_order_db_pool_active{process=\"saga\",shard=\"shard-c\"}": 1.0,
+            "shardshop_order_db_pool_active{process=\"saga\",shard=\"shard-b\"}": 1.0,
+            "shardshop_order_db_pool_available{process=\"saga\",shard=\"shard-a\"}": 3.0,
+            "shardshop_order_db_pool_available{process=\"saga\",shard=\"shard-c\"}": 3.0,
+            "shardshop_order_db_pool_available{process=\"saga\",shard=\"shard-b\"}": 3.0,
+            "process_cpu_time_ns_total": 124060000000.0,
+            "shardshop_order_db_pool_awaiting{process=\"saga\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"saga\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"saga\",shard=\"shard-b\"}": 0.0,
+            "system_cpu_usage": 0.380297688172043,
+            "process_cpu_usage": 0.38064516129032255
+          },
+          "shardshop-ledger-84888784f6-bmx7d.metrics": {
+            "shardshop_ledger_pool_active": 2.0,
+            "shardshop_ledger_pool_available": 1.0,
+            "shardshop_ledger_pool_awaiting": 0.0,
+            "process_cpu_usage": 0.1660919540229885,
+            "system_cpu_usage": 0.16465155172413792,
+            "shardshop_ledger_pool_max": 4.0,
+            "process_cpu_time_ns_total": 50410000000.0,
+            "system_cpu_count": 2.0
+          },
+          "shardshop-order-79bf55d5bb-4gxp4.metrics": {
+            "system_cpu_usage": 0.15767705263157894,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-b\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "process_cpu_usage": 0.1601063829787234,
+            "process_cpu_time_ns_total": 68300000000.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-b\"}": 3.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "system_cpu_count": 2.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-c\"}": 4.0
+          },
+          "shardshop-order-79bf55d5bb-zfd86.metrics": {
+            "system_cpu_count": 2.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-b\"}": 2.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-b\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "process_cpu_time_ns_total": 62010000000.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-a\"}": 3.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-b\"}": 2.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "system_cpu_usage": 0.18589895833333334,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "process_cpu_usage": 0.1792079207920792
+          },
+          "shardshop-product-7c44d555d6-5gkst.metrics": {
+            "process_cpu_time_ns_total": 83090000000.0,
+            "system_cpu_count": 2.0,
+            "system_cpu_usage": 0.19987526315789475,
+            "process_cpu_usage": 0.19842105263157894
+          },
+          "shardshop-product-7c44d555d6-4znmz.metrics": {
+            "process_cpu_time_ns_total": 88070000000.0,
+            "system_cpu_count": 2.0,
+            "system_cpu_usage": 0.1170228125,
+            "process_cpu_usage": 0.11822916666666666
+          }
+        }
+      },
+      {
+        "sample": 40,
+        "at": "2026-10-28T09:41:20.101097106Z",
+        "dockerCPUPercentSum": 1258.63,
+        "docker": [
+          {
+            "BlockIO": "279MB / 4.83GB",
+            "CPUPerc": "291.66%",
+            "Container": "shardshop-test-parallel-x9th3pi1-worker3",
+            "ID": "9fa002aa46a9",
+            "MemPerc": "9.56%",
+            "MemUsage": "1.209GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-worker3",
+            "NetIO": "553MB / 304MB",
+            "PIDs": "353"
+          },
+          {
+            "BlockIO": "268MB / 3.77GB",
+            "CPUPerc": "315.80%",
+            "Container": "shardshop-test-parallel-x9th3pi1-control-plane",
+            "ID": "5d0168be09bd",
+            "MemPerc": "11.56%",
+            "MemUsage": "1.462GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-control-plane",
+            "NetIO": "252MB / 130MB",
+            "PIDs": "308"
+          },
+          {
+            "BlockIO": "219MB / 4.66GB",
+            "CPUPerc": "253.93%",
+            "Container": "shardshop-test-parallel-x9th3pi1-worker",
+            "ID": "28ee12f03639",
+            "MemPerc": "12.93%",
+            "MemUsage": "1.636GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-worker",
+            "NetIO": "669MB / 315MB",
+            "PIDs": "444"
+          },
+          {
+            "BlockIO": "285MB / 5GB",
+            "CPUPerc": "397.24%",
+            "Container": "shardshop-test-parallel-x9th3pi1-worker2",
+            "ID": "6b4349fe0ce3",
+            "MemPerc": "14.22%",
+            "MemUsage": "1.799GiB / 12.65GiB",
+            "Name": "shardshop-test-parallel-x9th3pi1-worker2",
+            "NetIO": "710MB / 340MB",
+            "PIDs": "504"
+          }
+        ],
+        "swapUsedMiB": 26915.62,
+        "vm": {
+          "Pages free": 3826,
+          "Pages active": 148956,
+          "Pages inactive": 145256,
+          "Pages speculative": 2667,
+          "Pages throttled": 0,
+          "Pages wired down": 244307,
+          "Pages purgeable": 5,
+          "\"Translation faults\"": 25621775834,
+          "Pages copy-on-write": 735023078,
+          "Pages zero filled": 7439578855,
+          "Pages reactivated": 8825958532,
+          "Pages purged": 714404903,
+          "File-backed pages": 106256,
+          "Anonymous pages": 190623,
+          "Pages stored in compressor": 4068745,
+          "Pages occupied by compressor": 449104,
+          "Decompressions": 12637899563,
+          "Compressions": 13171000031,
+          "Pageins": 341325806,
+          "Pageouts": 7263835,
+          "Swapins": 476892343,
+          "Swapouts": 492952289
+        },
+        "metrics": {
+          "shardshop-order-saga-55f9b5f5d5-pfdhs.metrics": {
+            "system_cpu_count": 2.0,
+            "shardshop_order_db_pool_max_used{process=\"saga\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"saga\",shard=\"shard-c\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"saga\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"saga\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"saga\",shard=\"shard-c\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"saga\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_active{process=\"saga\",shard=\"shard-a\"}": 2.0,
+            "shardshop_order_db_pool_active{process=\"saga\",shard=\"shard-c\"}": 3.0,
+            "shardshop_order_db_pool_active{process=\"saga\",shard=\"shard-b\"}": 1.0,
+            "shardshop_order_db_pool_available{process=\"saga\",shard=\"shard-a\"}": 2.0,
+            "shardshop_order_db_pool_available{process=\"saga\",shard=\"shard-c\"}": 1.0,
+            "shardshop_order_db_pool_available{process=\"saga\",shard=\"shard-b\"}": 3.0,
+            "process_cpu_time_ns_total": 131250000000.0,
+            "shardshop_order_db_pool_awaiting{process=\"saga\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"saga\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"saga\",shard=\"shard-b\"}": 0.0,
+            "system_cpu_usage": 0.35947325,
+            "process_cpu_usage": 0.32125
+          },
+          "shardshop-ledger-84888784f6-bmx7d.metrics": {
+            "shardshop_ledger_pool_active": 0.0,
+            "shardshop_ledger_pool_available": 3.0,
+            "shardshop_ledger_pool_awaiting": 0.0,
+            "process_cpu_usage": 0.134765625,
+            "system_cpu_usage": 0.13572976377952756,
+            "shardshop_ledger_pool_max": 4.0,
+            "process_cpu_time_ns_total": 53840000000.0,
+            "system_cpu_count": 2.0
+          },
+          "shardshop-order-79bf55d5bb-4gxp4.metrics": {
+            "system_cpu_usage": 0.186550101010101,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-b\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "process_cpu_usage": 0.1849514563106796,
+            "process_cpu_time_ns_total": 72100000000.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "system_cpu_count": 2.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-b\"}": 0.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-c\"}": 4.0
+          },
+          "shardshop-order-79bf55d5bb-zfd86.metrics": {
+            "system_cpu_count": 2.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-b\"}": 1.0,
+            "shardshop_order_db_pool_active{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-a\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-b\"}": 0.0,
+            "shardshop_order_db_pool_awaiting{process=\"http\",shard=\"shard-c\"}": 0.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max_used{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "process_cpu_time_ns_total": 66120000000.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-b\"}": 3.0,
+            "shardshop_order_db_pool_available{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "system_cpu_usage": 0.19968703883495145,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-a\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-b\"}": 4.0,
+            "shardshop_order_db_pool_max{process=\"http\",shard=\"shard-c\"}": 4.0,
+            "process_cpu_usage": 0.2085858585858586
+          },
+          "shardshop-product-7c44d555d6-5gkst.metrics": {
+            "process_cpu_time_ns_total": 86320000000.0,
+            "system_cpu_count": 2.0,
+            "system_cpu_usage": 0.16540385,
+            "process_cpu_usage": 0.1665
+          },
+          "shardshop-product-7c44d555d6-4znmz.metrics": {
+            "process_cpu_time_ns_total": 90600000000.0,
+            "system_cpu_count": 2.0,
+            "system_cpu_usage": 0.14353036458333332,
+            "process_cpu_usage": 0.13910891089108912
+          }
+        }
+      }
+    ]
+  },
+  "podIdentitiesAndRestartCountsStableAcrossCompleteSamples": true,
+  "startup": {
+    "producerErrorsBeforeMeasurement": 5,
+    "readerErrorsBeforeMeasurement": 9,
+    "productRestart": {
+      "name": "shardshop-product-7c44d555d6-5gkst",
+      "containers": [
+        {
+          "name": "product",
+          "restartCount": 1,
+          "lastState": {
+            "terminated": {
+              "containerID": "containerd://87159c6f47e154e6777ee0c00bcf653f340c318fe5cbe865385d77f02d2b9e92",
+              "exitCode": 1,
+              "finishedAt": "2026-10-28T09:36:40Z",
+              "reason": "Error",
+              "startedAt": "2026-10-28T09:36:23Z"
+            }
+          },
+          "state": {
+            "running": {
+              "startedAt": "2026-10-28T09:36:43Z"
+            }
+          }
+        }
+      ]
+    },
+    "note": "One pre-measurement product restart followed a generator-registry read failure; underlying cause unconfirmed. Six live release scenarios subsequently passed."
+  },
+  "validation": {
+    "build": {
+      "checks": [
+        {
+          "kind": "surefire",
+          "module": "shardshop-common",
+          "tests": 291,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-idgen",
+          "tests": 158,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-sharding",
+          "tests": 54,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-workload-control",
+          "tests": 64,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-datasets",
+          "tests": 39,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-product-seeder",
+          "tests": 67,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-product-reader",
+          "tests": 84,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-order-producer",
+          "tests": 151,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-product",
+          "tests": 280,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "failsafe",
+          "module": "shardshop-product",
+          "tests": 30,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-order",
+          "tests": 413,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "failsafe",
+          "module": "shardshop-order",
+          "tests": 49,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-ledger",
+          "tests": 62,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "surefire",
+          "module": "shardshop-testing",
+          "tests": 380,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      ],
+      "totals": {
+        "surefire": 2043,
+        "failsafe": 79
+      }
+    },
+    "liveReleaseCases": 6,
+    "imageScanGates": 7,
+    "sourceVerification": [
+      "microservices/shardshop/shardshop-order/src/main/java/dev/nklip/javacraft/shardshop/order/config/StockWorker.java: OK",
+      "microservices/shardshop/shardshop-order/src/main/java/dev/nklip/javacraft/shardshop/order/config/ProfitWorker.java: OK",
+      "microservices/shardshop/shardshop-order/src/main/java/dev/nklip/javacraft/shardshop/order/config/OrderConfiguration.java: OK",
+      "microservices/shardshop/shardshop-order/src/main/java/dev/nklip/javacraft/shardshop/order/config/OrderWiring.java: OK",
+      "microservices/shardshop/shardshop-order/src/main/java/dev/nklip/javacraft/shardshop/order/config/ResultWiring.java: OK",
+      "microservices/shardshop/shardshop-order/src/main/resources/application.properties: OK"
+    ],
+    "artifactPermissions": [
+      {
+        "module": "shardshop-product",
+        "rootMode": "0o755",
+        "nonrootAccessFailures": []
+      },
+      {
+        "module": "shardshop-order",
+        "rootMode": "0o755",
+        "nonrootAccessFailures": []
+      },
+      {
+        "module": "shardshop-ledger",
+        "rootMode": "0o755",
+        "nonrootAccessFailures": []
+      },
+      {
+        "module": "shardshop-workload/shardshop-product-seeder",
+        "rootMode": "0o755",
+        "nonrootAccessFailures": []
+      },
+      {
+        "module": "shardshop-workload/shardshop-product-reader",
+        "rootMode": "0o755",
+        "nonrootAccessFailures": []
+      },
+      {
+        "module": "shardshop-workload/shardshop-order-producer",
+        "rootMode": "0o755",
+        "nonrootAccessFailures": []
+      }
+    ],
+    "images": {
+      "images": {
+        "product": "docker.io/library/shardshop-product@sha256:2e32feb12453d67c0dcc93a709ff0290ccd5c96a8ed393f3ddea636d800d95c5",
+        "product-seeder": "docker.io/library/shardshop-product-seeder@sha256:66428e187d1dc1a5e09e2ad6e10d16f2a4f61437e1a29d8aa00ce439235c766e",
+        "product-reader": "docker.io/library/shardshop-product-reader@sha256:435b036b8b965e5daa0bc60f4ddb5852ae93cfbc9684862c9ad5bb2dcbed6098",
+        "order": "docker.io/library/shardshop-order@sha256:ea5fa8eadc36a368e7a56c2ac85a2bb8865dd7b567921a45dba5e5df7e71b32e",
+        "ledger": "docker.io/library/shardshop-ledger@sha256:e5a1b6de3724a0c62c5ca0675f9ae65c1dc0c09594442ce0daed0e509dc06c53",
+        "order-producer": "docker.io/library/shardshop-order-producer@sha256:9e454cc8fa548e29ff12a511eeb8e1db30c65d28bfa661b2e2daa816f0bdead1"
+      },
+      "restartToken": "restart-ead4005379b5341303af765d"
+    }
+  },
+  "restoration": {
+    "collector": 0,
+    "lab": 0,
+    "labRemoved": true,
+    "retainedNodesImagesMountsAndDefaultKubeconfigUnchanged": true,
+    "retainedNodesStillStopped": true
+  },
+  "timestamps": {
+    "retryStarted": "2026-10-28T09:13:50Z",
+    "retryFinished": "2026-10-28T09:41:52Z"
+  },
+  "commands": {
+    "provision": "bash microservices/shardshop/scripts/cluster-create.sh",
+    "release": "bash microservices/shardshop/scripts/up.sh",
+    "collector": "bash /private/tmp/shardshop-parallel-load-9gi3pvig/capture-capacity.sh --context kind-shardshop-test-parallel-x9th3pi1 --kubeconfig /private/tmp/shardshop-parallel-retry.x9th3pi1/config --snapshot /private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/current-invocation-snapshot --cluster shardshop-test-parallel-x9th3pi1 --minimum-vnd-stock 768",
+    "cleanup": "bash microservices/shardshop/scripts/cluster-destroy.sh"
+  },
+  "environment": {
+    "JAVA_HOME": "/Users/nikita.lipatov/.sdkman/candidates/java/25.0.5-tem",
+    "PATH_prefix": "$JAVA_HOME/bin:/opt/homebrew/opt/node@24/bin",
+    "KIND_EXPERIMENTAL_PROVIDER": "docker",
+    "SHARDSHOP_TEST_CLUSTER": "shardshop-test-parallel-x9th3pi1",
+    "SHARDSHOP_TEST_KUBECONFIG": "/private/tmp/shardshop-parallel-retry.x9th3pi1/config",
+    "buildUmask": "022"
+  },
+  "comparisonLimit": "Fresh inventory, database history, JVM age, host pressure and collector overhead differ from historical measurements. This short failure cannot establish worker regression or improvement. Stage A/B results remain separate.",
+  "firstAttemptEvidence": "2026-10-28-parallel-workers-kind-attempt1.json",
+  "nativeEvidence": {
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/nodes.before.json": "450e77fe815d9c0c690fa18d4149d6b461523bbb62d13e74edfed544cd2a8a72",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/application-config.before.json": "b961eca94ed2d997c78a5db3e27cd47f811b0e97fbee8081029bc0ada7905bcf",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/pods.before.txt": "be326cf512e96c3d539794ff1485e43a50a82c3421ddea027fa5ee06eec3059c",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/rate-1.json": "88bca6487aea688520418cbe34deff74ade954a5b1fe7832994dc025485768f9",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/exit-status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/rate-0.json": "7d9eb7d8add582509bc60c2d328d2219b1408134e5d67109e2d4411bd1747f65",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/host-resources.txt": "112b7e642ce27daf879cf69180e9100a183aa16e64c3f49b48e564a436662c36",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/target-kubeconfig.before.sha256": "5d9cd7b2bcad0cf81b806eb2b3b2fffa9e2ed2b1b79a4fdb9c406124c90b3912",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/product-reader.restore-pause-response.json": "a9d99399ae409bf3aadbe3a3b4e22cbf9256d2c002b79c69e615b1695c1d9167",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-reader-resume.json": "ad85b26a7d78e51dd898039f707a03270818418dd806ba673b8beb2fedd1e152",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/product-reader.restored.json": "cbdc3da1d747e29f67fb502ff788b0ab26e9b7520e2379815bb9764cd0b3e88f",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/snapshot.sha256": "ef25299d9f451ac7b154427c10984cd8de842f08a88a7f86581c0339f557ca3c",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/docker-info.txt": "757ef206f6120da7d311dea621a56ffa886e64dd317b23c5b02af338844895ae",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/order-producer.before.json": "72fe0e822ec3dbac30caaa81470dd17611ac73af391919befd62d30b5f545cac",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/drain-pause.json": "7cd241545f8ad02ae06cee165d3a53ae5daf75453fb615b1f30327505d066201",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/restoration-status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/product-seeder.restored.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/product-reader.restore-rate.json": "ccf365a26b9d5338ad58b19517b0b0830640ae38df6c216999d529dd4fd62c06",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/order-producer.restore-pause-response.json": "c8aab06859b144cd163a6325527fba29b240f3a0f8f3c09bbd0ae88803fdabe0",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/product-reader.restore-rate-response.json": "e3f0330b9b1b9dab7c3c7f4567e6d5dd173865870d6c43446cbd7a6ea57d28ea",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/stock-requirements.json": "435ffea3d0dd47d4b8a7ec41b53703b7ce839e89da48eb0a655fa1d34876c98d",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/order-producer.restored.json": "d8fabdd40319228d27b96dc791bc972511ac8b581eb5f2f8ee88e71bb717637e",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/drain-latest.json": "beb9d17ceb72b86c5ba3275cb510852e3edaa5101ec0db4187c07e4b2bf98ac3",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/default-kubeconfig.before.sha256": "7f92b14ad5e4101c24fb9c7f2b614f979fb3fdb4eb7654f05864944cefaa71cd",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/nodes.after.json": "450e77fe815d9c0c690fa18d4149d6b461523bbb62d13e74edfed544cd2a8a72",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/stock-precheck.json": "ad7f739f48c4b3a9f19cd3d2789f09d08c8d7bfcd0fb32c1507884c26d63466e",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/forward-2.log": "3d995be27d7d137adcc3a686309018a2f204cf1fe956c53306d82b8d3c4024ab",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/product-reader.before.json": "3516b48c17651199b9b765af72b36148fb15c96ecd47bfc590a3475038725fde",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/forward-1.log": "b48fb88acd533cd5699d51d1e5a038806be7240b14e3545106f6362f958c751a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/product-seeder.before.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/forward-0.log": "461ee0964f70f8d856f15ad1dd5f6746b3c189a66210358a7738990b2c807ec1",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-reader-rate.json": "89f372b76182b6d70f091ee35064ddddffa25a3d59645cee5af8afcb98d523c7",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/order-producer.restore-rate-response.json": "eab1697a0ba808d661ef2008e9807c884691297a7b243ead37cae6f39ccbfd27",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/deployments.before.json": "e8049e86c4c7504606d286118b675d94738f2da014a6a3150ef3a6575564070b",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/order-producer.restore-rate.json": "db9dd0bb7ab3f863332ee60106e20e8daf9bc069e9feb310105226d1443d6491",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/target-kubeconfig.after.sha256": "5d9cd7b2bcad0cf81b806eb2b3b2fffa9e2ed2b1b79a4fdb9c406124c90b3912",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/default-kubeconfig.after.sha256": "7f92b14ad5e4101c24fb9c7f2b614f979fb3fdb4eb7654f05864944cefaa71cd",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/drain-sql-744254.036312000/shard-b.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/drain-sql-744254.036312000/shard-a.json": "f9068b4971353963786a173b336b904267dea95b7265d9270c7b3ba6d2317ad7",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/drain-sql-744254.036312000/ledger.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/drain-sql-744254.036312000/shard-c.json.primary": "ebff0dfb6f8c93e0caddb2c5d144d7a6915cf2ca1f807e6188b5f94ef54c1c1a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/drain-sql-744254.036312000/shard-b.json.primary": "3628916e73d583221734f2c253999cce9a44170893ea8df3fb447c417276e958",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/drain-sql-744254.036312000/shard-a.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/drain-sql-744254.036312000/shard-c.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/drain-sql-744254.036312000/shard-a.json.primary": "0f9c1b8f9d2a45bfe1d3bb57fbe00247824792eb41f314124986c2df9edc0fc5",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/drain-sql-744254.036312000/shard-c.json": "e8109f13c06d5405db66cbd2319370265ff39b46c02c583e6a04cd269f8ccbca",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/drain-sql-744254.036312000/ledger.json.primary": "173aac8c184186f42e20e9d6eb000f4bb862c4036bff268a5241aa066a24805c",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/drain-sql-744254.036312000/shard-b.json": "2146f08a1d249341831dac91d6d1e0342d1ec970f71eee74c55a7f0749a3263f",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/drain-sql-744254.036312000/ledger.json": "1eba98db5820509e22abe2ccf727fa70556f994fd6cf34fdd1edbec5a091eebd",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/warmup-15.json": "54b64b6450de9cacdeb6f2506ab4071305ccce1c6788a29acb8b795c8a0ba1ee",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/rate.json": "c40738076861136100c9416347a7ce6d4216a2056a25f00225cc1969b34f910f",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/warmup-5.json": "3eb80d53c6b040fcca4cd8a681c24dfa80343d99f5843834b1e3e1050e9c7367",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/warmup-10.json": "da7366678bf227e9ad8f3c951fbd22b566d569aa6708df41fec59b38646dfde5",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/start.txt": "4d71564f91a5f822b47e97c85b7f6c2763ec58605c720c5fdda0ffcb4810e1ad",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/warmup-20.json": "b3316a55a6dd9fe61f43e0c7f77bcbf325b231d477d7db0192e1019d5282e983",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/resume.json": "ab35ec731fe125a6484009553c054308b99eb39924aba50e9b3f76be0c0d1a3c",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/before-phase.json": "beb9d17ceb72b86c5ba3275cb510852e3edaa5101ec0db4187c07e4b2bf98ac3",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/stock-before/shard-b.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/stock-before/shard-a.json": "b83a94bb4d499fbc0456e302ba22f1bf2e7beca690fc315969335034cebbc533",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/stock-before/ledger.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/stock-before/shard-c.json.primary": "ebff0dfb6f8c93e0caddb2c5d144d7a6915cf2ca1f807e6188b5f94ef54c1c1a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/stock-before/shard-b.json.primary": "3628916e73d583221734f2c253999cce9a44170893ea8df3fb447c417276e958",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/stock-before/shard-a.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/stock-before/shard-c.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/stock-before/shard-a.json.primary": "0f9c1b8f9d2a45bfe1d3bb57fbe00247824792eb41f314124986c2df9edc0fc5",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/stock-before/shard-c.json": "9349f9cabdb8979d0bdf2ce910fc7e46f6e7157db93336ce8873a8eb6c76e0d0",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/stock-before/ledger.json.primary": "173aac8c184186f42e20e9d6eb000f4bb862c4036bff268a5241aa066a24805c",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/stock-before/shard-b.json": "b8fa54cbe9ff1bdcffaf90b5fe97b70f6a0bd2a6f0ce5b8b4bf8a9151695f38e",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/stock-before/ledger.json": "e0d7a0b6385607c4ac841b149352340009301df82ac6da14a70ffb97bb6e08a7",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shardshop-order-79bf55d5bb-zfd86.write-latency.json": "79415a80ca6e972e38460341087c18a3f0f2fd6996b8f80d51a634fe3aa22864",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shard-b.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/producer-read-end.monotonic": "3d2c140c8f6660f1e74010656c8f69079d68e2679eca5f76ca382881581dbbb9",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shard-a.json": "0fd1d9138ed5eb1f17e36c306e3bf2ad10a427f0c18e9b7bdfbbc56a6b228dce",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shardshop-order-saga-55f9b5f5d5-pfdhs.metrics": "397d2eee3a0ddc756c7f0612178d783bd0ab43f29f5df4c96de07cffe0240504",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shardshop-ledger-84888784f6-bmx7d.metrics": "8e7976fc953b256a0d7e4397eec256f8d9e8884aef2cdeca2f09d2891b9bf5ec",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/producer-read-start.monotonic": "0530394271cfe5e942f16d406cb6baf459a533005005c3a1d06d9407481c453c",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/ledger.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/host-swapusage.txt": "c76d42271a1e86e50321789e36c802480dd7ce58bf38b7d789fa33bef86f9e19",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shardshop-product-7c44d555d6-5gkst.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shardshop-order-79bf55d5bb-zfd86.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shard-c.json.primary": "ebff0dfb6f8c93e0caddb2c5d144d7a6915cf2ca1f807e6188b5f94ef54c1c1a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/owned-node-docker-stats.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/order-producer.json": "7f84df37537e0a05dc89080f216059b0681e6cd2128920bd0809394a1b6d0b27",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shard-b.json.primary": "3628916e73d583221734f2c253999cce9a44170893ea8df3fb447c417276e958",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shardshop-order-79bf55d5bb-4gxp4.metrics": "0d77ef53e679ac3f4371cc74c2370085f15c54dbed66d286852df5a5d7a735e4",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shard-a.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/at.txt": "f1b3f040de4536e151fbe263dbc376d8a49130ff8987fd27b1b220bdc92af522",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shardshop-product-7c44d555d6-4znmz.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/owned-node-docker-stats.jsonl": "72e2608282878e9df3c21d44d62380efca56185c5dd887a6cc919564838c3a8a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/resource-observation.at.txt": "afeffe4c96643d8a53e104f8018dbf657f7efcf34bf63a97b717abbdea71e5b9",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shardshop-order-79bf55d5bb-zfd86.metrics": "b0d97473f6188d967cd06755b7ae7c9fa2ed6de957b27f3995b1559fc5644084",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/product-reader.json": "cea6c4c7052537e54ba76de88c19060a6f21cf4211b2700703842a1583d6b08d",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shardshop-order-79bf55d5bb-4gxp4.write-latency.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shard-c.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shardshop-order-79bf55d5bb-4gxp4.write-latency.json": "fd2b34b3d8abef5133bcbe6365acf5cd5691556547832d5ff0aa3a721499b5dd",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shard-a.json.primary": "0f9c1b8f9d2a45bfe1d3bb57fbe00247824792eb41f314124986c2df9edc0fc5",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shardshop-product-7c44d555d6-5gkst.metrics": "0a9a50b447a4b8924314f2b8ad5548cb52c1dbff1d9c8124b12622342e965829",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/finished-at.txt": "ee641d98376662840efd1aedf23c52b84116b636032d16badb3d3926f163c1ad",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shardshop-product-7c44d555d6-4znmz.metrics": "29dbbdb9df9e9bf50427b937d9834d90d946270bba9c87a6ed4416b3458d8917",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shardshop-order-79bf55d5bb-zfd86.write-latency.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shardshop-order-saga-55f9b5f5d5-pfdhs.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shardshop-ledger-84888784f6-bmx7d.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shard-c.json": "7c975073a690383fda7898c50ad37397d33ebd6715254680b18e3d4452be2eca",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/ledger.json.primary": "173aac8c184186f42e20e9d6eb000f4bb862c4036bff268a5241aa066a24805c",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/host-vm-stat.txt": "346072b3b09db85e72597fc425e629f8e7b962d14d23aafa8b9e5900e55718fd",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shard-b.json": "8bd275546a9d60a2fa4be7565e7655f0a871fac16b7b3a68d1fb65e69978fdea",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/ledger.json": "b5ce7c47cd114875991547da6b09041fd52e61f17d7dc3ff86896e969394e493",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/application-pods.json": "b48f520f9faccd59cb15b510495e72cff683804208b257cb6d4cc5947bccf14a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/shardshop-order-79bf55d5bb-4gxp4.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-40/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shardshop-order-79bf55d5bb-zfd86.write-latency.json": "023f86c1beac5da6ed104182e78d9003416221380a79dd6899de23d9d3350373",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shard-b.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/producer-read-end.monotonic": "45b9544df285c859f13ec01a9a937fb37f821cb609c9d9e2a8d34f529435bc3e",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shard-a.json": "ff95640a081c10ac4ceccad3b5c0c4429a8132d459a787736a3423b55150b569",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shardshop-order-saga-55f9b5f5d5-pfdhs.metrics": "7df8ca69000775a79891941b8fc73881b20ac81fdb2aa95776a80b5dda51e894",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shardshop-ledger-84888784f6-bmx7d.metrics": "a275f4941191b0d73dd51e2df26417464f5dc46a29cbd47d18013a0e7fc48e59",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/producer-read-start.monotonic": "761dfcec297ccf8da513b8c11fb5ab5eeff23c179933b7657a18d80bd2c9062b",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/ledger.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/host-swapusage.txt": "00679938db97e6148de82f854c7addd9cbd5413bab291e72de349231c8e693ff",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shardshop-product-7c44d555d6-5gkst.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shardshop-order-79bf55d5bb-zfd86.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shard-c.json.primary": "ebff0dfb6f8c93e0caddb2c5d144d7a6915cf2ca1f807e6188b5f94ef54c1c1a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/owned-node-docker-stats.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/order-producer.json": "cf9fb596f52b3cc6fd39ff6e28489f060d7f49ebf3c1eb002844410de3f821f6",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shard-b.json.primary": "3628916e73d583221734f2c253999cce9a44170893ea8df3fb447c417276e958",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shardshop-order-79bf55d5bb-4gxp4.metrics": "28293db466e6ef379d09534296c7074cac2b633d5028bcec3d3396a4fb1da1ae",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shard-a.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/at.txt": "35243c9eeb52826da75d7cfe9af22e21b343979bac5ee8688f3ae8a6617fa641",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shardshop-product-7c44d555d6-4znmz.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/owned-node-docker-stats.jsonl": "e603d51f40edf74afcd05ab7deea1e20a2d66e35a40c0bff88ca725ca7a90dcf",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/resource-observation.at.txt": "e8f5c5d509f285b0023cd57f215f240480fd88d85956380ae050a6d5aa48887e",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shardshop-order-79bf55d5bb-zfd86.metrics": "c1935184554bf64cefa9555121d7b0d6484e9fb8d3b278529658cde9053fa0af",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/product-reader.json": "86d03c1fad8e9cb1fb97db7e4307287040b753cef775bf633546d2908f3ae6fd",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shardshop-order-79bf55d5bb-4gxp4.write-latency.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shard-c.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shardshop-order-79bf55d5bb-4gxp4.write-latency.json": "8c292cfc4b53a20477b1754654e47b53554d1a66cc5ddc59fc3e47bd2e20a6fc",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shard-a.json.primary": "0f9c1b8f9d2a45bfe1d3bb57fbe00247824792eb41f314124986c2df9edc0fc5",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shardshop-product-7c44d555d6-5gkst.metrics": "c3b5035c6a681a7e417241866ec662ed1480ee03f94448c77cf41c54e3ce2b0f",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/finished-at.txt": "624b8a0c13ce90c38cb58b853919dc4e932924e6ffa3bf022eb8227661655285",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shardshop-product-7c44d555d6-4znmz.metrics": "4aad5c920a10fd6047af8c2c63365ffc31e69799a956bf1873a81f9510c98a22",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shardshop-order-79bf55d5bb-zfd86.write-latency.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shardshop-order-saga-55f9b5f5d5-pfdhs.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shardshop-ledger-84888784f6-bmx7d.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shard-c.json": "00bd5e32f9480bdddf4dda4ee41811d4b9c6542f5e1c12f307df3815f862d40b",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/ledger.json.primary": "173aac8c184186f42e20e9d6eb000f4bb862c4036bff268a5241aa066a24805c",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/host-vm-stat.txt": "66b890dbdcc6d8f18dc797afe9e0c94cad01efbbaa2fb9dd62742f0a783c85ac",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shard-b.json": "cfe868afa7f4ff6310370e719696630c40471087828ae7535e2af86df3d06663",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/ledger.json": "d95d7f62d25155e0f819164cb91d41fdda8c84117d0834c543b0f24b5f498986",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/application-pods.json": "b48f520f9faccd59cb15b510495e72cff683804208b257cb6d4cc5947bccf14a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/shardshop-order-79bf55d5bb-4gxp4.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-30/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shardshop-order-79bf55d5bb-zfd86.write-latency.json": "b99d9903b673b5a2b21a5032124e6f22ed0dc5e8a2d01cb48b15afa7ae4fb6e4",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shard-b.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/producer-read-end.monotonic": "dabe4fc91fee7b2f4941dd32d2917c46a225c70ab41810b5dd29900ae489560b",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shard-a.json": "afc66550801334ed6b72b72e2c47ba27566434584fa9b5da95f9cf5d8703bdb3",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shardshop-order-saga-55f9b5f5d5-pfdhs.metrics": "f3d27776c18c18b31b0a5fa48460e223740f0e143c000f92c3a66bbb967f18bd",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shardshop-ledger-84888784f6-bmx7d.metrics": "d9b3bda26261ff8595dea09c2879267d337586407bd42ef91e7c933f24745449",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/producer-read-start.monotonic": "b55513abfaff42ab255cec52412487facada942c908e50c2d7787d2e0079ef01",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/ledger.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/host-swapusage.txt": "48072a822a0b51b1764fcabf9a063e74c6bd5ce2613d6170d616f4ac3416847e",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shardshop-product-7c44d555d6-5gkst.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shardshop-order-79bf55d5bb-zfd86.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shard-c.json.primary": "ebff0dfb6f8c93e0caddb2c5d144d7a6915cf2ca1f807e6188b5f94ef54c1c1a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/owned-node-docker-stats.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/order-producer.json": "9e32b1b17b0117092b7ddebbdfc75bc675938fcf57d4446f88de96476dc2e385",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shard-b.json.primary": "3628916e73d583221734f2c253999cce9a44170893ea8df3fb447c417276e958",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shardshop-order-79bf55d5bb-4gxp4.metrics": "1e5ae8428fadf7ef9599f73a2eb33c166527e3a10e1b689a66393836ee83ef4e",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shard-a.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/at.txt": "2e57f65b1445387d1fc0e4ba4427690b817c8c195037528dc02abf12dc1a379a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shardshop-product-7c44d555d6-4znmz.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/owned-node-docker-stats.jsonl": "780ce7e26081567993ef1c8f9682bbaf12f5f2ff5b804d729161844163283f0b",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/resource-observation.at.txt": "57ae5fb89e87c021ba6c9a59cb09a4f59b0aa409946c89acf197764fcadb3acc",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shardshop-order-79bf55d5bb-zfd86.metrics": "d51b5c730c28dd2131594073471b3f0238ec9c49b70043236cfced9c4358ae5a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/product-reader.json": "7fc8bb57d59691339cc413ed498de5a392a88281d25b2e9e20145edd1f4d875a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shardshop-order-79bf55d5bb-4gxp4.write-latency.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shard-c.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shardshop-order-79bf55d5bb-4gxp4.write-latency.json": "ab9f6bb90bf5b7efc98013aa0369816095096c155be46c65735619048a2e017c",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shard-a.json.primary": "0f9c1b8f9d2a45bfe1d3bb57fbe00247824792eb41f314124986c2df9edc0fc5",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shardshop-product-7c44d555d6-5gkst.metrics": "48d99c96b5b92c567a02e39ba358b53f2b73b6330ac93a2f66b3b89e1e148cf2",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/finished-at.txt": "447b2d972cf44f0bac491f7b2fc9daba03c0602cd9a2488487b2095e34f3731e",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shardshop-product-7c44d555d6-4znmz.metrics": "38b9bdc475f9fc1b080bcdd6763e6e5922f596dce66b5c3ca96fefa43be6002d",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shardshop-order-79bf55d5bb-zfd86.write-latency.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shardshop-order-saga-55f9b5f5d5-pfdhs.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shardshop-ledger-84888784f6-bmx7d.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shard-c.json": "7fc5cec4e1f8e48ebc9cd54b5027d290a069c368e04c81e0caa2696ebeeab819",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/ledger.json.primary": "173aac8c184186f42e20e9d6eb000f4bb862c4036bff268a5241aa066a24805c",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/host-vm-stat.txt": "6824dc4def45216fe9b3daff3d141d6a9a2237f9ee53538e9c1da238502230d3",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shard-b.json": "e5cc4ed99233f3ad8834bdca46893f76556352b45e0210cba5454f05d67e9086",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/ledger.json": "cee3683258f458833c3509b836ad1f5530240e57b14399ad0b180ee5e49beec9",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/application-pods.json": "b48f520f9faccd59cb15b510495e72cff683804208b257cb6d4cc5947bccf14a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/shardshop-order-79bf55d5bb-4gxp4.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-20/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shardshop-order-79bf55d5bb-zfd86.write-latency.json": "fe7560724d383e07672fa2fa3c781df97e0d6b139968de28f9d3d7588eb9a340",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shard-b.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/producer-read-end.monotonic": "f1c28b5ee12cb07b20de945e21be9df30f8f40f6db374620f656148d677e5ffa",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shard-a.json": "e5df6de94b2a4a0f4b2065ff6e73154b1b0ede5cc942afb9354da4dc9146452d",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shardshop-order-saga-55f9b5f5d5-pfdhs.metrics": "4bee7b8dbea71eea83606b3d18fb22ddebc3978dea0edb083773b47801adc5fa",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shardshop-ledger-84888784f6-bmx7d.metrics": "600502eedce2dfafc20d4fa580a62e66de14f4423d74aa9ea9fae101df9b2327",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/producer-read-start.monotonic": "a2a391d6375488deab3a4a8c1e0856584770cfc0610d6a342d2a30780f66e67c",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/ledger.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/host-swapusage.txt": "b5240ef9dab053c017000a33f009c8f905fe74823027dd946526c20bc5c2e952",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shardshop-product-7c44d555d6-5gkst.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shardshop-order-79bf55d5bb-zfd86.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shard-c.json.primary": "ebff0dfb6f8c93e0caddb2c5d144d7a6915cf2ca1f807e6188b5f94ef54c1c1a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/owned-node-docker-stats.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/order-producer.json": "069bd541a810c194bbff684c3c2c5c4f24abdb30f51d85978c256141e21612f1",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shard-b.json.primary": "3628916e73d583221734f2c253999cce9a44170893ea8df3fb447c417276e958",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shardshop-order-79bf55d5bb-4gxp4.metrics": "2c0ceacf4bbb65c6069d6209c6f25b31cf66d4dc50fc7d4d05ca90bf0f1e3f0c",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shard-a.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/at.txt": "d8298025ac137701a56badd495e589083bb593cc5f7cfb87935bc92096413440",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shardshop-product-7c44d555d6-4znmz.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/owned-node-docker-stats.jsonl": "87198edf0b5216324d2be909deda3cf49536ae921a7343decc9d19c3d9865703",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/resource-observation.at.txt": "9fcf1b84f8c8a6d6f047eb2a0b5c8632294f2f3ac84d8a74f0fc57267e8bbd8b",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shardshop-order-79bf55d5bb-zfd86.metrics": "74ca656314bb08e8ae4ba01049fa59a38b3d949cb6a95b114b692bf8db3f9f97",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/product-reader.json": "72b32eba85de825e837b744548fa8172ce7f610af456148d0661b3ebe339b63c",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shardshop-order-79bf55d5bb-4gxp4.write-latency.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shard-c.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shardshop-order-79bf55d5bb-4gxp4.write-latency.json": "42f27362448ead594b0eab6012ab58d5202d5364f1db1b7223cd63111a9b54b8",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shard-a.json.primary": "0f9c1b8f9d2a45bfe1d3bb57fbe00247824792eb41f314124986c2df9edc0fc5",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shardshop-product-7c44d555d6-5gkst.metrics": "fbde36fdec91664cd0fa05c8969bfefc97ec43d9df89563bc4690f0f76fe2928",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/finished-at.txt": "090b3017fb86bff648ca820f4c07335348d33c580ec78c08180c023317baa1d6",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shardshop-product-7c44d555d6-4znmz.metrics": "c3bf9fb7384cf4a739acc08b50e331dea6cf43a3d0516276ba90417372d9b2d3",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shardshop-order-79bf55d5bb-zfd86.write-latency.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shardshop-order-saga-55f9b5f5d5-pfdhs.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shardshop-ledger-84888784f6-bmx7d.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shard-c.json": "ef2799b33b2b2714145ac57a43366d1d10d5dfd6a1c90629df465c963fa67be9",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/ledger.json.primary": "173aac8c184186f42e20e9d6eb000f4bb862c4036bff268a5241aa066a24805c",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/host-vm-stat.txt": "907af8fca2cdd4a0de8a000a68eeb4d6422c4b6f12cb49f42f722d44e09dcc13",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shard-b.json": "a9a2dda30ca06d3ee57ae4df075997a8b1922964c217209ace47277a0edd24f9",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/ledger.json": "dcf8e51a0454f64b8b952d1c56386745da9a21dc64bb3befe450d36397a5039e",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/application-pods.json": "b48f520f9faccd59cb15b510495e72cff683804208b257cb6d4cc5947bccf14a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/shardshop-order-79bf55d5bb-4gxp4.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-10/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-50/producer-read-end.monotonic": "268f883fe4924fd89b9e03eeda2f81f02006d56dd0c1ce23392e7a36089f568b",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-50/producer-read-start.monotonic": "cc52a1e4fdfcbc6e852a905c565aa1cd43b354c53bb4b0d69ecdb4ae1688d78d",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-50/order-producer.json": "fc33f086937a71d5ea293e70c6248f55d4c52396ac062b0c5ccb0152067e4744",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-50/at.txt": "f7122f877026b5528e0aa030d94d2693cc6086f3f88f06f38e46d2f243cd9b89",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shardshop-order-79bf55d5bb-zfd86.write-latency.json": "3dd937c6ad5907f55f648d56e3bfc1a87757f2549ffbde8a6c3290e622de4740",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shard-b.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/producer-read-end.monotonic": "1905b286ca5f94bec18c935dd3ae5b2bca7daa9b7bf46f9c27ed202fe0288081",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shard-a.json": "01379a491644fc355e9e52378f4dba884a47896b1010685cc097ee7d3cfbf6a5",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shardshop-order-saga-55f9b5f5d5-pfdhs.metrics": "94f45e3e7abae5d50f88bd1dc32776b3f517fdc4ab8c63b018515aacdc208d19",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shardshop-ledger-84888784f6-bmx7d.metrics": "76ba77b4276877f77707f1873b8a7e636ec0cf402a125d56c8bd5e1a5a5afe5c",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/producer-read-start.monotonic": "0b489d7d5e4e5310e8847de63bd6e70f2664080cba3a6471d78d28d481f411d6",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/ledger.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/host-swapusage.txt": "912bcefb5dbb24ec98b25fdaf1aa785278b9e6889aa8098c18946fb4954208cf",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/product-seeder.json": "485ded79e1cf07d16cac483e0b024ef8dd7c010254a28b8d6e59a5568a821e40",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shardshop-product-7c44d555d6-5gkst.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shardshop-order-79bf55d5bb-zfd86.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shard-c.json.primary": "ebff0dfb6f8c93e0caddb2c5d144d7a6915cf2ca1f807e6188b5f94ef54c1c1a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/owned-node-docker-stats.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/order-producer.json": "79956dab4d62674efe4727856d32bd610f3d798eee92f16f31029059c96911f0",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shard-b.json.primary": "3628916e73d583221734f2c253999cce9a44170893ea8df3fb447c417276e958",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shardshop-order-79bf55d5bb-4gxp4.metrics": "d10dc9462d4ed786787839bf4bb8c2f8a4b2ec0f003f38d8048214b4eb47fbb7",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shard-a.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/at.txt": "d230340e4439b40e25cca2724c2ff3c80a9312be1da333254bef2ee2b2dbdbf7",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shardshop-product-7c44d555d6-4znmz.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/owned-node-docker-stats.jsonl": "a6a927a81eb4e5bc6a150fe48ab5721ccd1a97adb0034b70d78d0b0bc5eb9120",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/resource-observation.at.txt": "33dc353df71ce37138f7ccce0c1c1cfb6b53294a5a62a8c4e5867e40c10553bb",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shardshop-order-79bf55d5bb-zfd86.metrics": "aaea84ed0c0ad6a13f87488bcc87dc2c6284abb1aece10a4ba3c48a621359583",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/product-reader.json": "1dfd5f93710bda7dc0b222f7141c21224d518282dc7bf3ef3996a361a5c82968",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shardshop-order-79bf55d5bb-4gxp4.write-latency.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shard-c.json.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shardshop-order-79bf55d5bb-4gxp4.write-latency.json": "6fc6a491dade2b7710f99f78ca412da13e7971ca454c279ddb355f3623187130",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/host-swapusage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shard-a.json.primary": "0f9c1b8f9d2a45bfe1d3bb57fbe00247824792eb41f314124986c2df9edc0fc5",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shardshop-product-7c44d555d6-5gkst.metrics": "e3478fe7a2ce1c2dc64ce4195dfe7de7aebab0893ee2317bf9bc7ca599e59a6b",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/finished-at.txt": "1bd6f7d1b0d9654a1ded35ab111ed5e86c194a8900ad41c42a0e0cc48a563a36",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shardshop-product-7c44d555d6-4znmz.metrics": "696f3fb6380b14aca625e12937a959f805f1121c663c0ed635c52fb813e51c0a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shardshop-order-79bf55d5bb-zfd86.write-latency.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shardshop-order-saga-55f9b5f5d5-pfdhs.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shardshop-ledger-84888784f6-bmx7d.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shard-c.json": "8addaf4c74342d303edcb2005994851777dd210d4638d3baf830b89b02bf3581",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/ledger.json.primary": "173aac8c184186f42e20e9d6eb000f4bb862c4036bff268a5241aa066a24805c",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/host-vm-stat.txt": "8f199863251f809627ae2209dae37d3636119d180c740cf51eff02cd41218c96",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shard-b.json": "9eb93ecab971b91b951d2461c83c0214e33b4344519645aeb1f8050b139207b1",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/ledger.json": "9ce3f8d328470fd0db409e7bd7d18540af38a92db9f2b6a8b867bcebd93f1048",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/application-pods.json": "b48f520f9faccd59cb15b510495e72cff683804208b257cb6d4cc5947bccf14a",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/shardshop-order-79bf55d5bb-4gxp4.metrics.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-load-9gi3pvig/evidence/write-10/sample-0/host-vm-stat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/create.log": "a25da22e262a0c7f2e2a9328cd09a1b03172f2f60f0f537655b6e478ac22f4fe",
+    "/private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/up.log": "6963b1a2aa924394c495048c2511b9c2ea606365ef701c47e2dcba9756c9a43e",
+    "/private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/build-checks.json": "348d8dfb8a5ebecb6271f77aa8a11fff78fe06e9f74f1cfffc116560ceca92fe",
+    "/private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/artifact-permissions.json": "b6213fa20819e35a65345defa52400a4c5540bd55c3c840e8825d34bc7b1332b",
+    "/private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/source.before.sha256": "1ca441e084eb55ebe56989ad7e981ad6c9ed6a38e5bd6a673da474e595bade12",
+    "/private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/source-verification.txt": "b52b764459ba2a297c32fed7edf4b3af4f07dd2e1f193c6c47c478fb9bfeef27",
+    "/private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/collector-source.sha256": "4e683b6f58cb37a648465a0cea23c5180becd34fb63ba3684fac8df9680ed441",
+    "/private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/destroy.log": "aa0aaea62b3d65f230f54fdb12a45333ae465b2e87a4fcd7396206e558f764f6",
+    "/private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/restoration-status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/exit-status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/retained.before.json": "2135ef47b12fd9aa961a42df1b927bdf791e6a2b9c86fc670abeaa44c2e510db",
+    "/private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/retained.after.json": "2135ef47b12fd9aa961a42df1b927bdf791e6a2b9c86fc670abeaa44c2e510db",
+    "/private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/default-kubeconfig.before.sha256": "7f92b14ad5e4101c24fb9c7f2b614f979fb3fdb4eb7654f05864944cefaa71cd",
+    "/private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/default-kubeconfig.after.sha256": "7f92b14ad5e4101c24fb9c7f2b614f979fb3fdb4eb7654f05864944cefaa71cd",
+    "/private/tmp/shardshop-parallel-retry.x9th3pi1/invocation/product-startup-restart.log": "ab3004632690f73af1208c5ce3d9d6c87182003cd75b78258e9eb54c22185294"
+  }
+}

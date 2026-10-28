@@ -174,8 +174,12 @@ class ShardRoutingStartupIT {
             "shardshop.order.stock.poll-interval=1ms|Stock poll interval must be between 100ms and 30s",
             "shardshop.order.stock.lease=1s|Stock lease must be between 10s and 5m",
             "shardshop.order.stock.batch-size=0|Stock batch size must be between 1 and 100",
+            "shardshop.order.stock.shard-concurrency=0|Stock shard concurrency must be between 1 and 32",
+            "shardshop.order.stock.shard-concurrency=33|Stock shard concurrency must be between 1 and 32",
             "shardshop.order.profit.poll-interval=1ms|Profit poll interval must be between 100ms and 30s",
             "shardshop.order.profit.batch-size=0|Profit batch size must be between 1 and 100",
+            "shardshop.order.profit.shard-concurrency=0|Profit shard concurrency must be between 1 and 32",
+            "shardshop.order.profit.shard-concurrency=33|Profit shard concurrency must be between 1 and 32",
             "shardshop.order.reconciliation.poll-interval=1ms|Reconciliation poll interval must be between 100ms and 30s",
             "shardshop.order.reconciliation.batch-size=0|Reconciliation batch size must be between 1 and 1000"
     })

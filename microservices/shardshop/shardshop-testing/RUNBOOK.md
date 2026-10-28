@@ -879,8 +879,8 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind 
 
 The three drill scenarios restore temporary deployment settings afterward. The
 business-invariant scenario pauses the producer while exercising its own orders;
-the rollout and restart scenarios keep writes running. The lab has one saga replica
-with one stock worker thread, so its stock reservations run in sequence.
+the rollout and restart scenarios keep writes running. One saga replica owns
+bounded stock scans across buyer shards; each buyer shard's scan remains sequential.
 The retained lab has one catalog shard per region, and each permitted currency belongs to one shard.
 Its two-item stock-failure check therefore verifies atomic rollback within that shard: an oversized
 second item leaves both stocks unchanged, with no reservation rows or profit credits. The stock-reservation
@@ -939,6 +939,91 @@ ledger and profit effects for every accepted order. It restores the rollout
 annotation through the existing drill guard. No new workload pod is needed.
 `kind-observability` is also part of the normal deployment gate; the
 [monitoring guide](../infra/README.md#monitoring) names the endpoints and signals.
+
+## Stock-worker concurrency comparison
+
+Run the opt-in stock-stage measurement against disposable PostgreSQL, with the
+retained kind lab stopped and the maintained JDK selected:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  -Dit.test=StockThroughputMeasurement -Dfailsafe.failIfNoSpecifiedTests=false
+```
+
+The dedicated runner is outside ordinary integration-test discovery. It compares
+the same packaged application with stock shard concurrency `1, 3, 3, 1`, using
+fresh equivalent databases for each run. Each run has three buyer-home shards,
+three local products per shard, four pool connections per shard, batches of eight,
+and a 250 ms scan delay. After 24 warmup orders, it drains 288 preaccepted orders
+with three items each. Startup and HTTP acceptance are excluded. Fixture-only
+eligibility gates hold the timed orders until warmup completes; their release is
+included in the measured duration. All products are created through the API with
+sufficient stock; no stock refill is performed.
+
+The measurement records monotonic drain time, orders/s and per-shard backlogs in
+`target/scenario-runs/stock-throughput-*/measurement.json`, including partial
+evidence on failure. It checks terminal stock-stage state, zero stock retries,
+unique outbox/result identities, reservation counts and stock conservation.
+It imposes no speedup threshold. Each drain is bounded to 120 seconds, and owned
+JVMs and databases are cleaned up on failure as well as success.
+
+This is a stock-stage comparison, not full-order capacity: all shard databases
+share one PostgreSQL container, seller contention across buyer shards is excluded,
+and CDC, ledger, profit, replication and concurrent product reads are absent.
+The finite warmup, 100 ms observation interval and database observation overhead
+limit precision. Retain both runs of each setting; do not report only the best.
+
+The [2026-10-28 comparison](evidence/2026-10-28-stock-concurrency.json) observed
+40.60 orders/s with concurrency one and 57.99 orders/s with concurrency three,
+pooling both runs of each setting: 42.8% greater stock-stage throughput and 30.0%
+shorter drain time. The [validation record](../CHANGELOG.md#stock-worker-concurrency--2026-10-28)
+contains the exact commands and scope; this does not requalify full-order capacity.
+
+## Profit-worker concurrency comparison
+
+With the retained kind lab stopped and the maintained JDK selected, run:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  -Dit.test=ProfitThroughputMeasurement -Dfailsafe.failIfNoSpecifiedTests=false
+```
+
+This opt-in runner compares the same packaged candidate with profit shard
+concurrency `1, 3, 3, 1`. Each arm uses fresh databases for three buyer-home
+shards, independent local sellers, four pool connections per shard and the lab's
+profit settings: 100 ms polling and batches of 32. The standalone defaults remain
+250 ms and eight intents.
+
+Product and order APIs create one accepted three-item snapshot per home. Explicit
+fixture SQL clones it with synthetic IDs and creates confirmed orders and durable
+profit intents; it does not perform stock reservation or ledger confirmation.
+After 72 warmup intents, the timed phase drains 3,168 intents for 1,056 orders.
+Startup, acceptance and fixture preparation are excluded; eligibility-release SQL,
+polling alignment and database observation overhead are included. The result is
+profit intents/s, not measured complete orders/s.
+
+The runner verifies exact credit identities, amounts and seller balances, applied
+home intents and zero failures/blocked intents. After the timer, it clears three
+applied markers per home while preserving committed seller credits, restarts the
+worker and checks that retry adds no credits or money. Each warmup, drain and
+replay wait is bounded to 60 seconds; owned JVMs and databases are cleaned on
+success or failure. JSON evidence and packaged JVM log paths are recorded under
+`target/scenario-runs/profit-throughput-*/measurement.json`, including partial
+evidence on failure. There is no speedup assertion.
+
+All shard databases share one PostgreSQL container. Stock, CDC, ledger, result
+consumption, replication and concurrent product reads are absent during timing.
+Two runs per setting, short warmup and 100 ms observations limit precision.
+The separate `@order-results` shared-seller scenario proves concurrent buyer-home
+updates preserve one seller balance and unique credits; the throughput fixture
+measures independent sellers and does not estimate a hot seller's capacity.
+
+The [2026-10-28 comparison](evidence/2026-10-28-profit-concurrency.json) observed
+182.29 → 299.16 intents/s when pooling two successful runs per setting: 64.1%
+greater throughput and 39.1% shorter drain time. The
+[validation record](../CHANGELOG.md#profit-worker-concurrency--2026-10-28) retains
+the first failed shutdown-log check, its correction and the passing rerun. These
+profit-stage gains cannot be added to the separate stock-stage percentage.
 
 ## Capacity measurement
 

@@ -50,6 +50,8 @@ Feature: Order applies ledger results and credits confirmed seller profit
   Scenario: Seller credit survives an interrupted home mark and competing workers
     Then a committed seller credit is reused after an interrupted home mark by two workers
 
+  Scenario: Different buyer homes concurrently credit the same seller balance
+    Then three buyer homes concurrently credit one seller without lost or duplicate profit
 
   @currency-policy @product-browser
   Scenario: Every supported currency crosses buyer regions and survives ledger replay and retained cutover
