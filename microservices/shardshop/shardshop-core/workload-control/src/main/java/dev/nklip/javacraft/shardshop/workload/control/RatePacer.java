@@ -25,6 +25,8 @@ public final class RatePacer {
     private long lastStart;
     /** Changes with each rate change, which cancels every reserved start time. */
     private long epoch;
+    /** Whether the previous scheduled slot belongs to uninterrupted pacing. */
+    private boolean latenessEligible;
 
     public RatePacer(double startsPerSecond) {
         this(startsPerSecond, System::nanoTime, Condition::awaitNanos);
@@ -51,6 +53,7 @@ public final class RatePacer {
         try {
             apply(startsPerSecond);
             epoch++;
+            latenessEligible = false;
             // Missed starts are not sent later: the schedule continues from the last granted start.
             scheduled = started && interval > 0;
             next = lastStart + interval;
@@ -62,6 +65,15 @@ public final class RatePacer {
 
     /** Waits until the next free start time of the shared schedule. */
     public void await() throws InterruptedException {
+        await(false);
+    }
+
+    /** Measures only the granted reservation; cancelled reservations and pauses have no sample. */
+    public StartTiming awaitTiming() throws InterruptedException {
+        return await(true);
+    }
+
+    private StartTiming await(boolean measured) throws InterruptedException {
         lock.lockInterruptibly();
         try {
             while (true) {
@@ -69,11 +81,14 @@ public final class RatePacer {
                     waiter.await(changed, Long.MAX_VALUE);
                 }
                 long now = nanoTime.getAsLong();
+                long lateArrival = latenessEligible && scheduled ? Math.max(0, now - next) : -1;
                 long start = scheduled && next - now > 0 ? next : now;
+                latenessEligible = true;
                 scheduled = true;
                 next = start + interval;
                 long reserved = epoch;
-                long remaining = start - now;
+                long plannedWait = start - now;
+                long remaining = plannedWait;
                 while (remaining > 0 && reserved == epoch) {
                     waiter.await(changed, remaining);
                     remaining = start - nanoTime.getAsLong();
@@ -81,7 +96,7 @@ public final class RatePacer {
                 if (reserved == epoch) {
                     started = true;
                     lastStart = start;
-                    return;
+                    return measured ? new StartTiming(start, nanoTime.getAsLong(), plannedWait, lateArrival) : null;
                 }
             }
         } finally {
@@ -99,6 +114,7 @@ public final class RatePacer {
             long now = nanoTime.getAsLong();
             started = true;
             lastStart = now;
+            latenessEligible = false;
             if (interval > 0 && (!scheduled || next - (now + interval) < 0)) {
                 scheduled = true;
                 next = now + interval;
@@ -126,6 +142,18 @@ public final class RatePacer {
         }
         rate = startsPerSecond;
         interval = startsPerSecond == 0 ? 0 : Math.max(1, Math.round(1e9 / startsPerSecond));
+    }
+
+    /**
+     * All timestamps use the monotonic pacer clock. Planned wait is intentional pacing, not scheduling overhead.
+     * Wake delay is granted-slot to permit observation (including condition/lock reacquisition). Late arrival is
+     * arrival under the pacer lock minus the previous next slot, clamped to zero; -1 means no valid baseline
+     * (first start, rate/pause change or unpaced mark). It is a process capacity/stall signal, not pure OS latency.
+     */
+    public record StartTiming(long scheduledNanos, long permitNanos, long plannedWaitNanos, long lateArrivalNanos) {
+        public long wakeDelayNanos() {
+            return Math.max(0, permitNanos - scheduledNanos);
+        }
     }
 
     /** Waits on the condition for at most the given nanoseconds. Tests replace it to control time. */

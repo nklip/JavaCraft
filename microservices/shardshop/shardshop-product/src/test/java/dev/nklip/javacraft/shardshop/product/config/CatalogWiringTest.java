@@ -6,6 +6,7 @@ import dev.nklip.javacraft.shardshop.product.persistence.JdbcCatalogStore;
 import dev.nklip.javacraft.shardshop.sharding.ShardRouter;
 import dev.nklip.javacraft.shardshop.sharding.ShardTopology;
 import org.junit.jupiter.api.Test;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import java.util.Map;
 import java.util.Optional;
@@ -26,8 +27,9 @@ class CatalogWiringTest {
             assertEquals(Map.of("a", endpoint("a-rw"), "b", endpoint("b-rw")), context.arguments().get(0));
             assertEquals(Map.of("a", endpoint("a-ro"), "b", endpoint("b-ro")), context.arguments().get(1));
             assertEquals(4, context.arguments().get(2));
+            assertNull(context.arguments().get(3));
         })) {
-            JdbcCatalogStore store = wiring.store(config, topology);
+            JdbcCatalogStore store = wiring.store(config, topology, new SimpleMeterRegistry());
             assertSame(construction.constructed().getFirst(), store);
             wiring.close(store);
             verify(store).close();
@@ -50,15 +52,28 @@ class CatalogWiringTest {
             assertEquals(Map.of("a", new Endpoint(secured("jdbc:postgresql://localhost/replica", "a"), "custom", "test-secret"),
                     "b", endpoint("b-ro")), context.arguments().get(1));
         })) {
-            JdbcCatalogStore store = wiring.store(config, topology);
+            JdbcCatalogStore store = wiring.store(config, topology, new SimpleMeterRegistry());
             assertSame(construction.constructed().getFirst(), store);
+        }
+    }
+
+    @Test
+    void diagnosticsAreCreatedOnlyWhenExplicitlyEnabled() {
+        when(config.readDiagnosticsEnabled()).thenReturn(true);
+        var registry = new SimpleMeterRegistry();
+        try (var construction = mockConstruction(JdbcCatalogStore.class, (store, context) ->
+                     assertNotNull(context.arguments().get(3)))) {
+            wiring.store(config, topology, registry);
+            assertEquals(32, registry.getMeters().size());
+        } finally {
+            registry.close();
         }
     }
 
     @Test
     void unknownConnectionNamesFailBeforeConstructingPools() {
         when(config.connections()).thenReturn(Map.of("typo", mock(CatalogConfiguration.Connection.class)));
-        assertThrows(IllegalArgumentException.class, () -> wiring.store(config, topology));
+        assertThrows(IllegalArgumentException.class, () -> wiring.store(config, topology, new SimpleMeterRegistry()));
     }
 
     @Test

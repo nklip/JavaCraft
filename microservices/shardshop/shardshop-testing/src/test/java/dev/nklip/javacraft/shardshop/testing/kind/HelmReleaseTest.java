@@ -331,6 +331,25 @@ class HelmReleaseTest {
     }
 
     @Test
+    void readDiagnosticsAreOptInAndRestrictedToLiteralBooleans() throws Exception {
+        List<JsonNode> defaults = render("application-release");
+        assertFalse(named(defaults, "shardshop-product-config").path("data").path("application.properties")
+                .asText().contains("shardshop.catalog.read-diagnostics.enabled="));
+        assertFalse(named(defaults, "shardshop-product-reader").toString().contains("SHARDSHOP_READER_DIAGNOSTICS_ENABLED"));
+        values.putObject("product").putObject("configuration").put("shardshop.catalog.read-diagnostics.enabled", "true");
+        values.putObject("productReader").putObject("configuration").put("SHARDSHOP_READER_DIAGNOSTICS_ENABLED", "true");
+        List<JsonNode> enabled = render("application-release");
+        assertTrue(named(enabled, "shardshop-product-config").path("data").path("application.properties")
+                .asText().contains("shardshop.catalog.read-diagnostics.enabled=true\n"));
+        assertEquals("true", env(named(enabled, "shardshop-product-reader"), "SHARDSHOP_READER_DIAGNOSTICS_ENABLED"));
+        ((ObjectNode) values.path("productReader").path("configuration")).put("SHARDSHOP_READER_DIAGNOSTICS_ENABLED", "1");
+        assertRejected("application-release");
+        ((ObjectNode) values.path("productReader").path("configuration")).put("SHARDSHOP_READER_DIAGNOSTICS_ENABLED", "false");
+        ((ObjectNode) values.path("product").path("configuration")).put("shardshop.catalog.read-diagnostics.enabled", "${ENABLED}");
+        assertRejected("application-release");
+    }
+
+    @Test
     void changedConfigurationAndImagesRollOnlyTheirAffectedApplicationPods() throws Exception {
         List<JsonNode> before = render("application-release");
         ((ObjectNode) values.path("images")).put("product-seeder", image("product-seeder", 'b'));

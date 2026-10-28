@@ -90,7 +90,8 @@ final class KindWorkloadPolicyTest {
                 Map.entry("SHARDSHOP_READER_RETRY_INTERVAL", "0ms"),
                 Map.entry("SHARDSHOP_READER_MAX_CONNECTION_LIFETIME", "30s"),
                 Map.entry("SHARDSHOP_READER_IDLE_TIMEOUT", "10"),
-                Map.entry("SHARDSHOP_READER_REPORT_INTERVAL", "PT1M30S")), Map.of(
+                Map.entry("SHARDSHOP_READER_REPORT_INTERVAL", "PT1M30S"),
+                Map.entry("SHARDSHOP_READER_DIAGNOSTICS_ENABLED", "true")), Map.of(
                 "SHARDSHOP_SEEDER_PRODUCT_URL", "http://shardshop-product.shardshop.svc:8080",
                 "SHARDSHOP_SEEDER_CATALOG_VERSION", "catalog-v2",
                 "SHARDSHOP_SEEDER_CONNECT_TIMEOUT", "2s",
@@ -138,6 +139,20 @@ final class KindWorkloadPolicyTest {
                 ((ArrayNode) invalid.path("containers").get(0).path("env")).addObject()
                         .put("name", name).put("value", value);
                 assertThrows(IOException.class, () -> KindDeployment.httpOnly(invalid));
+            }
+        }
+    }
+
+    @Test
+    void readerDiagnosticsAcceptOnlyLiteralBooleanValues() {
+        for (String value : new String[]{"true", "false", "yes", "1", "${DIAGNOSTICS}"}) {
+            ObjectNode candidate = spec();
+            ((ArrayNode) candidate.path("containers").get(0).path("env")).addObject()
+                    .put("name", "SHARDSHOP_READER_DIAGNOSTICS_ENABLED").put("value", value);
+            if (value.equals("true") || value.equals("false")) {
+                assertDoesNotThrow(() -> KindDeployment.httpOnly(candidate));
+            } else {
+                assertThrows(IOException.class, () -> KindDeployment.httpOnly(candidate));
             }
         }
     }

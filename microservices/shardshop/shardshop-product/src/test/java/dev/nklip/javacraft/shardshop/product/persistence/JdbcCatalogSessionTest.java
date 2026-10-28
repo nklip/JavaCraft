@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.product.persistence;
 
 import dev.nklip.javacraft.shardshop.common.jdbc.DatabasePhases;
+import dev.nklip.javacraft.shardshop.common.jdbc.DatabaseTimings;
 import dev.nklip.javacraft.shardshop.product.catalog.CatalogFailure;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -230,6 +231,31 @@ class JdbcCatalogSessionTest {
         assertEquals(CatalogFailure.Reason.UNAVAILABLE, sellerFailure.reason());
         assertEquals(CatalogFailure.Reason.UNAVAILABLE, productFailure.reason());
         verify(rows, times(2)).close();
+    }
+
+    @Test
+    void diagnosticsKeepTimeoutSetupSeparateFromBusinessQueryAndPreserveFailures() throws SQLException {
+        AtomicLong clock = new AtomicLong();
+        record Event(DatabaseTimings.Phase phase, long nanos, boolean success) { }
+        var events = new java.util.ArrayList<Event>();
+        var timings = new DatabaseTimings(clock::get,
+                (phase, nanos, success) -> events.add(new Event(phase, nanos, success)));
+        session = new JdbcCatalogSession(connection, new DatabasePhases.Deadline(() -> 0, 3_000_000_000L),
+                CatalogFailure.Reason.REPLICA_UNAVAILABLE, timings);
+        when(timeout.executeQuery()).thenAnswer(invocation -> { clock.addAndGet(7); return timeoutRows; });
+        when(statement.executeQuery()).thenAnswer(invocation -> { clock.addAndGet(11); return rows; });
+        assertTrue(session.product(1, 2).isEmpty());
+        when(statement.executeQuery()).thenAnswer(invocation -> {
+            clock.addAndGet(13);
+            throw new SQLException("secret");
+        });
+        assertEquals(CatalogFailure.Reason.REPLICA_UNAVAILABLE,
+                assertThrows(CatalogFailure.class, () -> session.product(1, 2)).reason());
+        assertEquals(List.of(new Event(DatabaseTimings.Phase.STATEMENT_SETUP, 7, true),
+                new Event(DatabaseTimings.Phase.QUERY, 11, true),
+                new Event(DatabaseTimings.Phase.STATEMENT_SETUP, 7, true),
+                new Event(DatabaseTimings.Phase.QUERY, 13, false)), events);
+        verify(statement, times(2)).close();
     }
 
     private static ProductCreation creation() {

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
  * The lab sets only the product URL of the reader, thus the deployed reader uses these defaults. They must be the time
@@ -20,6 +21,7 @@ class ReaderConfigurationTest {
 
     @Test
     void defaultsAreTheTimeLimitsOfTheHttpConnectionPolicy() {
+        assertFalse(configuration.diagnostics().enabled(), "Scheduling diagnostics are opt-in");
         assertEquals(Duration.ofSeconds(2), configuration.connectTimeout(), "Connect timeout");
         assertEquals(Duration.ofSeconds(5), configuration.requestDeadline(), "Request deadline");
         assertEquals(Duration.ofSeconds(30), configuration.maxConnectionLifetime(), "Connection lifetime");

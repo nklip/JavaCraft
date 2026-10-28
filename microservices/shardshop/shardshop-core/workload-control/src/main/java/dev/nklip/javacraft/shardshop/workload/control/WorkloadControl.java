@@ -93,6 +93,11 @@ public final class WorkloadControl {
         pacer.await();
     }
 
+    /** Optional timing of the granted start; the default awaitStart path allocates no timing result. */
+    public RatePacer.StartTiming awaitStartTiming() throws InterruptedException {
+        return pacer.awaitTiming();
+    }
+
     /**
      * Paces and admits one operation atomically with Pause/rate updates. A Pause after admission sees it in flight;
      * a Pause before admission holds it, even if the pacer's preceding wait has just returned.

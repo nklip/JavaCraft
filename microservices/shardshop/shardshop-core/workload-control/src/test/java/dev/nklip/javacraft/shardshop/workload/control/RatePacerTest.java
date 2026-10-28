@@ -50,6 +50,66 @@ class RatePacerTest {
     }
 
     @Test
+    void diagnosticsSeparateIntentionalPacingFromWakeLateness() throws InterruptedException {
+        FakeTime time = new FakeTime();
+        RatePacer pacer = time.pacer(1_000);
+        RatePacer.StartTiming first = pacer.awaitTiming();
+        assertEquals(-1, first.lateArrivalNanos(), "The first start has no previous slot");
+        time.onWait = () -> time.now += MILLISECOND + 250_000;
+        RatePacer.StartTiming delayed = pacer.awaitTiming();
+        assertEquals(MILLISECOND, delayed.plannedWaitNanos());
+        assertEquals(250_000, delayed.wakeDelayNanos(), "The planned millisecond is not wake overhead");
+        assertEquals(0, delayed.lateArrivalNanos());
+        RatePacer.StartTiming next = pacer.awaitTiming();
+        assertEquals(750_000, next.plannedWaitNanos(), "Diagnostics preserve the existing schedule");
+        assertEquals(0, next.wakeDelayNanos());
+    }
+
+    @Test
+    void diagnosticsReportLateArrivalWithoutReplayingMissedSlots() throws InterruptedException {
+        FakeTime time = new FakeTime();
+        RatePacer pacer = time.pacer(1_000);
+        pacer.awaitTiming();
+        time.now += 5 * MILLISECOND;
+        RatePacer.StartTiming late = pacer.awaitTiming();
+        assertEquals(4 * MILLISECOND, late.lateArrivalNanos());
+        assertEquals(0, late.plannedWaitNanos());
+        assertEquals(0, late.wakeDelayNanos(), "An immediate permit is distinct from late arrival");
+        assertEquals(MILLISECOND, pacer.awaitTiming().plannedWaitNanos(), "No catch-up burst");
+    }
+
+    @Test
+    void diagnosticsDiscardCancelledSlotsAndExcludePauseTime() throws InterruptedException {
+        FakeTime time = new FakeTime();
+        RatePacer pacer = time.pacer(1);
+        pacer.awaitTiming();
+        long first = time.now;
+        time.onWait = () -> {
+            time.now += 100 * MILLISECOND;
+            pacer.rate(0);
+        };
+        time.onIndefiniteWait = () -> {
+            time.now += 60_000 * MILLISECOND;
+            pacer.rate(1_000);
+        };
+        RatePacer.StartTiming resumed = pacer.awaitTiming();
+        assertEquals(time.now, resumed.scheduledNanos(), "Only the resumed reservation is returned");
+        assertEquals(first + 60_100 * MILLISECOND, resumed.permitNanos());
+        assertEquals(0, resumed.wakeDelayNanos());
+        assertEquals(-1, resumed.lateArrivalNanos(), "Intentional pause is not late arrival");
+        assertEquals(MILLISECOND, pacer.awaitTiming().plannedWaitNanos());
+    }
+
+    @Test
+    void diagnosticsKeepWaitsInterruptible() throws InterruptedException {
+        RatePacer pacer = new RatePacer(1_000, () -> 1_000L, (condition, nanos) -> {
+            throw new InterruptedException("Stopped");
+        });
+        pacer.awaitTiming();
+        assertThrows(InterruptedException.class, pacer::awaitTiming, "An interrupted wait returns no timing sample");
+    }
+
+    @Test
     void spacesStartsEvenlyAtTheTotalRate() throws InterruptedException {
         FakeTime time = new FakeTime();
         RatePacer pacer = time.pacer(4);

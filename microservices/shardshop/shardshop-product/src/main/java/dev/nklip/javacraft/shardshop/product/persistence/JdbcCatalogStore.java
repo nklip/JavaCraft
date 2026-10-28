@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.product.persistence;
 
 import dev.nklip.javacraft.shardshop.common.jdbc.DatabasePhases;
+import dev.nklip.javacraft.shardshop.common.jdbc.DatabaseTimings;
 import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import dev.nklip.javacraft.shardshop.common.jdbc.JdbcUrls;
 import dev.nklip.javacraft.shardshop.product.catalog.CatalogFailure;
@@ -32,11 +33,21 @@ public final class JdbcCatalogStore implements CatalogStore, AutoCloseable {
     private final Map<PoolKey, AgroalDataSource> pools;
     private final DatabasePhases phases;
     private final LongSupplier nanoTime;
+    private final CatalogReadDiagnostics diagnostics;
 
     public JdbcCatalogStore(Map<String, Endpoint> primary, Map<String, Endpoint> replicas, int maxPoolSize) {
-        this.pools = pools(primary, replicas, maxPoolSize);
+        this(primary, replicas, maxPoolSize, null);
+    }
+
+    public JdbcCatalogStore(Map<String, Endpoint> primary, Map<String, Endpoint> replicas, int maxPoolSize,
+                            CatalogReadDiagnostics diagnostics) {
+        this.pools = pools(primary, replicas, maxPoolSize, diagnostics != null);
         this.phases = new DatabasePhases("catalog", Math.max(1, Math.multiplyExact(pools.size(), maxPoolSize)));
         this.nanoTime = System::nanoTime;
+        this.diagnostics = diagnostics;
+        if (diagnostics != null) {
+            diagnostics.registerPools(this.pools);
+        }
     }
 
     JdbcCatalogStore(Map<PoolKey, AgroalDataSource> pools, DatabasePhases phases) {
@@ -44,23 +55,29 @@ public final class JdbcCatalogStore implements CatalogStore, AutoCloseable {
     }
 
     JdbcCatalogStore(Map<PoolKey, AgroalDataSource> pools, DatabasePhases phases, LongSupplier nanoTime) {
+        this(pools, phases, nanoTime, null);
+    }
+
+    JdbcCatalogStore(Map<PoolKey, AgroalDataSource> pools, DatabasePhases phases, LongSupplier nanoTime,
+                     CatalogReadDiagnostics diagnostics) {
         this.pools = Map.copyOf(pools);
         this.phases = phases;
         this.nanoTime = nanoTime;
+        this.diagnostics = diagnostics;
     }
 
     private static Map<PoolKey, AgroalDataSource> pools(Map<String, Endpoint> primary,
-                                                       Map<String, Endpoint> replicas, int size) {
+                                                       Map<String, Endpoint> replicas, int size, boolean metrics) {
         if (size < 1 || size > 32) {
             throw new IllegalArgumentException("Catalog pool size must be between 1 and 32");
         }
         LinkedHashMap<PoolKey, AgroalDataSource> result = new LinkedHashMap<>();
         try {
             for (Map.Entry<String, Endpoint> endpoint : primary.entrySet()) {
-                result.put(new PoolKey(endpoint.getKey(), false), pool(endpoint.getValue(), size));
+                result.put(new PoolKey(endpoint.getKey(), false), pool(endpoint.getValue(), size, metrics));
             }
             for (Map.Entry<String, Endpoint> endpoint : replicas.entrySet()) {
-                result.put(new PoolKey(endpoint.getKey(), true), pool(endpoint.getValue(), size));
+                result.put(new PoolKey(endpoint.getKey(), true), pool(endpoint.getValue(), size, metrics));
             }
             return Map.copyOf(result);
         } catch (SQLException failure) {
@@ -70,7 +87,15 @@ public final class JdbcCatalogStore implements CatalogStore, AutoCloseable {
     }
 
     static AgroalDataSource pool(Endpoint endpoint, int size) throws SQLException {
-        return AgroalDataSource.from(new AgroalDataSourceConfigurationSupplier()
+        return pool(endpoint, size, false);
+    }
+
+    private static AgroalDataSource pool(Endpoint endpoint, int size, boolean metrics) throws SQLException {
+        var supplier = new AgroalDataSourceConfigurationSupplier();
+        if (metrics) {
+            supplier.metricsEnabled();
+        }
+        return AgroalDataSource.from(supplier
                 .connectionPoolConfiguration(configuration -> configuration
                         .initialSize(0).minSize(0).maxSize(size)
                         .acquisitionTimeout(DatabasePhases.ACQUISITION_TIMEOUT)
@@ -127,10 +152,11 @@ public final class JdbcCatalogStore implements CatalogStore, AutoCloseable {
         if (pool == null) {
             throw new CatalogFailure(unavailable);
         }
+        DatabaseTimings timings = readOnly && diagnostics != null ? diagnostics.timings(replica) : DatabaseTimings.NONE;
         return phases.run(DatabasePhases.Pool.of(pool, () -> pool.flush(AgroalDataSource.FlushMode.ALL)), readOnly,
                 budget,
-                (connection, deadline) -> work.apply(new JdbcCatalogSession(connection, deadline, unavailable)),
-                CatalogFailure.class, () -> new CatalogFailure(unavailable));
+                (connection, deadline) -> work.apply(new JdbcCatalogSession(connection, deadline, unavailable, timings)),
+                CatalogFailure.class, failure -> new CatalogFailure(unavailable), timings);
     }
 
     @Override

@@ -313,6 +313,41 @@ class DatabasePhasesTest {
         verify(shared, times(32)).commit();
     }
 
+    @Test
+    void diagnosticPhasesSeparateAcquisitionSetupWorkAndCommit() throws SQLException {
+        AtomicLong clock = new AtomicLong();
+        record Event(DatabaseTimings.Phase phase, long nanos, boolean success) { }
+        List<Event> events = new ArrayList<>();
+        var timings = new DatabaseTimings(clock::get,
+                (phase, nanos, success) -> events.add(new Event(phase, nanos, success)));
+        when(dataSource.getConnection()).thenAnswer(invocation -> {
+            clock.addAndGet(11);
+            return connection;
+        });
+        doAnswer(invocation -> { clock.addAndGet(13); return null; }).when(connection).setAutoCommit(false);
+        when(timeouts.executeQuery()).thenAnswer(invocation -> {
+            clock.addAndGet(17);
+            ResultSet result = mock();
+            when(result.next()).thenReturn(true);
+            return result;
+        });
+        doAnswer(invocation -> { clock.addAndGet(19); return null; }).when(connection).commit();
+
+        assertEquals("read", phases.run(pool, true, DatabasePhases.PHASE_BUDGET, (connection, deadline) -> {
+            clock.addAndGet(23);
+            return "read";
+        }, Conflict.class, failure -> new Unavailable(), timings));
+
+        assertEquals(List.of(new Event(DatabaseTimings.Phase.DISPATCH, 0, true),
+                new Event(DatabaseTimings.Phase.ACQUISITION, 11, true),
+                new Event(DatabaseTimings.Phase.CONNECTION_SETUP, 13, true),
+                new Event(DatabaseTimings.Phase.WORK, 23, true),
+                new Event(DatabaseTimings.Phase.PRE_COMMIT_SETUP, 17, true),
+                new Event(DatabaseTimings.Phase.COMMIT, 19, true)), events);
+        verify(connection).close();
+        verify(connection, never()).rollback();
+    }
+
     private <T> T run(boolean readOnly, DatabasePhases.Work<T> work) {
         return phases.run(pool, readOnly, DatabasePhases.PHASE_BUDGET, work, Conflict.class, Unavailable::new);
     }

@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.workload.reader.metrics;
 
 import dev.nklip.javacraft.shardshop.workload.reader.http.ReadResult;
+import dev.nklip.javacraft.shardshop.workload.control.RatePacer.StartTiming;
 import dev.nklip.javacraft.shardshop.workload.reader.http.ReadResult.Outcome;
 import org.apache.hc.core5.pool.PoolStats;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,58 @@ class ReaderMetricsTest {
 
     private long now = Long.MAX_VALUE - 10 * SECOND;
     private final ReaderMetrics metrics = new ReaderMetrics(() -> now);
+
+    @Test
+    void diagnosticsAreDisabledByDefault() {
+        assertFalse(metrics.diagnosticsEnabled());
+        assertTrue(metrics.total(FULL).schedulingMicroseconds().isEmpty());
+        assertEquals("", metrics.total(FULL).schedulingSummary());
+    }
+
+    @Test
+    void diagnosticsRetainSubMillisecondPrecisionAndResetIntervalsButKeepTotals() {
+        ReaderMetrics measured = new ReaderMetrics(() -> now, true);
+        measured.begin();
+        for (int micros = 1; micros <= 100; micros++) {
+            long scheduled = now;
+            long permit = scheduled + micros * 1_000L;
+            measured.record("US", ReadResult.ok("product"), MILLISECOND,
+                    new StartTiming(scheduled, permit, SECOND, micros == 1 ? -1 : 0), permit + 1_500);
+        }
+        now += 30 * SECOND;
+        ReaderMetrics.Report first = measured.nextInterval(FULL);
+        ReaderMetrics.Timing wake = first.schedulingMicroseconds().get("wake");
+        assertEquals(100, wake.count());
+        assertEquals(50.5, wake.mean());
+        assertEquals(50, wake.p50());
+        assertEquals(95, wake.p95());
+        assertEquals(99, wake.p99());
+        assertEquals(100, wake.max());
+        assertEquals(99, first.schedulingMicroseconds().get("lateArrival").count());
+        assertEquals(1.5, first.schedulingMicroseconds().get("dispatch").mean());
+        assertTrue(first.schedulingSummary().contains("dispatch={count=100, mean=1.500, p50=2, p95=2, p99=2, max=1.500}"));
+        assertThrows(UnsupportedOperationException.class, () -> first.schedulingMicroseconds().clear());
+        ReaderMetrics.Report second = measured.nextInterval(FULL);
+        assertEquals(first.endNanos(), second.startNanos());
+        assertEquals(30 * SECOND, first.endNanos() - first.startNanos());
+        assertEquals(1, first.sequence());
+        assertEquals(2, second.sequence());
+        assertEquals(0, second.schedulingMicroseconds().get("wake").count());
+        assertEquals(100, measured.total(FULL).schedulingMicroseconds().get("wake").count());
+        measured.begin();
+        assertEquals(0, measured.total(FULL).schedulingMicroseconds().get("wake").count());
+    }
+
+    @Test
+    void diagnosticHistogramKeepsLongStallsAndExactMeanAndMaximum() {
+        ReaderMetrics measured = new ReaderMetrics(() -> now, true);
+        measured.recordScheduling(new StartTiming(0, 2 * SECOND + 123, 0, -1), 2 * SECOND + 123);
+        ReaderMetrics.Timing wake = measured.total(FULL).schedulingMicroseconds().get("wake");
+        assertEquals(2_000_000.123, wake.mean());
+        assertEquals(2_000_000.123, wake.max());
+        assertTrue(wake.p99() >= 2_000_001 && wake.p99() <= 2_031_251,
+                "Percentiles are uncapped upper bucket bounds within approximately 1.6%");
+    }
 
     @Test
     void reportsRequestsOutcomesLatencyRegionsAndThePoolStateOfOneInterval() {

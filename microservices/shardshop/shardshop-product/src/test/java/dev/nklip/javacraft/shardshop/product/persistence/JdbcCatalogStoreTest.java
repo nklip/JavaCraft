@@ -248,6 +248,26 @@ class JdbcCatalogStoreTest {
     }
 
     @Test
+    void enabledDiagnosticsObserveOnlyReadsAndRetainTargetSelection() {
+        var registry = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        try {
+            store = new JdbcCatalogStore(Map.of(new JdbcCatalogStore.PoolKey("shard-a", false), primary,
+                    new JdbcCatalogStore.PoolKey("shard-a", true), replica),
+                    new DatabasePhases(workers, cleanup, () -> 0), () -> 0,
+                    new CatalogReadDiagnostics(registry));
+            assertEquals("write", store.write(SHARD, session -> "write"));
+            assertEquals("primary", store.read(SHARD, false, session -> "primary"));
+            assertEquals("replica", store.read(SHARD, true, session -> "replica"));
+            for (String target : List.of("primary", "replica")) {
+                assertEquals(1, registry.get("shardshop.product.read.database.phase")
+                        .tags("target", target, "phase", "acquisition", "outcome", "success").timer().count());
+            }
+        } finally {
+            registry.close();
+        }
+    }
+
+    @Test
     void shutdownClosesEveryPoolAndExecutor() {
         store.close();
         verify(workers).shutdownNow();

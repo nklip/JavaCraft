@@ -8,6 +8,40 @@ The [application chart](../infra/helm/shardshop/templates/applications.yaml)
 defines product replicas, routing and credential mounts, generator allocation,
 readiness and pod security.
 
+## Opt-in read diagnostics
+
+Set `shardshop.catalog.read-diagnostics.enabled=true` in
+`product.configuration` for a bounded measurement. The default is `false`.
+This enables read-only phase timers and pool observations on each product pod's
+existing `/q/metrics`; it changes no SQL, pool limit, retry or deadline.
+
+`shardshop_product_read_database_phase_seconds_count` and `_sum` have fixed
+`target=primary|replica`, `outcome=success|failure` and `phase` labels:
+
+| Phase | Measured interval |
+|---|---|
+| `dispatch` | Submission to entry into the database worker |
+| `acquisition` | Complete connection acquisition, including queueing, creation and validation |
+| `connection_setup` | Network timeout, read-only mode and transaction setup |
+| `statement_setup` | Timeout-setting SQL and statement preparation |
+| `query` | `executeQuery()`, excluding result iteration and close |
+| `work` | Entire application database callback, including setup, query and result decoding |
+| `pre_commit_setup` | Timeout-setting SQL immediately before commit |
+| `commit` | Commit call |
+
+Subtract count/sum snapshots for each pod and label set; interval mean is the
+sum delta divided by the count delta. `work` overlaps `statement_setup` and
+`query`, so these durations must not all be added. `_max` is a rolling Micrometer
+observation, not an interval percentile. A phase outcome is not an HTTP outcome;
+late completion after cancellation can enter a later scrape.
+
+`shardshop_product_read_pool_connections{state="active|available|awaiting"}`
+and `shardshop_product_read_pool_creations_total` aggregate pools by target.
+Awaiting is instantaneous; creation deltas help distinguish connection opening
+from steady-state acquisition. Primary pools also serve writes. These aggregate
+values do not locate an individual shard bottleneck. Metrics retain no IDs,
+SQL text, response payloads or individual request samples.
+
 ## Seller and product provider
 
 Product creates and reads sellers and products. The

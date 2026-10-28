@@ -51,7 +51,7 @@ public class ReaderWiring {
                 config.maxConnectionLifetime(), config.idleTimeout(), config.maxAttempts(), config.retryInterval()),
                 retried);
         return new ProductReader(new ReaderDatasets(config.catalogVersion()), requests, control,
-                new ReaderMetrics(System::nanoTime), config.workers(), config.reportInterval(), System::nanoTime, random);
+                new ReaderMetrics(System::nanoTime, config.diagnostics().enabled()), config.workers(), config.reportInterval(), System::nanoTime, random);
     }
 
     void stop(@Disposes ProductReader reader) {

@@ -5,6 +5,8 @@ import dev.nklip.javacraft.shardshop.common.jdbc.JdbcUrls;
 import dev.nklip.javacraft.shardshop.idgen.IdGenerator;
 import dev.nklip.javacraft.shardshop.product.catalog.CatalogService;
 import dev.nklip.javacraft.shardshop.product.persistence.JdbcCatalogStore;
+import dev.nklip.javacraft.shardshop.product.persistence.CatalogReadDiagnostics;
+import io.micrometer.core.instrument.MeterRegistry;
 import dev.nklip.javacraft.shardshop.sharding.ShardRouter;
 import dev.nklip.javacraft.shardshop.sharding.ShardTopology;
 import io.quarkus.runtime.Startup;
@@ -25,7 +27,7 @@ public class CatalogWiring {
     @Produces
     @Singleton
     @Startup(ObserverMethod.DEFAULT_PRIORITY - 1)
-    JdbcCatalogStore store(CatalogConfiguration config, ShardTopology topology) {
+    JdbcCatalogStore store(CatalogConfiguration config, ShardTopology topology, MeterRegistry registry) {
         Map<String, Endpoint> primary = new HashMap<>();
         Map<String, Endpoint> replica = new HashMap<>();
         for (var shard : topology.shards()) {
@@ -51,7 +53,8 @@ public class CatalogWiring {
         if (!primary.keySet().containsAll(config.connections().keySet())) {
             throw new IllegalArgumentException("Catalog connections must name only configured routing shards");
         }
-        return new JdbcCatalogStore(primary, replica, config.maxPoolSize());
+        return new JdbcCatalogStore(primary, replica, config.maxPoolSize(),
+                config.readDiagnosticsEnabled() ? new CatalogReadDiagnostics(registry) : null);
     }
 
     @Produces

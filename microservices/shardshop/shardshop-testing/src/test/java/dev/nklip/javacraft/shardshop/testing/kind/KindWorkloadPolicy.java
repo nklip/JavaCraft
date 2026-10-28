@@ -92,6 +92,8 @@ final class KindWorkloadPolicy {
             require(RATE.matcher(value).matches(), "HTTP-only workload has an invalid initial rate");
         } else if (name.equals("SHARDSHOP_SEEDER_INTERACTIVE")) {
             require(value.equals("true"), "HTTP-only seeder has an invalid interactive mode");
+        } else if (name.equals("SHARDSHOP_READER_DIAGNOSTICS_ENABLED")) {
+            require(value.equals("true") || value.equals("false"), "HTTP-only reader has an invalid diagnostic flag");
         } else if (name.matches("SHARDSHOP_PRODUCER_(CONNECT_TIMEOUT|REQUEST_TIMEOUT|POLL_INTERVAL|ORDER_DEADLINE|STARTUP_DEADLINE|RETRY_BACKOFF|MAX_RETRY_BACKOFF)")) {
             require(durationValue(value), "HTTP-only producer has invalid HTTP duration setting");
         } else if (INTEGER_SETTINGS.contains(name)) {

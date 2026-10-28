@@ -46,6 +46,12 @@ endpoints, credentials and configuration, and the shared PostgreSQL code runs on
 connections of these pools. Each application also owns its broker settings and
 credentials; a publisher opens and closes only the connection of its own stream.
 
+`DatabaseTimings` is an optional, framework-free observer for fixed JDBC phases.
+Existing `DatabasePhases.run` callers use its no-op observer. Enabled observers
+must be fast, nonblocking and thread safe; observer failures do not replace the
+database result or error. Product owns the opt-in Micrometer adapter and the
+[measurement definitions](../../shardshop-product/RUNBOOK.md#opt-in-read-diagnostics).
+
 ## HTTP deadline filters
 
 The HTTP deadline filters of product and order stay in the applications, because

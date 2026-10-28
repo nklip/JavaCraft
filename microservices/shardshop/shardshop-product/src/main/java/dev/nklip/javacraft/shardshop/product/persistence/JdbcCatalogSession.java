@@ -1,6 +1,7 @@
 package dev.nklip.javacraft.shardshop.product.persistence;
 
 import dev.nklip.javacraft.shardshop.common.jdbc.DatabasePhases;
+import dev.nklip.javacraft.shardshop.common.jdbc.DatabaseTimings;
 import dev.nklip.javacraft.shardshop.common.CurrencyPolicy;
 import dev.nklip.javacraft.shardshop.product.catalog.CatalogFailure;
 import dev.nklip.javacraft.shardshop.product.catalog.CatalogStore;
@@ -27,24 +28,37 @@ final class JdbcCatalogSession implements CatalogStore.Session {
     private final Connection connection;
     private final DatabasePhases.Deadline deadline;
     private final CatalogFailure.Reason unavailable;
+    private final DatabaseTimings timings;
 
     JdbcCatalogSession(Connection connection, DatabasePhases.Deadline deadline,
                        CatalogFailure.Reason unavailable) {
+        this(connection, deadline, unavailable, DatabaseTimings.NONE);
+    }
+
+    JdbcCatalogSession(Connection connection, DatabasePhases.Deadline deadline,
+                       CatalogFailure.Reason unavailable, DatabaseTimings timings) {
         this.connection = connection;
         this.deadline = deadline;
         this.unavailable = unavailable;
+        this.timings = timings;
     }
 
     private PreparedStatement prepare(String sql) throws SQLException {
-        DatabasePhases.refreshTimeouts(connection, deadline);
-        return connection.prepareStatement(sql);
+        return timings.measure(DatabaseTimings.Phase.STATEMENT_SETUP, () -> {
+            DatabasePhases.refreshTimeouts(connection, deadline);
+            return connection.prepareStatement(sql);
+        });
+    }
+
+    private ResultSet query(PreparedStatement statement) throws SQLException {
+        return timings.measure(DatabaseTimings.Phase.QUERY, statement::executeQuery);
     }
 
     @Override
     public void lock(long key) {
         try (PreparedStatement statement = prepare("SELECT pg_advisory_xact_lock(?)")) {
             statement.setLong(1, key);
-            try (ResultSet result = statement.executeQuery()) {
+            try (ResultSet result = query(statement)) {
                 if (!result.next()) {
                     throw new SQLException("Database lock failed");
                 }
@@ -78,7 +92,7 @@ final class JdbcCatalogSession implements CatalogStore.Session {
     }
 
     private Optional<Seller> sellerResult(PreparedStatement statement) throws SQLException {
-        try (ResultSet result = statement.executeQuery()) {
+        try (ResultSet result = query(statement)) {
             if (!result.next()) {
                 return Optional.empty();
             }
@@ -94,7 +108,7 @@ final class JdbcCatalogSession implements CatalogStore.Session {
         try (PreparedStatement statement = prepare(
                 "SELECT currency, amount FROM catalog.seller_profits WHERE seller_id = ? ORDER BY currency")) {
             statement.setLong(1, sellerId);
-            try (ResultSet rows = statement.executeQuery()) {
+            try (ResultSet rows = query(statement)) {
                 while (rows.next()) {
                     result.put(rows.getString("currency"), rows.getBigDecimal("amount").toPlainString());
                 }
@@ -143,7 +157,7 @@ final class JdbcCatalogSession implements CatalogStore.Session {
             statement.setLong(2, after);
             statement.setInt(3, limit);
             List<ListedProduct> products = new ArrayList<>();
-            try (ResultSet rows = statement.executeQuery()) {
+            try (ResultSet rows = query(statement)) {
                 while (rows.next()) {
                     String currency = rows.getString("currency");
                     products.add(new ListedProduct(rows.getLong("seller_id"), rows.getLong("product_id"),
@@ -161,7 +175,7 @@ final class JdbcCatalogSession implements CatalogStore.Session {
     }
 
     private Optional<Product> productResult(PreparedStatement statement) throws SQLException {
-        try (ResultSet result = statement.executeQuery()) {
+        try (ResultSet result = query(statement)) {
             if (!result.next()) {
                 return Optional.empty();
             }

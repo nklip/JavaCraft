@@ -245,7 +245,7 @@ at the first post-warmup sample and stopped early. It observed 987 new orders in
 40.044426s (~24.65/s), with no new errors, cancellations or recoveries. This short
 capture does not qualify sustained capacity or establish a new maximum.
 
-The subsequent 1,000/s read check is **unqualified**. With writes paused and
+The earlier October 25 1,000/s read check is **unqualified**. With writes paused and
 backlogs drained, its first eligible 30s window delivered **948.2/s** (28,446
 requests), all OK, p95 **10 ms**, below the unchanged >=950/s minimum. A second
 window logged before pause delivered **955.8/s** (28,676 requests), all OK,
@@ -260,8 +260,17 @@ controlled stock, no errors/backpressure, bounded backlogs and write p95 <100 ms
 6.0 is **Done under the explicit reduced local-maintenance scope**: all nine
 final kind-gate cases passed with no failures/errors/skips, and the original
 stopped retained lab was restored. Steps **6.5 and 6.6 are Done**, qualified by
-the October 28 load sequence above. Next is **6.7 (1,000/s reads)**; full
-performance qualification still requires that separate read acceptance.
+the October 28 load sequence above. **6.7 is also Done:** the October 28
+primary read qualification delivered **994.565 / 991.000 / 999.769 reads/s**
+in the first three eligible 30-second windows, all OK with p95 **3 / 3 / 2 ms**.
+The aggregate was **995.111 reads/s** over 89.999985248s, with writes paused
+and drained. Two product pods, 16 reader workers and at most 16 HTTP connections
+were unchanged. Opt-in diagnostics found mean connection acquisition 0.0078 ms,
+zero sampled pool waiters and zero additional product/reader CPU throttling;
+host paging remained diagnostic. Controls and retained state were restored.
+This qualifies a local operating point, not maximum capacity or simultaneous
+1,000 reads/s and 30 orders/s. HTTP/2 remains planned in 6.8. See
+[read diagnostic evidence](CHANGELOG.md#step-67--primary-read-qualification-and-diagnostics--2026-10-28).
 The short earlier 30/s capture's rolling 154.613 ms p95 is diagnostic
 only; the earlier valid 10/s latency was 133.783 ms, superseded by the
 38.466 ms local result above. Write latency covers

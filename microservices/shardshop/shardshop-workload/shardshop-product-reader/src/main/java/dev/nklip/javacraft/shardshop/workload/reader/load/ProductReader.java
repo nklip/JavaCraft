@@ -2,6 +2,7 @@ package dev.nklip.javacraft.shardshop.workload.reader.load;
 
 import dev.nklip.javacraft.shardshop.common.Sha256;
 import dev.nklip.javacraft.shardshop.workload.control.WorkloadControl;
+import dev.nklip.javacraft.shardshop.workload.control.RatePacer;
 import dev.nklip.javacraft.shardshop.workload.reader.catalog.ReaderDatasets;
 import dev.nklip.javacraft.shardshop.workload.reader.catalog.ReaderDatasets.ProductDescriptor;
 import dev.nklip.javacraft.shardshop.workload.reader.catalog.ReaderDatasets.SellerDescriptor;
@@ -254,19 +255,33 @@ public final class ProductReader {
     private void read(List<Target> targets, Runnable onFailure) {
         try {
             while (!Thread.currentThread().isInterrupted()) {
-                control.awaitStart();
+                RatePacer.StartTiming timing = null;
+                if (metrics.diagnosticsEnabled()) {
+                    timing = control.awaitStartTiming();
+                } else {
+                    control.awaitStart();
+                }
                 control.started();
                 Target target = targets.get(random.nextInt(targets.size()));
                 long started = nanoTime.getAsLong();
                 ReadResult<ProductDescriptor> result;
+                long dispatched = 0;
                 try (WorkloadControl.Operation ignored = control.begin()) {
                     control.traffic().sent(READS, false);
+                    if (timing != null) {
+                        dispatched = nanoTime.getAsLong();
+                    }
                     result = requests.get(target.read());
                 }
                 if (result.outcome() != Outcome.OK) {
                     control.traffic().failed(READS);
                 }
-                metrics.record(target.region(), result, nanoTime.getAsLong() - started);
+                long latency = nanoTime.getAsLong() - started;
+                if (timing == null) {
+                    metrics.record(target.region(), result, latency);
+                } else {
+                    metrics.record(target.region(), result, latency, timing, dispatched);
+                }
             }
         } catch (InterruptedException stopping) {
             // stop() interrupts the workers.
@@ -284,7 +299,8 @@ public final class ProductReader {
     }
 
     private static void log(ReaderMetrics.Report report, Catalog catalog) {
-        String summary = report.summary() + ", " + catalog.catalogVersion + " key-to-ID SHA-256 " + catalog.digest;
+        String summary = report.summary() + ", " + catalog.catalogVersion + " key-to-ID SHA-256 " + catalog.digest
+                + report.schedulingSummary();
         if (report.failed()) {
             LOG.warn(summary);
         } else {

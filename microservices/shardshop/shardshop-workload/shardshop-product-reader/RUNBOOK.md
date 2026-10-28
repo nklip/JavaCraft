@@ -45,6 +45,27 @@ connection limit or a connection lifetime. The defaults agree with the
 | `shardshop.reader.max-connection-lifetime` | `30s` | Apache time to live of a connection |
 | `shardshop.reader.idle-timeout` | `10s` | Time before an unused connection closes |
 | `shardshop.reader.report-interval` | `30s` | Time between metric lines, at least 1 s |
+| `shardshop.reader.diagnostics.enabled` | `false` | Append bounded scheduling diagnostics to the existing interval reports |
+
+For a diagnostic run, set `SHARDSHOP_READER_DIAGNOSTICS_ENABLED="true"` under
+`productReader.configuration`. The existing report and catalog digest keep their
+positions; a `scheduling us` suffix adds count, mean, p50/p95/p99 and maximum:
+
+- `wake`: granted pacing slot to observed permit, including condition/lock
+  reacquisition; intentional pacing wait is excluded.
+- `lateArrival`: arrival under the pacer lock beyond the previous next slot.
+  Startup, pause/rate changes and unpaced starts have no valid baseline and are
+  excluded. This combines worker availability and stalls, not pure OS latency.
+- `dispatch`: observed permit to the timestamp immediately before the HTTP call.
+
+Samples are recorded with completed read results. Each interval also includes
+`window={sequence,startNanos,endNanos}` from the reader JVM's monotonic clock;
+use their difference for exact duration and sequence/bounds for non-overlap.
+These timestamps cannot be compared with the host's monotonic clock. Histograms
+use fixed storage (approximately 192 KiB total for interval and cumulative
+diagnostics), ceiling-microsecond percentile bounds with approximately 1.6%
+bucket width above 127 microseconds, and nanosecond-derived means/maxima.
+Diagnostics do not change pacing, rate limits, missed-start or pause semantics.
 
 For a saturation test, increase `request-rate`, and increase `workers` and
 `connections` together. One pod sends at most `workers` divided by the latency:

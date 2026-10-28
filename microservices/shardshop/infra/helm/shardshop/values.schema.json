@@ -198,6 +198,10 @@
             "SHARDSHOP_READER_REPORT_INTERVAL": {
               "type": "string",
               "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
+            },
+            "SHARDSHOP_READER_DIAGNOSTICS_ENABLED": {
+              "type": "string",
+              "enum": ["true", "false"]
             }
           }
         }
@@ -216,6 +220,10 @@
                 "primary",
                 "replica"
               ]
+            },
+            "shardshop.catalog.read-diagnostics.enabled": {
+              "type": "string",
+              "enum": ["true", "false"]
             },
             "shardshop.catalog.max-pool-size": {
               "type": "string",

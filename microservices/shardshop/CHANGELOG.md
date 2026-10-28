@@ -7566,3 +7566,131 @@ Validation: reviewed the existing plan and recorded measurement evidence, then
 ran `git diff --check` and assertions that only 6.5/6.6 changed to Done while
 6.7 remained Planned. This is a documentation-only closure; no build, image scan
 or lab test was repeated.
+
+## Read performance diagnostics: instrumentation and validation — 2026-10-28
+
+Added opt-in reader scheduling diagnostics and product JDBC phase timers for the
+requested read-performance measurement. Both default to disabled. Reader reports
+separate pacing-slot wake delay, late arrival and permit-to-HTTP dispatch overhead
+with bounded histograms and exact interval bounds. Product exports connection
+acquisition, connection/statement setup, query, callback, pre-commit setup and
+commit timers plus aggregate pool occupancy/creation counters. Acquisition includes
+connection creation/validation; callback timing overlaps its nested SQL phases.
+No SQL, deadline, retry, pool limit or pacing policy was optimized or relaxed.
+The chart accepts only literal boolean diagnostic flags. Owning runbooks document
+metric boundaries and limitations.
+
+Validation from the repository root, with Temurin 25.0.5 and Node 24:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml \
+  -pl shardshop-product,shardshop-workload/shardshop-product-reader,shardshop-testing \
+  -am test
+git diff --check
+```
+
+**2,060 unit/provider checks pass, with zero failures/errors/skips.** This includes
+shared-code consumers and new deterministic diagnostics/allowlist checks.
+Earlier logs preserve a sandbox socket denial, filtered selections rejected by
+the nonempty-test gate, and a new test compile failure corrected by explicit
+meter-registry cleanup. The passing run retains the repository gates. A bounded
+independent review found no issue with timing definitions or transaction behavior.
+
+The disposable-lab wrapper and one fixed 150-second, primary-profile 1,000 reads/s
+collector are prepared. They capture per-container CPU throttling, paging,
+throughput/latency and the new timings, then restore controls and owned resources.
+At this preparation checkpoint the live measurement and its longer budget were
+pending, and 6.7 remained Planned. The user subsequently approved 60 minutes total;
+the completed run is recorded below. See the preserved
+[preparation evidence](shardshop-testing/evidence/2026-10-28-read-diagnostics-preparation.json).
+
+## Step 6.7 — primary read qualification and diagnostics — 2026-10-28
+
+One fresh disposable lab passed the fixed primary-profile **1,000 reads/s**
+qualification with opt-in diagnostics. Two product pods, 16 reader workers and
+at most 16 HTTP connections were unchanged. The producer was paused and its
+submission, order and background backlogs drained; the interactive seeder stayed
+idle. Paging was diagnostic only. The first three eligible native windows after
+warmup were selected without retries or extension of the 150-second phase:
+
+| Native sequence | Exact seconds | OK reads | Reads/s | Client p95 |
+|---|---:|---:|---:|---:|
+| 6 | 30.000063471 | 29,837 | 994.565 | 3 ms |
+| 7 | 30.000002055 | 29,730 | 991.000 | 3 ms |
+| 8 | 29.999919722 | 29,993 | 999.769 | 2 ms |
+
+The windows are contiguous and non-overlapping: **89,560 OK reads in
+89.999985248s, or 995.111/s**. Each exceeds 950/s with p95 below 100 ms.
+The preceding report ended 59.249s after the rate-update receipt and was correctly
+excluded by the unchanged 60-second eligibility boundary. No new reader errors,
+pod restarts or readiness changes occurred. Historical startup retry/error
+counters were preserved as the baseline, not counted as measurement failures.
+**6.7 is Done.** This qualifies a local operating point with writes paused;
+it does not establish maximum capacity or 1,000 reads/s alongside 30 orders/s.
+
+The host has 16 GiB RAM; Docker has 12 CPUs and 13,580,972,032 bytes of memory.
+Reader wake-delay p95 was **791 / 623 / 471 microseconds**, and permit-to-request
+dispatch p95 was **7 / 8 / 5 microseconds**. Late-arrival p95 was zero, with rare
+maxima up to 36.7 ms; these timings include application scheduling/lock effects.
+
+Across the warmup-inclusive product scrape interval, 149,322 primary reads and
+zero replica reads produced these weighted successful phase means:
+
+| Phase | Mean ms |
+|---|---:|
+| DB worker dispatch | 0.04258 |
+| Connection acquisition | 0.00780 |
+| Connection setup | 0.00163 |
+| Statement setup | 0.22138 |
+| Query execution | 0.18599 |
+| Callback work, including statement/query/decoding | 0.41284 |
+| Pre-commit setup | 0.16075 |
+| Commit | 0.15084 |
+
+Acquisition includes pool wait, creation and validation; it is not a pure queue
+timer. Both pools had zero awaiting connections at every sample and no new
+connections. Callback work overlaps its child phases and must not be added to
+them. There were no failure-phase counter increments. These are means, not p95s.
+
+Authenticated cAdvisor counters show **zero additional throttled periods/time**
+for both product containers and the reader. Their native timestamp intervals
+give mean usage of **0.3620 / 0.2742 / 0.1116 CPU cores**, respectively, against
+two-core limits each. cAdvisor counters are cached: their individual intervals
+were 158.433 / 149.514 / 150.019s, not exactly the reader acceptance windows.
+Host-wide swap traffic was **1,674.59 MiB in and 1,290.63 MiB out**. Paging was
+present despite passing latency/throughput; this does not identify its owner or
+prove a causal effect. Sampling took 1.49–2.79s per observation (elapsed collection
+time, not CPU cost). Instrumentation overhead was not measured with a matched A/B.
+
+Connection acquisition and CPU throttling show no bottleneck at this operating
+point. Statement plus pre-commit setup averaged 0.38213 ms and is a candidate
+for a separate experiment that preserves deadline/transaction guarantees.
+No optimization or percentage speedup is claimed by this diagnostic run.
+
+Validation used the same source hashes as the passing 2,060-check preparation run:
+**2,060 unit/provider tests, 79 packaged startup checks, seven image scan gates
+and six live release scenarios passed**. From the repository root, the owner
+wrapper ran the following with Temurin 25.0.5, Node 24, umask 022 and the explicit
+private cluster/kubeconfig/environment paths recorded in the evidence:
+
+```bash
+bash microservices/shardshop/scripts/cluster-create.sh
+bash microservices/shardshop/scripts/up.sh
+bash /private/tmp/shardshop-read-diagnostics-kfwihlh4/capture-read.sh \
+  --context kind-shardshop-test-read-diag-sxcog8 \
+  --kubeconfig /private/tmp/shardshop-read-diagnostics-run.SxCOG8/config \
+  --snapshot /private/tmp/shardshop-read-diagnostics-run.SxCOG8/invocation/current-invocation-snapshot \
+  --cluster shardshop-test-read-diag-sxcog8
+bash microservices/shardshop/scripts/cluster-destroy.sh
+git diff --check
+```
+
+`up.sh` ran `mvn -B -ntp -f microservices/shardshop/pom.xml clean install
+-DinstallAtEnd=true` and the maintained Failsafe release gates. All 499 captured
+source/configuration hashes matched before measurement. Both collector and owner
+exit/restoration statuses were **0/0**. Controls were restored, owned forwards
+closed and the disposable cluster deleted. The retained four nodes stayed stopped
+with IDs/images/mounts and default kubeconfig unchanged. Cleanup finished at
+13:46:11 UTC, 51m37s after task start, within the approved hour. No second run was
+performed. See the [reviewed evidence](shardshop-testing/evidence/2026-10-28-read-diagnostics-kind.json)
+for native windows, timings, raw evidence hashes, commands and cleanup proof.

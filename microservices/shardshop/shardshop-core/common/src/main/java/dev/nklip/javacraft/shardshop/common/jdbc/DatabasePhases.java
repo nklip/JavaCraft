@@ -102,12 +102,24 @@ public final class DatabasePhases implements AutoCloseable {
     public <T> T run(Pool pool, boolean readOnly, Duration budget, Work<T> work,
                      Class<? extends RuntimeException> domain,
                      Function<Throwable, ? extends RuntimeException> unavailable) {
+        return run(pool, readOnly, budget, work, domain, unavailable, DatabaseTimings.NONE);
+    }
+
+    /** Like {@code run}, with optional phase timings; acquisition includes pool wait, creation and validation. */
+    public <T> T run(Pool pool, boolean readOnly, Duration budget, Work<T> work,
+                     Class<? extends RuntimeException> domain,
+                     Function<Throwable, ? extends RuntimeException> unavailable, DatabaseTimings timings) {
         Deadline deadline = new Deadline(nanoTime, nanoTime.getAsLong() + budget.toNanos());
         Request request = new Request(pool, deadline);
+        long dispatched = timings.start();
         Future<T> future;
         try {
-            future = workers.submit(() -> transact(request, readOnly, work));
+            future = workers.submit(() -> {
+                timings.record(DatabaseTimings.Phase.DISPATCH, dispatched, true);
+                return transact(request, readOnly, work, timings);
+            });
         } catch (RejectedExecutionException failure) {
+            timings.record(DatabaseTimings.Phase.DISPATCH, dispatched, false);
             throw unavailable.apply(failure);
         }
         try {
@@ -129,20 +141,29 @@ public final class DatabasePhases implements AutoCloseable {
         }
     }
 
-    private <T> T transact(Request request, boolean readOnly, Work<T> work) throws SQLException {
+    private <T> T transact(Request request, boolean readOnly, Work<T> work, DatabaseTimings timings) throws SQLException {
         // The fixed acquisition/connect bounds must still fit the remaining phase.
         if (request.deadline.remainingMillis() < ACQUISITION_TIMEOUT.toMillis()) {
             throw new SQLException("Database phase expired before acquisition");
         }
-        try (Request.Lease lease = request.acquire()) {
+        try (Request.Lease lease = timings.measure(DatabaseTimings.Phase.ACQUISITION, request::acquire)) {
             Connection connection = lease.connection;
             try {
-                connection.setNetworkTimeout(Runnable::run, request.deadline.remainingMillis());
-                connection.setReadOnly(readOnly);
-                connection.setAutoCommit(false);
-                T result = work.run(connection, request.deadline);
-                refreshTimeouts(connection, request.deadline);
-                connection.commit();
+                timings.measure(DatabaseTimings.Phase.CONNECTION_SETUP, () -> {
+                    connection.setNetworkTimeout(Runnable::run, request.deadline.remainingMillis());
+                    connection.setReadOnly(readOnly);
+                    connection.setAutoCommit(false);
+                    return null;
+                });
+                T result = timings.measure(DatabaseTimings.Phase.WORK, () -> work.run(connection, request.deadline));
+                timings.measure(DatabaseTimings.Phase.PRE_COMMIT_SETUP, () -> {
+                    refreshTimeouts(connection, request.deadline);
+                    return null;
+                });
+                timings.measure(DatabaseTimings.Phase.COMMIT, () -> {
+                    connection.commit();
+                    return null;
+                });
                 return result;
             } catch (RuntimeException | SQLException failure) {
                 try {

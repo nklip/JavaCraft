@@ -57,6 +57,14 @@ public interface ReaderConfiguration {
     @WithDefault("10s")
     Duration idleTimeout();
 
+    /** Optional bounded scheduling measurements, disabled for ordinary workload runs. */
+    Diagnostics diagnostics();
+
+    interface Diagnostics {
+        @WithDefault("false")
+        boolean enabled();
+    }
+
     /** Time between two metric reports, at least 1s. */
     @WithDefault("30s")
     Duration reportInterval();

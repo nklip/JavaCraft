@@ -2,6 +2,7 @@ package dev.nklip.javacraft.shardshop.product.config;
 
 import io.smallrye.config.ConfigMapping;
 import io.smallrye.config.WithDefault;
+import io.smallrye.config.WithName;
 
 import java.util.Map;
 import java.util.Optional;
@@ -18,6 +19,10 @@ public interface CatalogConfiguration {
 
     @WithDefault("1024")
     int maxIdCandidates();
+
+    @WithName("read-diagnostics.enabled")
+    @WithDefault("false")
+    boolean readDiagnosticsEnabled();
 
     Map<String, Connection> connections();
 
