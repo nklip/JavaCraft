@@ -1,0 +1,2757 @@
+{
+  "step": "6.8 phase 4: HTTP/1.1 and h2c transport comparison with equal initial stock",
+  "date": "2026-10-30",
+  "method": "Two sequential owned disposable kind labs from the same commit and images. Values = kind-values.yaml + orderProducer.configuration.SHARDSHOP_PRODUCER_ORDER_RATE \"0\"; lab B adds httpBalancer.workloadProtocol H2C. The retained lab was stopped during both labs.",
+  "host": {
+    "dockerCpus": 12,
+    "dockerMemoryBytes": 13580972032,
+    "hostMemoryBytes": 17179869184,
+    "swapUsedBeforeLabsMiB": 13254,
+    "note": "Heavy host paging in every phase of both labs (full-phase swap traffic 3.5-11.8 GB in lab A, 2.7-8.9 GB in lab B); paging is diagnostic only, as in the 2026-10-28 runs."
+  },
+  "images": [
+    "docker.io/library/shardshop-flyway@sha256:d07094252ac8d0a3f9b50c5e272064b29628a07dd13959a7ab34847ae536e23c",
+    "docker.io/library/shardshop-ledger@sha256:b812535e26c579013a4fb035ab07734d633c54d060348a8ed4cca7059950dab4",
+    "docker.io/library/shardshop-order-producer@sha256:5aed657c849460275865e87b26202d419fac0dfd01398880a0053ae49d65049e",
+    "docker.io/library/shardshop-order@sha256:8c9164b6cc58e63bc9ad6bab3c75937ba9feacc4b9785681a5720a5321f244a8",
+    "docker.io/library/shardshop-product-reader@sha256:3e63e2a88e4c73823d2fd9899b2e6ff1ebd3489ab51772b0b844b037cea81f04",
+    "docker.io/library/shardshop-product-seeder@sha256:6f7d7b6f053d7f8547bc064da3dbfffaf4e03efe76612c6a999a17d3d8ba6c2a",
+    "docker.io/library/shardshop-product@sha256:fcd4d2f88516c0e6778a3345ef81b5b647d362315cb79a1cca25420c9c269cd7"
+  ],
+  "imagesIdenticalInBothLabs": true,
+  "initialStockIdentical": {
+    "products": 201,
+    "unitsPerProduct": 1000,
+    "sha256Prefix": "57e1ddf4f3a81678"
+  },
+  "podCounts": {
+    "http11": {
+      "total": 36,
+      "shardshop": 20
+    },
+    "h2c": {
+      "total": 38,
+      "shardshop": 22,
+      "envoy": 2
+    }
+  },
+  "labA_http11": {
+    "label": "a",
+    "cluster": "shardshop-test-h2cmp-a-eab4f2c9",
+    "timeline": [
+      "2026-10-30T05:19:43Z lab a cluster shardshop-test-h2cmp-a-eab4f2c9",
+      "2026-10-30T05:19:43Z create start",
+      "2026-10-30T05:26:16Z up start",
+      "2026-10-30T05:39:05Z measure start",
+      "2026-10-30T05:39:06Z initial stock {\"products\":201,\"initialUnits\":201000,\"units\":201000,\"minimum\":1000}",
+      "2026-10-30T05:39:06Z write collector start",
+      "2026-10-30T05:47:33Z write collector exit 1",
+      "2026-10-30T05:47:34Z stock after writes {\"products\":201,\"initialUnits\":201000,\"units\":162080,\"minimum\":500}",
+      "2026-10-30T05:47:34Z read search start",
+      "2026-10-30T06:00:18Z read search exit 0",
+      "2026-10-30T06:00:19Z final stock {\"products\":201,\"initialUnits\":201000,\"units\":162080,\"minimum\":500}",
+      "2026-10-30T06:00:19Z measure complete",
+      "2026-10-30T06:00:19Z destroy start (status 0)",
+      "2026-10-30T06:00:26Z destroy complete",
+      "2026-10-30T06:00:26Z no owned node remains"
+    ],
+    "readiness": {
+      "readsPerSecond": 199.42,
+      "newReaderErrors": 0,
+      "hostSwapTrafficMiB": 4140
+    },
+    "writeCollectorExit": 1,
+    "writes": [
+      {
+        "targetRate": 10,
+        "observationSeconds": 120.036,
+        "postWarmupWriteSamples": 1172,
+        "acceptedRate": 9.764,
+        "deliveryRequirementMet": true,
+        "finalWriteP95Millis": 177.733,
+        "writeLatencyRequirementMet": false,
+        "finalSagaP95Millis": 1981.429,
+        "confirmed": 1175,
+        "cancelled": 0,
+        "recovered": 0,
+        "newErrors": 0,
+        "producerBacklogRange": [
+          8,
+          17
+        ],
+        "hostSwapTrafficMiB": 8790
+      },
+      {
+        "targetRate": 20,
+        "observationSeconds": 90.035,
+        "postWarmupWriteSamples": 1733,
+        "acceptedRate": 19.248,
+        "deliveryRequirementMet": true,
+        "finalWriteP95Millis": 181.87,
+        "writeLatencyRequirementMet": false,
+        "finalSagaP95Millis": 2562.837,
+        "confirmed": 1729,
+        "cancelled": 0,
+        "recovered": 0,
+        "newErrors": 0,
+        "producerBacklogRange": [
+          23,
+          34
+        ],
+        "hostSwapTrafficMiB": 4877
+      },
+      {
+        "targetRate": 30,
+        "observationSeconds": 90.076,
+        "postWarmupWriteSamples": 2411,
+        "acceptedRate": 26.766,
+        "deliveryRequirementMet": false,
+        "finalWriteP95Millis": 259.474,
+        "writeLatencyRequirementMet": false,
+        "finalSagaP95Millis": 5147.998,
+        "confirmed": 2377,
+        "cancelled": 0,
+        "recovered": 0,
+        "newErrors": 0,
+        "producerBacklogRange": [
+          37,
+          73
+        ],
+        "hostSwapTrafficMiB": 11769
+      }
+    ],
+    "readSearchExit": 0,
+    "readSearch": {
+      "highestPassingProtocolTarget": 3000,
+      "firstFailingTarget": "4000"
+    },
+    "reads": [
+      {
+        "target": 500,
+        "qualified": true,
+        "selectedRate": 493.9,
+        "windows": [
+          {
+            "endUTC": "2026-10-30T05:49:06.696892+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 14721,
+            "rate": 490.7,
+            "outcomes": {
+              "OK": 14721
+            },
+            "p95Millis": 4,
+            "p99Millis": 29,
+            "regions": {
+              "ASIA": 3861,
+              "EU": 7239,
+              "US": 3621
+            }
+          },
+          {
+            "endUTC": "2026-10-30T05:49:36.703703+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 14920,
+            "rate": 497.333,
+            "outcomes": {
+              "OK": 14920
+            },
+            "p95Millis": 5,
+            "p99Millis": 21,
+            "regions": {
+              "ASIA": 3775,
+              "EU": 7458,
+              "US": 3687
+            }
+          },
+          {
+            "endUTC": "2026-10-30T05:50:06.700256+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 14810,
+            "rate": 493.667,
+            "outcomes": {
+              "OK": 14810
+            },
+            "p95Millis": 7,
+            "p99Millis": 34,
+            "regions": {
+              "ASIA": 3773,
+              "EU": 7420,
+              "US": 3617
+            }
+          }
+        ],
+        "readerPoolLeasedRange": [
+          0,
+          1
+        ],
+        "hostSwapTrafficMiB": 11465
+      },
+      {
+        "target": 1000,
+        "qualified": true,
+        "selectedRate": 980.511,
+        "windows": [
+          {
+            "endUTC": "2026-10-30T05:51:36.707898+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 29235,
+            "rate": 974.5,
+            "outcomes": {
+              "OK": 29235
+            },
+            "p95Millis": 6,
+            "p99Millis": 24,
+            "regions": {
+              "ASIA": 7493,
+              "EU": 14483,
+              "US": 7259
+            }
+          },
+          {
+            "endUTC": "2026-10-30T05:52:06.707656+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 29307,
+            "rate": 976.9,
+            "outcomes": {
+              "OK": 29307
+            },
+            "p95Millis": 6,
+            "p99Millis": 19,
+            "regions": {
+              "ASIA": 7440,
+              "EU": 14614,
+              "US": 7253
+            }
+          },
+          {
+            "endUTC": "2026-10-30T05:52:36.706545+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 29704,
+            "rate": 990.133,
+            "outcomes": {
+              "OK": 29704
+            },
+            "p95Millis": 3,
+            "p99Millis": 12,
+            "regions": {
+              "ASIA": 7608,
+              "EU": 14750,
+              "US": 7346
+            }
+          }
+        ],
+        "readerPoolLeasedRange": [
+          1,
+          2
+        ],
+        "hostSwapTrafficMiB": 6557
+      },
+      {
+        "target": 2000,
+        "qualified": true,
+        "selectedRate": 1963.267,
+        "windows": [
+          {
+            "endUTC": "2026-10-30T05:54:06.707572+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 58900,
+            "rate": 1963.333,
+            "outcomes": {
+              "OK": 58900
+            },
+            "p95Millis": 3,
+            "p99Millis": 9,
+            "regions": {
+              "ASIA": 15077,
+              "EU": 29272,
+              "US": 14551
+            }
+          },
+          {
+            "endUTC": "2026-10-30T05:54:36.708494+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 58492,
+            "rate": 1949.733,
+            "outcomes": {
+              "OK": 58492
+            },
+            "p95Millis": 5,
+            "p99Millis": 13,
+            "regions": {
+              "ASIA": 14841,
+              "EU": 29113,
+              "US": 14538
+            }
+          },
+          {
+            "endUTC": "2026-10-30T05:55:06.707889+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 59302,
+            "rate": 1976.733,
+            "outcomes": {
+              "OK": 59302
+            },
+            "p95Millis": 3,
+            "p99Millis": 8,
+            "regions": {
+              "ASIA": 15211,
+              "EU": 29447,
+              "US": 14644
+            }
+          }
+        ],
+        "readerPoolLeasedRange": [
+          1,
+          2
+        ],
+        "hostSwapTrafficMiB": 4359
+      },
+      {
+        "target": 3000,
+        "qualified": true,
+        "selectedRate": 2899.0,
+        "windows": [
+          {
+            "endUTC": "2026-10-30T05:59:06.709686+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 87195,
+            "rate": 2906.5,
+            "outcomes": {
+              "OK": 87195
+            },
+            "p95Millis": 4,
+            "p99Millis": 10,
+            "regions": {
+              "ASIA": 22195,
+              "EU": 43265,
+              "US": 21735
+            }
+          },
+          {
+            "endUTC": "2026-10-30T05:59:36.710556+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 86184,
+            "rate": 2872.8,
+            "outcomes": {
+              "OK": 86184
+            },
+            "p95Millis": 4,
+            "p99Millis": 12,
+            "regions": {
+              "ASIA": 22058,
+              "EU": 42716,
+              "US": 21410
+            }
+          },
+          {
+            "endUTC": "2026-10-30T06:00:06.714379+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 87531,
+            "rate": 2917.7,
+            "outcomes": {
+              "OK": 87531
+            },
+            "p95Millis": 4,
+            "p99Millis": 9,
+            "regions": {
+              "ASIA": 22378,
+              "EU": 43634,
+              "US": 21519
+            }
+          }
+        ],
+        "readerPoolLeasedRange": [
+          2,
+          3
+        ],
+        "hostSwapTrafficMiB": 3500
+      },
+      {
+        "target": 4000,
+        "qualified": false,
+        "selectedRate": 3771.711,
+        "windows": [
+          {
+            "endUTC": "2026-10-30T05:56:36.714198+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 111624,
+            "rate": 3720.8,
+            "outcomes": {
+              "OK": 111624
+            },
+            "p95Millis": 4,
+            "p99Millis": 10,
+            "regions": {
+              "ASIA": 28145,
+              "EU": 55765,
+              "US": 27714
+            }
+          },
+          {
+            "endUTC": "2026-10-30T05:57:06.715899+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 114699,
+            "rate": 3823.3,
+            "outcomes": {
+              "OK": 114699
+            },
+            "p95Millis": 3,
+            "p99Millis": 7,
+            "regions": {
+              "ASIA": 29246,
+              "EU": 56908,
+              "US": 28545
+            }
+          },
+          {
+            "endUTC": "2026-10-30T05:57:36.709565+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 113131,
+            "rate": 3771.033,
+            "outcomes": {
+              "OK": 113131
+            },
+            "p95Millis": 4,
+            "p99Millis": 9,
+            "regions": {
+              "ASIA": 28572,
+              "EU": 56376,
+              "US": 28183
+            }
+          }
+        ],
+        "readerPoolLeasedRange": [
+          2,
+          8
+        ],
+        "hostSwapTrafficMiB": 4617
+      }
+    ],
+    "stock": {
+      "initial": {
+        "products": 201,
+        "initialUnits": 201000,
+        "units": 201000,
+        "minimum": 1000
+      },
+      "afterWrites": {
+        "products": 201,
+        "initialUnits": 201000,
+        "units": 162080,
+        "minimum": 500
+      },
+      "final": {
+        "products": 201,
+        "initialUnits": 201000,
+        "units": 162080,
+        "minimum": 500
+      }
+    }
+  },
+  "labB_h2c": {
+    "label": "b2",
+    "cluster": "shardshop-test-h2cmp-b2-5626d49d",
+    "timeline": [
+      "2026-10-30T06:13:45Z lab b2 cluster shardshop-test-h2cmp-b2-5626d49d",
+      "2026-10-30T06:13:45Z create start",
+      "2026-10-30T06:20:24Z up start",
+      "2026-10-30T06:32:46Z measure start",
+      "2026-10-30T06:32:47Z initial stock {\"products\":201,\"initialUnits\":201000,\"units\":201000,\"minimum\":1000}",
+      "2026-10-30T06:32:51Z write collector start",
+      "2026-10-30T06:37:21Z write collector exit 1",
+      "2026-10-30T06:37:25Z stock after writes {\"products\":201,\"initialUnits\":201000,\"units\":193022,\"minimum\":897}",
+      "2026-10-30T06:37:25Z read search start",
+      "2026-10-30T06:45:05Z read search exit 0",
+      "2026-10-30T06:45:10Z final stock {\"products\":201,\"initialUnits\":201000,\"units\":193022,\"minimum\":897}",
+      "2026-10-30T06:45:10Z measure complete",
+      "2026-10-30T06:45:15Z destroy start (status 0)",
+      "2026-10-30T06:45:20Z destroy complete",
+      "2026-10-30T06:45:21Z no owned node remains"
+    ],
+    "readiness": {
+      "readsPerSecond": 198.83,
+      "newReaderErrors": 0,
+      "hostSwapTrafficMiB": 2656
+    },
+    "writeCollectorExit": 1,
+    "writes": [
+      {
+        "targetRate": 10,
+        "observationSeconds": 120.042,
+        "postWarmupWriteSamples": 1136,
+        "acceptedRate": 9.463,
+        "deliveryRequirementMet": false,
+        "finalWriteP95Millis": 284.054,
+        "writeLatencyRequirementMet": false,
+        "finalSagaP95Millis": 3105.668,
+        "confirmed": 1139,
+        "cancelled": 0,
+        "recovered": 0,
+        "newErrors": 0,
+        "producerBacklogRange": [
+          9,
+          22
+        ],
+        "hostSwapTrafficMiB": 8860
+      }
+    ],
+    "readSearchExit": 0,
+    "readSearch": {
+      "highestPassingProtocolTarget": 500,
+      "firstFailingTarget": "1000"
+    },
+    "reads": [
+      {
+        "target": 500,
+        "qualified": true,
+        "selectedRate": 498.411,
+        "windows": [
+          {
+            "endUTC": "2026-10-30T06:38:46.809234+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 14963,
+            "rate": 498.767,
+            "outcomes": {
+              "OK": 14963
+            },
+            "p95Millis": 4,
+            "p99Millis": 14,
+            "regions": {
+              "ASIA": 3832,
+              "EU": 7433,
+              "US": 3698
+            }
+          },
+          {
+            "endUTC": "2026-10-30T06:39:16.805025+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 14929,
+            "rate": 497.633,
+            "outcomes": {
+              "OK": 14929
+            },
+            "p95Millis": 3,
+            "p99Millis": 9,
+            "regions": {
+              "ASIA": 3833,
+              "EU": 7425,
+              "US": 3671
+            }
+          },
+          {
+            "endUTC": "2026-10-30T06:39:46.800158+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 14965,
+            "rate": 498.833,
+            "outcomes": {
+              "OK": 14965
+            },
+            "p95Millis": 5,
+            "p99Millis": 19,
+            "regions": {
+              "ASIA": 3828,
+              "EU": 7350,
+              "US": 3787
+            }
+          }
+        ],
+        "readerPoolLeasedRange": [
+          1,
+          1
+        ],
+        "hostSwapTrafficMiB": 5217
+      },
+      {
+        "target": 750,
+        "qualified": false,
+        "selectedRate": 727.567,
+        "windows": [
+          {
+            "endUTC": "2026-10-30T06:43:46.808895+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 21977,
+            "rate": 732.567,
+            "outcomes": {
+              "OK": 21977
+            },
+            "p95Millis": 7,
+            "p99Millis": 25,
+            "regions": {
+              "ASIA": 5548,
+              "EU": 10893,
+              "US": 5536
+            }
+          },
+          {
+            "endUTC": "2026-10-30T06:44:16.821862+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 21042,
+            "rate": 701.4,
+            "outcomes": {
+              "OK": 21042
+            },
+            "p95Millis": 11,
+            "p99Millis": 42,
+            "regions": {
+              "ASIA": 5342,
+              "EU": 10420,
+              "US": 5280
+            }
+          },
+          {
+            "endUTC": "2026-10-30T06:44:46.823987+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 22462,
+            "rate": 748.733,
+            "outcomes": {
+              "OK": 22462
+            },
+            "p95Millis": 3,
+            "p99Millis": 9,
+            "regions": {
+              "ASIA": 5640,
+              "EU": 11201,
+              "US": 5621
+            }
+          }
+        ],
+        "readerPoolLeasedRange": [
+          1,
+          7
+        ],
+        "hostSwapTrafficMiB": 6885
+      },
+      {
+        "target": 1000,
+        "qualified": false,
+        "selectedRate": 949.711,
+        "windows": [
+          {
+            "endUTC": "2026-10-30T06:41:16.808619+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 27273,
+            "rate": 909.1,
+            "outcomes": {
+              "OK": 27273
+            },
+            "p95Millis": 17,
+            "p99Millis": 57,
+            "regions": {
+              "ASIA": 6951,
+              "EU": 13544,
+              "US": 6778
+            }
+          },
+          {
+            "endUTC": "2026-10-30T06:41:46.804497+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 28611,
+            "rate": 953.7,
+            "outcomes": {
+              "OK": 28611
+            },
+            "p95Millis": 8,
+            "p99Millis": 30,
+            "regions": {
+              "ASIA": 7226,
+              "EU": 14283,
+              "US": 7102
+            }
+          },
+          {
+            "endUTC": "2026-10-30T06:42:16.803899+00:00",
+            "reportedSeconds": 30.0,
+            "requests": 29590,
+            "rate": 986.333,
+            "outcomes": {
+              "OK": 29590
+            },
+            "p95Millis": 5,
+            "p99Millis": 16,
+            "regions": {
+              "ASIA": 7550,
+              "EU": 14667,
+              "US": 7373
+            }
+          }
+        ],
+        "readerPoolLeasedRange": [
+          1,
+          3
+        ],
+        "hostSwapTrafficMiB": 6318
+      }
+    ],
+    "stock": {
+      "initial": {
+        "products": 201,
+        "initialUnits": 201000,
+        "units": 201000,
+        "minimum": 1000
+      },
+      "afterWrites": {
+        "products": 201,
+        "initialUnits": 201000,
+        "units": 193022,
+        "minimum": 897
+      },
+      "final": {
+        "products": 201,
+        "initialUnits": 201000,
+        "units": 193022,
+        "minimum": 897
+      }
+    }
+  },
+  "envoyUsageLabB": [
+    {
+      "pod": "shardshop-envoy-69d56c596b-hklrh",
+      "maxCpuMillicores": 237,
+      "maxWorkingSetMiB": 50.1,
+      "samples": 71
+    },
+    {
+      "pod": "shardshop-envoy-69d56c596b-mdctr",
+      "maxCpuMillicores": 69,
+      "maxWorkingSetMiB": 43.5,
+      "samples": 71
+    }
+  ],
+  "failedAttemptLabB": "First lab B up.sh stopped in the build: OrderHttp2Test.requiresADeclaredLengthForHttp2Bodies read the body on the test thread after the response future completed, and Vert.x dropped the data (empty body). A 300 ms pause reproduced it every time. Both HTTP/2 tests now read the body in the response callback; the lab was destroyed and lab B ran again (b2) with the same images.",
+  "tools": [
+    {
+      "sha256": "6c5ad22ce144a371325924968b5a9fab3cc87dbf827ecf567ff77c52acc41c40",
+      "file": "tools/capture-capacity.sh"
+    },
+    {
+      "sha256": "34458bea3663cb9ed91c7f95e8ff0c9ca51212ee173f645e4efd8a22d64f13ad",
+      "file": "tools/capture-read-search.sh"
+    },
+    {
+      "sha256": "06700316ff5bb5874669f5ac2571c5070c87854afab745baf9479eaae587b230",
+      "file": "tools/lab-evidence.py"
+    },
+    {
+      "sha256": "ef656167b366f6741f02a0ad99fde3778a7a71a756dcbc70e5619a892a0098c5",
+      "file": "tools/lab.sh"
+    },
+    {
+      "sha256": "a84ed6adf791f3144b9e05efaced4b6839f5cc9c2a51f23ecd6be8884279d6fd",
+      "file": "tools/ledger-observation.sql"
+    },
+    {
+      "sha256": "bf915d5b5651bce4b9940acf731a3fa59d5ea1e67c9cc7418f313a67e58ea3d1",
+      "file": "tools/shard-observation.sql"
+    },
+    {
+      "sha256": "703b5f57c5f2564aa79d99bf2d7e58421679fd7da955ecb687bcf2208bc2eb1d",
+      "file": "tools/stock-snapshot.sql"
+    },
+    {
+      "sha256": "1c21f777dece25e12ff3fa3f4ad7e11668b2489c2125f2e378666c1c37fe3b59",
+      "file": "tools/summarize-read.py"
+    },
+    {
+      "sha256": "ab74b362f54eaff2ef6033913b79d53459f7a9559e434bbbb6c00ba12cba3aff",
+      "file": "tools/summary.sh"
+    }
+  ],
+  "outcome": "Not qualified for either transport under this host paging. In lab B, one low 30-second read window failed the 750/s and 1,000/s targets, and 10 writes/s missed 95% delivery. h2c above 1,000 reads/s is not measured. Superseded by phase 4d (repeatAfterDockerRestart), which repeated both labs with low host paging.",
+  "limitations": [
+    "Host swap traffic of 3.5-11.8 GB (lab A) and 2.7-8.9 GB (lab B) per phase; write latencies are not comparable with the 2026-10-28 operating points. Corrected 2026-10-30: the first record measured only to the lexically last sample (sample-90 of 0-150), thus it gave lower values.",
+    "Lab B stopped the write sequence after 10/s (delivery 94.6%), thus 20/s and 30/s have no h2c result.",
+    "Phase 4b profile (retained lab, 2026-10-30): at 1,000 reads/s the HttpCore I/O thread used 8.1% of one core, the reader delivered 987.0/s, and no reader thread was RUNNABLE in three dumps. Thus the lab B failures came from one low window per target, not from a steady client limit; their cause is not known.",
+    "One run per transport; no repeat.",
+    "Phase 4c (diagnostic): on the retained H2C lab the read search passed 4,000/s (3,936-3,942/s per window); 8,000/s and 6,000/s failed with the reader at up to 14 of 16 streams."
+  ],
+  "retainedLabH2cReadSearch": {
+    "kind": "diagnostic, not a qualified comparison (retained lab, different data and host paging)",
+    "date": "2026-10-30",
+    "restorationStatus": 0,
+    "search": {
+      "highestPassingProtocolTarget": 4000,
+      "firstFailingTarget": "8000"
+    },
+    "reads": [
+      {
+        "target": 500,
+        "qualified": true,
+        "selectedRate": 496.744,
+        "windows": [
+          {
+            "endUTC": "2026-10-30T08:27:32.137704+00:00",
+            "requests": 14929,
+            "rate": 497.633,
+            "outcomes": {
+              "OK": 14929
+            },
+            "p95Millis": 3,
+            "p99Millis": 8
+          },
+          {
+            "endUTC": "2026-10-30T08:28:02.137208+00:00",
+            "requests": 14990,
+            "rate": 499.667,
+            "outcomes": {
+              "OK": 14990
+            },
+            "p95Millis": 3,
+            "p99Millis": 8
+          },
+          {
+            "endUTC": "2026-10-30T08:28:32.137596+00:00",
+            "requests": 14788,
+            "rate": 492.933,
+            "outcomes": {
+              "OK": 14788
+            },
+            "p95Millis": 7,
+            "p99Millis": 31
+          }
+        ],
+        "hostSwapTrafficMiB": 4549
+      },
+      {
+        "target": 1000,
+        "qualified": true,
+        "selectedRate": 993.556,
+        "windows": [
+          {
+            "endUTC": "2026-10-30T08:30:02.128871+00:00",
+            "requests": 29768,
+            "rate": 992.267,
+            "outcomes": {
+              "OK": 29768
+            },
+            "p95Millis": 2,
+            "p99Millis": 5
+          },
+          {
+            "endUTC": "2026-10-30T08:30:32.121142+00:00",
+            "requests": 29840,
+            "rate": 994.667,
+            "outcomes": {
+              "OK": 29840
+            },
+            "p95Millis": 4,
+            "p99Millis": 11
+          },
+          {
+            "endUTC": "2026-10-30T08:31:02.129297+00:00",
+            "requests": 29812,
+            "rate": 993.733,
+            "outcomes": {
+              "OK": 29812
+            },
+            "p95Millis": 3,
+            "p99Millis": 8
+          }
+        ],
+        "hostSwapTrafficMiB": 2256
+      },
+      {
+        "target": 2000,
+        "qualified": true,
+        "selectedRate": 1985.844,
+        "windows": [
+          {
+            "endUTC": "2026-10-30T08:33:02.120249+00:00",
+            "requests": 59229,
+            "rate": 1974.3,
+            "outcomes": {
+              "OK": 59229
+            },
+            "p95Millis": 3,
+            "p99Millis": 7
+          },
+          {
+            "endUTC": "2026-10-30T08:33:32.120586+00:00",
+            "requests": 59595,
+            "rate": 1986.5,
+            "outcomes": {
+              "OK": 59595
+            },
+            "p95Millis": 3,
+            "p99Millis": 6
+          },
+          {
+            "endUTC": "2026-10-30T08:34:02.118765+00:00",
+            "requests": 59902,
+            "rate": 1996.733,
+            "outcomes": {
+              "OK": 59902
+            },
+            "p95Millis": 2,
+            "p99Millis": 5
+          }
+        ],
+        "hostSwapTrafficMiB": 2601
+      },
+      {
+        "target": 4000,
+        "qualified": true,
+        "selectedRate": 3939.744,
+        "windows": [
+          {
+            "endUTC": "2026-10-30T08:35:32.119756+00:00",
+            "requests": 118089,
+            "rate": 3936.3,
+            "outcomes": {
+              "OK": 118089
+            },
+            "p95Millis": 3,
+            "p99Millis": 6
+          },
+          {
+            "endUTC": "2026-10-30T08:36:02.123851+00:00",
+            "requests": 118216,
+            "rate": 3940.533,
+            "outcomes": {
+              "OK": 118216
+            },
+            "p95Millis": 3,
+            "p99Millis": 6
+          },
+          {
+            "endUTC": "2026-10-30T08:36:32.118440+00:00",
+            "requests": 118272,
+            "rate": 3942.4,
+            "outcomes": {
+              "OK": 118272
+            },
+            "p95Millis": 3,
+            "p99Millis": 5
+          }
+        ],
+        "hostSwapTrafficMiB": 1322
+      },
+      {
+        "target": 6000,
+        "qualified": false,
+        "selectedRate": 5668.056,
+        "windows": [
+          {
+            "endUTC": "2026-10-30T08:40:32.117400+00:00",
+            "requests": 172047,
+            "rate": 5734.9,
+            "outcomes": {
+              "OK": 172047
+            },
+            "p95Millis": 3,
+            "p99Millis": 6
+          },
+          {
+            "endUTC": "2026-10-30T08:41:02.115914+00:00",
+            "requests": 174084,
+            "rate": 5802.8,
+            "outcomes": {
+              "OK": 174084
+            },
+            "p95Millis": 3,
+            "p99Millis": 5
+          },
+          {
+            "endUTC": "2026-10-30T08:41:32.113661+00:00",
+            "requests": 163994,
+            "rate": 5466.467,
+            "outcomes": {
+              "OK": 163994
+            },
+            "p95Millis": 4,
+            "p99Millis": 7
+          }
+        ],
+        "hostSwapTrafficMiB": 962
+      },
+      {
+        "target": 8000,
+        "qualified": false,
+        "selectedRate": 6316.0,
+        "windows": [
+          {
+            "endUTC": "2026-10-30T08:38:02.104387+00:00",
+            "requests": 193130,
+            "rate": 6437.667,
+            "outcomes": {
+              "OK": 193130
+            },
+            "p95Millis": 5,
+            "p99Millis": 8
+          },
+          {
+            "endUTC": "2026-10-30T08:38:32.120413+00:00",
+            "requests": 176541,
+            "rate": 5884.7,
+            "outcomes": {
+              "OK": 176541
+            },
+            "p95Millis": 5,
+            "p99Millis": 10
+          },
+          {
+            "endUTC": "2026-10-30T08:39:02.114252+00:00",
+            "requests": 198769,
+            "rate": 6625.633,
+            "outcomes": {
+              "OK": 198769
+            },
+            "p95Millis": 4,
+            "p99Millis": 7
+          }
+        ],
+        "hostSwapTrafficMiB": 2206
+      }
+    ],
+    "podUsage": [
+      {
+        "pod": "shardshop-envoy-69d56c596b-8nc4p",
+        "maxCpuMillicores": 562,
+        "maxWorkingSetMiB": 23
+      },
+      {
+        "pod": "shardshop-envoy-69d56c596b-s24xg",
+        "maxCpuMillicores": 9,
+        "maxWorkingSetMiB": 22
+      },
+      {
+        "pod": "shardshop-product-7499764b97-hjg7z",
+        "maxCpuMillicores": 1395,
+        "maxWorkingSetMiB": 284
+      },
+      {
+        "pod": "shardshop-product-7499764b97-mbvcm",
+        "maxCpuMillicores": 1512,
+        "maxWorkingSetMiB": 287
+      },
+      {
+        "pod": "shardshop-product-reader-6c457d7457-tm8d6",
+        "maxCpuMillicores": 644,
+        "maxWorkingSetMiB": 200
+      }
+    ],
+    "collectorSha256": "34458bea3663cb9e (capture-read-search.sh, same file as phase 4)"
+  },
+  "repeatAfterDockerRestart": {
+    "phase": "4d",
+    "date": "2026-10-30",
+    "method": "The user quit other applications and approved a Docker Desktop restart. The retained lab was stopped (down.sh), Docker Desktop was restarted before each lab (docker desktop restart), then lab.sh ran lab A2 (HTTP_1_1) and lab B3 (H2C) with the unchanged phase 4 values, collectors and image digests.",
+    "host": {
+      "swapUsedBeforeRestartMiB": 9840,
+      "swapUsedBeforeLabA2MiB": 4748,
+      "swapUsedBeforeLabB3MiB": 5132,
+      "dockerCpus": 12,
+      "dockerMemoryBytes": 13580972032
+    },
+    "imagesIdenticalToPhase4": true,
+    "initialStockIdentical": {
+      "products": 201,
+      "unitsPerProduct": 1000,
+      "sha256Prefix": "57e1ddf4f3a81678"
+    },
+    "podCounts": {
+      "http11": {
+        "total": 36,
+        "shardshop": 20
+      },
+      "h2c": {
+        "total": 38,
+        "shardshop": 22,
+        "envoy": 2
+      }
+    },
+    "labA2_http11": {
+      "label": "a2",
+      "cluster": "shardshop-test-h2cmp-a2-ad250692",
+      "timeline": [
+        "2026-10-30T10:56:48Z lab a2 cluster shardshop-test-h2cmp-a2-ad250692",
+        "2026-10-30T10:56:48Z create start",
+        "2026-10-30T11:02:50Z up start",
+        "2026-10-30T11:13:54Z measure start",
+        "2026-10-30T11:13:55Z initial stock {\"products\":201,\"initialUnits\":201000,\"units\":201000,\"minimum\":1000}",
+        "2026-10-30T11:13:55Z write collector start",
+        "2026-10-30T11:22:11Z write collector exit 0",
+        "2026-10-30T11:22:12Z stock after writes {\"products\":201,\"initialUnits\":201000,\"units\":160016,\"minimum\":472}",
+        "2026-10-30T11:22:12Z read search start",
+        "2026-10-30T11:40:01Z read search exit 0",
+        "2026-10-30T11:40:02Z final stock {\"products\":201,\"initialUnits\":201000,\"units\":160016,\"minimum\":472}",
+        "2026-10-30T11:40:02Z measure complete",
+        "2026-10-30T11:40:02Z destroy start (status 0)",
+        "2026-10-30T11:40:05Z destroy complete",
+        "2026-10-30T11:40:05Z no owned node remains"
+      ],
+      "readiness": {
+        "readsPerSecond": 199.91,
+        "newReaderErrors": 0,
+        "hostSwapTrafficMiB": 950
+      },
+      "writeCollectorExit": 0,
+      "writes": [
+        {
+          "targetRate": 10,
+          "observationSeconds": 120.032,
+          "postWarmupWriteSamples": 1201,
+          "acceptedRate": 10.006,
+          "deliveryRequirementMet": true,
+          "finalWriteP95Millis": 29.31,
+          "writeLatencyRequirementMet": true,
+          "finalSagaP95Millis": 1541.904,
+          "confirmed": 1199,
+          "cancelled": 0,
+          "recovered": 0,
+          "newErrors": 0,
+          "producerBacklogRange": [
+            6,
+            14
+          ],
+          "hostSwapTrafficMiB": 989
+        },
+        {
+          "targetRate": 20,
+          "observationSeconds": 90.039,
+          "postWarmupWriteSamples": 1802,
+          "acceptedRate": 20.013,
+          "deliveryRequirementMet": true,
+          "finalWriteP95Millis": 25.599,
+          "writeLatencyRequirementMet": true,
+          "finalSagaP95Millis": 1531.047,
+          "confirmed": 1802,
+          "cancelled": 0,
+          "recovered": 0,
+          "newErrors": 0,
+          "producerBacklogRange": [
+            20,
+            27
+          ],
+          "hostSwapTrafficMiB": 444
+        },
+        {
+          "targetRate": 30,
+          "observationSeconds": 90.039,
+          "postWarmupWriteSamples": 2696,
+          "acceptedRate": 29.943,
+          "deliveryRequirementMet": true,
+          "finalWriteP95Millis": 26.687,
+          "writeLatencyRequirementMet": true,
+          "finalSagaP95Millis": 1773.081,
+          "confirmed": 2696,
+          "cancelled": 0,
+          "recovered": 0,
+          "newErrors": 0,
+          "producerBacklogRange": [
+            28,
+            47
+          ],
+          "hostSwapTrafficMiB": 416
+        }
+      ],
+      "readSearchExit": 0,
+      "readSearch": {
+        "highestPassingProtocolTarget": 8000,
+        "firstFailingTarget": "10000"
+      },
+      "reads": [
+        {
+          "target": 500,
+          "qualified": true,
+          "selectedRate": 499.989,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T11:23:30.259823+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 14999,
+              "rate": 499.967,
+              "outcomes": {
+                "OK": 14999
+              },
+              "p95Millis": 2,
+              "p99Millis": 3,
+              "regions": {
+                "ASIA": 3853,
+                "EU": 7437,
+                "US": 3709
+              }
+            },
+            {
+              "endUTC": "2026-10-30T11:24:00.258662+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 15000,
+              "rate": 500.0,
+              "outcomes": {
+                "OK": 15000
+              },
+              "p95Millis": 2,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 3830,
+                "EU": 7450,
+                "US": 3720
+              }
+            },
+            {
+              "endUTC": "2026-10-30T11:24:30.257729+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 15000,
+              "rate": 500.0,
+              "outcomes": {
+                "OK": 15000
+              },
+              "p95Millis": 2,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 3727,
+                "EU": 7422,
+                "US": 3851
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            0,
+            0
+          ],
+          "hostSwapTrafficMiB": 83
+        },
+        {
+          "target": 1000,
+          "qualified": true,
+          "selectedRate": 1000.0,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T11:26:00.269073+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 30000,
+              "rate": 1000.0,
+              "outcomes": {
+                "OK": 30000
+              },
+              "p95Millis": 2,
+              "p99Millis": 3,
+              "regions": {
+                "ASIA": 7669,
+                "EU": 14891,
+                "US": 7440
+              }
+            },
+            {
+              "endUTC": "2026-10-30T11:26:30.270685+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 30000,
+              "rate": 1000.0,
+              "outcomes": {
+                "OK": 30000
+              },
+              "p95Millis": 2,
+              "p99Millis": 3,
+              "regions": {
+                "ASIA": 7580,
+                "EU": 15047,
+                "US": 7373
+              }
+            },
+            {
+              "endUTC": "2026-10-30T11:27:00.270684+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 30000,
+              "rate": 1000.0,
+              "outcomes": {
+                "OK": 30000
+              },
+              "p95Millis": 2,
+              "p99Millis": 3,
+              "regions": {
+                "ASIA": 7650,
+                "EU": 14881,
+                "US": 7469
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            0,
+            1
+          ],
+          "hostSwapTrafficMiB": 248
+        },
+        {
+          "target": 2000,
+          "qualified": true,
+          "selectedRate": 1999.722,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T11:28:30.273269+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 59988,
+              "rate": 1999.6,
+              "outcomes": {
+                "OK": 59988
+              },
+              "p95Millis": 2,
+              "p99Millis": 3,
+              "regions": {
+                "ASIA": 15176,
+                "EU": 29950,
+                "US": 14862
+              }
+            },
+            {
+              "endUTC": "2026-10-30T11:29:00.270458+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 59989,
+              "rate": 1999.633,
+              "outcomes": {
+                "OK": 59989
+              },
+              "p95Millis": 2,
+              "p99Millis": 3,
+              "regions": {
+                "ASIA": 15368,
+                "EU": 29881,
+                "US": 14740
+              }
+            },
+            {
+              "endUTC": "2026-10-30T11:29:30.280844+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 59998,
+              "rate": 1999.933,
+              "outcomes": {
+                "OK": 59998
+              },
+              "p95Millis": 2,
+              "p99Millis": 3,
+              "regions": {
+                "ASIA": 15271,
+                "EU": 29897,
+                "US": 14830
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            1,
+            2
+          ],
+          "hostSwapTrafficMiB": 38
+        },
+        {
+          "target": 4000,
+          "qualified": true,
+          "selectedRate": 3978.833,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T11:31:00.281650+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 119596,
+              "rate": 3986.533,
+              "outcomes": {
+                "OK": 119596
+              },
+              "p95Millis": 2,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 30534,
+                "EU": 59191,
+                "US": 29871
+              }
+            },
+            {
+              "endUTC": "2026-10-30T11:31:30.274040+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 119499,
+              "rate": 3983.3,
+              "outcomes": {
+                "OK": 119499
+              },
+              "p95Millis": 2,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 30347,
+                "EU": 59203,
+                "US": 29949
+              }
+            },
+            {
+              "endUTC": "2026-10-30T11:32:00.271331+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 119000,
+              "rate": 3966.667,
+              "outcomes": {
+                "OK": 119000
+              },
+              "p95Millis": 2,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 30254,
+                "EU": 59237,
+                "US": 29509
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            2,
+            4
+          ],
+          "hostSwapTrafficMiB": 222
+        },
+        {
+          "target": 8000,
+          "qualified": true,
+          "selectedRate": 7843.889,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T11:33:30.270274+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 235518,
+              "rate": 7850.6,
+              "outcomes": {
+                "OK": 235518
+              },
+              "p95Millis": 2,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 59872,
+                "EU": 116766,
+                "US": 58880
+              }
+            },
+            {
+              "endUTC": "2026-10-30T11:34:00.277086+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 235065,
+              "rate": 7835.5,
+              "outcomes": {
+                "OK": 235065
+              },
+              "p95Millis": 2,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 59751,
+                "EU": 116863,
+                "US": 58451
+              }
+            },
+            {
+              "endUTC": "2026-10-30T11:34:30.270294+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 235367,
+              "rate": 7845.567,
+              "outcomes": {
+                "OK": 235367
+              },
+              "p95Millis": 2,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 59595,
+                "EU": 117383,
+                "US": 58389
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            6,
+            8
+          ],
+          "hostSwapTrafficMiB": 24
+        },
+        {
+          "target": 9000,
+          "qualified": false,
+          "selectedRate": 8455.933,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T11:38:30.273512+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 247393,
+              "rate": 8246.433,
+              "outcomes": {
+                "OK": 247393
+              },
+              "p95Millis": 3,
+              "p99Millis": 7,
+              "regions": {
+                "ASIA": 62539,
+                "EU": 123007,
+                "US": 61847
+              }
+            },
+            {
+              "endUTC": "2026-10-30T11:39:00.270543+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 256129,
+              "rate": 8537.633,
+              "outcomes": {
+                "OK": 256129
+              },
+              "p95Millis": 3,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 65478,
+                "EU": 127438,
+                "US": 63213
+              }
+            },
+            {
+              "endUTC": "2026-10-30T11:39:30.274143+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 257512,
+              "rate": 8583.733,
+              "outcomes": {
+                "OK": 257512
+              },
+              "p95Millis": 3,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 65190,
+                "EU": 128076,
+                "US": 64246
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            6,
+            10
+          ],
+          "hostSwapTrafficMiB": 108
+        },
+        {
+          "target": 10000,
+          "qualified": false,
+          "selectedRate": 8759.644,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T11:36:00.282570+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 253632,
+              "rate": 8454.4,
+              "outcomes": {
+                "OK": 253632
+              },
+              "p95Millis": 3,
+              "p99Millis": 6,
+              "regions": {
+                "ASIA": 64167,
+                "EU": 126182,
+                "US": 63283
+              }
+            },
+            {
+              "endUTC": "2026-10-30T11:36:30.282181+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 272485,
+              "rate": 9082.833,
+              "outcomes": {
+                "OK": 272485
+              },
+              "p95Millis": 3,
+              "p99Millis": 5,
+              "regions": {
+                "ASIA": 69035,
+                "EU": 135303,
+                "US": 68147
+              }
+            },
+            {
+              "endUTC": "2026-10-30T11:37:00.271625+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 262251,
+              "rate": 8741.7,
+              "outcomes": {
+                "OK": 262251
+              },
+              "p95Millis": 3,
+              "p99Millis": 6,
+              "regions": {
+                "ASIA": 66685,
+                "EU": 130050,
+                "US": 65516
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            8,
+            15
+          ],
+          "hostSwapTrafficMiB": 2778
+        }
+      ],
+      "stock": {
+        "initial": {
+          "products": 201,
+          "initialUnits": 201000,
+          "units": 201000,
+          "minimum": 1000
+        },
+        "afterWrites": {
+          "products": 201,
+          "initialUnits": 201000,
+          "units": 160016,
+          "minimum": 472
+        },
+        "final": {
+          "products": 201,
+          "initialUnits": 201000,
+          "units": 160016,
+          "minimum": 472
+        }
+      }
+    },
+    "labB3_h2c": {
+      "label": "b3",
+      "cluster": "shardshop-test-h2cmp-b3-79124ac4",
+      "timeline": [
+        "2026-10-30T11:40:49Z lab b3 cluster shardshop-test-h2cmp-b3-79124ac4",
+        "2026-10-30T11:40:49Z create start",
+        "2026-10-30T11:46:57Z up start",
+        "2026-10-30T11:57:51Z measure start",
+        "2026-10-30T11:57:52Z initial stock {\"products\":201,\"initialUnits\":201000,\"units\":201000,\"minimum\":1000}",
+        "2026-10-30T11:57:56Z write collector start",
+        "2026-10-30T12:06:14Z write collector exit 0",
+        "2026-10-30T12:06:19Z stock after writes {\"products\":201,\"initialUnits\":201000,\"units\":159921,\"minimum\":469}",
+        "2026-10-30T12:06:19Z read search start",
+        "2026-10-30T12:21:35Z read search exit 0",
+        "2026-10-30T12:21:39Z final stock {\"products\":201,\"initialUnits\":201000,\"units\":159921,\"minimum\":469}",
+        "2026-10-30T12:21:39Z measure complete",
+        "2026-10-30T12:21:40Z destroy start (status 0)",
+        "2026-10-30T12:21:43Z destroy complete",
+        "2026-10-30T12:21:43Z no owned node remains"
+      ],
+      "readiness": {
+        "readsPerSecond": 199.91,
+        "newReaderErrors": 0,
+        "hostSwapTrafficMiB": 77
+      },
+      "writeCollectorExit": 0,
+      "writes": [
+        {
+          "targetRate": 10,
+          "observationSeconds": 120.034,
+          "postWarmupWriteSamples": 1201,
+          "acceptedRate": 10.005,
+          "deliveryRequirementMet": true,
+          "finalWriteP95Millis": 31.316,
+          "writeLatencyRequirementMet": true,
+          "finalSagaP95Millis": 1534.891,
+          "confirmed": 1205,
+          "cancelled": 0,
+          "recovered": 0,
+          "newErrors": 0,
+          "producerBacklogRange": [
+            9,
+            14
+          ],
+          "hostSwapTrafficMiB": 212
+        },
+        {
+          "targetRate": 20,
+          "observationSeconds": 90.033,
+          "postWarmupWriteSamples": 1801,
+          "acceptedRate": 20.004,
+          "deliveryRequirementMet": true,
+          "finalWriteP95Millis": 32.773,
+          "writeLatencyRequirementMet": true,
+          "finalSagaP95Millis": 1536.812,
+          "confirmed": 1800,
+          "cancelled": 0,
+          "recovered": 0,
+          "newErrors": 0,
+          "producerBacklogRange": [
+            18,
+            29
+          ],
+          "hostSwapTrafficMiB": 80
+        },
+        {
+          "targetRate": 30,
+          "observationSeconds": 90.054,
+          "postWarmupWriteSamples": 2682,
+          "acceptedRate": 29.782,
+          "deliveryRequirementMet": true,
+          "finalWriteP95Millis": 32.036,
+          "writeLatencyRequirementMet": true,
+          "finalSagaP95Millis": 1772.57,
+          "confirmed": 2671,
+          "cancelled": 0,
+          "recovered": 0,
+          "newErrors": 0,
+          "producerBacklogRange": [
+            31,
+            46
+          ],
+          "hostSwapTrafficMiB": 111
+        }
+      ],
+      "readSearchExit": 0,
+      "readSearch": {
+        "highestPassingProtocolTarget": 6000,
+        "firstFailingTarget": "8000"
+      },
+      "reads": [
+        {
+          "target": 500,
+          "qualified": true,
+          "selectedRate": 499.811,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T12:07:28.625093+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 15001,
+              "rate": 500.033,
+              "outcomes": {
+                "OK": 15001
+              },
+              "p95Millis": 2,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 3808,
+                "EU": 7441,
+                "US": 3752
+              }
+            },
+            {
+              "endUTC": "2026-10-30T12:07:58.624751+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 14999,
+              "rate": 499.967,
+              "outcomes": {
+                "OK": 14999
+              },
+              "p95Millis": 2,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 3770,
+                "EU": 7454,
+                "US": 3775
+              }
+            },
+            {
+              "endUTC": "2026-10-30T12:08:28.625331+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 14983,
+              "rate": 499.433,
+              "outcomes": {
+                "OK": 14983
+              },
+              "p95Millis": 2,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 3821,
+                "EU": 7444,
+                "US": 3718
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            0,
+            1
+          ],
+          "hostSwapTrafficMiB": 256
+        },
+        {
+          "target": 1000,
+          "qualified": true,
+          "selectedRate": 999.956,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T12:09:58.630325+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 30000,
+              "rate": 1000.0,
+              "outcomes": {
+                "OK": 30000
+              },
+              "p95Millis": 2,
+              "p99Millis": 3,
+              "regions": {
+                "ASIA": 7594,
+                "EU": 14871,
+                "US": 7535
+              }
+            },
+            {
+              "endUTC": "2026-10-30T12:10:28.627182+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 29996,
+              "rate": 999.867,
+              "outcomes": {
+                "OK": 29996
+              },
+              "p95Millis": 2,
+              "p99Millis": 3,
+              "regions": {
+                "ASIA": 7687,
+                "EU": 14851,
+                "US": 7458
+              }
+            },
+            {
+              "endUTC": "2026-10-30T12:10:58.624834+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 30000,
+              "rate": 1000.0,
+              "outcomes": {
+                "OK": 30000
+              },
+              "p95Millis": 2,
+              "p99Millis": 3,
+              "regions": {
+                "ASIA": 7606,
+                "EU": 15020,
+                "US": 7374
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            0,
+            1
+          ],
+          "hostSwapTrafficMiB": 76
+        },
+        {
+          "target": 2000,
+          "qualified": true,
+          "selectedRate": 1995.544,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T12:12:28.557882+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 59883,
+              "rate": 1996.1,
+              "outcomes": {
+                "OK": 59883
+              },
+              "p95Millis": 2,
+              "p99Millis": 5,
+              "regions": {
+                "ASIA": 15237,
+                "EU": 29888,
+                "US": 14758
+              }
+            },
+            {
+              "endUTC": "2026-10-30T12:12:58.561183+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 59833,
+              "rate": 1994.433,
+              "outcomes": {
+                "OK": 59833
+              },
+              "p95Millis": 2,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 15079,
+                "EU": 29881,
+                "US": 14873
+              }
+            },
+            {
+              "endUTC": "2026-10-30T12:13:28.559424+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 59883,
+              "rate": 1996.1,
+              "outcomes": {
+                "OK": 59883
+              },
+              "p95Millis": 2,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 15452,
+                "EU": 29453,
+                "US": 14978
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            2,
+            3
+          ],
+          "hostSwapTrafficMiB": 104
+        },
+        {
+          "target": 4000,
+          "qualified": true,
+          "selectedRate": 3955.633,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T12:14:58.559505+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 118767,
+              "rate": 3958.9,
+              "outcomes": {
+                "OK": 118767
+              },
+              "p95Millis": 3,
+              "p99Millis": 5,
+              "regions": {
+                "ASIA": 30231,
+                "EU": 58988,
+                "US": 29548
+              }
+            },
+            {
+              "endUTC": "2026-10-30T12:15:28.559846+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 119145,
+              "rate": 3971.5,
+              "outcomes": {
+                "OK": 119145
+              },
+              "p95Millis": 3,
+              "p99Millis": 5,
+              "regions": {
+                "ASIA": 29885,
+                "EU": 59680,
+                "US": 29580
+              }
+            },
+            {
+              "endUTC": "2026-10-30T12:15:58.580324+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 118095,
+              "rate": 3936.5,
+              "outcomes": {
+                "OK": 118095
+              },
+              "p95Millis": 3,
+              "p99Millis": 6,
+              "regions": {
+                "ASIA": 29532,
+                "EU": 59255,
+                "US": 29308
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            3,
+            16
+          ],
+          "hostSwapTrafficMiB": 46
+        },
+        {
+          "target": 6000,
+          "qualified": true,
+          "selectedRate": 5868.556,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T12:20:28.565987+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 177010,
+              "rate": 5900.333,
+              "outcomes": {
+                "OK": 177010
+              },
+              "p95Millis": 3,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 45222,
+                "EU": 87824,
+                "US": 43964
+              }
+            },
+            {
+              "endUTC": "2026-10-30T12:20:58.570851+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 174702,
+              "rate": 5823.4,
+              "outcomes": {
+                "OK": 174702
+              },
+              "p95Millis": 3,
+              "p99Millis": 5,
+              "regions": {
+                "ASIA": 44288,
+                "EU": 86896,
+                "US": 43518
+              }
+            },
+            {
+              "endUTC": "2026-10-30T12:21:28.556264+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 176458,
+              "rate": 5881.933,
+              "outcomes": {
+                "OK": 176458
+              },
+              "p95Millis": 3,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 44923,
+                "EU": 87713,
+                "US": 43822
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            4,
+            15
+          ],
+          "hostSwapTrafficMiB": 154
+        },
+        {
+          "target": 8000,
+          "qualified": false,
+          "selectedRate": 7589.689,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T12:17:58.563184+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 228075,
+              "rate": 7602.5,
+              "outcomes": {
+                "OK": 228075
+              },
+              "p95Millis": 3,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 58069,
+                "EU": 113111,
+                "US": 56895
+              }
+            },
+            {
+              "endUTC": "2026-10-30T12:18:28.563197+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 227243,
+              "rate": 7574.767,
+              "outcomes": {
+                "OK": 227243
+              },
+              "p95Millis": 3,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 57619,
+                "EU": 113210,
+                "US": 56414
+              }
+            },
+            {
+              "endUTC": "2026-10-30T12:18:58.560387+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 227754,
+              "rate": 7591.8,
+              "outcomes": {
+                "OK": 227754
+              },
+              "p95Millis": 3,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 57831,
+                "EU": 113165,
+                "US": 56758
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            13,
+            16
+          ],
+          "hostSwapTrafficMiB": 60
+        }
+      ],
+      "stock": {
+        "initial": {
+          "products": 201,
+          "initialUnits": 201000,
+          "units": 201000,
+          "minimum": 1000
+        },
+        "afterWrites": {
+          "products": 201,
+          "initialUnits": 201000,
+          "units": 159921,
+          "minimum": 469
+        },
+        "final": {
+          "products": 201,
+          "initialUnits": 201000,
+          "units": 159921,
+          "minimum": 469
+        }
+      }
+    },
+    "envoyUsageLabB3": [
+      {
+        "pod": "shardshop-envoy-69d56c596b-frjr8",
+        "maxCpuMillicores": 568,
+        "maxWorkingSetMiB": 21.9,
+        "samples": 138
+      },
+      {
+        "pod": "shardshop-envoy-69d56c596b-qrm6v",
+        "maxCpuMillicores": 59,
+        "maxWorkingSetMiB": 22.4,
+        "samples": 138
+      }
+    ],
+    "outcome": "Both transports met the write criteria at 10, 20 and 30 orders/s (HTTP_1_1 p95 25.6-29.3 ms, H2C p95 31.3-32.8 ms). Highest passing read target: HTTP_1_1 8,000/s (7,843.9/s), H2C 6,000/s (5,868.6/s); H2C at 8,000/s delivered 7,589.7/s with two of three windows below 7,600/s.",
+    "findings": [
+      "The phase 4 read failures of lab B (750 and 1,000/s) did not repeat with low host paging; they probably came from paging.",
+      "At 8,000 reads/s the H2C reader leased 13-16 of its 16 streams, the HTTP_1_1 reader 6-8 of its 16 connections: each h2c read holds its lease approximately twice as long (extra Envoy hop), thus the reader pool size limits h2c reads.",
+      "One Envoy pod carried the reads (max 568 millicores of a 2-core limit, 22 MiB); the other pod max 59 millicores.",
+      "Reader retried transport errors before the read search: 128 in lab B3, 6 in lab A2; no error in any selected window."
+    ],
+    "limitations": [
+      "One run per transport.",
+      "Write paging 0.4-1.0 GB per phase in lab A2, above the 256 MiB diagnostic reference; read paging up to 0.25 GB except 2.8 GB at 10,000/s."
+    ],
+    "retainedLabRestore": {
+      "workloadProtocol": "H2C",
+      "upMinutes": 10.1,
+      "buildWarnings": 0,
+      "applicationRevision": 11,
+      "generatorHighWater": "230/1023",
+      "runningShardShopPods": 22
+    }
+  },
+  "h2cSaturationSearch": {
+    "phase": "4e",
+    "date": "2026-10-30",
+    "method": "User decision after phase 4d: one disposable H2C lab with the lab B3 values plus productReader.configuration SHARDSHOP_READER_WORKERS \"32\" and SHARDSHOP_READER_CONNECTIONS \"32\" (the reader RUNBOOK raises both for saturation tests). The rendered application release differs from lab B3 only in these two variables. down.sh, then docker desktop restart before the lab; unchanged lab.sh, collectors, images and initial stock.",
+    "host": {
+      "swapUsedBeforeLabB4MiB": 6519,
+      "freeMemoryPercentBeforeLab": 69
+    },
+    "imagesIdenticalToPhase4": true,
+    "initialStockIdentical": {
+      "products": 201,
+      "unitsPerProduct": 1000,
+      "sha256Prefix": "57e1ddf4f3a81678"
+    },
+    "labB4_h2c_32": {
+      "label": "b4",
+      "cluster": "shardshop-test-h2cmp-b4-a21fcad1",
+      "timeline": [
+        "2026-10-30T12:38:17Z lab b4 cluster shardshop-test-h2cmp-b4-a21fcad1",
+        "2026-10-30T12:38:17Z create start",
+        "2026-10-30T12:44:30Z up start",
+        "2026-10-30T12:55:48Z measure start",
+        "2026-10-30T12:55:48Z initial stock {\"products\":201,\"initialUnits\":201000,\"units\":201000,\"minimum\":1000}",
+        "2026-10-30T12:55:53Z write collector start",
+        "2026-10-30T13:04:09Z write collector exit 0",
+        "2026-10-30T13:04:13Z stock after writes {\"products\":201,\"initialUnits\":201000,\"units\":160205,\"minimum\":474}",
+        "2026-10-30T13:04:13Z read search start",
+        "2026-10-30T13:22:02Z read search exit 0",
+        "2026-10-30T13:22:06Z final stock {\"products\":201,\"initialUnits\":201000,\"units\":160205,\"minimum\":474}",
+        "2026-10-30T13:22:06Z measure complete",
+        "2026-10-30T13:22:16Z destroy start (status 0)",
+        "2026-10-30T13:22:20Z destroy complete",
+        "2026-10-30T13:22:20Z no owned node remains"
+      ],
+      "readiness": {
+        "readsPerSecond": 199.92,
+        "newReaderErrors": 0,
+        "hostSwapTrafficMiB": 82
+      },
+      "writeCollectorExit": 0,
+      "writes": [
+        {
+          "targetRate": 10,
+          "observationSeconds": 120.04,
+          "postWarmupWriteSamples": 1201,
+          "acceptedRate": 10.005,
+          "deliveryRequirementMet": true,
+          "finalWriteP95Millis": 33.412,
+          "writeLatencyRequirementMet": true,
+          "finalSagaP95Millis": 1564.055,
+          "confirmed": 1204,
+          "cancelled": 0,
+          "recovered": 0,
+          "newErrors": 0,
+          "producerBacklogRange": [
+            8,
+            15
+          ],
+          "hostSwapTrafficMiB": 330
+        },
+        {
+          "targetRate": 20,
+          "observationSeconds": 90.033,
+          "postWarmupWriteSamples": 1789,
+          "acceptedRate": 19.87,
+          "deliveryRequirementMet": true,
+          "finalWriteP95Millis": 52.977,
+          "writeLatencyRequirementMet": true,
+          "finalSagaP95Millis": 1713.115,
+          "confirmed": 1785,
+          "cancelled": 0,
+          "recovered": 0,
+          "newErrors": 0,
+          "producerBacklogRange": [
+            19,
+            28
+          ],
+          "hostSwapTrafficMiB": 166
+        },
+        {
+          "targetRate": 30,
+          "observationSeconds": 90.041,
+          "postWarmupWriteSamples": 2687,
+          "acceptedRate": 29.842,
+          "deliveryRequirementMet": true,
+          "finalWriteP95Millis": 51.993,
+          "writeLatencyRequirementMet": true,
+          "finalSagaP95Millis": 1776.801,
+          "confirmed": 2688,
+          "cancelled": 0,
+          "recovered": 0,
+          "newErrors": 0,
+          "producerBacklogRange": [
+            27,
+            39
+          ],
+          "hostSwapTrafficMiB": 93
+        }
+      ],
+      "readSearchExit": 0,
+      "readSearch": {
+        "highestPassingProtocolTarget": 8000,
+        "firstFailingTarget": "10000"
+      },
+      "reads": [
+        {
+          "target": 500,
+          "qualified": true,
+          "selectedRate": 500.0,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T13:05:24.297857+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 15000,
+              "rate": 500.0,
+              "outcomes": {
+                "OK": 15000
+              },
+              "p95Millis": 2,
+              "p99Millis": 4,
+              "regions": {
+                "ASIA": 3849,
+                "EU": 7363,
+                "US": 3788
+              }
+            },
+            {
+              "endUTC": "2026-10-30T13:05:54.300970+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 15000,
+              "rate": 500.0,
+              "outcomes": {
+                "OK": 15000
+              },
+              "p95Millis": 3,
+              "p99Millis": 7,
+              "regions": {
+                "ASIA": 3819,
+                "EU": 7343,
+                "US": 3838
+              }
+            },
+            {
+              "endUTC": "2026-10-30T13:06:24.297935+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 15000,
+              "rate": 500.0,
+              "outcomes": {
+                "OK": 15000
+              },
+              "p95Millis": 2,
+              "p99Millis": 5,
+              "regions": {
+                "ASIA": 3930,
+                "EU": 7379,
+                "US": 3691
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            0,
+            0
+          ],
+          "hostSwapTrafficMiB": 1116
+        },
+        {
+          "target": 1000,
+          "qualified": true,
+          "selectedRate": 998.078,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T13:07:54.297377+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 29947,
+              "rate": 998.233,
+              "outcomes": {
+                "OK": 29947
+              },
+              "p95Millis": 2,
+              "p99Millis": 5,
+              "regions": {
+                "ASIA": 7640,
+                "EU": 14874,
+                "US": 7433
+              }
+            },
+            {
+              "endUTC": "2026-10-30T13:08:24.297418+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 30000,
+              "rate": 1000.0,
+              "outcomes": {
+                "OK": 30000
+              },
+              "p95Millis": 2,
+              "p99Millis": 5,
+              "regions": {
+                "ASIA": 7643,
+                "EU": 14975,
+                "US": 7382
+              }
+            },
+            {
+              "endUTC": "2026-10-30T13:08:54.302474+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 29880,
+              "rate": 996.0,
+              "outcomes": {
+                "OK": 29880
+              },
+              "p95Millis": 2,
+              "p99Millis": 7,
+              "regions": {
+                "ASIA": 7490,
+                "EU": 14883,
+                "US": 7507
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            0,
+            1
+          ],
+          "hostSwapTrafficMiB": 48
+        },
+        {
+          "target": 2000,
+          "qualified": true,
+          "selectedRate": 1993.378,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T13:10:24.300327+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 59966,
+              "rate": 1998.867,
+              "outcomes": {
+                "OK": 59966
+              },
+              "p95Millis": 3,
+              "p99Millis": 6,
+              "regions": {
+                "ASIA": 15237,
+                "EU": 29627,
+                "US": 15102
+              }
+            },
+            {
+              "endUTC": "2026-10-30T13:10:54.294434+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 59440,
+              "rate": 1981.333,
+              "outcomes": {
+                "OK": 59440
+              },
+              "p95Millis": 3,
+              "p99Millis": 10,
+              "regions": {
+                "ASIA": 15099,
+                "EU": 29628,
+                "US": 14713
+              }
+            },
+            {
+              "endUTC": "2026-10-30T13:11:24.296097+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 59998,
+              "rate": 1999.933,
+              "outcomes": {
+                "OK": 59998
+              },
+              "p95Millis": 3,
+              "p99Millis": 6,
+              "regions": {
+                "ASIA": 15303,
+                "EU": 29747,
+                "US": 14948
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            1,
+            2
+          ],
+          "hostSwapTrafficMiB": 107
+        },
+        {
+          "target": 4000,
+          "qualified": true,
+          "selectedRate": 3937.356,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T13:12:54.295557+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 117852,
+              "rate": 3928.4,
+              "outcomes": {
+                "OK": 117852
+              },
+              "p95Millis": 4,
+              "p99Millis": 10,
+              "regions": {
+                "ASIA": 29964,
+                "EU": 58584,
+                "US": 29304
+              }
+            },
+            {
+              "endUTC": "2026-10-30T13:13:24.295146+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 118585,
+              "rate": 3952.833,
+              "outcomes": {
+                "OK": 118585
+              },
+              "p95Millis": 5,
+              "p99Millis": 11,
+              "regions": {
+                "ASIA": 30369,
+                "EU": 58941,
+                "US": 29275
+              }
+            },
+            {
+              "endUTC": "2026-10-30T13:13:54.360418+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 117925,
+              "rate": 3930.833,
+              "outcomes": {
+                "OK": 117925
+              },
+              "p95Millis": 5,
+              "p99Millis": 11,
+              "regions": {
+                "ASIA": 29884,
+                "EU": 58563,
+                "US": 29478
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            4,
+            4
+          ],
+          "hostSwapTrafficMiB": 343
+        },
+        {
+          "target": 8000,
+          "qualified": true,
+          "selectedRate": 7678.467,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T13:15:24.362248+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 229348,
+              "rate": 7644.933,
+              "outcomes": {
+                "OK": 229348
+              },
+              "p95Millis": 5,
+              "p99Millis": 8,
+              "regions": {
+                "ASIA": 58583,
+                "EU": 113838,
+                "US": 56927
+              }
+            },
+            {
+              "endUTC": "2026-10-30T13:15:54.361350+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 231592,
+              "rate": 7719.733,
+              "outcomes": {
+                "OK": 231592
+              },
+              "p95Millis": 5,
+              "p99Millis": 8,
+              "regions": {
+                "ASIA": 58845,
+                "EU": 115480,
+                "US": 57267
+              }
+            },
+            {
+              "endUTC": "2026-10-30T13:16:24.364492+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 230122,
+              "rate": 7670.733,
+              "outcomes": {
+                "OK": 230122
+              },
+              "p95Millis": 5,
+              "p99Millis": 8,
+              "regions": {
+                "ASIA": 58385,
+                "EU": 114824,
+                "US": 56913
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            9,
+            14
+          ],
+          "hostSwapTrafficMiB": 63
+        },
+        {
+          "target": 9000,
+          "qualified": false,
+          "selectedRate": 8469.344,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T13:20:54.363309+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 258075,
+              "rate": 8602.5,
+              "outcomes": {
+                "OK": 258075
+              },
+              "p95Millis": 5,
+              "p99Millis": 7,
+              "regions": {
+                "ASIA": 65454,
+                "EU": 128052,
+                "US": 64569
+              }
+            },
+            {
+              "endUTC": "2026-10-30T13:21:24.363891+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 252028,
+              "rate": 8400.933,
+              "outcomes": {
+                "OK": 252028
+              },
+              "p95Millis": 5,
+              "p99Millis": 9,
+              "regions": {
+                "ASIA": 64185,
+                "EU": 125654,
+                "US": 62189
+              }
+            },
+            {
+              "endUTC": "2026-10-30T13:21:54.360755+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 252138,
+              "rate": 8404.6,
+              "outcomes": {
+                "OK": 252138
+              },
+              "p95Millis": 5,
+              "p99Millis": 8,
+              "regions": {
+                "ASIA": 63809,
+                "EU": 125819,
+                "US": 62510
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            9,
+            22
+          ],
+          "hostSwapTrafficMiB": 31
+        },
+        {
+          "target": 10000,
+          "qualified": false,
+          "selectedRate": 9232.089,
+          "windows": [
+            {
+              "endUTC": "2026-10-30T13:18:24.368633+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 278750,
+              "rate": 9291.667,
+              "outcomes": {
+                "OK": 278750
+              },
+              "p95Millis": 5,
+              "p99Millis": 8,
+              "regions": {
+                "ASIA": 70636,
+                "EU": 138670,
+                "US": 69444
+              }
+            },
+            {
+              "endUTC": "2026-10-30T13:18:54.366034+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 274406,
+              "rate": 9146.867,
+              "outcomes": {
+                "OK": 274406
+              },
+              "p95Millis": 5,
+              "p99Millis": 9,
+              "regions": {
+                "ASIA": 69959,
+                "EU": 136361,
+                "US": 68086
+              }
+            },
+            {
+              "endUTC": "2026-10-30T13:19:24.363516+00:00",
+              "reportedSeconds": 30.0,
+              "requests": 277732,
+              "rate": 9257.733,
+              "outcomes": {
+                "OK": 277732
+              },
+              "p95Millis": 5,
+              "p99Millis": 8,
+              "regions": {
+                "ASIA": 70034,
+                "EU": 138439,
+                "US": 69259
+              }
+            }
+          ],
+          "readerPoolLeasedRange": [
+            12,
+            28
+          ],
+          "hostSwapTrafficMiB": 66
+        }
+      ],
+      "stock": {
+        "initial": {
+          "products": 201,
+          "initialUnits": 201000,
+          "units": 201000,
+          "minimum": 1000
+        },
+        "afterWrites": {
+          "products": 201,
+          "initialUnits": 201000,
+          "units": 160205,
+          "minimum": 474
+        },
+        "final": {
+          "products": 201,
+          "initialUnits": 201000,
+          "units": 160205,
+          "minimum": 474
+        }
+      }
+    },
+    "envoyUsageLabB4": [
+      {
+        "pod": "shardshop-envoy-69d56c596b-d5t7j",
+        "maxCpuMillicores": 584,
+        "maxWorkingSetMiB": 35.9,
+        "samples": 153
+      },
+      {
+        "pod": "shardshop-envoy-69d56c596b-g7pdb",
+        "maxCpuMillicores": 8,
+        "maxWorkingSetMiB": 17.2,
+        "samples": 153
+      }
+    ],
+    "readerInFlightRange": {
+      "labA2_http11_16": {
+        "8000": [
+          8,
+          16
+        ],
+        "9000": [
+          4,
+          16
+        ],
+        "10000": [
+          7,
+          16
+        ]
+      },
+      "labB3_h2c_16": {
+        "8000": [
+          10,
+          16
+        ]
+      },
+      "labB4_h2c_32": {
+        "8000": [
+          14,
+          31
+        ],
+        "9000": [
+          17,
+          32
+        ],
+        "10000": [
+          20,
+          32
+        ]
+      }
+    },
+    "nodeCpuPercentSumRange": {
+      "labA2_http11_16": {
+        "8000": [
+          524,
+          653
+        ],
+        "9000": [
+          622,
+          673
+        ],
+        "10000": [
+          672,
+          769
+        ]
+      },
+      "labB3_h2c_16": {
+        "8000": [
+          645,
+          679
+        ]
+      },
+      "labB4_h2c_32": {
+        "8000": [
+          660,
+          697
+        ],
+        "9000": [
+          692,
+          749
+        ],
+        "10000": [
+          723,
+          772
+        ]
+      }
+    },
+    "outcome": "With 32 workers and streams, H2C passed reads up to 8,000/s (7,678.5/s), as HTTP_1_1 with 16 in lab A2 (7,843.9/s). Both failed 9,000/s at nearly the same rate (H2C 8,469.3/s, HTTP_1_1 8,455.9/s); at 10,000/s H2C delivered 9,232.1/s and HTTP_1_1 8,759.6/s. Writes passed at 10, 20 and 30/s (p95 33.4, 53.0, 52.0 ms).",
+    "findings": [
+      "The reader pool of 16 was the h2c read limit in lab B3; with 32 the pool held at most 28 leases.",
+      "Near 9,000/s all reader workers were busy at times in both labs (16 of 16 for HTTP_1_1, 32 of 32 for H2C), and the kind nodes used 6.2-7.7 of 12 CPUs; the limit at 9,000/s is not identified.",
+      "H2C read p95 at 8,000/s was 5 ms (2 ms with HTTP_1_1); write p95 was higher than in lab B3 at 20 and 30/s, but below 100 ms.",
+      "One Envoy pod carried the reads: max 584 millicores of 2 cores and 35.9 MiB; the other pod max 8 millicores.",
+      "The reader retried 192 transport errors during up.sh, before the measurement (128 in lab B3, 6 in lab A2); the cause is not examined."
+    ],
+    "limitations": [
+      "One run.",
+      "Only H2C with 32; HTTP_1_1 with 32 is not measured."
+    ],
+    "retainedLabRestore": {
+      "workloadProtocol": "H2C",
+      "readerWorkersAndConnections": 16,
+      "upMinutes": 10.3,
+      "buildWarnings": 0,
+      "applicationRevision": 12,
+      "generatorHighWater": "240/1023",
+      "runningShardShopPods": 22
+    }
+  }
+}

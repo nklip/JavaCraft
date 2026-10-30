@@ -118,8 +118,8 @@ support_policies:
     note: "Open LTS branch, no fixed EOL; 2.21.8 vendor security release selected in step 6.0."
   flyway_13:
     model: maintained_stable
-    checked_on: '2026-09-30'
-    review_by: '2026-10-30'
+    checked_on: '2026-10-29'
+    review_by: '2026-11-28'
     source_refs:
     - flyway_docker
     - flyway_release_notes
@@ -127,6 +127,8 @@ support_policies:
     note: Flyway OSS Edition CLI with frequent releases and no published fixed EOL;
       13.8.1 was the newest image on 2026-09-30. It replaces the earlier 12.4.0
       library for migrations; qualify updates by running migration Jobs through scripts/up.sh on the lab.
+    support_review_2026_10_29: Newest OSS image is 13.11.1 (2026-10-22). No fixed EOL is published.
+      13.8.1 stays selected; an update needs a new flyway_cli build and migration Jobs through up.sh.
   openjdk_25:
     model: user_selected_local_baseline
     checked_on: "2026-10-25"
@@ -178,8 +180,8 @@ support_policies:
     upgrade_before: '2027-06-28'
   cnpg_1_30:
     model: community_branch
-    checked_on: "2026-10-25"
-    review_by: "2026-11-01"
+    checked_on: "2026-10-29"
+    review_by: "2026-11-05"
     source_refs:
     - cnpg
     eol: null
@@ -187,7 +189,7 @@ support_policies:
     upgrade_by: '2026-11-30'
     note: Conservative project deadline ahead of approximate upstream EOL. Recheck
       exact date monthly.
-    successor_status: "Blocked: no compatible GA successor published on 2026-10-25; 1.31.0 tag absent. Upgrade deadline unchanged."
+    successor_status: "Blocked: no compatible GA successor published on 2026-10-29; 1.31.0 tag absent, although upstream planned it for approximately September 2026. Upgrade deadline unchanged."
   rabbitmq_4_3:
     model: community_branch
     checked_on: '2026-10-16'
@@ -245,14 +247,16 @@ support_policies:
     note: "Upstream 0.33.0 remains current at review; no fixed EOL, local development only."
   helm:
     model: maintained_stable
-    checked_on: '2026-09-29'
-    review_by: '2026-10-29'
+    checked_on: '2026-10-29'
+    review_by: '2026-11-28'
     source_refs:
     - helm
     - helm_release
     eol: null
     note: No fixed LTS; 4.3.x supports Kubernetes 1.34-1.37. Installs only vendored,
       verified third-party charts; a later cloud target reuses the same charts.
+    support_review_2026_10_29: Latest release is 4.3.1 (2026-10-15); the 4.3.x range is unchanged.
+      Installed 4.3.0 stays selected.
   helmfile:
     model: maintained_stable
     checked_on: '2026-10-13'
@@ -301,6 +305,8 @@ support_policies:
 compatibility:
   java:
     version: '25'
+    checked_on: '2026-10-25'
+    review_by: '2026-11-25'
     build_range: '[25,)'
     observed_runtime_version: 25+36-3489
     verified_build_jdks:
@@ -325,6 +331,8 @@ compatibility:
     - quarkus_plugin
   cloudnative_pg:
     version: 1.30.1
+    checked_on: '2026-10-29'
+    review_by: '2026-11-05'
     support_refs:
     - cnpg_1_30
     supported_kubernetes_minors:
@@ -342,18 +350,22 @@ compatibility:
     - cnpg
   kubernetes:
     version: 1.36.4
+    checked_on: '2026-10-29'
+    review_by: '2026-11-28'
     support_refs:
     - kubernetes_1_36
     source_refs:
     - kubernetes_release
     - kubernetes_stable
     kind_node_image: docker.io/kindest/node@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
-    current_patch_observed: 1.36.5
-    current_patch_published_at: '2026-09-23T18:58:18Z'
+    current_patch_observed: 1.36.6
+    current_patch_published_at: '2026-10-28T04:36:45Z'
     selection_exception: 'KIND-1.36.5: user-authorized 1.36.4 fallback; recheck availability
       monthly.'
   kind:
     version: 0.33.0
+    checked_on: '2026-10-29'
+    review_by: '2026-11-28'
     support_refs:
     - kind
     default_node_kubernetes: 1.37.0
@@ -381,6 +393,8 @@ images:
   cnpg_operator:
     version: 1.30.1
     purpose: operator
+    review_by: '2026-11-05'
+    security_review_by: '2026-10-28'
     support_refs:
     - cnpg_1_30
     - debian_13
@@ -395,6 +409,8 @@ images:
   postgresql_cnpg:
     version: '18.6'
     purpose: three three-instance CNPG shard clusters and the single-instance ledger database
+    review_by: '2026-11-13'
+    security_review_by: '2026-10-28'
     support_refs:
     - postgresql_18
     - debian_13
@@ -426,7 +442,8 @@ images:
     manifest_url: https://registry-1.docker.io/v2/library/postgres/manifests/sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
     config_url: https://registry-1.docker.io/v2/library/postgres/blobs/sha256:0336095afa072c685c93021dcfa4a5fee9cbce25ecd65121b58226c787afc0d0
     checked_on: '2026-10-12'
-    review_by: '2026-10-28'
+    review_by: '2026-11-13'
+    security_review_by: '2026-10-28'
     created_observed: '2026-10-06T01:35:25Z'
     version_environment_observed:
     - GOSU_VERSION=1.19
@@ -458,7 +475,8 @@ images:
     manifest_url: https://registry-1.docker.io/v2/rancher/k3s/manifests/sha256:057cfd5a9d51b89f1f0ee139c28d5d5fdd5aa7ddeac2742a0ba90c6dbc0329bb
     config_url: https://registry-1.docker.io/v2/rancher/k3s/blobs/sha256:fdca60133c41721cc54efafaa58dd32a0517a3f9a340685ead17f44553939edc
     checked_on: '2026-10-12'
-    review_by: '2026-10-28'
+    review_by: '2026-11-28'
+    security_review_by: '2026-10-28'
     created_observed: '2026-09-30T16:09:51Z'
     revision_observed: 3dd98cc58ec34991e7e59b93663eee2e26fc1f65
     verification: Raw index, linux/arm64 manifest and config SHA-256 recomputed on 2026-10-12. The pulled image has
@@ -541,7 +559,8 @@ images:
     manifest_url: https://registry-1.docker.io/v2/flyway/flyway/manifests/sha256:6e00e7503a6fd48b12650fc6748088a356009f2aefb60736dc147518629263af
     config_url: https://registry-1.docker.io/v2/flyway/flyway/blobs/sha256:72dbe883d427eccf9ed7658d698ac527a869ed483dc2008046dfe9fe7aff5e31
     checked_on: '2026-09-30'
-    review_by: '2026-10-30'
+    review_by: '2026-11-28'
+    security_review_by: '2026-10-28'
     java_runtime_version: 25.0.4.1+1 (Eclipse Temurin JRE)
     ubuntu_version: '24.04'
     image_user_observed: ''
@@ -591,7 +610,8 @@ images:
     image_user_observed: '10001:10001'
     source_date_epoch: 0
     checked_on: '2026-10-13'
-    review_by: '2026-10-28'
+    review_by: '2026-11-25'
+    security_review_by: '2026-10-28'
     scan_tool: Docker Scout 1.24.0 from Docker Desktop 4.92.0
     advisory_gate: docker scout cves --exit-code --only-severity critical,high with
       the reviewed OpenVEX documents in infra/images/application/vex/ and the anchored
@@ -720,7 +740,8 @@ images:
     manifest_url: https://registry-1.docker.io/v2/kindest/node/manifests/sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
     config_url: https://registry-1.docker.io/v2/kindest/node/blobs/sha256:7ea3e6957929c3fb38ee5639c8ed47502d522a94ef2a4b41f90a3eefd001c1dd
     checked_on: '2026-09-28'
-    review_by: '2026-10-28'
+    review_by: '2026-11-28'
+    security_review_by: '2026-10-28'
     status: verified_selected
     selection: 'User-authorized 1.36.4 fallback after rechecking 1.36.5: registry
       returns 404 MANIFEST_UNKNOWN.'
@@ -738,6 +759,7 @@ installation_artifacts:
     url: https://github.com/cloudnative-pg/charts/releases/download/cloudnative-pg-v0.29.1/cloudnative-pg-0.29.1.tgz
     sha256: b53d3991fe84bcf38767e7702cae78666265427a127a26fff168ab4207d2b1df
     oci_reference: ghcr.io/cloudnative-pg/charts/cloudnative-pg:0.29.1@sha256:3245fa051bb21d0dd9246272f57a2760b4234817a164a3167d2a1e7fb9f63fd9
+    review_by: '2026-11-05'
     vendored_path: infra/helm/cnpg/cloudnative-pg-0.29.1.tgz
     values_path: infra/helm/cnpg/values.yaml
     verification: The archive matched the official index digest, and the GHCR OCI copy
@@ -912,6 +934,8 @@ vendor_bundles:
     verification: "Actual installed/running 4.96.3 bundle, code-signature and notarization checks; old 4.92.0 component inventory is historical. No blanket advisory acceptance."
   kind_node:
     debian: '13'
+    review_by: '2026-11-28'
+    security_review_by: '2026-10-28'
     containerd: 2.3.4
     runc: 1.4.3
     crictl: 1.36.0
@@ -1953,6 +1977,23 @@ maintenance_review_6_0:
     flyway_driver: "Vendor bundle still pgJDBC42.7.12. No requireAuth/COPY/blob/large-object/ByteStreamWriter input found; scope assessment does not change image bytes or prove indirect paths absent."
   security_scope: "No new VEX or general exception. The October 25 local_risk_acceptance temporarily disposes of the named saved findings for this lab through October 28; findings remain present. Earlier local image scopes retain their own limits. Integrity review dates do not waive findings."
   network_review_limit: "Automatic approval review rejected full 469-coordinate private-derived Maven/plugin inventory upload to OSV. No upload/retry/split; local graph and primary vendor sources used instead."
+support_review_2026_10_29:
+  checked_on: "2026-10-29"
+  status: "complete_support_only"
+  scope: "Support status, current releases and compatibility of every entry due by 2026-11-01, including entries that used the top-level 2026-10-28 date. At the user's request, no security review: no image scan, advisory check, VEX change or renewal of maintenance_review_6_0.local_risk_acceptance."
+  security_status: "Open and overdue since 2026-10-28. Affected entries keep security_review_by 2026-10-28, the local risk acceptance stays expired and SBOM-AND-RUNTIME stays open. Thus the top-level review_by stays 2026-10-28."
+  user_decision: "2026-10-29: the user permits step 6.8 work while the security review stays open. No scan-gate, VEX or deadline change; see VERSIONS.md#step-68-security-review-decision--2026-10-29."
+  sources: ["https://dl.k8s.io/release/stable-1.36.txt", "https://kubernetes.io/releases/", "https://update.k3s.io/v1-release/channels", "https://helm.sh/docs/topics/version_skew/", "https://api.github.com/repos/helm/helm/releases", "git ls-remote tags of kubernetes-sigs/kind, cloudnative-pg/cloudnative-pg and cloudnative-pg/charts", "https://cloudnative-pg.io/docs/1.30/supported_releases/", "https://www.postgresql.org/support/versioning/", "https://www.postgresql.org/developer/roadmap/", "Docker Hub tag API for kindest/node, rancher/k3s, library/postgres and flyway/flyway"]
+  results:
+    helm: "4.3.1 (2026-10-15) is the latest release. 4.3.x supports Kubernetes 1.34-1.37. Installed 4.3.0 stays selected; 4.3.1 stays a routine candidate."
+    flyway: "13.11.1 (2026-10-22) is the newest OSS image; no fixed EOL is published. 13.8.1 stays selected."
+    cnpg: "1.30.1 and chart 0.29.1 are the latest releases; no 1.31.0 tag exists. 1.30 EOL is approximately December 2026 and 1.29 EOL was 2026-09-29. Matrix unchanged: Kubernetes 1.34-1.36, PostgreSQL 14-18. The 2026-11-30 upgrade_by and the CNPG exclusion are unchanged."
+    kubernetes_kind: "Kubernetes 1.36.6 binaries were published on 2026-10-28; kubernetes.io still showed 1.36.5. 1.36 EOL is 2027-06-28. kind 0.33.0 is the latest release (v0.34.0-alpha is only a tag). Docker Hub has no kindest/node v1.36.5 or v1.36.6 tag; 1.36.4 stays selected under KIND-1.36.5."
+    k3s_test: "v1.36.5+k3s1 is the latest v1.36 channel build and stays selected."
+    postgresql: "18.6 is the current minor; the next minor is planned for 2026-11-12; PostgreSQL 18 EOL is 2030-11-14. The postgres:18.6-trixie tag was rebuilt on 2026-10-28 (index sha256:979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4). The rebuild is not selected or examined, because that is security work."
+    java_and_applications: "compatibility.java and the application images use the 2026-10-25 6.0 review of application_jre, openjdk_25 and canonical_openjdk_25_26_04, valid until 2026-11-25. The Scout gate did not run again."
+    historical_maven: "Five maven.step_4_5_ledger_dependencies artifacts use the top-level date. maven.step_6_0_security supersedes them; they are not reviewed."
+  not_due: "Seven Maven records 2026-11-04, two 2026-11-05, Helmfile and Skaffold 2026-11-13, RabbitMQ 2026-11-16, others 2026-11-25."
 unresolved:
 - id: KIND-1.36.5
   blocks:
@@ -1975,6 +2016,8 @@ unresolved:
   resolution: User authorized 1.36.4 if 1.36.5 is unavailable. Recheck returned 404
     on 2026-09-28; verified release digest promoted into images.kind_node. kubectl 1.36.5
     stays in the same supported minor.
+  recheck_2026_10_29: Kubernetes 1.36.6 is current. kind 0.33.0 is still the latest release,
+    and Docker Hub has no kindest/node v1.36.5 or v1.36.6 tag. 1.36.4 stays selected.
 - id: OPENJDK-25-IMAGES
   blocks:
   - '0.1'

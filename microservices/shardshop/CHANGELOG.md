@@ -7694,3 +7694,613 @@ with IDs/images/mounts and default kubeconfig unchanged. Cleanup finished at
 13:46:11 UTC, 51m37s after task start, within the approved hour. No second run was
 performed. See the [reviewed evidence](shardshop-testing/evidence/2026-10-28-read-diagnostics-kind.json)
 for native windows, timings, raw evidence hashes, commands and cleanup proof.
+
+## Support review — 2026-10-29
+
+This review precedes step 6.8. It examined support status, current releases and
+compatibility of every lock entry due by 2026-11-01. At the user's request, the
+security part is not done: no image scan, no advisory check and no renewal of the
+expired October 28 local risk acceptance. No artifact, pin, build or lab changed.
+The lab stayed stopped. See the [results](VERSIONS.md#support-review--2026-10-29)
+and `support_review_2026_10_29` in `versions.lock.yaml`.
+
+```bash
+curl -fsS https://dl.k8s.io/release/stable-1.36.txt
+curl -sIL https://dl.k8s.io/release/v1.36.6/bin/linux/arm64/kubectl
+curl -fsS https://update.k3s.io/v1-release/channels
+curl -fsS 'https://api.github.com/repos/helm/helm/releases?per_page=10'
+git ls-remote --tags --refs https://github.com/kubernetes-sigs/kind.git
+git ls-remote --tags --refs https://github.com/cloudnative-pg/cloudnative-pg.git
+git ls-remote --tags --refs https://github.com/cloudnative-pg/charts.git
+curl -fsS 'https://hub.docker.com/v2/repositories/kindest/node/tags?page_size=25&name=v1.36&ordering=last_updated'
+curl -fsS 'https://hub.docker.com/v2/repositories/rancher/k3s/tags?page_size=25&name=v1.36&ordering=last_updated'
+curl -fsS 'https://hub.docker.com/v2/repositories/library/postgres/tags?page_size=25&name=18&ordering=last_updated'
+curl -fsS 'https://hub.docker.com/v2/repositories/flyway/flyway/tags?page_size=25&name=13.&ordering=last_updated'
+helm version --short
+kind version
+kubectl version --client
+```
+
+The GitHub releases API returned 403 after the Helm request; `git ls-remote`
+gave the kind and CNPG tags. The Helm skew, CNPG support, Kubernetes release
+and PostgreSQL versioning/roadmap pages gave the support dates. The
+kubernetes.io release page still showed 1.36.5, but `dl.k8s.io` published
+1.36.6 binaries on October 28.
+
+## Step 6.8 — HTTP/2 transport (Research Done, HTTP/1.1 kept) — 2026-10-29
+
+The user permitted 6.8 work while the October 28 security review stays open
+([decision](VERSIONS.md#step-68-security-review-decision--2026-10-29)). Phases 1,
+2, 2b and 3a are complete: the balancer selection, the workload h2c clients,
+HTTP/2 in product and order, and the offline Envoy chart. On the same day the
+user replaced the Istio selection of phase 1 with standalone Envoy (phase 3a).
+No Helm release or lab run is part of them. In phase 3, the release acceptance
+knows Envoy, and the retained lab ran the `H2C` release with Envoy. The HTTP,
+SQL, replication and AMQP paths were checked on it. Phase 3b tested two Envoy
+rollouts and a period with no ready product pod under load. In the phase 4
+comparison with equal stock, `H2C` passed fewer read targets than `HTTP_1_1`, and
+neither transport qualified under heavy host paging. The phase 4b profile showed
+that the h2c reader client is not the limit at 1,000 reads/s, and the phase 4c
+diagnostic on the retained lab passed h2c reads up to 4,000/s.
+
+Phase 4d repeated both labs after a Docker restart with low host paging. Both
+transports passed all writes, and reads passed up to 8,000/s with `HTTP_1_1` and
+6,000/s with `H2C`. The 16 streams of the reader limited the h2c reads. In phase
+4e, the reader used 32 workers and streams, and h2c reads passed up to 8,000/s.
+On 2026-10-30, the user kept HTTP/1.1, because HTTP/2 gave no performance gain
+([decision](#decision-keep-http11--2026-10-30)). The implementation is reverted.
+
+### Phase 1: request balancer selection
+
+Phase 3a replaced this selection and removed its files. Istio **1.31.3** ambient mode with a waypoint and the Gateway API **v1.6.3**
+standard CRDs are selected and vendored in `infra/helm/istio/` and
+`infra/helm/gateway-api/`. The [selection](VERSIONS.md#step-68-request-balancer-selection)
+records the verification, the rendered identities and privileges, and the
+starting resources. The 1.31 charts are only in the new `blob.istio.io`
+repository; each archive matched its index digest and the GitHub tag source.
+
+```bash
+curl -fsSL -o base-1.31.3.tgz https://blob.istio.io/istio-release/charts/base-1.31.3.tgz
+# The same for istiod, cni and ztunnel; then compare with the index digests.
+git clone --depth 1 --branch 1.31.3 --filter=blob:none --sparse https://github.com/istio/istio.git
+curl -fsSL -o standard-install.yaml https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.3/standard-install.yaml
+helm template istiod infra/helm/istio/istiod-1.31.3.tgz -n istio-system -f infra/helm/istio/istiod-values.yaml --kube-version 1.36.4
+helm template istio-cni infra/helm/istio/cni-1.31.3.tgz -n istio-system -f infra/helm/istio/cni-values.yaml --kube-version 1.36.4
+helm template ztunnel infra/helm/istio/ztunnel-1.31.3.tgz -n istio-system -f infra/helm/istio/ztunnel-values.yaml --kube-version 1.36.4
+```
+
+The image digests were resolved anonymously from Docker Hub, and the index,
+arm64 manifest and config hashes were recomputed from the raw bytes.
+
+### Phase 2: workload h2c clients
+
+- `common` adds `H2cTransport` (HttpCore 5 `H2MultiplexingRequester`, h2c
+  with prior knowledge, no fallback, bounded body), `JsonHttpTransport` and
+  `HttpProtocol`. `JsonHttpClient` accepts the transport; its JDK path is
+  unchanged.
+- The reader, the seeder and the order producer get `http-protocol`, default
+  `HTTP_1_1`. With `H2C`, the reader limits concurrent streams on one
+  connection and reports them in the existing pool fields.
+- The deployed lab keeps `HTTP_1_1` until the request balancer runs, because one h2c
+  connection through a Service reaches one pod.
+
+Library findings, each confirmed in the source and by a failing test before
+the change:
+
+- The HttpClient 5.6.4 async HTTP/2 client calls `discardEndpoint()` after every
+  failed exchange. A test showed that an oversized body moved the next request to
+  a second connection. Thus `H2cTransport` uses the HttpCore requester.
+- The default HttpCore client processor adds `Expect: 100-continue`, and every
+  request with a body then waited for a `100` until its deadline. The transport
+  uses the processor chain without that interceptor.
+- A consumer failure resets only the stream if it is an
+  `HttpStreamResetException`; another `IOException` fails the connection.
+- HttpCore 5.4 sends the reset of a cancelled stream at the next frame of that
+  stream. The caller is released at once, and the tests cover the real behavior.
+
+Server check: product accepted h2c with prior knowledge for a GET, but over
+HTTP/2 a POST with a JSON body returned `500` (`Request has already been read`).
+An empty POST body produced a response with `Connection: close`, which is illegal
+in HTTP/2, so the client failed with a protocol error. Order ran with
+`quarkus.http.http2=false`.
+
+```bash
+mvn -B -ntp -o -f microservices/shardshop/pom.xml -pl shardshop-core/common,shardshop-workload/shardshop-order-producer,shardshop-workload/shardshop-product-seeder,shardshop-workload/shardshop-product-reader install
+mvn -B -ntp -o -f microservices/shardshop/pom.xml -pl shardshop-product test -Dtest=ProductHttp2Test -Dsurefire.failIfNoSpecifiedTests=false
+git diff --check
+```
+
+The first command passed **613 tests**: common 302 (8 new h2c tests), seeder
+67, reader 92 (5 new h2c tests) and producer 152, with zero failures, errors
+or skips. A Netty DNS-resolver warning of the new common test was removed by
+the JDK resolver setting that Quarkus also uses. The second command ran the
+first version of the product probe and failed with the two server findings.
+
+### Phase 2b: HTTP/2 in product and order
+
+At the user's request, product and order now serve HTTP/2, and the balancer
+will use HTTP/2 to the pods. The stack traces and bytecode gave three causes:
+
+- Quarkus REST 3.40 calls `request.pause()` when its context starts. Vert.x
+  `Http2ServerRequest.pause()` throws after the request has ended, thus the
+  filters' `BodyHandler` cannot read an HTTP/2 body before REST.
+- Above the body limit, REST answers `413`, adds `Connection: close` and closes
+  the connection. Under HTTP/2 that ends all streams of the connection.
+- HttpCore sends no `Content-Length` over HTTP/2.
+
+`CatalogDeadline` and `OrderDeadline` keep the HTTP/1.1 path. For HTTP/2 they
+let REST read a POST or PUT body, require a declared `Content-Length` within the
+limit (otherwise `400 INVALID_REQUEST`), send no `Connection` header, stop the
+rest of a rejected body with `RST_STREAM NO_ERROR`, and reset only the stream
+with `CANCEL` when the deadline expires after the response started.
+`H2cTransport` sends `Content-Length`. Order no longer sets
+`quarkus.http.http2=false`. The [rule](shardshop-core/common/ARCHITECTURE.md#http-deadline-filters)
+is documented with the filters.
+
+Tests: `ProductHttp2Test` and `OrderHttp2Test` use h2c with prior knowledge for
+GET, POST, PUT, empty, oversized, non-JSON and undeclared-length bodies, and a
+later stream on the same connection. The two deadline unit tests have five new
+HTTP/2 cases each. `OrderProviderTest`'s former HTTP/1.1 guard now asserts that
+its JDK client upgrades to HTTP/2; its other 36 provider cases pass on that path.
+
+```bash
+mvn -B -ntp -o -f microservices/shardshop/pom.xml -pl shardshop-product,shardshop-order -am verify
+mvn -B -ntp -o -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
+  -Dit.test=CucumberIT -Dfailsafe.failIfNoSpecifiedTests=false \
+  '-Dcucumber.filter.tags=@order-api or @product-api or @order-producer or @product-seeder or @product-reader or @stock-reservation or @order-listing'
+git diff --check
+```
+
+The first command passed in 1 minute 34 seconds: product **293 unit/provider and
+30 packaged startup tests**, order **422 and 49**, and common, idgen and
+sharding. The second command passed in 10 minutes 55 seconds: all upstream unit
+suites (including ledger 62 and testing 382) and **43 selected Cucumber
+scenarios** with zero failures, in 438.1 seconds; the tag filter skipped the
+other 118. The warnings were the documented disabled Testcontainers reaper and
+JDK `Unsafe` notices from Netty. No test container stayed; the retained lab
+stayed stopped. The full Cucumber suite and the kind drills did not run.
+
+### Phase 3a: standalone Envoy
+
+After a memory comparison, the user selected **standalone Envoy 1.40.2** instead
+of Istio ambient. With the lab values, Istio adds 10 pods with 896 MiB of
+requests and 4,096 MiB of limits; two Envoy replicas add 128 MiB and 512 MiB.
+Docker has 12.65 GiB, and the application limits are already 11.5 GiB. Envoy
+also needs no privileged node component, and the SQL of product and order does
+not go through a node proxy. The [selection](VERSIONS.md#step-68-request-balancer-selection)
+records the image, the configuration rules and the limits of the comparison.
+
+- Removed: `infra/helm/istio/`, `infra/helm/gateway-api/` and their lock records.
+- The lock records `envoy_1_40` (EOL 2027-10-13) and the image
+  `envoyproxy/envoy:distroless-v1.40.2` with recomputed digests.
+- The chart value `httpBalancer.workloadProtocol` selects `HTTP_1_1` (default,
+  same rendering as before) or `H2C`. `H2C` adds Envoy, its Service, its
+  configuration and two headless Services, and sets the URL and `http-protocol`
+  of the reader, the producer and both seeder modes.
+- Envoy 1.40 deprecates `Cluster.dns_refresh_rate`; the configuration uses the
+  `envoy.clusters.dns` extension instead.
+- `HelmReleaseTest` has a new test for both values: direct calls without a proxy,
+  the Envoy wiring, restricted Pod Security, the retry rule for `POST` and `PUT`,
+  the rollout after a configuration change and the rejected values.
+  `KindWorkloadPolicy` accepts the protocol settings.
+
+```bash
+helm template shardshop-application <chart> -n shardshop -f infra/shards.yaml -f images.json --set-string render=application-release
+docker run --rm --network none -v "$PWD/infra/helm/shardshop/files/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro" \
+  docker.io/envoyproxy/envoy:distroless-v1.40.2@sha256:09ca6f2140a61ad8df11779a4a30d52b48433d444466328494f9188c9c35eded \
+  --mode validate -c /etc/envoy/envoy.yaml
+mvn -B -ntp -o -f microservices/shardshop/pom.xml -pl shardshop-testing -am test -Dtest=HelmReleaseTest \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false -Djacoco.skip=true
+mvn -B -ntp -o -f microservices/shardshop/pom.xml -pl shardshop-testing -am test \
+  -Dtest='dev/nklip/javacraft/shardshop/testing/**/*Test' -Dsurefire.failIfNoSpecifiedTests=false \
+  -Dshardshop.failIfNoTests=false -Djacoco.skip=true
+git diff --check
+```
+
+With `HTTP_1_1`, the `application-release`, `applications` and `seeding` renderings
+are byte-identical to the chart before this phase. Envoy accepted the
+configuration without warnings. `HelmReleaseTest` passed **25 tests**, and all unit
+tests of the testing module passed (**383**, 1:44 minutes), with no warnings. Not done: the lab deployment, the release acceptance of the Envoy
+resources and all traffic checks.
+
+### Phase 3: release acceptance and lab deployment
+
+- `KindRelease` accepts the H2C rendering. If the desired rendering contains the
+  `shardshop-envoy` Deployment, the acceptance also requires the current Envoy
+  pods and image, the data of `shardshop-envoy-config`, the Envoy Service and the
+  two headless Services. Each headless Service must expose all ready pods of its
+  application.
+- The Service check compares all ports with the desired Service. For the
+  EndpointSlices, it resolves a named target port to the container port. Before,
+  it accepted only one `http` port 8080.
+- `KindReleaseTest` has a new H2C test. The `HTTP_1_1` fixture answers no Envoy
+  request, thus it also shows that this mode looks for no Envoy resource.
+
+```bash
+mvn -B -ntp -o -f microservices/shardshop/pom.xml -pl shardshop-testing -am test \
+  -Dtest='KindReleaseTest,HelmReleaseTest,KindWorkloadPolicyTest' -Dsurefire.failIfNoSpecifiedTests=false \
+  -Dshardshop.failIfNoTests=false -Djacoco.skip=true
+# h2c-values.yaml = kind-values.yaml + httpBalancer.workloadProtocol: H2C
+export JAVA_HOME=/Users/nikita.lipatov/.sdkman/candidates/java/25.0.5-tem
+SHARDSHOP_ENV_VALUES=h2c-values.yaml caffeinate -ims microservices/shardshop/scripts/up.sh
+docker scout sbom --format list --only-package-type deb local://docker.io/library/shardshop-product:18c99f38…
+```
+
+The focused tests passed (**59**). In `up.sh`, the clean build with the module
+tests, the `kind-config` gate and the seven image builds passed. Then the Docker
+Scout gate stopped `up.sh` before the lab resume. Scout could not update its
+Trivy Java DB from `ghcr.io/aquasecurity/trivy-java-db:1` ("unexpected EOF"
+after 9 minutes). The cached DB is from 2026-10-26, and its next update time has
+passed. A second attempt with only `docker scout sbom` on the new product image
+failed in the same way after 12 minutes. The lab stayed stopped, and no Helm
+release changed.
+
+On 2026-10-30, `curl` downloaded the same blob (991,676,529 bytes) in 116 s, and
+its SHA-256 was equal to the manifest digest. Thus the fault was transient. Then
+`docker scout sbom` updated the Java DB in 2.5 minutes, and the second `up.sh`
+passed in 13.5 minutes. The CVE gate found no vulnerable package in the seven
+images. Helm deployed application revision 9. The postsync acceptance with the
+Envoy checks passed six scenarios, including both product replicas reached by
+the reader.
+
+Live checks after the deployment, with ad hoc `kubectl` commands. The Envoy admin
+API was read through `kubectl port-forward`:
+
+| Path | Result |
+|---|---|
+| Workloads to Envoy | The reader, the producer, the seeder control and the seeder Job 9 use `http://shardshop-envoy.shardshop.svc:8081`/`8082` and `H2C`. Envoy: `downstream_cx_http1_total` 0, no 4xx or 5xx. |
+| Envoy to pods | `upstream_cx_http1_total` 0, only HTTP/2. No retry, no timeout, no host error. Requests for each pod: product 16,012 and 15,940, order 1,576 and 1,564. |
+| Workload results | Reader: 200 requests/s, all `OK`, p99 9–13 ms. Seeder Job 9: `catalog-v2` seeded and verified. Producer: replays of run `kind-saga-v1` from ordinal 0 (`recovered=101` in 200 s), thus no new order yet. |
+| SQL | On all four primaries, the clients are only the product, order, saga and ledger pods, and no Envoy pod. |
+| Replication | Each shard streams to two quorum standbys and Debezium. All four CNPG clusters are healthy. |
+| AMQP | Only the saga and the ledger connect. Each main queue has one consumer and no messages, and the DLQs are empty. |
+| Envoy memory | Kubelet working set 21.0 MiB (55 millicores) and 19.7 MiB. Envoy heap 12 MiB. The request is 64 MiB and the limit is 256 MiB. |
+
+All workload connections went to one Envoy pod. The other pod had no connection,
+because each workload keeps few long h2c connections and the Service places a
+connection, not a request. Thus one Envoy pod carries all requests, and a stop of
+that pod moves all clients at the same time. The Envoy rollout and the behavior
+without a ready pod are not tested yet.
+
+### Phase 3b: Envoy rollout and no ready product pod
+
+The user selected these two checks before the capacity comparison. During both
+checks, the reader sent 200 requests/s through Envoy, and the producer replayed
+its run. Timestamped `kubectl` watches recorded the pods and EndpointSlices.
+A sampler read the Envoy product counters each second, and it sent one h2c probe
+(`GET /api/v1/sellers/by-key/…`) through `service/shardshop-envoy`.
+
+```bash
+kubectl -n shardshop rollout restart deployment/shardshop-envoy        # rollout 1
+kubectl -n shardshop patch deployment shardshop-envoy --type=json \
+  -p '[{"op":"remove","path":"/spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt"}]'   # rollout 2
+kubectl -n shardshop scale deployment/shardshop-product --replicas=0   # hold 30 s with no product pod
+kubectl -n shardshop scale deployment/shardshop-product --replicas=2
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind failsafe:integration-test \
+  failsafe:verify -Dit.test=KindIT '-Dshardshop.kind.tags=kind-release | kind-deployment' \
+  -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.cluster=shardshop -Dshardshop.kind.fresh=false
+```
+
+| Check | Result |
+|---|---|
+| Rollout 1 | 5 s. Each new pod was ready approximately 2 s after it started. The pod with all connections exited 91 ms after SIGTERM, without a drain. The reader interval had no failed read (`OK=5679`), but 321 requests fewer than the target, p99 133 ms and max 980 ms. |
+| Rollout 2 | 5 s, back to the Helm template (ReplicaSet `69d56c596b`). Envoy exited 3–7 ms after SIGTERM. No failed read, all intervals complete, max 107 ms. |
+| Producer | No error in both rollouts. The replays continued at 0.5/s (`recovered` 101, 401, 501). |
+| No ready product pod | Product had no pod from 08:34:42 to 08:35:21. In the first 1.3 s, Envoy still had the stopped pods: 228 connect failures, 102 retries and 72 answers with 503. Then Envoy answered each request at once with 503 "no healthy upstream" (probe 3–48 ms, reader p99 18 ms). The reader counted 8,100 `UNAVAILABLE` and no `DEADLINE` or `TRANSPORT`, and Envoy counted 8,100 answers with 5xx. |
+| Recovery | The first new product pod was ready at 08:35:21.2. The probe at 08:35:22.0 got an answer from product (710 ms, a cold JVM). The reader read `OK` again approximately 0.5 s after the pod was ready. |
+| Restore | The gates `kind-release` and `kind-deployment` passed six scenarios (1:34 minutes, no warning). The verification snapshot used the kind values with `H2C`. Its `images.json` had the qualified digests from the "Loaded" lines of `up.sh` and the live restart token. |
+
+Envoy stops at once on SIGTERM. Thus requests in flight on its connections fail,
+and the client must send them again. The reader and the producer retry such
+transport failures, thus no failure reached their results. A drain before the stop
+needs the admin API in the preStop hook. But the distroless image has no HTTP
+client, and the kubelet cannot reach the admin port on `127.0.0.1`. After each
+rollout, all workload connections went again to one Envoy pod. The two new
+product pods each took one generator slot.
+
+Not done: a new order through Envoy, the capacity comparison and the drills.
+`BackupSource` rejects a Deployment that it does not know. Thus it must accept
+Envoy before the 5.4 drill runs in `H2C` mode. The lab runs the `H2C` release.
+
+### Phase 4: transport comparison with equal stock (not qualified)
+
+The user approved two sequential disposable labs. Lab A used `HTTP_1_1`, and lab
+B used `H2C`. Both labs used the same commit, the same seven images and the same
+values, with one exception: lab B added `httpBalancer.workloadProtocol: H2C`.
+Both values files set `orderProducer.configuration.SHARDSHOP_PRODUCER_ORDER_RATE`
+to `"0"`, thus no order used catalog stock before the measurement. The retained
+lab was stopped during both labs and then started again with `H2C`.
+
+- Both labs started with 1,000 units for each of the 201 products. The SHA-256
+  of the 201 stock rows was the same in both labs.
+- Writes used the unchanged 2026-10-28 collector: a 60 s readiness gate at
+  200 reads/s, then 10, 20 and 30 orders/s with a 20 s warmup and 120, 90 and
+  90 s of observation.
+- Reads used a scratch copy of the 6.7 read collector, without the opt-in
+  diagnostics. It searched 500, 1,000, 2,000 and higher with the protocol
+  windows, and it tested a midpoint once.
+- The first lab B stopped in the `up.sh` build. `OrderHttp2Test` read the
+  response body on the test thread after the response future had completed, and
+  Vert.x dropped the data that arrived first (empty body). A 300 ms pause before
+  `body()` reproduced the failure every time. `OrderHttp2Test` and
+  `ProductHttp2Test` now read the body in the response callback. Both classes
+  passed three runs, and lab B ran again with the same images.
+
+| Measurement | Lab A, `HTTP_1_1` | Lab B, `H2C` |
+|---|---|---|
+| Readiness, 200 reads/s | 199.42/s | 198.83/s |
+| 10 orders/s | 9.764/s, p95 177.7 ms, saga p95 1.98 s | 9.463/s (below 95%), p95 284.1 ms, saga p95 3.11 s; the sequence stopped |
+| 20 orders/s | 19.248/s, p95 181.9 ms | not measured |
+| 30 orders/s | 26.766/s (below 95%), p95 259.5 ms | not measured |
+| Cancellations, errors, recoveries | 0, 0, 0 | 0, 0, 0 |
+| Reads that passed | 500, 1,000, 2,000, 3,000 (2,899.0/s) | 500 (498.4/s) |
+| First failed read target | 4,000: 3,771.7/s, all `OK`, p95 3–4 ms | 1,000: 949.7/s, all `OK`, p95 5–17 ms; midpoint 750 failed with one window at 701/s |
+| Host swap traffic per phase | 3.5–11.8 GB | 2.7–8.9 GB |
+
+Neither transport qualified: the host paged heavily in every phase of both labs
+(13.3 GB of 14.3 GB swap was in use before the labs). The write latencies are
+thus not comparable with the operating points of 2026-10-28. Correction: the
+first record of this table gave 2.2–11.8 GB and 2.1–7.9 GB. The scratch summary
+sorted the samples by a part of the path, and the path contains hyphens. Thus it
+measured only to `sample-90` of a read phase. The values above use the first and
+the last sample of each phase.
+
+Lab B paged less than lab A during its reads. But phase 4d did not repeat the
+lab B failures with low paging, thus paging was probably their cause. In lab B,
+the reader created too few requests. At 1,000/s, only 1–3
+of its 16 streams were in use, and none waited. The busy Envoy pod used at most
+237 millicores and 50.1 MiB, against a limit of 2 cores and 256 MiB. Each failed
+target had one low window: 701/s at 750, and 909/s at 1,000. The other windows
+were 732–749/s and 954–986/s. The phase 4b profile refutes the first hypothesis,
+one HttpCore I/O thread. Again, all reader requests went to one Envoy pod.
+
+With Envoy, the lab has 38 steady pods, 22 of them in ShardShop. Without Envoy,
+it has 36 and 20. The capacity figures in the architecture overview are
+unchanged, because no transport qualified.
+
+```bash
+# values-a-http11.yaml = kind-values.yaml + orderProducer.configuration.SHARDSHOP_PRODUCER_ORDER_RATE: "0"
+# values-b-h2c.yaml    = values-a-http11.yaml + httpBalancer.workloadProtocol: H2C
+bash microservices/shardshop/scripts/down.sh
+bash lab.sh a values-a-http11.yaml "$phase4"   # SHARDSHOP_TEST_CLUSTER/KUBECONFIG, cluster-create.sh, up.sh,
+bash lab.sh b2 values-b-h2c.yaml "$phase4"     # stock, capture-capacity.sh, capture-read-search.sh, cluster-destroy.sh
+mvn -B -ntp -o -pl shardshop-order,shardshop-product test -Dtest='OrderHttp2Test,ProductHttp2Test' \
+  -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true      # three runs after the fix
+SHARDSHOP_ENV_VALUES=h2c-values.yaml microservices/shardshop/scripts/up.sh   # retained lab back to H2C
+```
+
+Lab A took 41 minutes, and lab B took 32 minutes, from creation to deletion.
+Each lab removed all of its nodes. Then `up.sh` started the retained lab again
+with `H2C` in 10.7 minutes: all gates passed, the application release is revision
+10, and the generator high-water mark is 220 of 1,023.
+
+### Phase 4b: reader h2c profile
+
+The user selected a bounded profile on the retained lab before any code change.
+The reader went from 200 to 1,000 reads/s for 72 seconds, and then back to its
+saved 200/s. The producer and the seeder did not change. The CPU of each thread
+came from `/proc/<pid>/task/*/stat` on the kind node, and `kill -QUIT` wrote three
+thread dumps to the pod log, because the image has no shell.
+
+| Measurement | 200 reads/s (20 s) | 1,000 reads/s (31 s) |
+|---|---|---|
+| HttpCore I/O thread `requester-dispatch-1` | 2.5% of one core | 8.1% of one core |
+| 16 reader workers together | 2.0% | 5.9% |
+| Reader pod (kubelet) | 53 millicores | 165 millicores |
+| Busy Envoy pod | 59 millicores | 177 millicores |
+| Each product pod | 105–114 millicores | 379–381 millicores |
+
+The complete window at 1,000/s delivered 29,610 reads (987.0/s), all `OK`, p95
+5 ms. In all three dumps, the I/O thread waited in `epoll`, and each worker waited
+on a response (`BasicFuture.get` in `H2cReads`) or on the rate pacer. No reader
+thread was `RUNNABLE`. Thus the one I/O thread is not the limit at 1,000/s, and
+the reader has spare capacity. The phase 4 failures at 750 and 1,000/s came from
+one short dip in a 30 s window. They do not show a steady client limit. The cause
+of the dips is not known: one run for each transport cannot separate a weakness
+of the single connection and the single Envoy worker from host paging. The
+h2c result above 1,000/s is not measured.
+
+### Phase 4c: h2c read search on the retained lab (diagnostic)
+
+The user selected the read search on the retained `H2C` lab. A fresh copy of the
+phase 4 read collector paused and drained the producer, searched the protocol
+targets, and then restored the reader (200/s, running) and the producer (0.5/s,
+running) with restoration status 0. This is a diagnostic, not a qualified
+comparison: lab, data and host paging differ from lab A.
+
+| Target | Windows (reads/s) | p95 | Swap traffic | Maximum CPU: Envoy, each product pod, reader |
+|---|---|---|---|---|
+| 500 | 492.9–499.7 | 3–7 ms | 4.5 GB | 113, 249, 102 millicores |
+| 1,000 | 992.3–994.7 | 2–4 ms | 2.3 GB | 172, 360, 159 millicores |
+| 2,000 | 1,974.3–1,996.7 | 2–3 ms | 2.6 GB | 311, 684, 274 millicores |
+| 4,000 | 3,936.3–3,942.4 | 3 ms | 1.3 GB | 454, 1,110, 447 millicores |
+| 8,000 (failed) | 5,884.7–6,625.6 | 4–5 ms | 2.2 GB | 562, 1,512, 644 millicores |
+| 6,000 (midpoint, failed) | 5,466.5–5,802.8 | 3–4 ms | 1.0 GB | 555, 1,431, 638 millicores |
+
+The swap traffic values are corrected in the same way as in phase 4.
+
+All reads were `OK`. The highest passing target is 4,000/s. At 8,000/s, the
+reader used up to 14 of its 16 streams, thus its concurrency limited the rate,
+not product, Envoy or the databases. One Envoy pod carried all reads and used at
+most 562 millicores and 23 MiB. The other Envoy pod used at most 9 millicores.
+Lab A, with `HTTP_1_1`, passed 3,000/s and delivered 3,771.7/s at 4,000/s. Thus
+the h2c path has no limit near 1,000/s, and the failures of lab B were probably
+short stalls. A qualified comparison still needs both disposable labs again with
+less host paging.
+
+```bash
+bash capture-read-search.sh --context kind-shardshop --kubeconfig ~/.kube/config \
+  --snapshot "$snapshot" --cluster shardshop   # snapshot of phase 3: kind values + H2C
+```
+ The [evidence](shardshop-testing/evidence/2026-10-30-http2-transport-comparison.json)
+has the selected windows, the stock, the paging, the Envoy use, the timelines
+and the SHA-256 of each scratch tool.
+
+### Phase 4d: comparison again after a Docker restart
+
+The user quit other applications and approved a restart of Docker Desktop.
+`down.sh` stopped the retained lab, and `docker desktop restart` started a new
+Docker VM before each lab. Swap use on the host went from 9.8 GB to 4.7 GB
+before lab A2 and 5.1 GB before lab B3. Lab A2 used `HTTP_1_1`, and lab B3 used
+`H2C`. Both labs used the phase 4 values, collectors and seven image digests
+without changes, and they started with the same stock as labs A and B2.
+
+| Measurement | Lab A2, `HTTP_1_1` | Lab B3, `H2C` |
+|---|---|---|
+| Readiness, 200 reads/s | 199.91/s | 199.91/s |
+| 10 orders/s | 10.006/s, p95 29.3 ms, saga p95 1.54 s | 10.005/s, p95 31.3 ms, saga p95 1.53 s |
+| 20 orders/s | 20.013/s, p95 25.6 ms, saga p95 1.53 s | 20.004/s, p95 32.8 ms, saga p95 1.54 s |
+| 30 orders/s | 29.943/s, p95 26.7 ms, saga p95 1.77 s | 29.782/s, p95 32.0 ms, saga p95 1.77 s |
+| Cancellations, errors, recoveries | 0, 0, 0 | 0, 0, 0 |
+| Reads that passed | 500, 1,000, 2,000, 4,000, 8,000 (7,843.9/s) | 500, 1,000, 2,000, 4,000, 6,000 (5,868.6/s) |
+| Failed read targets | 10,000: 8,759.6/s; midpoint 9,000: 8,455.9/s | 8,000: 7,589.7/s, two windows below 7,600/s |
+| Read p95 at the highest passing target | 2 ms | 3 ms |
+| Reader pool at 8,000/s | 6–8 of 16 connections | 13–16 of 16 streams |
+| Host swap traffic per phase | writes 0.4–1.0 GB; reads 0.02–0.25 GB, 2.8 GB at 10,000/s | writes 0.08–0.21 GB; reads 0.05–0.26 GB |
+
+Both transports met all the write criteria at 10, 20 and 30 orders/s, and the
+h2c write p95 was 2–7 ms higher. All reads in the selected windows were `OK`.
+Lab B3 passed the 1,000/s target that lab B failed in phase 4. Thus host paging
+probably caused the phase 4 read failures. Both `up.sh` builds passed with no
+warnings. During `up.sh`, before the measurement, the reader retried 128
+transport errors in lab B3 and 6 in lab A2.
+
+At 8,000/s, the h2c reader held 13–16 of its 16 streams, but the HTTP/1.1 reader
+held only 6–8 of its 16 connections. Thus each h2c read holds its lease for
+approximately 1.8 ms, and each HTTP/1.1 read for approximately 0.9 ms. The Envoy
+hop adds this time. The default reader pool of 16 thus limits h2c reads, not
+product, Envoy or the databases. One Envoy pod carried all reads again: at most
+568 millicores of its 2-core limit and 22 MiB, and the other pod at most 59.
+
+```bash
+bash microservices/shardshop/scripts/down.sh
+docker desktop restart                          # before each lab, with no container in use
+bash lab.sh a2 values-a-http11.yaml "$phase4"
+docker desktop restart
+bash lab.sh b3 values-b-h2c.yaml "$phase4"
+SHARDSHOP_ENV_VALUES=h2c-values.yaml microservices/shardshop/scripts/up.sh   # retained lab back to H2C
+```
+
+Lab A2 took 43 minutes, and lab B3 took 41 minutes, from creation to deletion.
+Each lab removed all of its nodes. Then `up.sh` started the retained lab again
+with `H2C` in 10.1 minutes: all gates passed with no warnings, the application
+release is revision 11, and the generator high-water mark is 230 of 1,023. The
+[evidence](shardshop-testing/evidence/2026-10-30-http2-transport-comparison.json)
+has both labs under `repeatAfterDockerRestart` and the corrected paging values of
+phases 4 and 4c.
+
+### Phase 4e: h2c read search with 32 streams
+
+The user selected a saturation search for h2c after phase 4d. Lab B4 used the
+lab B3 values and set `SHARDSHOP_READER_WORKERS` and
+`SHARDSHOP_READER_CONNECTIONS` to `"32"`, as the reader RUNBOOK tells for
+saturation tests. The rendered application release differs from lab B3 only in
+these two variables. `down.sh` stopped the retained lab, and `docker desktop
+restart` started a new Docker VM before the lab. The images, the collectors and
+the initial stock were the same as in phase 4d.
+
+| Measurement | Lab A2, `HTTP_1_1`, 16 | Lab B3, `H2C`, 16 | Lab B4, `H2C`, 32 |
+|---|---|---|---|
+| Write p95 at 10, 20 and 30/s | 29.3, 25.6, 26.7 ms | 31.3, 32.8, 32.0 ms | 33.4, 53.0, 52.0 ms |
+| Reads that passed | up to 8,000 (7,843.9/s) | up to 6,000 (5,868.6/s) | up to 8,000 (7,678.5/s) |
+| 9,000 reads/s | 8,455.9/s, failed | not measured | 8,469.3/s, failed |
+| 10,000 reads/s | 8,759.6/s, failed | not measured | 9,232.1/s, failed |
+| Read p95 at 8,000/s | 2 ms | 3 ms (failed) | 5 ms |
+| Pool leases at 8,000/s | 6–8 of 16 | 13–16 of 16 | 9–14 of 32 |
+| Busy reader workers at the highest target | 16 of 16 | 16 of 16 | 32 of 32 |
+
+Lab B4 met all the write criteria, with 10.005, 19.870 and 29.842 accepted
+orders/s. Its write p95 at 20 and 30/s was higher than in lab B3, but below
+100 ms. All reads in the selected windows were `OK`. Host swap traffic was at
+most 0.34 GB in each phase, except 1.1 GB at 500 reads/s.
+
+With 32 streams, h2c passed the same read targets as HTTP/1.1. At 9,000/s, both
+transports delivered approximately 8,460/s. Thus the pool of 16 streams limited
+lab B3, not the h2c path. Near 9,000/s, all reader workers were busy at times in
+both labs, and the kind nodes used 6.2–7.7 of the 12 Docker CPUs. Thus the limit
+at 9,000/s is not identified. The h2c reads have a higher p95: 5 ms at 8,000/s,
+against 2 ms with HTTP/1.1.
+
+One Envoy pod carried all reads again: at most 584 millicores and 35.9 MiB. The
+other pod used at most 8 millicores. During `up.sh`, before the measurement, the
+reader retried 192 transport errors (128 in lab B3, 6 in lab A2). This cause is
+not examined.
+
+```bash
+# values-b4-h2c-32.yaml = values-b-h2c.yaml + productReader.configuration:
+#   SHARDSHOP_READER_WORKERS: "32", SHARDSHOP_READER_CONNECTIONS: "32"
+bash microservices/shardshop/scripts/down.sh
+docker desktop restart
+bash lab.sh b4 values-b4-h2c-32.yaml "$phase4"
+SHARDSHOP_ENV_VALUES=h2c-values.yaml microservices/shardshop/scripts/up.sh   # retained lab back to H2C, reader pool 16
+```
+
+Lab B4 took 44 minutes from creation to deletion, and it removed all of its
+nodes. Then `up.sh` started the retained lab again with `H2C` and the reader
+pool of 16 in 10.3 minutes: all gates passed with no warnings, the application
+release is revision 12, and the generator high-water mark is 240 of 1,023. The
+[evidence](shardshop-testing/evidence/2026-10-30-http2-transport-comparison.json)
+has lab B4 under `h2cSaturationSearch`.
+
+### Decision: keep HTTP/1.1 — 2026-10-30
+
+After phases 4d and 4e, the user decided to keep HTTP/1.1, because HTTP/2 gave
+no performance gain in the lab. The status of 6.8 is "Research Done → Downgrade
+in performance → Decision to keep HTTP/1.1".
+
+| Measurement | `HTTP_1_1`, 16 connections | `H2C`, 16 streams | `H2C`, 32 streams |
+|---|---|---|---|
+| Write p95 at 10, 20 and 30 orders/s | 29.3, 25.6, 26.7 ms | 31.3, 32.8, 32.0 ms | 33.4, 53.0, 52.0 ms |
+| Highest passing read target | 8,000/s | 6,000/s | 8,000/s |
+| Read p95 at 8,000/s | 2 ms | 3 ms (failed) | 5 ms |
+| Steady pods, of them ShardShop | 36, 20 | 38, 22 | 38, 22 |
+
+- **No throughput gain.** With the default reader pool, h2c passed fewer read
+  targets. With 32 streams, it only passed the same targets as HTTP/1.1.
+- **Higher latency.** The Envoy hop doubles the time that each read holds the
+  client pool, and the p95 values are higher.
+- **More components.** Envoy adds two pods, but one Envoy pod gets all
+  connections. Envoy has no drain on SIGTERM, and the reader retried more
+  transport errors during `up.sh` (128–192 against 6).
+- **No use for the HTTP/2 advantages.** Four in-cluster workload clients use
+  cleartext on a network with less than 1 ms latency. Thus fewer connections, no
+  TLS handshakes and multiplexing give nothing here.
+
+The h2c and Envoy implementation is reverted:
+
+- The 46 changed and new files of the implementation are in the local Git stash
+  "step 6.8 h2c and Envoy implementation, reverted 2026-10-30 (decision: keep
+  HTTP/1.1)". These files are: the chart, the common h2c transport, the workload
+  clients, the HTTP/2 changes of product and order, the Envoy-aware release
+  acceptance, their tests and the module documents. They are again the same as
+  commit `b3472e09` (step 6.7). `git stash apply` with that stash restores them.
+- `versions.lock.yaml` no longer has the support policy `envoy_1_40`, the image
+  `envoy`, the Maven record `step_6_8_h2c_client` and their four sources. The
+  [balancer selection](VERSIONS.md#step-68-request-balancer-selection) and the
+  [h2c client](VERSIONS.md#step-68-workload-http2-client) records stay with an
+  outcome note.
+- This section, phases 1–4e and the
+  [evidence](shardshop-testing/evidence/2026-10-30-http2-transport-comparison.json)
+  stay as the research record.
+- The `BackupSource` change, the drills on `H2C` and the change of scenario 1 are
+  not necessary. The drills, scenario 1, the capacity figures and the pod counts
+  stay those of HTTP/1.1.
+
+`up.sh` then deployed the reverted code on the retained lab with the default
+values (`HTTP_1_1`). The first run stopped in the Maven build before the
+deployment, because it was started with `&` from a non-interactive shell. Such
+a shell starts a background job with SIGINT ignored, and bash cannot trap an
+ignored signal. Thus two signal tests failed:
+`KindLifecycleLockTest.controlCAlsoRetainsTheUpLockUntilTheForegroundCliCompletes`
+and
+`KindStartupScriptTest.forwardingOwnsTheForegroundAndCanBeInterruptedWithoutStoppingTheCluster`.
+The second run, started as a normal background task, passed in 14.2 minutes:
+2,144 tests with no failures and no Maven warnings, and all gates. The
+application release is revision 13, and the generator high-water mark is 245 of
+1,023. The reader calls the product Service directly. The lab has no Envoy
+Deployment, ConfigMap or headless pod Service, and it runs 36 steady pods, 20 of
+them in ShardShop.
+
+```bash
+microservices/shardshop/scripts/up.sh   # default values: HTTP_1_1, no balancer
+```

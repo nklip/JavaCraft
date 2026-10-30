@@ -243,21 +243,93 @@ balances only TCP connections. The review on 2026-10-08 found these candidates:
 - Stable Linkerd releases are commercial.
 - Cilium replaces the kind network plugin. Thus it needs a new cluster without the
   current PVCs.
+- Standalone Envoy: one Deployment with a static configuration. The user added
+  this candidate on 2026-10-29, after a memory comparison with Istio ambient.
 
 Step 6.8 selects the component and records its versions, support window and
 resource use here.
 
-The dated candidate list is not deployment approval. Ambient can enroll a pod
-or a namespace; step 6.8 must explicitly enroll only its HTTP participants and
-prove the database, broker, saga, ledger and migration paths remain outside that
-enrollment. A non-enrolled database does not by itself prove that an enrolled
-client's outbound SQL avoids a node proxy. Record the actual paths and repeat
-all implemented recovery drills on the final topology. Qualify the waypoint,
-ztunnel and CNI security contexts separately; UID 1337 is a sidecar convention,
-not proof that every ambient component uses that UID. Keep application admission
-restricted and document privileged system components before selection.
-[Enrollment](https://istio.io/latest/docs/ambient/usage/add-workloads/),
-[proxy UID requirement](https://istio.io/latest/docs/ops/deployment/application-requirements/).
+The dated candidate list is not deployment approval. Step 6.8 must prove that
+the database, broker, saga, ledger and migration paths do not change, record the
+actual paths, and repeat all implemented recovery drills on the final topology.
+Keep application admission restricted.
+
+### Step 6.8 request balancer selection
+
+**Outcome, 2026-10-30:** h2c through Envoy gave no performance gain in the lab
+comparison, and the user kept HTTP/1.1 ([decision](CHANGELOG.md#decision-keep-http11--2026-10-30)). The Envoy
+chart, the h2c clients and the HTTP/2 server changes are reverted, and the lock
+records `envoy_1_40`, `envoy` and `step_6_8_h2c_client` are removed. This section
+records the qualified design.
+
+On 2026-10-29, the user selected **standalone Envoy 1.40.2**. This decision
+replaces the Istio 1.31.3 ambient selection of the same day; the Istio charts,
+the Gateway API CRDs and their lock records are removed. Each Envoy minor gets
+security and stability fixes for 12 months: 1.40 ends on 2027-10-13. Envoy does
+not depend on the Kubernetes version. Until 2026-10-30, the lock recorded the
+support policy `envoy_1_40` and the image `envoy`.
+
+The memory of the lab decided the selection. The application pods request
+8.4 GiB and have limits of 11.5 GiB, and the Docker VM has 12.65 GiB. On
+2026-10-28 the host swapped more than 12 GiB during a load test.
+
+| | Istio ambient (values of 2026-10-29) | Standalone Envoy |
+|---|---|---|
+| Extra pods on the four-node lab | 10: istiod, waypoint, 4 ztunnel, 4 CNI agents | 2 Envoy replicas |
+| Memory requests / limits | 896 MiB / 4,096 MiB | 128 MiB / 512 MiB |
+| Proxies for each request | 3: ztunnel, waypoint, ztunnel | 1 |
+| Privileged components | CNI agent and ztunnel: root, `hostPath`, node network changes | None |
+| SQL of product and order | Through ztunnel, because these pods are enrolled | Unchanged |
+
+Istio publishes 60 MB for a waypoint and 12 MB for a ztunnel at 1,000 requests/s,
+but no figure for istiod. The waypoint is itself an Envoy with two workers.
+These are reservations and upstream figures, not lab measurements.
+
+| Artifact | Selection and verification |
+|---|---|
+| Image `docker.io/envoyproxy/envoy:distroless-v1.40.2` | Pinned by index digest `sha256:09ca6f21…`. Index, arm64 manifest and config digests were recomputed from the raw bytes. The config gives user 65532 and the entrypoint `/usr/local/bin/envoy`; it was created on 2026-10-27, the release day of 1.40.2, which updates the CA bundle of the distroless image. |
+| Configuration `infra/helm/shardshop/files/envoy/envoy.yaml` | `envoy --mode validate` with the pinned image accepted it without warnings. |
+
+No image signature was verified. No advisory scan was done, because the security
+review stays open under the [6.8 decision](#step-68-security-review-decision--2026-10-29).
+
+The chart value `httpBalancer.workloadProtocol` selects the transport of the
+reader, the producer and both seeder modes:
+
+- `HTTP_1_1` (default until the lab qualification of 6.8): the workloads call the
+  product and order Services directly, and the chart renders no balancer. The
+  rendering is the same as before 6.8.
+- `H2C`: the workloads send HTTP/2 with prior knowledge to Service
+  `shardshop-envoy` (port 8081 for product, 8082 for order). The Deployment
+  `shardshop-envoy` has two replicas. The headless Services
+  `shardshop-product-pods` and `shardshop-order-pods` select the same HTTP pods
+  as the direct Services, never the saga.
+
+The Envoy configuration has these rules:
+
+- h2c on both sides. `LEAST_REQUEST` selects a pod for each request.
+- Envoy resolves the headless Services every second. DNS returns only ready
+  pods. The CoreDNS configuration of kubeadm 1.36.4 does not cache `cluster.local`
+  answers ([source](https://github.com/kubernetes/kubernetes/blob/v1.36.4/cmd/kubeadm/app/phases/addons/dns/manifests.go)).
+- Retries only for `connect-failure` and `refused-stream`, at most two, on
+  another pod, with the jittered back-off of Envoy. No pod received such a
+  request, thus a retry is safe also for `POST` and `PUT`.
+- The route timeout of 15 seconds is above the product (4 s) and order (10 s)
+  deadlines; the clients cancel at their own deadlines.
+- Flow-control windows of 64 KiB for each stream and 1 MiB for each connection,
+  and 32 KiB connection buffers, limit the memory of the proxy.
+- The admin API listens only on `127.0.0.1:9901`, for `kubectl port-forward`.
+  Envoy adds no `x-envoy-*` headers.
+
+The Envoy pod is restricted-compatible: image user 65532, `runAsNonRoot`, no
+API token, all capabilities dropped, read-only root and `RuntimeDefault`
+seccomp. No component needs the `privileged` level. A changed configuration file
+rolls the proxy, because Envoy reads its static configuration only at startup.
+A `preStop` sleep of 5 seconds removes the pod from the Service before SIGTERM;
+the lab phase measures what happens to requests on its open connections.
+
+Each replica requests 100m CPU and 64 MiB, with limits of 2 CPUs and 256 MiB.
+These starting values are not measurements; the live phase measures them.
 
 ## 2. Java libraries and build tools
 
@@ -437,6 +509,24 @@ Central's published SHA-1 checksums. The lock's `step_3_8_reader_dependencies`
 records them with independent SHA-256 values. Review these families with the
 platform by **2026-11-05**.
 [HttpComponents status](https://hc.apache.org/status.html), [OSV](https://osv.dev/).
+
+### Step 6.8 workload HTTP/2 client
+
+**Outcome, 2026-10-30:** removed with the decision to keep HTTP/1.1 (see the
+[balancer selection](#step-68-request-balancer-selection)). The workloads keep
+the Apache classic HTTP/1.1 client.
+
+The common `H2cTransport` uses the platform-managed HttpCore H2 **5.4.3**
+`H2MultiplexingRequester` for HTTP/2 with prior knowledge. The JDK client makes
+cleartext HTTP/2 only through an `Upgrade` request, and the Apache classic API
+supports only HTTP/1.1. The HttpClient 5.6.4 async HTTP/2 client was tested and
+rejected: after any failed or cancelled exchange, it closes the connection that all
+streams share. Common declares HttpCore H2 as optional; the reader, the seeder and
+the order producer declare it. The artifact is not new: the step 3.8 record above
+already locks the same bytes, and product and order already resolve it through
+idgen. On 2026-10-29 the cached JAR again matched Maven Central's SHA-1. No
+advisory query was done, because the security review stays open under the
+[6.8 decision](#step-68-security-review-decision--2026-10-29).
 
 ### Step 3.9 product metrics
 
@@ -1355,3 +1445,41 @@ Automatic approval review rejected the full **469-coordinate** private-derived
 inventory export to OSV. It was not sent or retried elsewhere; local graphs and
 vendor advisories were used. The earlier approved 43-coordinate query missed the
 published Jackson advisory, so an empty response is not evidence of no findings.
+
+### Support review — 2026-10-29
+
+At the user's request, this review examined only support status, current
+releases and compatibility. It covers every lock entry due by 2026-11-01,
+including the entries that used the top-level 2026-10-28 date. The security part
+is not done: no image scan, no advisory check, no VEX change and no renewal of the
+expired October 28 local risk acceptance. That part stays overdue. Each affected
+lock entry keeps `security_review_by: '2026-10-28'`; see `support_review_2026_10_29`.
+
+| Component | Support result | Selection |
+|---|---|---|
+| Helm | 4.3.1 (October 15) is the latest release. 4.3.x supports Kubernetes 1.34–1.37. | 4.3.0 stays. 4.3.1 is a routine candidate. |
+| Flyway | 13.11.1 (October 22) is the newest OSS image. No fixed EOL is published. | 13.8.1 stays. An update needs a new migration image and migration Jobs through `up.sh`. |
+| CNPG | 1.30.1 and chart 0.29.1 are the latest releases. No 1.31.0 tag exists, although upstream planned it for approximately September. 1.30 EOL is approximately December 2026. The support matrix is unchanged. | No change. The 2026-11-30 upgrade obligation and the CNPG exclusion stay. Next check 2026-11-05. |
+| Kubernetes and kind | Kubernetes 1.36.6 was published on October 28. 1.36 EOL is 2027-06-28. kind 0.33.0 is the latest release. Docker Hub has no `kindest/node` v1.36.5 or v1.36.6 tag. | 1.36.4 stays under the KIND-1.36.5 fallback. |
+| K3s test image | v1.36.5+k3s1 is the latest 1.36 channel build. | No change. |
+| PostgreSQL 18 | 18.6 is the current minor. The next minor is planned for November 12. EOL is 2030-11-14. The `18.6-trixie` tag was rebuilt on October 28. | Pins stay. The rebuild is not examined, because that is security work. Next check 2026-11-13. |
+| Java and application images | Support follows the October 25 review of the JRE and OpenJDK policies, valid until 2026-11-25. | No change. The Scout gate did not run again. |
+
+The five step 4.5 Maven records that use the top-level date are historical:
+`maven.step_6_0_security` supersedes them. These reviews are not due yet: seven
+Maven records on 2026-11-04, two on 2026-11-05, Helmfile and Skaffold on
+2026-11-13 and RabbitMQ on 2026-11-16.
+
+[PLAN.md instruction 8](PLAN.md#instructions-for-executing-a-step) requires the
+complete due review before a step starts. Thus step 6.8 waits for the security
+part, or for a recorded user decision about it.
+
+### Step 6.8 security-review decision — 2026-10-29
+
+On 2026-10-29, the user accepted that the security part of the October 28 review
+stays open during step 6.8. This decision permits work on 6.8 only. It does not
+change scan gates, VEX documents or deadlines. It does not renew the expired local
+risk acceptance, and it does not declare a package unaffected. The saved findings
+stay open, and each affected lock entry keeps `security_review_by: '2026-10-28'`.
+If a scan gate stops a 6.8 build, the step stops at that gate. The security review
+stays a separate obligation; 6.8 acceptance does not complete it.
