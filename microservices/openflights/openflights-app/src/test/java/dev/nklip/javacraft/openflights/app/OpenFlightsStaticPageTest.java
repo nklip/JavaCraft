@@ -34,9 +34,9 @@ class OpenFlightsStaticPageTest {
                 .andExpect(content().string(Matchers.containsString("sql-input")))
                 .andExpect(content().string(Matchers.containsString("execute-button")))
                 .andExpect(content().string(Matchers.containsString("hide-show-button")))
-                .andExpect(content().string(Matchers.containsString("/webjars/codemirror/5.65.20/lib/codemirror.css")))
-                .andExpect(content().string(Matchers.containsString("/webjars/codemirror/5.65.20/lib/codemirror.js")))
-                .andExpect(content().string(Matchers.containsString("/webjars/codemirror/5.65.20/mode/sql/sql.js")))
+                .andExpect(content().string(Matchers.containsString("/webjars/codemirror/5.65.21/lib/codemirror.css")))
+                .andExpect(content().string(Matchers.containsString("/webjars/codemirror/5.65.21/lib/codemirror.js")))
+                .andExpect(content().string(Matchers.containsString("/webjars/codemirror/5.65.21/mode/sql/sql.js")))
                 .andExpect(content().string(Matchers.containsString("/css/index.css")))
                 .andExpect(content().string(Matchers.containsString("/js/index.js")))
                 .andExpect(content().string(Matchers.containsString("<div id=\"sql-output\"")))
@@ -90,11 +90,11 @@ class OpenFlightsStaticPageTest {
 
     @Test
     void codeMirrorAssetsAreServed() throws Exception {
-        mockMvc.perform(get("/webjars/codemirror/5.65.20/lib/codemirror.js"))
+        mockMvc.perform(get("/webjars/codemirror/5.65.21/lib/codemirror.js"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(Matchers.containsString("CodeMirror")));
 
-        mockMvc.perform(get("/webjars/codemirror/5.65.20/mode/sql/sql.js"))
+        mockMvc.perform(get("/webjars/codemirror/5.65.21/mode/sql/sql.js"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(Matchers.containsString("CodeMirror.defineMode")));
     }
