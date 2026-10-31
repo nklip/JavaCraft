@@ -5,22 +5,11 @@
 The infrastructure layer creates, deploys, verifies, stops and destroys the local
 kind lab. It also defines the runtime topology and the RabbitMQ delivery policy.
 
-- **Status:** the local lifecycle, topology and delivery policies are implemented,
-  together with durable reconciliation, transport cleanup, manual retry reset
-  and qualified retry/capacity recovery, crash recovery and observability in
-  [PLAN steps 5.1–5.5](../PLAN.md).
-  Synchronous failover passed step 6.2; coordinated backup/isolated restore is
-  qualified in 6.3, including final source checks and cleanup on 2026-10-26.
-  Older-backup audit/repair passed [6.4](../CHANGELOG.md#step-64); optional AWS
-  delivery remains planned in milestone 7. Requirements below retain
-  those target guarantees; they do not claim every acceptance scenario already
-  passes.
-
 ## Platform and versions
 
 The primary target is a local kind lab on one machine: every contract, drill, and
 acceptance scenario in this document must run and pass there. A later AWS target
-(EKS provisioned with Terraform, PLAN milestone 7) is optional. It reuses the same
+(EKS provisioned with Terraform, milestone 7 in the [plan](../PLAN.md)) is optional. It reuses the same
 shared Helm templates through environment values and the same verified operator
 Helm charts and values, delivers the database layer and the applications through
 Argo CD GitOps, and may add cloud-only durability such as S3 backups with WAL
@@ -43,6 +32,70 @@ their generator IDs with Java code in their own JVM. Configure a non-root contai
 user explicitly. Final application images retain the deployment qualification gates
 in the version policy.
 
+## Local infrastructure rules
+
+The runbooks describe the [cluster](RUNBOOK.md#kind-topology),
+[storage and database sizing](../database/RUNBOOK.md#shard-clusters) and the
+[generator registry](../shardshop-core/idgen/README.md#generator-allocation-at-jvm-startup).
+These rules apply to every change:
+
+- Use namespace `shardshop` and context `kind-shardshop`. Scripts pass the context
+  explicitly on every command. Keep the operator installation version explicit.
+- Bootstrap secrets at runtime from environment input or generated credentials.
+  Commit references only. Separate the migration, application and CDC permissions.
+  Workload applications receive HTTP configuration, never SQL credentials.
+- Run the applications in Kubernetes, so that Service DNS resolves normally. Keep
+  the database and broker endpoints internal. Expose the APIs by port-forward.
+- Start the infrastructure and the services, then the idempotent product seeder Job
+  and the workload Deployments. Each workload decides in Java when it sends load.
+  The reader and the order producer start only after they verify the complete
+  seeded dataset through product, and they stop with an error after a bounded
+  wait. The default workload writes no product after seeding.
+- **Docker VM.** The Docker Desktop VM needs 12 GB of memory. It reports
+  approximately 11.7 GiB, and `up.sh` refuses to start with less than 11.5 GiB.
+
+Multiple local nodes share one physical machine. This setup teaches the handling of
+pod and process failures. It cannot protect against laptop or disk failure.
+
+### Portability beyond kind
+
+These rules keep a later move to AWS EKS (milestone 7), OpenShift or another
+distribution inside the cluster bootstrap and the environment values:
+
+1. Keep everything kind-specific in `infra/kind.yaml` and the bootstrap. Every other
+   manifest is plain Kubernetes.
+2. Keep one ordered shard inventory of names and immutable regions in
+   `infra/shards.yaml`, and shared Helm templates in `infra/helm/shardshop/`.
+   Environment values (`kind-values.yaml`) set only what differs between clusters,
+   such as the storage class and the anti-affinity. Helmfile manages the real Helm
+   releases. Bootstrap resources outside release ownership stay ordinary Kubernetes
+   manifests. Never add a directory or a copied manifest for another shard.
+3. Every application, database and broker pod meets the Kubernetes `restricted`
+   Pod Security Standard: non-root, no privilege escalation, all capabilities
+   dropped and `RuntimeDefault` seccomp. Label `shardshop` with
+   `pod-security.kubernetes.io/enforce: restricted` and leave the CNPG
+   `podSecurityContext` unset. Prefer admission-assigned IDs. The Flyway Jobs and
+   the RabbitMQ StatefulSet use UID/GID 10001 explicitly, and RabbitMQ also uses
+   fsGroup 10001. Fixed nonzero IDs meet Kubernetes Restricted. They do not
+   establish OpenShift restricted-SCC compatibility, because namespace-assigned
+   ranges can reject them. An OpenShift port must adapt these settings and qualify
+   the image and PVC permissions without a blind change of retained volume
+   ownership. See [Kubernetes Restricted](https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted)
+   and [OpenShift SCC rules](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/authentication_and_authorization/managing-pod-security-policies).
+4. Drills cause failures through the Kubernetes API (force-delete pods, cordon or
+   drain nodes). A drill that must stop a whole node is a kind-only extra, kept
+   separate from the portable drills.
+5. A different admission-assigned identity for RabbitMQ and the OpenShift SCC
+   behavior need separate verification before the lab claims portability.
+6. Install third-party operators from their vendored, verified Helm charts with
+   shared values in `infra/helm/`. Every cluster then runs the same chart version
+   and image pins. Cluster-specific settings belong in that cluster's values file.
+
+An OpenShift move also needs a decision on the PostgreSQL operator. Community
+CloudNativePG does not support OpenShift. The certified EDB operator (API group
+`postgresql.k8s.enterprisedb.io`) is a commercial product outside the
+community-only policy in [VERSIONS.md](../VERSIONS.md).
+
 ## Tool ownership
 
 | Tool | Owns |
@@ -55,8 +108,8 @@ in the version policy.
 | Maven: opt-in kind Cucumber scenarios | Invariants and readiness, with the same invocation snapshot |
 
 Namespace, credential Secrets and allocator registry/identity remain outside
-release ownership. The lifecycle uses Helmfile 1.8.0 and Skaffold 2.25.0 from
-`PATH`, with their shared configuration retained in the repository.
+release ownership. The lifecycle uses Helmfile and Skaffold from `PATH`, with
+their shared configuration kept in the repository.
 
 Manual saga reconciliation uses native `psql` and database-owned SQL, through the
 restricted `ordering_operator` login. `cluster-create.sh` creates its missing
@@ -210,10 +263,8 @@ release or roll it back; Kubernetes continues its normal reconciliation.
 Diagnostics remain bounded and contain no secrets. The reader and order producer
 remain running and disruptive drills are still explicitly selected. A new
 `kind-release` run requires `images.json` in the snapshot; standalone legacy
-`kind-deployment` runs do not. Step 3.20 qualified the normal lifecycle and
-separate destructive reset command (see [evidence](../CHANGELOG.md#step-320)),
-without extra wrappers, embedded Python, downloaded tool binaries or a Java
-lifecycle controller.
+`kind-deployment` runs do not. The lifecycle uses no extra wrappers, embedded
+Python, downloaded tool binaries or Java lifecycle controller.
 
 ### Helm ownership and adoption
 
@@ -274,7 +325,7 @@ recover the same IDs.
 must exceed the pre-replacement registry `highWaterMark`; traffic and an all-OK
 reader interval are checked again after recovery. The three saga-drill scenarios
 also cover HTTP rollout preserving the saga pod/CDC active PIDs and saga restart
-while writes continue; step 4.2 tests competing stock coordinators.
+while writes continue. A separate scenario tests competing stock coordinators.
 
 - All drill families share the `shardshop-kind-drill` ConfigMap lock, register
   recovery before mutation, and restore temporary changes in reverse order on
@@ -302,7 +353,7 @@ to localhost:
 |---:|---|
 | 18080 | Product page, `http://127.0.0.1:18080/products/` |
 | 18081 | Order page, `http://127.0.0.1:18081/orders/` |
-| 18082 | Order producer [control page](../shardshop-core/workload-control/ARCHITECTURE.md#pages-and-api) |
+| 18082 | Order producer [control page](../shardshop-core/workload-control/README.md#pages-and-api) |
 | 18083 | Product reader control page |
 | 18084 | Interactive seeder control page |
 
@@ -388,7 +439,7 @@ The ledger's result-outbox relay polls its own database.
 - The saga process supports one non-overlapping stock scan per buyer shard, with
   at most three concurrent shard scans by default. Sagas within a shard's batch
   remain sequential; `shardshop.order.stock.shard-concurrency=1` restores the
-  original serial global scan. Historical lab capacity used that serial worker.
+  original serial global scan.
 - The lab's profit worker polls every 100 ms with at most 32 intents per
   buyer shard. A separate bounded pool permits three concurrent buyer-shard scans
   by default, with one non-overlapping scan per shard and sequential intents
@@ -436,8 +487,8 @@ control-plane node and three worker nodes; these four node containers are not
 four pods. The repository does not contain every rendered kind system manifest,
 so it cannot establish the exact system-pod subtotal by itself. Record it from an
 already-running lab using the [inventory procedure](README.md#pod-inventory);
-never start a stopped lab merely to fill that number. The 2026-10-23 inventory
-recorded 14 `kube-system` pods and one local-path provisioner, for
+never start a stopped lab merely to fill that number. A running lab has 14
+`kube-system` pods and one local-path provisioner, for
 [36 pods in total](../ARCHITECTURE.md#2-runtime-topology).
 
 ## RabbitMQ and delivery reliability
@@ -465,18 +516,15 @@ uses one of the result IDs it reserved for that saga's command envelopes.
 
 ### Broker version
 
-The reviewed community baseline is RabbitMQ **4.3.7**, with a pinned image digest
-and the compatible bundled **Erlang/OTP 27.3.4.19** runtime, for native quorum delayed
-retry. This is a rolling-support component, not a multi-year LTS release. Recheck
-the maintained GA release and runtime matrix under [VERSIONS.md](../VERSIONS.md)
-before pinning; earlier broker versions need a separately specified retry design. See
+The community RabbitMQ baseline and its bundled Erlang/OTP runtime use a pinned image
+digest. The design needs native quorum delayed retry, which RabbitMQ 4.3 and later
+provide. Earlier brokers need a separately specified retry design. This is a
+rolling-support component, not a multi-year LTS release. [VERSIONS.md](../VERSIONS.md)
+and the lock record the pinned versions, the support end date and the date to
+qualify a successor. The successor must also have native delayed retry. Before the
+cutover, verify its upgrade path and policies, and run
+[scenarios 6 and 7](../shardshop-testing/ARCHITECTURE.md#scenario-6) again. See
 [RabbitMQ release information](https://www.rabbitmq.com/release-information).
-VERSIONS.md and the lock record the support end date of 4.3.x and the date to
-qualify a successor. The successor must also have native delayed retry (4.3 or
-later). Before the cutover, verify its upgrade path and policies, and run
-[scenarios 6 and 7](../shardshop-testing/ARCHITECTURE.md#scenario-6) again when their
-complete drills exist. 4.3.7 is a dated lab baseline, not an indefinite deployment
-target.
 
 ### Queue policies
 
@@ -541,8 +589,8 @@ quorum queue type alone does not give a single broker high availability.
 
 The retry formula is `min(delayed-retry-min * delivery_count,
 delayed-retry-max)`: counts 1–5 imply delays of 1–5 seconds, approximately 15
-seconds of delay plus processing time. The pinned RabbitMQ 4.3.6/OTP 27.3.4.19
-measurement confirms five delayed redeliveries and parking on the sixth rejection:
+seconds of delay plus processing time. A measurement on the pinned broker
+confirms five delayed redeliveries and parking on the sixth rejection:
 15.176 seconds for commands and 15.185 seconds for results, including client/broker
 IO. The [dated evidence](../CHANGELOG.md#step-54) records each delay;
 the [retry runbook](../shardshop-testing/RUNBOOK.md#retry-and-dlq-capacity-drills)

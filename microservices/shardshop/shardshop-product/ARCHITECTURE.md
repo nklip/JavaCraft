@@ -1,6 +1,6 @@
 # Product architecture
 
-[ShardShop](../ARCHITECTURE.md) › **Product** · [README](README.md) · [Runbook](RUNBOOK.md) · [OpenAPI contract](src/main/resources/contracts/openapi.yaml) · [Implementation plan](../PLAN.md)
+[ShardShop](../ARCHITECTURE.md) › **Product** · [README](README.md) · [Runbook](RUNBOOK.md) · [OpenAPI contract](src/main/resources/contracts/openapi.yaml)
 
 Product owns seller and product creation, regional catalog reads, currency-policy
 enforcement and the read-only product page. This document also records catalog
@@ -12,9 +12,6 @@ describes how those writes use catalog storage.
   state never determines correctness.
 - **Owns:** sellers, products and their creation keys in schema `catalog`, on the
   home shard of each seller, and the zero-balance setup of seller profit.
-- **Status:** implemented. The deployed strict replica-read drill passed
-  [step 6.1 qualification on 2026-10-26](../CHANGELOG.md#step-61).
-  Promotion and failover passed [step 6.2 qualification on 2026-10-26](../CHANGELOG.md#step-62).
 
 ## Product API
 
@@ -140,16 +137,12 @@ spans shards, and `CONFIRMED` can precede eventual balance application.
 - Retries use durable scheduling and bounded phases; permanent credit conflicts,
   missing catalog references or balance overflow block the intent and alert for
   investigation.
-- Ordering V5 and catalog V4 preserve earlier migrations. Column grants permit
+- Column grants permit
   order to initialize zero currency balances and update their amounts, but not
   mutate or delete immutable credit/intent payloads. Product can still only
   initialize zero balances.
 
 ## Read profiles, TLS and deadlines
-
-> **Status:** the strict replica read profile and opt-in deployed read drill passed
-> [step 6.1 qualification on 2026-10-26](../CHANGELOG.md#step-61).
-> Promotion and failover passed [step 6.2 qualification on 2026-10-26](../CHANGELOG.md#step-62).
 
 All writes, order validation, order status reads, and saga processing use `-rw`.
 Product reads also use `-rw` by default. An optional load-test profile uses `-ro`
@@ -191,9 +184,7 @@ The drill captures exact ConfigMap data and the full pod template, converts lite
 environment/JVM overrides under the shared recovery guard, and rejects indirect
 configuration and concurrent edits. Recovery restores replay, fencing and the
 original profile, checks every ready product pod, removes owned fixtures, restores
-workload controls and passes the primary deployment gate before unlocking. The
-2026-10-26 retained-lab run passed these checks and six final deployment/idle gates,
-then restored the lab to its stopped state.
+workload controls and passes the primary deployment gate before unlocking.
 
 ## Regional currency policy
 
@@ -217,8 +208,7 @@ then restored the lab to its stopped state.
   filters currencies. All items and the requested order currency must match; there
   is no FX.
 
-Minor units were qualified on 2026-10-21 against SIX's ISO 4217 List One, published
-2026-09-17 ([official list](https://www.six-group.com/dam/download/financial-information/data-center/iso-currrency/lists/list-one.xml)).
+Minor units follow SIX's ISO 4217 List One ([official list](https://www.six-group.com/dam/download/financial-information/data-center/iso-currrency/lists/list-one.xml)).
 The exact fixed-two-decimal wire format and `NUMERIC(19,2)` storage remain compatible:
 JPY/KRW/VND new amounts must end in `.00`. Reject fractional minor units instead of
 rounding. Totals and signed profit derive exactly from saved prices/costs and integer
@@ -260,7 +250,7 @@ that added each column.
 
 ### Sellers and placement checks
 
-The implemented V1 `catalog.sellers` holds a seller's positive `BIGINT` ID, name, and immutable
+The V1 `catalog.sellers` table holds a seller's positive `BIGINT` ID, name, and immutable
 `region` (`US`, `EU`, or `ASIA`). `V1__catalog.sql` creates the region column with
 its default from the validated `shardRegion` Flyway placeholder and named checks
 that require the deployed region and an ID that hashes to this shard. The latter
@@ -273,7 +263,7 @@ version numbers. The Maven `kind-topology` scenarios check PostgreSQL's calculat
 and the deployed seller and buyer placement constraints on every primary against
 the same golden fixtures used by Java, using read-only queries without a failure drill.
 
-The [topology reservation](../shardshop-core/sharding/ARCHITECTURE.md#topology-changes)
+The [topology reservation](../shardshop-core/sharding/README.md#topology-changes)
 keeps the `shardRegion`, `shardIndex` and `shardCount` placeholder values stable
 for the retained dataset. The implemented `ordering.buyers` table likewise persists
 an immutable home region and enforces the deployed region and ID placement. Orders

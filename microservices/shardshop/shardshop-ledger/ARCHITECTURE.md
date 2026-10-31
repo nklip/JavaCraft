@@ -1,6 +1,6 @@
 # Ledger architecture
 
-[ShardShop](../ARCHITECTURE.md) › **Ledger** · [README](README.md) · [Runbook](RUNBOOK.md) · [Order saga](../shardshop-order/ARCHITECTURE.md) · [Implementation plan](../PLAN.md)
+[ShardShop](../ARCHITECTURE.md) › **Ledger** · [README](README.md) · [Runbook](RUNBOOK.md) · [Order saga](../shardshop-order/ARCHITECTURE.md)
 
 Ledger owns permanent financial decisions and entries, duplicate-command replay,
 conflict quarantine and result publication in its dedicated database. It receives
@@ -10,15 +10,11 @@ generates IDs.
 - **Runs as:** one pod with the command consumer, result relay and transport cleanup worker, and a
   separate single-instance PostgreSQL pod, `ledger-db`.
 - **Observability:** `/q/metrics` serves Micrometer/Prometheus gauges. A ledger worker refreshes
-  pending outbox and historical quarantine counts every 10 seconds through the existing
-  three-second database phase; scrapes only read memory. Success and sample age gauges
+  pending outbox and quarantine counts every 10 seconds through the existing
+  three-second database phase. Scrapes only read memory. Success and sample age gauges
   distinguish current values from a failed or missing snapshot. Pool gauges read the
   ledger-owned Agroal pool directly.
 - **Owns:** schema `ledger` in database `ledger`. There is no sharding.
-- **Status:** the command consumer and result relay are implemented in steps 4.5
-  and 4.6; order reconciliation is step 5.1 and transport cleanup is step 5.2.
-  Step 5.3 adds the [order-side manual reset](../shardshop-order/ARCHITECTURE.md#reconciliation-schedule).
-  Restore tooling remains planned in milestone 6.
 
 ```mermaid
 flowchart LR

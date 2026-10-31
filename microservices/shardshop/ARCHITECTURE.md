@@ -4,18 +4,16 @@
 
 ShardShop is a local system-design lab. It runs a regional product catalog,
 sharded orders and an asynchronous ledger on one kind cluster. This overview
-describes the implemented architecture on **2026-10-26**. Step 6.8 compared
-HTTP/2 and kept HTTP/1.1, and step 6.9 passed the complete acceptance run on
-2026-10-31. Remaining work in the optional milestone 7 covers the cloud target
-and its operation; the
-[detailed documents](#detailed-design-documents) identify the planned behavior.
+describes the implemented architecture. Only the optional cloud target (milestone 7
+in the [plan](PLAN.md)) is not implemented. The
+[detailed documents](#detailed-design-documents) own each topic.
 
 - **Shape:** six Quarkus applications, three regional PostgreSQL shards, one
   ledger database and one RabbitMQ broker.
 - **Consistency:** each write is a local transaction. The order saga connects the
   shards and the ledger through CDC, RabbitMQ and compensation. There is no
   distributed transaction.
-- **Last qualified capacity on this lab:** 29.45 complete orders/s and at least 963 product
+- **Qualified capacity on this lab:** 29.354 accepted orders/s and 995.111 product
   reads/s, measured separately ([section 4](#4-performance)).
 
 ## 1. System architecture
@@ -198,13 +196,33 @@ durable acknowledgement from one standby: writes continue with one standby absen
 and block while both are absent. Replica reads can be stale. Replication copies
 data inside a shard; it does not distribute rows between regions.
 
-See [routing](shardshop-core/sharding/ARCHITECTURE.md),
-[ID generation](shardshop-core/idgen/ARCHITECTURE.md) and
+**Load skew.** Routing is not authorization. If many requests use the same sellers
+or buyers, one shard gets more load than the others.
+
+**Failover.** After a promotion, CloudNativePG moves each `-rw` Service to the new
+primary. Open connections and transactions can still fail. See
+[CloudNativePG architecture](https://cloudnative-pg.io/docs/1.30/architecture/).
+
+See [routing](shardshop-core/sharding/README.md),
+[ID generation](shardshop-core/idgen/README.md) and
 [database consistency](database/ARCHITECTURE.md#consistency-and-failure-boundaries)
-for the contracts, [qualified synchronous failover](CHANGELOG.md#step-62),
-and the coordinated backup/isolated-restore baseline plus older-backup audit/repair.
-Steps 6.3 and 6.4 passed on 2026-10-26; see [6.3 evidence](CHANGELOG.md#step-63)
-and [6.4 evidence](CHANGELOG.md#step-64).
+for the contracts. The [failover evidence](CHANGELOG.md#step-62), the
+[backup and restore evidence](CHANGELOG.md#step-63) and the
+[audit and repair evidence](CHANGELOG.md#step-64) are in the changelog.
+
+### Implementation boundaries
+
+- Keep an explicit shard handle from shard selection to commit. Do not use
+  thread-local routing. Test concurrent requests for routing leakage.
+- Before a release that needs a schema change, verify the version of each schema
+  owner on every shard.
+
+The [product](shardshop-product/ARCHITECTURE.md#product-api),
+[order](shardshop-order/ARCHITECTURE.md#order-creation-and-ledger-saga) and
+[infrastructure](infra/ARCHITECTURE.md#rabbitmq-and-delivery-reliability) designs
+define the HTTP contracts, the validation order, the saga, reconciliation,
+quarantine and message delivery. The repository [AGENTS.md](../../AGENTS.md)
+defines the code layers.
 
 ## 4. Performance
 
@@ -212,86 +230,27 @@ These figures are **local-lab evidence, not a hardware-independent maximum**. On
 host ran the complete lab: 12 Docker CPUs, 12.65 GiB Docker memory and 16 GB
 physical memory.
 
-**Latest combined-worker load test (2026-10-28):** the fixed 10/20/30 sequence
-passed with paging diagnostic only. Accepted rates were **10.006 / 19.949 /
-29.354 orders/s**, with final rolling write p95 **38.466 / 62.206 / 85.702 ms**
-and saga p95 **1.533 / 1.788 / 2.228 s**. Concurrent reads held near 200/s.
-Duration, sample and delivery gates passed; there were no new errors,
-cancellations or recoveries, no observed backpressure, no stock exhaustion,
-and bounded backlogs drained. These are local operating points, not a causal
-serial/parallel comparison or a new hardware-independent maximum. Controls
-and retained state were restored; see [load-test evidence](CHANGELOG.md#combined-worker-concurrency-paging-diagnostic-load-test--2026-10-28).
+**Writes.** The fixed 10/20/30 orders/s sequence passed. Accepted rates were
+**10.006 / 19.949 / 29.354 orders/s**, with final rolling write p95
+**38.466 / 62.206 / 85.702 ms** and saga p95 **1.533 / 1.788 / 2.228 s**. Concurrent
+reads held near 200/s. There were no new errors, cancellations or recoveries, no
+backpressure and no stock exhaustion, and bounded backlogs drained. Host paging
+was a diagnostic only. See the
+[load-test evidence](CHANGELOG.md#step-65).
 
-**Earlier combined-worker diagnostics (2026-10-28):** with three stock lanes and
-three profit lanes, the fresh lab hit the 100-order backpressure bound at target
-10/s after 50.040870s: 212 new accepted writes (~4.24/s), backlog 40 → 99. The
-20/30 phases were not attempted. Reads delivered approximately 110.81/s against
-target 200/s; host swap-ins and swap-outs each exceeded 12 GiB in 42.366s. This
-short run does not qualify throughput/latency or establish a causal change from
-worker concurrency. Check host headroom before further tuning; see
-[measurement and cleanup evidence](CHANGELOG.md#combined-worker-concurrency-kind-measurement--2026-10-28).
-A subsequent retry after closing apps delivered **199.735 reads/s**, with no
-new errors and stable pods. An extra conservative paging precondition stopped
-that retry before writes (1,096.16 MiB swap traffic in the readiness minute,
-with improving later intervals). It adds no write-capacity or application SLO
-finding; see [retry evidence](CHANGELOG.md#combined-worker-concurrency-retry-after-closing-apps--2026-10-28).
+**Reads.** The primary read profile delivered **994.565 / 991.000 / 999.769 reads/s**
+in three eligible 30-second windows, all OK, with p95 **3 / 3 / 2 ms**. The
+aggregate was **995.111 reads/s** over 89.999985248 s, with writes paused and
+drained. The setup was two product pods, 16 reader workers and at most 16 HTTP
+connections. Mean connection acquisition was 0.0078 ms, no sampled pool waiter
+appeared and the product and reader pods had no additional CPU throttling. See the
+[read evidence](CHANGELOG.md#step-67).
+HTTP/2 through Envoy gave no gain, thus the lab keeps HTTP/1.1
+([decision](DECISIONS.md#keep-http11)).
 
-**Earlier duration/sample-eligible write measurement (2026-10-25, step 6.0):** target 10 orders/s produced
-**1,177 new writes in 120.058077 seconds (~9.8/s)**, with reads configured at
-200/s. Final rolling write **p95 was 133.783 ms** (mean 38.337 ms), exceeding the
-**<100 ms** requirement; saga p95 was 2.031 s. There were no new errors,
-cancellations or historical recoveries, no backpressure, and the producer backlog
-drained. The observation duration and post-warmup sample requirements passed.
-The later 30/s attempt reached the 100-order outstanding limit with backpressure
-at the first post-warmup sample and stopped early. It observed 987 new orders in
-40.044426s (~24.65/s), with no new errors, cancellations or recoveries. This short
-capture does not qualify sustained capacity or establish a new maximum.
-
-The earlier October 25 1,000/s read check is **unqualified**. With writes paused and
-backlogs drained, its first eligible 30s window delivered **948.2/s** (28,446
-requests), all OK, p95 **10 ms**, below the unchanged >=950/s minimum. A second
-window logged before pause delivered **955.8/s** (28,676 requests), all OK,
-p95 **9 ms**. It does not waive the failed first window or missing third passing
-window. This is not a server-capacity limit.
-
-At the user's earlier explicit request, capacity qualification was deferred from 6.0:
-[step 6.5](PLAN.md#milestone-6-read-profiles-failover-restore-and-operation) owns
-write p95 <100 ms at 10/s; 6.6 owns sustained 30/s writes with reads at 200/s,
-controlled stock, no errors/backpressure, bounded backlogs and write p95 <100 ms;
-6.7 owns three eligible 1,000/s read windows each >=950/s, all OK and p95 <100 ms.
-6.0 is **Done under the explicit reduced local-maintenance scope**: all nine
-final kind-gate cases passed with no failures/errors/skips, and the original
-stopped retained lab was restored. Steps **6.5 and 6.6 are Done**, qualified by
-the October 28 load sequence above. **6.7 is also Done:** the October 28
-primary read qualification delivered **994.565 / 991.000 / 999.769 reads/s**
-in the first three eligible 30-second windows, all OK with p95 **3 / 3 / 2 ms**.
-The aggregate was **995.111 reads/s** over 89.999985248s, with writes paused
-and drained. Two product pods, 16 reader workers and at most 16 HTTP connections
-were unchanged. Opt-in diagnostics found mean connection acquisition 0.0078 ms,
-zero sampled pool waiters and zero additional product/reader CPU throttling;
-host paging remained diagnostic. Controls and retained state were restored.
-This qualifies a local operating point, not maximum capacity or simultaneous
-1,000 reads/s and 30 orders/s. Step 6.8 kept HTTP/1.1, because HTTP/2 gave no
-gain ([decision](CHANGELOG.md#decision-keep-http11--2026-10-30)). See
-[read diagnostic evidence](CHANGELOG.md#step-67--primary-read-qualification-and-diagnostics--2026-10-28).
-The short earlier 30/s capture's rolling 154.613 ms p95 is diagnostic
-only; the earlier valid 10/s latency was 133.783 ms, superseded by the
-38.466 ms local result above. Write latency covers
-allocation through PUT acceptance; saga completion is separate. See
-[maintenance evidence](CHANGELOG.md#step-60) for failed checks and restoration.
-
-The following are **historical step 4.14–4.15 measurements**, not qualification
-of the current maintenance selections.
-
-| Operation | Highest verified sustained rate | Latency | Per shard |
-|---|---|---|---|
-| Complete order | **29.45 new orders/s** at target 30/s: 28.11 confirmed/s and 1.56 cancelled/s, with product reads at 200/s at the same time | Final rolling p95: write 93.73 ms, saga 2.16 s | Approximately 9.82 new orders/s for each buyer shard, **derived** from the equal regional schedule |
-| Product read | **963.16 reads/s** at target 1,000/s over 90 seconds, all `OK`, with the producer paused | Window p95 6–10 ms | **Measured:** US 239.74/s, EU 479.66/s, ASIA 243.76/s |
-
-The order rate held for 90 seconds with bounded order, profit and outbox backlogs;
-the earlier 10/s target held for 130 seconds. These short holds give an operating
-point, not a long-duration production capacity. The read rates are unequal
-between shards because the catalog has 50 US, 100 EU and 51 ASIA products.
+These are local operating points. They are not maximum capacity, and they are not a
+simultaneous 1,000 reads/s and 30 orders/s. Write latency covers allocation through
+PUT acceptance. Saga completion is separate.
 
 Different kinds of figures answer different questions:
 
@@ -299,38 +258,34 @@ Different kinds of figures answer different questions:
 |---|---|---|
 | Configured cap | Producer 30 new orders/s, reader 10,000 reads/s | Control limits, not measured capacity |
 | Short burst | 829 allocation requests/s on one home shard, for less than one second | Allocation only, not the complete order workflow |
-| Highest verified sustained rate | 29.45 orders/s and 963.16 reads/s, measured separately | Passes the latency, error and backlog criteria |
+| Qualified operating points | 29.354 orders/s and 995.111 reads/s, measured separately | Pass the latency, error and backlog criteria |
 | Saturation attempt | Target 40 orders/s (the producer at 30/s and a temporary producer at 10/s) gave 22.68 new orders/s, and the saga latency increased to approximately 15 s | Backpressure filled the combined 200-order bound; host contention and finite stock limit this result |
 | Undersupplied read targets | 1,434/s at target 1,500 and 1,858/s at target 2,000, without errors, but below 95% of the target in some windows | The reader and the host did not supply the target; the read maximum is not established |
 
 - **Write requests.** Each order needs two write API requests: allocation and
-  submission. Thus 29.45 orders/s is approximately 58.91 write requests/s, or
-  19.64/s for each buyer shard. These are derived HTTP rates, not SQL writes or
-  storage IOPS: stock, saga, ledger and profit work add database writes on buyer
-  and seller shards.
-- **Historical bottleneck.** These measurements used one serial stock worker in
-  the saga process. The source now supports bounded concurrent buyer-shard scans;
-  this does not requalify the complete-order pipeline. Some measured orders were
-  cancelled because finite stock ran out, thus the confirmed rate matters.
-- **Stock-stage comparison.** A separate disposable PostgreSQL comparison on
-  2026-10-28 observed 40.60 → 57.99 orders/s with one versus three stock lanes
-  (+42.8% throughput, 30.0% shorter drain). This excludes CDC, ledger, profit and
-  replication; see the [evidence and limits](CHANGELOG.md#stock-worker-concurrency--2026-10-28).
-- **Profit-stage comparison.** A separate prepared-intent comparison on 2026-10-28
-  observed 182.29 → 299.16 intents/s with one versus three profit lanes (+64.1%
-  throughput, 39.1% shorter drain). It uses independent sellers and the lab's
-  100 ms/32 polling profile; see the
-  [evidence and limits](CHANGELOG.md#profit-worker-concurrency--2026-10-28).
-  Neither stage result requalifies full-saga capacity, and their gains cannot be added.
-- **Lower bound.** 963 reads/s is the highest *passing* read target, a verified
-  lower bound under the stated criteria. It is not the highest observed rate.
-- **No sum.** Peak reads and peak writes were measured separately. Do not add
-  them as one simultaneous capacity.
+  submission. These are HTTP rates, not SQL writes or storage IOPS. Stock, saga,
+  ledger and profit work add database writes on buyer and seller shards. The
+  standard producer rotates the buyer regions equally, thus a buyer shard gets
+  one third of the accepted rate.
+- **Cancellations.** Finite stock can run out, and then the saga cancels orders.
+  Thus the confirmed rate matters, not only the accepted rate.
+- **Read skew.** The catalog has 50 US, 100 EU and 51 ASIA products, thus the read
+  rates are unequal between shards.
+- **Stock lanes.** A separate disposable PostgreSQL comparison observed
+  40.60 -> 57.99 orders/s with one versus three stock lanes (+42.8% throughput,
+  30.0% shorter drain). It excludes CDC, ledger, profit and replication. See the
+  [evidence](CHANGELOG.md#step-65).
+- **Profit lanes.** A separate prepared-intent comparison observed
+  182.29 -> 299.16 intents/s with one versus three profit lanes (+64.1%
+  throughput, 39.1% shorter drain). It uses independent sellers and the lab polling
+  profile of 100 ms and 32 intents. See the
+  [evidence](CHANGELOG.md#step-65). The gains of the
+  two stages cannot be added.
+- **No sum.** Peak reads and peak writes were measured separately. Do not add them
+  as one simultaneous capacity.
 
-The [measurement criteria](shardshop-testing/ARCHITECTURE.md#capacity-measurement),
-the [read evidence](CHANGELOG.md#step-415) and the [order evidence](CHANGELOG.md#step-414)
-record the hardware, concurrency, traffic mix, latency, errors and limits. The
-runtime defaults stay at 0.5 orders/s and 200 product reads/s.
+The [measurement criteria](shardshop-testing/ARCHITECTURE.md#capacity-measurement)
+define the protocol. The runtime defaults stay at 0.5 orders/s and 200 product reads/s.
 
 ## Detailed design documents
 
@@ -342,16 +297,16 @@ Each topic has one owning document. Runbooks keep the commands, and the
 | Services | [Product](shardshop-product/ARCHITECTURE.md) | Catalog API, creation keys, currency policy, read profiles and stock storage |
 | | [Order](shardshop-order/ARCHITECTURE.md) | Order acceptance, saga, stock reservation, CDC relay, reconciliation and restore requirements |
 | | [Ledger](shardshop-ledger/ARCHITECTURE.md) | Permanent decisions, replay identities and result publication |
-| Libraries | [Core](shardshop-core/ARCHITECTURE.md) | Module boundaries, dependency rules and wire contracts |
-| | [Common](shardshop-core/common/ARCHITECTURE.md) | Shared validation, JSON, JDBC and RabbitMQ utilities |
-| | [ID generation](shardshop-core/idgen/ARCHITECTURE.md) | Snowflake IDs and generator allocation |
-| | [Shard routing](shardshop-core/sharding/ARCHITECTURE.md) | Routing rule, shard topology and data placement |
-| | [Workload control](shardshop-core/workload-control/ARCHITECTURE.md) | Live rate, pause and status API of the workloads |
-| Workloads | [Workloads](shardshop-workload/ARCHITECTURE.md) | Workload lifecycle and catalog gate |
-| | [Datasets](shardshop-workload/shardshop-datasets/ARCHITECTURE.md) | ID-free seller, product and buyer definitions |
-| | [Product seeder](shardshop-workload/shardshop-product-seeder/ARCHITECTURE.md) | Finite, idempotent catalog seeding |
-| | [Product reader](shardshop-workload/shardshop-product-reader/ARCHITECTURE.md) | Read load and HTTP connection policy |
-| | [Order producer](shardshop-workload/shardshop-order-producer/ARCHITECTURE.md) | Deterministic regional order stream |
+| Libraries | [Core](shardshop-core/README.md) | Module boundaries, dependency rules and wire contracts |
+| | [Common](shardshop-core/common/README.md) | Shared validation, JSON, JDBC and RabbitMQ utilities |
+| | [ID generation](shardshop-core/idgen/README.md) | Snowflake IDs and generator allocation |
+| | [Shard routing](shardshop-core/sharding/README.md) | Routing rule, shard topology and data placement |
+| | [Workload control](shardshop-core/workload-control/README.md) | Live rate, pause and status API of the workloads |
+| Workloads | [Workloads](shardshop-workload/README.md) | Workload lifecycle and catalog gate |
+| | [Datasets](shardshop-workload/shardshop-datasets/README.md) | ID-free seller, product and buyer definitions |
+| | [Product seeder](shardshop-workload/shardshop-product-seeder/README.md) | Finite, idempotent catalog seeding |
+| | [Product reader](shardshop-workload/shardshop-product-reader/README.md) | Read load and HTTP connection policy |
+| | [Order producer](shardshop-workload/shardshop-order-producer/README.md) | Deterministic regional order stream |
 | Platform | [Database](database/ARCHITECTURE.md) | Schemas, roles, migrations, replication and retention |
 | | [Infrastructure](infra/ARCHITECTURE.md) | Lab lifecycle, deployment, pod topology and RabbitMQ delivery |
 | Verification | [Testing](shardshop-testing/ARCHITECTURE.md) | Acceptance scenarios 1–11 and capacity measurement |

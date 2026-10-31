@@ -2,43 +2,38 @@
 
 [ShardShop](../ARCHITECTURE.md) › **Verification** · [README](README.md) · [Runbook](RUNBOOK.md) · [Database guarantees](../database/ARCHITECTURE.md) · [Infrastructure lifecycle and delivery](../infra/ARCHITECTURE.md)
 
-This document holds the eleven retained acceptance requirements of ShardShop and
-the protocol for capacity measurement. `shardshop-testing` is test-only: it has no
-main classes, it is never deployed, and it runs only in Maven builds.
+This document holds the eleven acceptance scenarios of ShardShop, the drills that
+cover them and the protocol for capacity measurement. `shardshop-testing` is
+test-only: it has no main classes, it is never deployed, and it runs only in Maven
+builds.
 
 - **Runs as:** Cucumber integration scenarios with `-Pintegration`, and opt-in
   kind suites that observe the deployed lab. The
   [infrastructure design](../infra/ARCHITECTURE.md#verification-gates-and-drills)
   describes the kind profiles and drills.
-- **Status:** [PLAN](../PLAN.md) and dated [CHANGELOG](../CHANGELOG.md) evidence
-  are authoritative for implementation and validation status.
-
 ## Acceptance scenarios
 
-These are the retained eleven acceptance requirements, with stable scenario IDs.
-They span completed and planned work. The [consistency and failure boundaries](../database/ARCHITECTURE.md#consistency-and-failure-boundaries)
+These are the eleven acceptance requirements, with stable scenario IDs. The [consistency and failure boundaries](../database/ARCHITECTURE.md#consistency-and-failure-boundaries)
 explain the durability assumptions behind these scenarios.
 
-| Scenario | Topic | Current coverage and remaining planned work |
+| Scenario | Topic | Current coverage |
 |---:|---|---|
-| [1](#scenario-1) | Seeding gate and product traffic | Covered by completed lifecycle steps |
-| [2](#scenario-2) | Regional placement, routing, schemas and roles | Covered by completed routing steps |
-| [3](#scenario-3) | Primary and replica reads | Primary/replica read behavior and the opt-in deployed strict-replica-read drill passed step 6.1 qualification |
-| [4](#scenario-4) | Confirmed order effects | Covered by completed saga steps |
-| [5](#scenario-5) | Ledger rejection, compensation and replay | Covered by completed saga steps |
-| [6](#scenario-6) | Crash recovery and CDC | Steps 4.4 and 5.5 qualify relay/crash recovery, independent HTTP writes and observability; step 6.2 qualified synchronous promotion/failover on 2026-10-26 |
-| [7](#scenario-7) | Broker retries, dead letters and reconciliation | Step 4.3 verifies broker policies and bounded retry/parking behavior. Step 5.1 adds durable reconciliation and lost-result recovery; step 5.2 adds transport cleanup with CDC checkpoints and retained-decision replay. Step 5.3 adds the restricted manual reset and replay after budget exhaustion. Step 5.4 measures retry timing and verifies shard-outage reconciliation plus unbound/full DLQ pressure and recovery on both application publishers; see the [drill runbook](RUNBOOK.md#retry-and-dlq-capacity-drills) and [dated evidence](../CHANGELOG.md#step-54) |
-| [8](#scenario-8) | Standby loss, promotion, restore and audit | Kind database drills cover standby/quorum behavior; the strict-read drill passed step 6.1 qualification. Steps 6.2–6.4 qualified synchronous promotion, coordinated backup/isolated restore and older-backup audit/repair on 2026-10-26 |
-| [9](#scenario-9) | HTTP validation and transaction boundaries | Covered by completed validation steps |
-| [10](#scenario-10) | ID generation and service-issued identity | ID generation/allocation and service-issued identity checks exist. Backup/restore preservation passed step 6.3 qualification, and the complete lifecycle acceptance run passed step 6.9 on 2026-10-31 |
-| [11](#scenario-11) | Concurrent stock reservation | Covered by completed reservation steps |
+| [1](#scenario-1) | Seeding gate and product traffic | Integration features and the release gates of `up.sh` |
+| [2](#scenario-2) | Regional placement, routing, schemas and roles | Integration features, routing vectors and the `kind-topology` gate |
+| [3](#scenario-3) | Primary and replica reads | Integration features and the opt-in strict replica-read drill |
+| [4](#scenario-4) | Confirmed order effects | Integration features and the `kind-saga` gate |
+| [5](#scenario-5) | Ledger rejection, compensation and replay | Integration features and the saga drill |
+| [6](#scenario-6) | Crash recovery and CDC | Integration features for relay and crash recovery, the observability gate, the saga drill and the synchronous failover drill |
+| [7](#scenario-7) | Broker retries, dead letters and reconciliation | Integration features for broker policies, reconciliation, manual reset and transport cleanup. The retry drill covers shard outage and DLQ pressure (see the [drill runbook](RUNBOOK.md#retry-and-dlq-capacity-drills)) |
+| [8](#scenario-8) | Standby loss, promotion, restore and audit | Database, replica-read and failover drills, coordinated backup and isolated restore, and older-backup audit and repair. The optional asynchronous-loss drill is not covered |
+| [9](#scenario-9) | HTTP validation and transaction boundaries | Integration features and unit tests |
+| [10](#scenario-10) | ID generation and service-issued identity | Unit tests, integration features, the allocator gates and the backup and restore drills |
+| [11](#scenario-11) | Concurrent stock reservation | Integration feature and the saga drill |
 
-For scenarios 1, 2, 4, 5, 9 and 11, completed lifecycle, routing, saga, validation
-and reservation steps provide coverage; future transport/profile changes must
-preserve these requirements. The [commands and evidence](#acceptance-commands-and-evidence)
-section gives the tests of each scenario and their step 6.9 results.
+The [commands and evidence](#acceptance-commands-and-evidence) section gives the
+tests of each scenario.
 
-Acceptance scenarios for implementation:
+Acceptance scenarios:
 
 1. <a id="scenario-1"></a>Verify the seeder Job succeeds before either load Deployment starts; failed or
    partially completed seeding must block startup. Keep workloads free of SQL
@@ -61,7 +56,7 @@ Acceptance scenarios for implementation:
    collisions on all primaries. Assert the role matrix: `order_app` can select
    sellers and products, write stock reservations without `TRUNCATE`, and update
    only the `stock` column of products. No other catalog writes or DDL are allowed,
-   except the profit-credit writes that step 4.7 adds.
+   except the profit-credit writes.
    `product_app` cannot touch reservations or
    ordering tables; Flyway creates no custom functions or triggers, and no login
    role owns an object.
@@ -99,7 +94,7 @@ Acceptance scenarios for implementation:
    command bindings (mandatory return without offset advancement), and failover
    with synchronized logical slots. Slot/offset/WAL loss must stop capture for
    explicit recovery; ordinary reconnects must resume without losing a command.
-   Step 5.5 uses test-only debugger barriers in disposable packaged JVMs followed
+   The crash tests use test-only debugger barriers in disposable packaged JVMs followed
    by forced process death. SQL visibility and broker settlement checks establish
    each crash boundary before replay assertions run. The kind rollout uses bounded
    continuous HTTP traffic and checks unchanged saga ownership. Cached application
@@ -182,10 +177,8 @@ Acceptance scenarios for implementation:
 
 ## Acceptance commands and evidence
 
-Step 6.9 ran every scenario with two commands on 2026-10-31, and both passed. The
-[CHANGELOG](../CHANGELOG.md#step-69--complete-demo-and-acceptance-run-done--2026-10-31)
-gives the results, and the [evidence](evidence/2026-10-31-acceptance-run.json)
-gives each step and scenario:
+Two commands run every scenario. The [CHANGELOG](../CHANGELOG.md#step-69) gives the
+results of the last complete run.
 
 - **Integration suite:** the [Testcontainers suite](RUNBOOK.md#integration-tests-with-testcontainers)
   runs the unit and provider tests of all modules, the packaged startup tests and
@@ -204,21 +197,16 @@ gives each step and scenario:
 | [7](#scenario-7) | `RabbitMq`, `Reconciliation`, `ManualReconciliationReset`, `ManualReconciliationResetSql`, `TransportCleanup` and `TransportCleanupMigration` features | `kind-retry-drill`: a shard outage, and an unbound and a full DLQ on both publishers |
 | [8](#scenario-8) | — | `kind-database-drill`, `kind-replica-read-drill` and `kind-failover-drill` on `shard-b`; `kind-backup`, `kind-restore`, `kind-recovery-schema` and `kind-recovery-drill`. The optional asynchronous-loss drill stays outside qualification |
 | [9](#scenario-9) | `OrderApi` and `ProductApi` features, and the order and product unit tests | — |
-| [10](#scenario-10) | `shardshop-core/idgen` unit tests (lost CAS, exhaustion, `TimeSource`), `IdParserTest`, `JsonFieldsTest`, `CatalogInputTest` and `OrderInputTest`; `GeneratorAllocation` on k3s; `ProductApi` and `OrderProducer` features | `kind-admission-bootstrap` in `cluster-create.sh`, `kind-allocator`, the rollouts of both `up.sh` runs, `kind-workload-drill`, `kind-backup`, `kind-restore` and `kind-backup-allocator`. One registry UID in all steps; the high-water mark increased from 0 to 31 of 1,023 |
+| [10](#scenario-10) | `shardshop-core/idgen` unit tests (lost CAS, exhaustion, `TimeSource`), `IdParserTest`, `JsonFieldsTest`, `CatalogInputTest` and `OrderInputTest`; `GeneratorAllocation` on k3s; `ProductApi` and `OrderProducer` features | `kind-admission-bootstrap` in `cluster-create.sh`, `kind-allocator`, the rollouts of both `up.sh` runs, `kind-workload-drill`, `kind-backup`, `kind-restore` and `kind-backup-allocator`. One registry UID stays the same in all steps |
 | [11](#scenario-11) | `StockReservation` feature | `kind-saga-drill`: two orders for the same stock never oversell |
 
 ## Coordinated backup and isolated restore
 
-**Step 6.3 is Done**, qualified on 2026-10-26. Coordinated backup, isolated
-restore with explicit CDC recovery, final source checks, independent latest
-allocator export and restoration audit passed. The initial source suite passed
-seven of eight cases; its failed reader gate is preserved, and the subsequent
-two-case workload rerun passed unchanged thresholds. See
-[evidence](../CHANGELOG.md#step-63). Separate
-opt-in `kind-backup` and `kind-restore` tags implement the coordinated baseline;
-neither belongs to `kind-drill` or the default suite. The
-[runbook](RUNBOOK.md#coordinated-backup-and-isolated-restore) defines explicit source,
-external artifact, independent allocator-history and fresh target parameters.
+The opt-in `kind-backup` and `kind-restore` tags implement the coordinated baseline.
+Neither belongs to `kind-drill` or the default suite. The
+[runbook](RUNBOOK.md#coordinated-backup-and-isolated-restore) defines the explicit
+source, the external artifact, the independent allocator history and the fresh
+target parameters.
 
 The standalone opt-in `kind-backup-allocator` export refreshes independent latest
 allocator history after ready source JVM restarts, under the host lifecycle lock
@@ -245,13 +233,12 @@ target-only reset/resnapshot then replays original command/result identities and
 proves subsequent streaming with a fresh broker and ledger worker, without any
 ID-producing traffic. The source allocator is never rewound and the owned target
 is removed after verification. Artifacts contain full seed data and broker
-credential hashes; private permissions and exclusion from commits are required.
-Older-backup repair/audit passed step 6.4; PITR and production cutover are outside
-this baseline qualification.
+credential hashes, thus they need private permissions and must stay out of commits.
+Point-in-time recovery and production cutover are outside this baseline.
 
 ## Older-backup audit and selected repair
 
-**Step 6.4 is Done; 60 focused checks and live recovery qualification pass.** Four operator/drill tags export original records, audit, repair one selected order,
+Four operator and drill tags export original records, audit, repair one selected order,
 and run the causal older-dump drill. A fifth focused tag, `kind-recovery-schema`,
 checks native repeated schema restore, namespace grants, publication membership
 and all database fingerprints without applications or a broker. They are excluded from `kind-drill`. Verified 6.3
@@ -275,18 +262,15 @@ provably agree.
 Audit/repair retain reports, quarantine and repaired rows in full database review
 dumps before target removal. Bundles carry `purpose: recovery-review-only` and
 `trafficAuthorized: false`; they authorize no production cutover. The optional
-physical asynchronous-loss drill is outside current qualification, and the default
+physical asynchronous-loss drill is outside qualification, and the default
 synchronous profile is unchanged. See the
 [operational workflow](RUNBOOK.md#older-backup-audit-and-selected-repair).
 
 ## Synchronous failover drill
 
 The opt-in `kind-failover-drill`, also selected by `kind-drill`, implements the
-promotion portions of scenarios 6 and 8. **Step 6.2 passed retained-lab
-qualification on 2026-10-26**, including automatic recovery and eight final gates.
-See the [evidence](../CHANGELOG.md#step-62). The [runbook](RUNBOOK.md#synchronous-failover-drill)
-describes invocation and recovery. The operator contract is pinned to the existing
-CNPG 1.30.1 image under the [October 26 decision](../VERSIONS.md#step-62-existing-version-decision--2026-10-26).
+promotion portions of scenarios 6 and 8. The
+[runbook](RUNBOOK.md#synchronous-failover-drill) describes invocation and recovery.
 
 The shared guard saves, pauses and drains producer, reader and interactive-seeder
 controls. Real HTTP orders establish a confirmed anchor and original pending
@@ -308,9 +292,7 @@ before healthy-topology checks and switchback. An invocation-owned failover slot
 publication and probe schema exercise this branch, with exact cleanup before the
 final business-slot switchback. If its recreated copy is missing, temporary or
 lacks a confirmed LSN, only this owned probe is primed while the required source
-LSN remains fixed. The business slot is never consumed by probe priming. This
-mechanism passed the complete retained-lab drill; earlier failed/incomplete
-evidence remains preserved in the dated [record](../CHANGELOG.md#step-62).
+LSN remains fixed. The business slot is never consumed by probe priming.
 
 Owned-probe priming first requires both physical slots active/streaming and an
 exact `synchronized_standby_slots` readiness barrier. Its verbose decode permits
@@ -339,15 +321,13 @@ overall acceptance-time bound. Observing the committed outbox has an additional
 An allocation keeps its original run/ordinal and an order PUT keeps the same ID
 and body. Only `503` and selected transient transport failures permit retry;
 permanent errors fail immediately. Initial success requires allocation `201` and
-PUT `202`; replay `200` is accepted only after an uncertain request. The complete
-live drill and final gates passed on October 26.
+PUT `202`; replay `200` is accepted only after an uncertain request.
 
 Workload-control restoration opens a fresh tunnel per attempt and verifies the
 exact saved rate and paused state by readback. Each workload allows at most three
 attempts within one shared 180-second budget, retrying only `503` or classified
 transient transport failures. Other responses and readback mismatches terminate
-restoration. Automatic recovery passed in the final qualified run. Earlier
-warning-rejected probe and incomplete recovery attempts remain historical evidence.
+restoration.
 
 Failure injection holds deleted pods with invocation-owned finalizers until
 PostgreSQL termination is observed. A separate failover-quorum check establishes
@@ -358,16 +338,14 @@ Recovery removes only owned finalizers, restores fences, original primary and
 workload controls, and verifies exact PVC/backing-volume identities, database
 lineage, streaming roles and the final deployment/invariant gates. No data volumes
 are deleted; ordinary HTTP fixture business history remains. Recovery failure
-retains the shared lock. Coordinated backup/isolated restore passed step 6.3;
-older-backup audit/recovery passed [6.4](../CHANGELOG.md#step-64).
+retains the shared lock.
 
 ## Strict replica-read drill
 
 The opt-in `kind-replica-read-drill` scenario, also selected by `kind-drill`,
-covers the deployed read portions of scenarios 3 and 8 and passed
-[step 6.1 retained-lab qualification on 2026-10-26](../CHANGELOG.md#step-61).
-[Invocation and recovery](RUNBOOK.md#strict-replica-read-drill) are documented in
-the runbook. Promotion passed step 6.2 qualification through the separate failover drill above.
+covers the deployed read portions of scenarios 3 and 8. The runbook documents
+[invocation and recovery](RUNBOOK.md#strict-replica-read-drill). The failover drill
+above covers promotion.
 
 The shared guard registers exact restoration of product/routing ConfigMap data
 and the full product Deployment template before switching every literal profile
@@ -408,9 +386,8 @@ contains current operating points; dated measurements belong in
 
 ### Full-order writes
 
-Reuse the final step 4.14 measurements for the unchanged deployment: two order
-HTTP replicas, one saga process, four producer submission workers, two observers
-and a 100-order outstanding bound. Warm up for 20 seconds, then sample counters
+Measure the default deployment: two order HTTP replicas, one saga process, four
+producer submission workers, two observers and a 100-order outstanding bound. Warm up for 20 seconds, then sample counters
 and aggregate database backlogs about every ten seconds. Observe a target for at
 least 90 seconds; use counter deltas for **new** accepted, confirmed, cancelled
 and terminal rates, excluding recovered historical orders. Record concurrent
@@ -425,15 +402,14 @@ A passing operating point must:
 
 Track stock reservations and terminal/cancellation progress as well as
 confirmation: stock exhaustion skips ledger work, and confirmation may precede
-seller-profit posting. A full outstanding window/backpressure or rising saga
-latency rejects a higher target even if some writes are still fast. The existing
-90–130-second holds establish a bounded operating point, not an endurance result.
+seller-profit posting. A full outstanding window, backpressure or rising saga
+latency rejects a higher target even if some writes are still fast. A hold of
+90 to 130 seconds establishes a bounded operating point, not an endurance result.
 
 Producer latency uses the last 1,024 new orders; per-endpoint HTTP metrics use the
 last 4,096 requests **per JVM** and can include earlier phases or replay. Record
 which window is reported; do not present a final rolling p95 as a percentile of
-an entire observation interval. The final step 4.14 backlog ranges and stock
-cancellations remain in its historical evidence.
+an entire observation interval.
 
 Capture producer counters after warmup and require at least 1,024 additional
 `writeLatency.samples` before assessing its warmed p95. Predetermine a 120-second

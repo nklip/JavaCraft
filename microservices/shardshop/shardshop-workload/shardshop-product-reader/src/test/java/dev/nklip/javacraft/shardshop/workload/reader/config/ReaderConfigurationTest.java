@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
  * The lab sets only the product URL of the reader, thus the deployed reader uses these defaults. They must be the time
- * limits of the HTTP connection policy in ARCHITECTURE.md. The client tests give their own durations to
+ * limits of the HTTP connection policy in README.md. The client tests give their own durations to
  * ProductRequests, and the reader scenario of shardshop-testing checks the connections and the request rate.
  */
 @QuarkusTest

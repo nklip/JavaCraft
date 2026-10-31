@@ -11,29 +11,27 @@ recovery of that module.
 | [Infrastructure](infra/RUNBOOK.md) | Cluster creation, deployment, images, RabbitMQ, stop, destruction and recovery |
 | [Database](database/RUNBOOK.md) | Shard clusters, ledger database, migrations, roles and schemas |
 | [Product](shardshop-product/RUNBOOK.md), [order](shardshop-order/RUNBOOK.md), [ledger](shardshop-ledger/RUNBOOK.md) | Service configuration, behavior and tests |
-| [Workloads](shardshop-workload/RUNBOOK.md) | Seeding gate, workload pods, datasets, seeder, reader and producer |
-| [Core](shardshop-core/RUNBOOK.md) | Contracts, ID validation, ID generation, routing and workload control |
+| [Workloads](shardshop-workload/README.md) | Seeding gate, workload pods, datasets, seeder, reader and producer |
+| [Core](shardshop-core/README.md) | Contracts, ID validation, ID generation, routing and workload control |
 | [Verification](shardshop-testing/RUNBOOK.md) | Testcontainers scenarios, kind suites, drills and capacity measurement |
 
 ## Java and Maven
 
-Set `JAVA_HOME` to a maintained JDK **25 or newer patch**. Step 6.0 qualifies
-Temurin **25.0.5+8**; the old `25-open` installation is the original GA build.
-For the maintained installation on this machine:
+Set `JAVA_HOME` to a maintained JDK **25 or newer patch**. The qualified build is
+in [VERSIONS](VERSIONS.md). For example:
 
 ```bash
 export JAVA_HOME="$HOME/.sdkman/candidates/java/25.0.5-tem"
 export PATH="$JAVA_HOME/bin:$PATH"
 ```
 
-The lock records the official macOS ARM64 archive, checksum and signature
-verification. This example is not a vendor or exact-patch build restriction. Use the
-same JDK's `bin/java` to launch the packaged applications.
+This example is not a vendor or exact-patch restriction. Use the `bin/java` of the
+same JDK to launch the packaged applications.
 
-Application and Flyway containers use the pinned Canonical OpenJDK 25 JRE on
-Ubuntu 26.04. The [migration runbook](database/RUNBOOK.md#database-schemas-and-migrations)
-describes the Flyway image. The container runtime does not change the local
-host installations or the JDK that `JAVA_HOME` selects.
+Application and Flyway containers use the pinned Canonical OpenJDK 25 JRE. The
+[migration runbook](database/RUNBOOK.md#database-schemas-and-migrations) describes
+the Flyway image. The container runtime does not change the JDK that `JAVA_HOME`
+selects.
 
 Maven comes from the command line: use the `mvn` on your `PATH`. ShardShop keeps
 Java **25** as its minimum and requires Maven **3.9.16** or newer, matching the
@@ -45,7 +43,7 @@ builds it. These rules are inherited only by ShardShop's children.
 
 ## Build and run
 
-All six applications use **Quarkus 3.40.1.1** in JVM mode on Java 25. Maven module
+All six applications use Quarkus in JVM mode on Java 25. Maven module
 tests need no Docker or Kubernetes; chart rendering and release
 orchestration tests require `helm` and `helmfile` on `PATH`. Product and order
 production starts require the routing snapshot and a live generator ID, which the
@@ -72,7 +70,7 @@ Run from the repository root with `JAVA_HOME` already set. Always select a
 ShardShop POM; do not invoke the repository root reactor. Build one application
 with `-pl`; `-am` also builds the common, idgen and sharding libraries for product
 and order. Product/order require the external routing snapshot described below
-and [generator allocation](shardshop-core/idgen/RUNBOOK.md#generator-allocation-at-jvm-startup)
+and [generator allocation](shardshop-core/idgen/README.md#generator-allocation-at-jvm-startup)
 at startup.
 
 Verify all six one at a time, without installing anything. Product/order run their
@@ -113,11 +111,10 @@ failures and a valid external snapshot.
 
 ## Dependency and test validation
 
-The scoped Quarkus **3.40.1.1 platform BOM** manages application/test dependencies.
-The local parent aligns inherited JUnit **6.1.3** and Mockito **5.21.0** with that
-platform, overrides Netty to **4.1.139.Final**, Jackson to **2.21.8** and pgJDBC
-to **42.7.14**, and pins all 17 build/report
-plugins. Plugin security overrides are confined to their own classpaths; the
+The scoped Quarkus platform BOM manages application and test dependencies. The local
+parent aligns JUnit and Mockito with that platform, overrides Netty, Jackson and
+pgJDBC, and pins all build and report plugins. Versions are in
+[VERSIONS](VERSIONS.md). Plugin security overrides are confined to their own classpaths; the
 official Quarkus plugin's three XML-library exceptions are recorded in
 [the version policy](VERSIONS.md#quarkus-plugin-xml-libraries). Comments in the
 parent POM explain the aligned JUnit/Netty/Mockito/Lombok properties and name the
@@ -132,18 +129,17 @@ Surefire/Failsafe supply Mockito's startup agent through their plugin dependenci
 common and idgen declare Mockito for their controlled-source tests.
 Product and workload clients declare Mockito for their controlled IO tests. `shardshop-sharding`
 tests its router against golden vectors whose expected shards were computed
-independently. PostgreSQL 18.6 and RabbitMQ 4.3.7 test-image
-properties use the lock's immutable digests. Only the `shardshop-testing`
+independently. The PostgreSQL and RabbitMQ test-image properties use the immutable
+digests of the lock. Only the `shardshop-testing`
 scenarios start a container, and only with `-Pintegration`
 ([integration tests](shardshop-testing/RUNBOOK.md#integration-tests-with-testcontainers)).
 
-Idgen and sharding retain the test JVM option
-`--add-opens=java.base/java.lang.invoke=ALL-UNNAMED`. On 2026-10-06, removing their
-two POM `argLine` properties and running the command below on OpenJDK
-**25+36-3489** with Quarkus **3.40.1** reproduced ten warnings, five per library:
-`Could not get access to jdk.internal.module API` and `FallbackModulesReconfigurer`
-failures to open `java.lang` to `org.jboss.threads`. Tests still passed; restoring
-the option eliminated those bootstrap warnings.
+Idgen and sharding keep the test JVM option
+`--add-opens=java.base/java.lang.invoke=ALL-UNNAMED` in their POM `argLine`
+properties. Without it, the tests pass but log bootstrap warnings
+(`Could not get access to jdk.internal.module API` and `FallbackModulesReconfigurer`
+failures to open `java.lang` to `org.jboss.threads`). The command for the product and
+order build is:
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml \

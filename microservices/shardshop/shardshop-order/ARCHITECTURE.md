@@ -1,24 +1,18 @@
 # Order architecture
 
-[ShardShop](../ARCHITECTURE.md) › **Order** · [README](README.md) · [Runbook](RUNBOOK.md) · [OpenAPI contract](src/main/resources/contracts/openapi.yaml) · [Implementation plan](../PLAN.md)
+[ShardShop](../ARCHITECTURE.md) › **Order** · [README](README.md) · [Runbook](RUNBOOK.md) · [OpenAPI contract](src/main/resources/contracts/openapi.yaml)
 
 Order owns buyer and order creation, stock reservation and compensation, command
 CDC, ledger-result application and durable reconciliation. Order is the saga
-coordinator: the workflow uses local database transactions and asynchronous
-commands/results; there is no
-transaction spanning PostgreSQL, RabbitMQ, and the ledger database. Order never
-writes directly to the ledger database.
+coordinator. The workflow uses local database transactions and asynchronous
+commands and results. No transaction spans PostgreSQL, RabbitMQ and the ledger
+database. Order never writes directly to the ledger database.
 
 - **Runs as:** one image in two processes, the HTTP process and the saga process.
 - **Owns:** buyers, order allocations, orders, items, saga state, inbox, outbox,
   quarantine and CDC offsets in schema `ordering` on each buyer's shard. It also
   writes stock reservations, product stock and seller profit in `catalog` on the
   seller shards.
-- **Status:** the HTTP and saga processes implement the workflow, reconciliation,
-  transport cleanup and operator reset through milestone 5, with qualified retry,
-  capacity, crash recovery and observability checks. Synchronous failover passed
-  step 6.2; coordinated backup and isolated restore target checks passed in 6.3,
-  with final source checks and cleanup passing on 2026-10-26. Older-backup audit/repair is qualified in 6.4; see [evidence](../CHANGELOG.md#step-64).
 
 ## Processes
 
@@ -232,9 +226,8 @@ The implementation uses a database-clock lease with a monotonically increasing
   shard scans by default, with sequential sagas within each batch. The configured
   limit is capped by shard count. `shard-concurrency=1` retains the original serial
   all-shards scan and polling delay. Shared database pools still bound IO, and
-  different buyer shards can contend on the same seller. The historical
-  [order-throughput measurements](../ARCHITECTURE.md#4-performance) used the serial
-  worker; stock-stage measurements do not requalify full-order capacity.
+  different buyer shards can contend on the same seller. See the
+  [performance figures](../ARCHITECTURE.md#4-performance) for the measured effect.
 
 ### Successful order
 
@@ -338,16 +331,6 @@ order is outside this workflow; it would require a separate compensating ledger
 entry and saga, not deletion of the original ledger row.
 
 ## Reconciliation and replayed outcomes
-
-> **Status:** steps 4.5–4.7 implement the permanent ledger decision,
-> duplicate-command result replay, publication-attempt checks, order-result
-> validation and quarantine described here. Step 5.1 adds the overdue-saga scanner
-> and durable five-attempt enqueue schedule. Step 5.2 implements safe transport
-> cleanup. Step 5.3 adds the manual operator reset. Steps 5.4–5.5 qualify retry,
-> capacity and crash recovery, independent HTTP writes and recovery observability.
-> Synchronous promotion/failover passed 6.2. Coordinated backup/isolated restore
-> target checks passed in 6.3, with final source checks and cleanup passing on 2026-10-26; older-backup
-> audit/repair is qualified in 6.4; see [evidence](../CHANGELOG.md#step-64).
 
 ### Reconciliation schedule
 
@@ -533,12 +516,8 @@ measurements do not establish full-saga capacity.
 
 ## Orders lost by asynchronous failover or restore
 
-> **Status:** step 4.7 implements reachable-primary orphan quarantine,
-> correlation/conflict checks and the creation lock. Coordinated backup and isolated
-> restore passed 6.3; older-backup audit and selected recovery passed
-> [6.4](../CHANGELOG.md#step-64). Optional physical asynchronous loss remains
-> unqualified. Automatic replay is implemented in 5.1 and manual budget reset in
-> 5.3. The procedures below describe the qualified isolated recovery workflow.
+A failover on the asynchronous profile or a restore from an older backup can lose
+an accepted order. This section describes how order detects and handles that loss.
 
 ### Orphan results
 
@@ -564,53 +543,54 @@ quarantine while holding that lock so concurrent creation cannot bypass it.
 Catalog lookups occur before the final creation transaction and lock, followed by
 the re-check described in the validation sequence above.
 
-<a id="operator-audit-planned"></a>
+<a id="operator-audit"></a>
 ### Operator audit
 
-Step 6.4 is Done: isolated audit/selected-repair tooling and live qualification
-passed. The [recovery runbook](../shardshop-testing/RUNBOOK.md#older-backup-audit-and-selected-repair)
-defines explicit immutable inputs, frozen owned targets and private review-only
-outputs. No source connection/write or production traffic authorization is made.
+The [recovery runbook](../shardshop-testing/RUNBOOK.md#older-backup-audit-and-selected-repair)
+defines the explicit immutable inputs, the frozen owned targets and the private
+review-only outputs. The audit tooling makes no source connection or write and
+authorizes no production traffic.
 
 Missing orders cannot be discovered by scanning pending sagas alone. After every
 asynchronous-loss drill or shard restore, pause order writes and run an operator
-audit comparing an exported snapshot of permanent ledger decisions with orders
-on all primaries by ID and fingerprint.
+audit. The audit compares an exported snapshot of permanent ledger decisions with
+the orders on all primaries by ID and fingerprint.
 
 - After a restore from an older backup, the audit also finds ledger entries whose
   results were acknowledged before the order was lost.
 - After an asynchronous-loss drill it should find none: CDC publishes no command
   for WAL the standbys lack ([replication contract](../database/ARCHITECTURE.md#sharding-and-replication)),
   so a lost order leaves no ledger entry.
-- It persists missing or mismatched pairs in the same quarantine and reports them;
-  it is privileged operational tooling, not cross-database access in either
+- It persists missing or mismatched pairs in the same quarantine and reports them.
+  It is privileged operational tooling, not cross-database access in either
   service's runtime.
-- It also lists stock reservations whose order is missing; they are released only
-  after that order's fate is decided.
+- It also lists stock reservations whose order is missing. They are released only
+  after the fate of that order is decided.
 
-<a id="restore-recovery-planned"></a>
+<a id="restore-recovery"></a>
 ### Restore recovery
 
-The implemented 6.4 repair restores one verified original order/saga in a fresh
-isolated target. Missing original history/costs, conflicts or unproved catalog
-effects remain unresolved. Authentic pending outcomes are applied only when
-existing catalog effects provably agree. Review dumps retain quarantine and repair
-state with `trafficAuthorized: false` before target deletion. Isolated recovery
-qualification passed [6.4](../CHANGELOG.md#step-64); the optional physical
-asynchronous-loss drill remains unqualified.
+The repair restores one verified original order and saga in a fresh isolated
+target. Missing original history or costs, conflicts and unproved catalog effects
+stay unresolved. Authentic pending outcomes are applied only when the existing
+catalog effects provably agree. Review dumps keep the quarantine and repair state
+with `trafficAuthorized: false` before the target is deleted. The optional
+physical asynchronous-loss drill is not qualified.
 
-Restore the order and original saga identity from a verified backup or retained
-creation record. For an authentic pending saga, the repair verifies the permanent
-ledger result and existing catalog effects, then applies that outcome and resets
-reconciliation metadata in the buyer-shard transaction. Missing catalog effects
-remain unresolved. Replay uses the original command and result identities. Clear
-quarantine only after the identities and outcome agree. If the original order cannot be recovered,
-retain the ledger entry and unresolved incident for an explicit business decision.
-Never silently delete a ledger row, fabricate a confirmed order, or treat absence
-as cancellation. Automatic reconciliation repairs missing messages; it cannot
-recover lost database history. These limitations belong to shard restores and
-the deliberate asynchronous-loss profile, not the synchronous durability
-acceptance criteria.
+Restore the order and the original saga identity from a verified backup or a
+retained creation record. For an authentic pending saga, the repair verifies the
+permanent ledger result and the existing catalog effects. It then applies that
+outcome and resets the reconciliation metadata in the buyer-shard transaction.
+Missing catalog effects stay unresolved. Replay uses the original command and
+result identities. Clear the quarantine only after the identities and the outcome
+agree.
+
+If the original order cannot be recovered, keep the ledger entry and the
+unresolved incident for an explicit business decision. Never silently delete a
+ledger row, fabricate a confirmed order or treat absence as cancellation.
+Automatic reconciliation repairs missing messages. It cannot recover lost
+database history. These limits apply to shard restores and to the deliberate
+asynchronous-loss profile, not to the synchronous durability criteria.
 
 ## CDC from shard writes to the ledger
 
@@ -677,7 +657,7 @@ cross-shard transaction assembly.
 
 ### Implementation
 
-The saga process embeds Debezium 3.7.0.Final and serializes each shard's reader
+The saga process embeds Debezium and serializes each shard's reader
 with an application-role session advisory lock. The connector, topic and slot
 identity is `shardshop_order_<shard_name>` with hyphens replaced by underscores.
 
@@ -721,9 +701,8 @@ and permanent saga/ledger state before an explicit resnapshot; never silently
 start at the current WAL position. Detect this by failing on a slot/offset
 mismatch (Debezium's `offset.mismatch.strategy=trust_offset`, never
 `trust_slot`) and on a slot without offsets; the supervisor never restarts a
-reader stopped this way. Before upgrading the implemented relay, qualify Debezium
-with PostgreSQL, the application runtime and RabbitMQ under
-[VERSIONS.md](../VERSIONS.md).
+reader stopped this way. Before an upgrade of the relay, qualify Debezium with
+PostgreSQL, the application runtime and RabbitMQ under [VERSIONS.md](../VERSIONS.md).
 
 ## Regional order page
 

@@ -10,23 +10,19 @@ the broker, and the stop, destruction and recovery of the lab. The
 
 [`infra/kind.yaml`](kind.yaml) defines one control plane and three workers,
 one per instance of each three-instance shard, on the digest-pinned Kubernetes
-1.36.4 node image, with the API server on 127.0.0.1. kind cannot add nodes, so a
+node image, with the API server on 127.0.0.1. kind cannot add nodes, so a
 cluster created with fewer workers must be deleted and recreated once.
 `up.sh` compares the retained node names, roles, image pins and API port binding
 before starting stopped containers. It rejects other kind creation settings,
 including changed networking, mounts or ports; it never recreates retained nodes.
-Manifests follow the [portability rules](../PLAN.md#portability-beyond-kind): a
+Manifests follow the [portability rules](ARCHITECTURE.md#portability-beyond-kind): a
 shared chart in `infra/helm/shardshop/` with kind settings in `kind-values.yaml`.
-
-The node image's advisories were reviewed on 2026-09-28 and accepted for this
-loopback-only, disposable lab.
 
 ## Cluster creation
 
-`cluster-create.sh` owns creation. It first caches the repository and microservices
-parent POM metadata with non-recursive `install:install-file` calls, without
-building either parent reactor. It builds, verifies and installs only the safety observer and its shared common
-test-helper dependencies with
+`cluster-create.sh` owns creation. It first caches the parent POM metadata with non-recursive `install:install-file`
+calls. It builds, verifies and installs only the safety observer and its shared test
+helpers with
 `mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Dshardshop.infrastructureOnly=true clean install -DinstallAtEnd=true`,
 validates the pinned kind configuration, creates the four nodes, and prepares the namespace, credentials,
 CloudNativePG, databases, RabbitMQ and allocator identity. It verifies DNS,
@@ -44,20 +40,20 @@ allocator state fails closed: recover independent backups for retained data, or
 explicitly destroy and recreate a demonstrably unused failed bootstrap. Never treat
 an existing cluster as fresh to bypass this guard.
 
-Both creation and startup snapshot the shared chart, database migration files, inventory, environment
-values, kind configuration, operator chart/values and Helmfile configuration once per
-invocation; startup also snapshots Skaffold configuration. On retained clusters they
-start only stopped nodes. After API readiness, both reject
-changed published/reserved topology or invalid retained allocator state before
-protected mutations. For Helm-owned databases, the retention check compares
-protected settings against the stored infrastructure release manifest and checks
-the live declared values for drift. API-added defaults are not treated as requested
-changes. Missing/mismatched Helm ownership or history, pending revisions and a
-revision changing during the check fail closed; completed failed revisions remain
-retryable when their protected settings match. `cluster-create.sh` creates the namespace and missing credential
+Creation and startup snapshot the shared chart, migration files, inventory,
+environment values, kind configuration, operator chart and values and Helmfile
+configuration once per invocation. Startup also snapshots the Skaffold configuration.
+On retained clusters they start only stopped nodes. After API readiness, both reject a
+changed published or reserved topology and an invalid retained allocator state before
+protected mutations. For Helm-owned databases, the retention check compares the
+protected settings with the stored infrastructure release manifest and checks the live
+declared values for drift. Defaults that the API adds are not requested changes.
+Missing or mismatched Helm ownership or history, pending revisions and a revision
+that changes during the check fail closed. Completed failed revisions stay retryable
+when their protected settings match. `cluster-create.sh` creates the namespace and missing credential
 Secrets outside Helm, then syncs the infrastructure stage of
 [`infra/helmfile.yaml.gotmpl`](helmfile.yaml.gotmpl). Helm waits up to 600
-seconds for each release, installs CloudNativePG 1.30.1 from the vendored chart,
+seconds for each release, installs CloudNativePG from the vendored chart,
 and reconciles the shared infrastructure chart. `cluster-create.sh` creates the `shardshop`
 namespace with the `restricted` Pod Security label; the infrastructure release creates three
 three-instance clusters (`shard-a`/US, `shard-b`/EU, `shard-c`/ASIA), and the single-instance
@@ -84,28 +80,25 @@ operator checks. `up.sh` observes these infrastructure readiness checks before m
 deployment and the final `kind-release | kind-deployment` acceptance; standalone `kind-deployment` remains available for compatibility and
 focused reruns.
 `cluster-create.sh` owns node creation, infrastructure reconciliation, credentials
-and fresh allocator initialization; `up.sh` owns current application builds,
+and fresh allocator initialization. `up.sh` owns current application builds,
 Maven/Scout, migration and application image delivery. Both may resume retained
-nodes and share snapshot, lock, rendering, verifier and readiness functions in
-`scripts/lib/lifecycle.sh`. This sourced helper is not another entry point.
-`down.sh` and `cluster-destroy.sh` use it for target selection, the lock and the signal traps. Skaffold owns image
-build configuration. Helmfile owns release dependencies and phase hooks; Helm
-owns declarative resources and migration/seeder hook Jobs. Kubernetes and
-CloudNativePG own reconciliation. Namespace, DNS probes and immutable allocator
-identity are rendered by Helm but applied as bootstrap resources outside release
-ownership. The opt-in Maven `kind` profile owns the configuration, retained-state,
-admission, DNS and database assertions, including resource quantity comparison.
-There is no quantity parser or embedded Python in `up.sh`. Flyway continues to own
-schema migrations and the Java applications own allocation, seeding and reader gating.
+nodes and share functions in `scripts/lib/lifecycle.sh`. This sourced helper is not
+another entry point. `down.sh` and `cluster-destroy.sh` use it for target selection,
+the lock and the signal traps. Skaffold owns image build configuration. Helmfile owns
+release dependencies and phase hooks. Helm owns declarative resources and the
+migration and seeder hook Jobs. Kubernetes and CloudNativePG own reconciliation.
+Helm renders the namespace, the DNS probes and the immutable allocator identity, but
+they are applied as bootstrap resources outside release ownership. The opt-in Maven
+`kind` profile owns the configuration, retained-state, admission, DNS and database
+assertions. Flyway owns schema migrations, and the Java applications own allocation,
+seeding and reader gating.
 
-Both scripts run safety scenarios at their phase boundaries using the same private
-snapshot throughout. Creation uses `shardshop.infrastructureOnly=true` to disable
-application reactor-order dependencies for the observer build and direct Failsafe
-gates, so it neither builds applications nor requires previously installed
-application POMs. Default builds keep those dependencies. Startup's initial
-`clean install -DinstallAtEnd=true` includes all verification and installs
-the successful reactor artifacts into the local Maven cache. It then invokes Failsafe
-directly against those current packages without repeating the build.
+Both scripts run safety scenarios at their phase boundaries with the same private
+snapshot. Creation uses `shardshop.infrastructureOnly=true`, so it neither builds
+applications nor requires installed application POMs. Startup runs
+`clean install -DinstallAtEnd=true`, which includes all verification and installs the
+reactor artifacts into the local Maven cache. Then it invokes Failsafe directly
+against those packages without a second build.
 
 ## Deploy with up.sh
 
@@ -117,17 +110,16 @@ Every deployment invocation replaces product, order, ledger, reader and order pr
 even when code and configuration are unchanged. Helm applies a fresh shared restart
 annotation to all five Deployment templates; its seeder hook and final acceptance gate verify the
 new workload.
-Each restarted product or order JVM consumes a fresh generator ID; the retained
-lab has 1,023 non-reusable slots, so an ordinary rollout uses at least three.
-Changed code is rebuilt and deployed through this same command.
+Each restarted product or order JVM consumes a fresh generator ID. The lab has 1,023
+non-reusable slots, so an ordinary rollout uses at least three. Changed code is
+rebuilt and deployed through this same command.
 
 `up.sh` resolves the ShardShop POM from its own location and runs the full
 `mvn -B -ntp -f microservices/shardshop/pom.xml clean install -DinstallAtEnd=true` build,
 which includes verification and caches the verified artifacts for later kind checks. The lifecycle commands
 use repository-relative paths; invoking `up.sh` by its absolute path works
 from any directory. The Maven build is the source for the seven freshly built
-images; no separate Maven or image-build command is required. Audit builds remain
-optional. The POM sets `project.build.outputTimestamp`, thus the same sources give
+images. The POM sets `project.build.outputTimestamp`, thus the same sources give
 the same packages. Docker then uses its cached image layers again, and an unchanged
 rebuild keeps its image IDs. Thus `kind load` skips the nodes, and the digests stay
 the same.
@@ -148,25 +140,21 @@ product pods, the accepted reader load and the deployed saga outcomes. A failed 
 and `up.sh`; Helm may still show the release as deployed. Acceptance failure does
 not roll back the release: correct the cause and rerun startup. The observer never
 repairs resources. Diagnostics are bounded and contain no secrets.
-The reader and order producer remain running and disruptive drills remain opt-in. A new
-`kind-release` run requires `images.json` in the snapshot, including the deployed
-`restartToken` alongside `images`; standalone legacy
-`kind-deployment` runs do not. The four maintained lifecycle entry points are
+The reader and order producer remain running and disruptive drills remain opt-in. A `kind-release` run requires `images.json` in the snapshot, including the deployed
+`restartToken` alongside `images`. The four lifecycle entry points are
 `cluster-create.sh`, `up.sh`, `down.sh` and `cluster-destroy.sh`. Create the foundation
 with `cluster-create.sh`, then use `up.sh` for application startup and deployment.
-Every `up.sh` restarts application pods, including unchanged builds.
 `cluster-create.sh` applies and verifies the retention admission policy, then creates
 the generator registry and immutable identity on its new cluster. `up.sh` only checks
 existing allocator state: missing, partial, malformed, or mismatched
 allocator state stops startup and requires independent allocator recovery. `up.sh` never
 resets retained generator state.
 
-Each `up.sh` invocation rebuilds and qualifies the enabled images before cluster mutation.
-On each run, kind refreshes and selects the `kind-shardshop` context in the caller's
-`KUBECONFIG` files, or `~/.kube/config` when unset. The recovered endpoint remains
-available to subsequent `kubectl` commands and standalone Maven checks. The script
-passes that context on every command and never deletes a cluster, namespace, or
-volume. Check the result:
+Each `up.sh` invocation rebuilds and qualifies the enabled images before cluster
+mutation. On each run, kind refreshes and selects the `kind-shardshop` context in the
+`KUBECONFIG` files of the caller, or `~/.kube/config` when unset. The endpoint stays
+available to later `kubectl` commands and standalone Maven checks. The script passes
+that context on every command and never deletes a cluster, namespace or volume.
 
 ### Application images
 
@@ -221,8 +209,8 @@ Helmfile owns deployment.
 every node before running migrations or applying a new application release. A
 failure while loading or registering nodes can leave a partial image load, but
 prevents the new release. Docker Scout
-needs a network connection. [VERSIONS.md](../VERSIONS.md#step-39-application-images)
-records the scan results and the reviewed statements.
+needs a network connection. [VERSIONS.md](../VERSIONS.md#docker-scout-gate)
+records the reviewed statements.
 
 ### Application release
 
@@ -252,7 +240,7 @@ token, database credential or persistent volume.
 
 ## RabbitMQ broker
 
-`cluster-create.sh` provisions one persistent RabbitMQ 4.3.7 broker through the
+`cluster-create.sh` provisions one persistent RabbitMQ broker through the
 infrastructure Helm release. `shardshop-rabbitmq.shardshop.svc:5672` serves AMQP;
 port 15672 serves management inside the cluster. The `shardshop` vhost contains
 the durable direct exchanges `ledger.commands`, `order.saga-results` and
@@ -311,11 +299,10 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
   -Dcucumber.filter.tags=@rabbitmq verify
 ```
 
-The scenarios publish persistent mandatory messages and require publisher
-confirms. They verify that `basic.nack(requeue=true)` preserves the failure
-budget, while `basic.reject(requeue=true)` spends it, and malformed-message
-rejection parks immediately. Test containers and their temporary volumes are
-removed on completion. The test-only Java client uses its socket transport.
+The scenarios publish persistent mandatory messages and require publisher confirms.
+They verify that `basic.nack(requeue=true)` preserves the failure budget, that
+`basic.reject(requeue=true)` spends it, and that malformed-message rejection parks
+immediately. The test containers and their volumes are removed on completion.
 
 The [retry and DLQ capacity drills](../shardshop-testing/RUNBOOK.md#retry-and-dlq-capacity-drills)
 exercise shard-outage recovery and real application outbox backpressure under an
@@ -333,25 +320,22 @@ bash microservices/shardshop/scripts/up.sh
 node that Docker kills at the stop timeout exits with a failure code. Without this
 step, the next Docker daemon start restarts the stopped nodes, for example when Docker
 Desktop's Resource Saver starts its VM again for a later Docker command.
-Then `down.sh` stops every node, including the control plane and all workers, with
-one `docker stop --timeout 10` call. Docker stops the nodes in parallel.
-It sends SIGKILL to a node process that did not stop after ten seconds. It returns
-an error if a node does not stop. Docker does not change a node that is already
-stopped, and a missing cluster needs no Docker call. A failed stop returns nonzero
-and releases the lifecycle lock. Inspect the nodes and run `down.sh` again. If
-Docker Desktop does not respond, `down.sh` waits until you stop it with Ctrl+C. `up.sh` sets kind's `on-failure:1` policy again, resumes the same containers, checks
-the prepared infrastructure and redeploys applications, preserving databases, PVCs,
-Secrets and allocator identity/history. `cluster-create.sh` also sets the policy again
-when it resumes an existing cluster.
-Each restarted product JVM still reserves a new generator ID.
+Then `down.sh` stops every node with one `docker stop --timeout 10` call. Docker stops
+the nodes in parallel and sends SIGKILL to a node process that did not stop after ten
+seconds. A failed stop returns nonzero and releases the lifecycle lock. Inspect the
+nodes and run `down.sh` again. If Docker Desktop does not respond, `down.sh` waits
+until you stop it with Ctrl+C. `up.sh` sets the `on-failure:1` policy of kind again,
+resumes the same containers, checks the prepared infrastructure and redeploys the
+applications. It preserves databases, PVCs, Secrets and the allocator identity and
+history. `cluster-create.sh` also sets the policy again when it resumes an existing
+cluster. Each restarted product JVM reserves a new generator ID.
 
-It stops the four node containers without deleting them; volumes, databases and
-cluster state stay inside. PostgreSQL shuts down cleanly within seconds, and Docker
-stops the rest after its default 10-second timeout. Rerun `up.sh` to start the same
-containers; it waits for the API server and for every `-rw` Service, because the
-stored Ready statuses predate the restart. Before it starts the nodes, it builds,
-tests and scans the images again, thus it needs network access for Docker Scout.
-Only `kind delete cluster --name shardshop` deletes the lab's data.
+The command stops the node containers without deleting them. Volumes, databases and
+cluster state stay inside. Rerun `up.sh` to start the same containers. It waits for
+the API server and for every `-rw` Service, because the stored Ready statuses predate
+the restart. Before it starts the nodes, it builds, tests and scans the images again,
+thus it needs network access for Docker Scout. Only `kind delete cluster --name
+shardshop` deletes the data of the lab.
 
 ## Permanently destroy the cluster
 
@@ -366,18 +350,16 @@ want to retain data. The script takes the lifecycle lock and runs
 `kind delete cluster --name shardshop` with kind's Docker provider. kind removes the
 node containers with `docker rm -f -v`, which also removes their anonymous `/var`
 volumes. Then kind removes the `kind-shardshop` context, cluster and user entries
-from the selected `KUBECONFIG` (or the default kubeconfig). kind returns an error if
-one of these steps fails. A missing cluster is safe to repeat. Docker keeps a volume
-that another container uses. If Docker cannot remove a node volume, `docker volume ls`
-still shows it after the deletion. Remove it with `docker volume rm`.
-Exported kubeconfig copies outside that selection and external backups must be
-managed separately.
+from the selected `KUBECONFIG`. A missing cluster is safe to repeat. If Docker cannot
+remove a node volume, `docker volume ls` still shows it. Remove it with
+`docker volume rm`. Manage exported kubeconfig copies and external backups
+separately.
 
-The supported lab stores its data in Docker node volumes. `infra/kind.yaml` adds no
-host mounts. Destruction preserves repository
-source/configuration, Docker Desktop, unrelated containers, shared images/build
-caches and the shared kind network. Run `cluster-create.sh` and then `up.sh` to create a fresh lab;
-previous entity IDs and allocator history cannot be recovered by restarting it.
+The lab stores its data in Docker node volumes, and `infra/kind.yaml` adds no host
+mounts. Destruction preserves the repository, Docker Desktop, unrelated containers,
+shared images and build caches and the shared kind network. Run `cluster-create.sh`
+and then `up.sh` to create a fresh lab. Previous entity IDs and allocator history
+cannot be recovered.
 
 ## Disposable test clusters
 
@@ -403,11 +385,10 @@ The test orchestration process owns cleanup. Check that its random name is absen
 then register cleanup **before creation**, since a failed `kind create` can already
 have created nodes. Record the retained lab's prior state and stop it before
 creating a disposable four-node lab; restore that state after owned cleanup.
-Stopped retained volumes still consume disk space. Step 6.0 exhausted the former
-59 GiB Docker filesystem during a database image rollout; its rehearsal retry used
-an 80 GiB configured disk and required at least 20 GiB free before creation. Budget
-for both sets of volumes, old/new images and build cache, and recheck free space
-before upgrades. Increasing capacity preserves data; shrinking Docker's disk can
+Stopped retained volumes still consume disk space. A database image rollout can
+exhaust a small Docker filesystem. Require at least 20 GiB free before creation on a
+disk of 80 GiB. Budget for both sets of volumes, old and new images and the build
+cache, and check the free space before upgrades. Increasing capacity preserves data; shrinking Docker's disk can
 delete it. See [Docker's disk settings](https://docs.docker.com/desktop/troubleshoot-and-support/faqs/macfaqs/).
 
 For example, run this subshell from the repository root after satisfying those
@@ -481,16 +462,16 @@ services stopped until those facts are established. An older database dump is no
 allocator recovery evidence. The admission guard pins the original registry UID,
 so creating a replacement ConfigMap or applying an old snapshot cannot safely
 repair it. There is no automated allocator reconstruction or supported generic
-restore command; follow the [allocator recovery constraints](../shardshop-core/idgen/RUNBOOK.md#generator-allocation-at-jvm-startup)
+restore command; follow the [allocator recovery constraints](../shardshop-core/idgen/README.md#generator-allocation-at-jvm-startup)
 and preserve the latest mark without rollback.
 
-Coordinated database backup and isolated restore are implemented in step 6.3;
-backup/target checks passed, with final source checks and cleanup passing on 2026-10-26. Use the
-[verification workflow](../shardshop-testing/RUNBOOK.md#coordinated-backup-and-isolated-restore).
-Older-backup audit and selected recovery passed [step 6.4](../CHANGELOG.md#step-64);
-these lifecycle commands create no backups. If storage is lost,
+The lifecycle commands create no backups. Use the
+[verification workflow](../shardshop-testing/RUNBOOK.md#coordinated-backup-and-isolated-restore)
+for coordinated backup, isolated restore and
+[older-backup audit](../shardshop-testing/RUNBOOK.md#older-backup-audit-and-selected-repair).
+If storage is lost,
 retain any surviving volumes and independent recovery artifacts before attempting
-restoration. The [backup policy](../PLAN.md#7-replication-and-backup-policy) requires
+restoration. The [backup policy](../database/ARCHITECTURE.md#replication-and-backup-policy) requires
 external dumps with routing/schema identities and separate latest allocator
 history, and the [restore audit](../shardshop-order/ARCHITECTURE.md#orders-lost-by-asynchronous-failover-or-restore)
 defines reconciliation for future order/ledger state. Without usable recovery
@@ -542,8 +523,8 @@ database volumes as a workaround.
 
 ## CloudNativePG operator
 
-[`infra/helm/cnpg/`](helm/cnpg) holds the official CloudNativePG chart
-0.29.1, verified against the lock's SHA-256 and its cosign signature, and
+[`infra/helm/cnpg/`](helm/cnpg) holds the official CloudNativePG chart,
+verified against the lock's SHA-256 and its cosign signature, and
 `values.yaml`, which pins the operator by tag and digest. The chart uses that one
 reference for both the operator image and `OPERATOR_IMAGE_NAME`, and it keeps its
 CRDs if the release is ever uninstalled, so the database clusters survive. The
@@ -553,37 +534,6 @@ vendor and verify the new chart and update `values.yaml` and the lock together;
 a later cloud target installs the same chart and values.
 
 ## One-time procedures
-
-### One-time adoption of an existing apply-managed lab
-
-Fresh labs need no adoption. A retained lab created by the earlier `kubectl apply`
-workflow must explicitly transfer the matching infrastructure and application
-resources to `shardshop-infrastructure` and `shardshop-application` before the first
-Helmfile sync. Existing immutable SQL ConfigMaps whose names and contents match the
-current migration snapshot also transfer to `shardshop-migrations`; historical
-ConfigMaps outside that exact set are not adopted. Normal `up.sh` does not use `--take-ownership` or steal resources
-from another Helm release.
-
-First run the retained topology, allocator and infrastructure safety checks against
-the same chart/inventory snapshot. Inspect current Helm ownership and compare the
-exact resource names/kinds in the rendered infrastructure/application manifests
-and current immutable SQL ConfigMaps. Stop if any resource already belongs to a
-different Helm release or another declared manager. Check the full resource set
-before changing any metadata. For only that reviewed
-resource set, add `app.kubernetes.io/managed-by=Helm`,
-`meta.helm.sh/release-name=<matching-release>` and
-`meta.helm.sh/release-namespace=shardshop`. Use metadata-only JSON patches that
-test the observed UID and resourceVersion and preserve other labels/annotations;
-never change specifications or data during adoption. This preserves resource UIDs
-and PVC bindings. The application set includes `shardshop-routing`.
-Do not adopt the namespace, credential Secrets, generator registry/identity,
-operator-created Pods/PVCs, or legacy migration/seeder Jobs. The existing `cnpg`
-release retains its own ownership. Keep an inventory of UIDs, PVC bindings and
-allocator high-water before and after the transfer, then run `up.sh`.
-
-ShardShop releases use Helm's three-way merge (`serverSide: false`) for the
-previously apply-managed resources. The existing `cnpg` release retains
-server-side updates.
 
 ### First upgrade from a v1-only ledger
 

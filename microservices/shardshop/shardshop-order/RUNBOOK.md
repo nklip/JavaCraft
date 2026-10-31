@@ -63,8 +63,8 @@ result returns `503`; clients retain the same key, allocation or order payload
 when retrying. Request validation rejects malformed/duplicate/unknown
 fields, numeric IDs, fractional quantities and invalid Unicode before database
 access. Bodies are limited to 256 KiB, enough for the contract's 1,000 items.
-HTTP/2 is disabled: step 6.8 kept HTTP/1.1
-([decision](../CHANGELOG.md#decision-keep-http11--2026-10-30)).
+HTTP/2 is disabled. The service uses HTTP/1.1
+([decision](../DECISIONS.md#keep-http11)).
 
 | Property | Default | Purpose |
 |---|---|---|
@@ -89,18 +89,19 @@ is held across catalog IO. The phase engine, TLS defaults and strict request
 decoding are shared with product in `shardshop-common`; the HTTP deadline filter
 stays in each application.
 
-Ordering V2 keeps V1 and historical rows intact. Legacy buyers without complete
+Legacy buyers without complete
 person profiles fail closed with `ORDER_STORE_UNAVAILABLE` until an operator
 supplies truthful data. Historical item costs remain NULL, meaning unknown;
 they must be reconciled before later profit crediting. New API writes always
 persist complete profiles and costs. Existing table-level runtime grants cover
 the new columns without broadening privileges.
 
-Run the module checks and packaged-provider PostgreSQL scenarios:
+Run the module checks and packaged-provider PostgreSQL scenarios. Replace `<tags>` with
+the tags in the table of the [Tests](#tests) section:
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order,shardshop-product -am -Paudit verify
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify -Dcucumber.filter.tags=@order-api
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify '-Dcucumber.filter.tags=<tags>'
 ```
 
 The scenarios use disposable PostgreSQL containers with the pinned test image,
@@ -113,8 +114,8 @@ wait for its advisory lock, and an order lock held past the phase budget gives
 failure, and assert deterministic catalog precedence with reversed completion
 order. The packaged startup tests of product and order show that every invalid
 setting stops the start before a generator reservation. The first command also
-builds product, because product shares the phase engine. The retained kind lab is
-not changed by these checks.
+builds product, because product shares the phase engine. These checks do not change
+the kind lab.
 
 ## Stock reservation and compensation
 
@@ -156,14 +157,9 @@ worker's lease expires; another process resumes the same immutable snapshots.
 Each database phase keeps the existing three-second deadline. No order
 transaction, connection or advisory lock spans catalog writes.
 
-The fix-forward V3 migrations add catalog guards and ordering lease/retry fields.
-Apply both streams through the existing migration workflow before starting the
-new worker. V1/V2 are unchanged, and there are no SQL functions or triggers.
-
-```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am verify
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify '-Dcucumber.filter.tags=@stock-reservation or @order-api or @catalog-migration'
-```
+Apply the catalog and ordering migrations (catalog guards, ordering lease and retry
+fields) through the migration workflow before you start the worker. Tags:
+`@stock-reservation or @order-api or @catalog-migration`.
 
 The stock scenarios run actual packaged coordinators and runtime-role SQL against
 disposable PostgreSQL databases. They verify multi-region envelopes, competing
@@ -174,7 +170,7 @@ scenarios disable the worker to isolate acceptance's atomicity and validation.
 
 ## Order outbox CDC relay
 
-Order starts one independently supervised Debezium 3.7.0.Final reader for each
+Order starts one independently supervised Debezium reader for each
 routing shard. The reader snapshots retained pending outboxes, then captures
 committed inserts from `ordering.order_outbox` through `pgoutput` and the
 administratively provisioned `ordering_order_outbox` publication. Slots and
@@ -247,34 +243,22 @@ Reconcile the retained
 outbox and permanent saga/ledger state before an operator-directed resnapshot;
 do not clear the marker or choose `trust_slot` to bypass recovery.
 
-CDC is enabled by default in the saga process. HTTP processes never start it. `--check-startup` starts no
-workers, but it checks the CDC credentials. Tests can set
-`shardshop.order.cdc.enabled=false` to isolate HTTP or stock behavior. The application release gives order
-these passwords as `secretKeyRef` environment variables.
-Step 5.5 qualifies abrupt process crashes at publication/checkpoint and consumer
-commit/acknowledgement boundaries in the [crash suite](../shardshop-testing/RUNBOOK.md#crash-recovery-and-observability).
-Synchronized-standby failover passed step 6.2. A process restart is safe with
-intact compatible durable state; it cannot repair a missing slot, offset or WAL.
-For those incidents, preserve the state and investigate the explicit recovery
-log and metrics before attempting any resnapshot. Coordinated baseline restore passed step 6.3. Isolated older-backup audit and
-selected repair passed [step 6.4 qualification](../CHANGELOG.md#step-64), including
-60 focused checks and the full live drill. Use the
-[explicit recovery workflow](../shardshop-testing/RUNBOOK.md#older-backup-audit-and-selected-repair):
-verified ordering/ledger bundles, independent latest allocator history and original
-records feed a fresh frozen owned target. No source connection/write occurs.
-Audit/repair retain full review dumps and quarantine with
-`purpose: recovery-review-only`, `trafficAuthorized: false` before target deletion.
-Missing history/costs, conflicts and unproved catalog effects remain unresolved;
-only authentic outcomes whose existing catalog effects agree may be applied.
-Step 5.5 supplies no destructive reset shortcut; optional physical asynchronous
-loss and production cutover are not qualified by the current implementation.
-Run the relay acceptance against disposable PostgreSQL and RabbitMQ containers:
-
-```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am -Paudit clean install
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pintegration verify \
-  '-Dcucumber.filter.tags=@cdc-relay'
-```
+CDC is enabled by default in the saga process. HTTP processes never start it.
+`--check-startup` starts no workers, but it checks the CDC credentials. Tests can set
+`shardshop.order.cdc.enabled=false` to isolate HTTP or stock behavior. The application
+release gives order these passwords as `secretKeyRef` environment variables. The
+[crash suite](../shardshop-testing/RUNBOOK.md#crash-recovery-and-observability)
+covers abrupt process crashes at the publication, checkpoint and consumer boundaries.
+A process restart is safe with intact compatible durable state. It cannot repair a
+missing slot, offset or WAL. For those incidents, preserve the state and examine the
+recovery log and metrics before any resnapshot. The
+[explicit recovery workflow](../shardshop-testing/RUNBOOK.md#older-backup-audit-and-selected-repair)
+uses verified ordering and ledger bundles, the independent latest allocator history
+and the original records in a fresh frozen owned target. Missing history or costs,
+conflicts and unproved catalog effects stay unresolved. No destructive reset shortcut
+exists. Physical asynchronous loss and production cutover are not qualified. The
+relay acceptance uses the tag `@cdc-relay` in the command of the
+[Tests](#tests) section.
 
 Both order processes expose `/q/metrics`; the saga process refreshes its durable
 outbox, saga, quarantine and CDC gauges every ten seconds through the bounded
@@ -304,8 +288,7 @@ rejected directly to the result DLQ. Database failures use `basic.reject` with
 requeue, so the broker's existing delayed retry and delivery limit apply. An
 unavailable primary is never treated as proof that an order is absent.
 
-Order and ledger use the same consumer class,
-`dev.nklip.javacraft.shardshop.common.amqp.QueueConsumer` in `shardshop-common`.
+Order and ledger use the same consumer class, `QueueConsumer` in `shardshop-common`.
 It reconnects with capped exponential backoff and 25% jitter. The
 [README](README.md#logs) lists its log lines.
 
@@ -353,10 +336,9 @@ shardshop.order.profit.batch-size=8
 shardshop.order.profit.shard-concurrency=3
 ```
 
-The lab chart overrides profit polling to `100ms` and the batch to `32` per
-buyer shard. The earlier `250ms`/`8` settings accumulated profit intents at
-30 orders/s even while orders reached `CONFIRMED`. Shard concurrency now defaults
-to three, accepts 1–32 and is capped by shard count. Seller credits remain
+The lab chart overrides profit polling to `100ms` and the batch to `32` per buyer
+shard, because the `250ms`/`8` defaults accumulate profit intents at 30 orders/s.
+Shard concurrency defaults to three, accepts 1–32 and is capped by shard count. Seller credits remain
 idempotent. Stock, profit and other saga work share each shard's bounded database
 pool, and buyer shards may target the same seller balance; contention can limit
 gains. Shutdown interrupts scans, stops starting further intents and waits at
@@ -369,13 +351,9 @@ three-second deadline. Apply the catalog and ordering migrations before starting
 the updated order application. Existing versioned migrations remain unchanged;
 no new dependency, SQL function or trigger is added.
 
-Build and run the disposable PostgreSQL/RabbitMQ acceptance from the repository root:
-
-```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order,shardshop-ledger -am -Pintegration,audit install
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
-  '-Dcucumber.filter.tags=@order-results or @order-api or @stock-reservation or @catalog-migration'
-```
+The tags for the result consumer and profit worker are
+`@order-results or @order-api or @stock-reservation or @catalog-migration`. Build
+order and ledger with `-Pintegration,audit install` first.
 
 ## Durable reconciliation
 
@@ -419,15 +397,8 @@ Check the ledger decision, result queues and quarantine, and the
 slot or offset, delete transport rows, or reset an exhausted budget. Safe cleanup
 is performed by the separate [transport cleanup worker](#transport-cleanup);
 the [manual operator reset](#manual-reconciliation-reset) gives an exhausted saga
-a new retry budget. Step 5.1 reused the existing schema and runtime grants.
-
-Run the coordinator/worker checks and packaged PostgreSQL/RabbitMQ scenarios:
-
-```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order -am verify
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
-  '-Dcucumber.filter.tags=@saga-reconciliation'
-```
+a new retry budget.
+The tag for the packaged scenarios is `@saga-reconciliation`.
 
 Injected-clock unit tests check each exact due-time boundary and exhausted-budget
 alerts without waiting 17 minutes. Packaged scenarios retain the production waits
@@ -449,10 +420,9 @@ after transport cleanup. Terminal, missing and mismatched pairs return `NOOP`.
 An unresolved quarantine incident or missing CDC slot/offset still needs its own
 recovery; this operation does not clear either condition.
 
-For an existing lab, first run `cluster-create.sh` to provision the new
-`ordering-operator` Secret and reconcile its two roles per shard, then `up.sh` to
-apply the changed ordering repeatable grants. Both preserve existing credentials
-and data. The login has no owner membership, replication, payload access or
+On an existing lab, run `cluster-create.sh` to provision the `ordering-operator`
+Secret and reconcile its two roles per shard. Then run `up.sh` to apply the ordering
+repeatable grants. Both preserve existing credentials and data. The login has no owner membership, replication, payload access or
 application credential mount. Its group may update only
 `reconciliation_attempts` and `next_reconciliation_at`; terminal-state protection
 comes from the checked-in operation, so use that operation instead of ad hoc SQL.
@@ -463,7 +433,7 @@ commands. On macOS, the Homebrew `postgresql@18` formula is keg-only. Put
 `psql`. Determine the buyer's shard from the retained routing inventory and
 inspect the exact pair before resetting it. This example selects `shard-b`.
 
-kubectl 1.36.3 can stop a port-forward after one forwarded `psql` connection
+`kubectl` can stop a port-forward after one forwarded `psql` connection
 closes. It then prints `lost connection to pod` and exits with a nonzero status.
 Thus, in one terminal, open the loopback-only primary tunnel in a loop. The loop
 starts the tunnel again after each lost connection and stops after Ctrl+C:
@@ -529,12 +499,8 @@ deliberate reset grants a fresh budget; repeating it does not undo business effe
 Retain the output with the operator's incident record. Stop the tunnel loop with
 Ctrl+C after use. If a new `Forwarding from` line appears, press Ctrl+C again. See the [native psql options](https://www.postgresql.org/docs/18/app-psql.html).
 
-Verify the SQL boundary, permissions and recorded/rejected recovery scenarios:
-
-```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
-  '-Dcucumber.filter.tags=@manual-reconciliation-reset or @manual-reconciliation-reset-sql'
-```
+The tags for the SQL boundary, permissions and recovery scenarios are
+`@manual-reconciliation-reset or @manual-reconciliation-reset-sql`.
 
 ## Transport cleanup
 
@@ -576,13 +542,29 @@ WHERE published_at < statement_timestamp() - INTERVAL '24 hours';
 ```
 
 The [retention contract](../database/ARCHITECTURE.md#retention) defines the retained
-business records. Changing cleanup settings never grants a new reconciliation
-budget or repairs a missing slot. Run the packaged cleanup and migration checks:
+business records. Changing cleanup settings never grants a new reconciliation budget
+or repairs a missing slot. The tags for the packaged cleanup checks are
+`@transport-cleanup or @transport-cleanup-migration`.
+
+## Tests
+
+Run the PostgreSQL and RabbitMQ scenarios from the repository root. Build the
+modules first, then run the packaged scenarios with the tags of the topic:
 
 ```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
-  '-Dcucumber.filter.tags=@transport-cleanup or @transport-cleanup-migration'
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order,shardshop-ledger -am -Pintegration,audit install
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify '-Dcucumber.filter.tags=<tags>'
 ```
+
+| Topic | Tags |
+|---|---|
+| Buyer and order provider | `@order-api` |
+| Stock reservation | `@stock-reservation or @order-api or @catalog-migration` |
+| Order outbox CDC relay | `@cdc-relay` |
+| Result consumer and profit | `@order-results or @order-api or @stock-reservation or @catalog-migration` |
+| Durable reconciliation | `@saga-reconciliation` |
+| Manual reconciliation reset | `@manual-reconciliation-reset or @manual-reconciliation-reset-sql` |
+| Transport cleanup | `@transport-cleanup or @transport-cleanup-migration` |
 
 ## Order page tests
 

@@ -55,7 +55,7 @@ for JP. Invalid combinations return HTTP 400 `INVALID_REQUEST` before business
 writes. JPY/KRW/VND amounts must be integral; wire money remains exact fixed two
 decimal text (`19.00` is valid). Buyers may purchase across regions.
 
-Retained catalog rows keep their IDs, money and profits. Migration V6 backfills
+Retained catalog rows keep their IDs, money and profits. The catalog migration backfills
 country only when the exact catalog-v1 creation key, saved company and region
 match the original TSV provenance. Other sellers retain a null country. Read
 responses expose `countryCode`, `newOrderEligible` and `legacyReason` for products;
@@ -64,18 +64,21 @@ read-only `catalog.currency_policy_legacy` view reports cutover status. As the
 migration owner, inspect unresolved sellers (including sellers with no products)
 and noncompliant products with:
 
+```sql
+SELECT * FROM catalog.currency_policy_legacy
+WHERE legacy_reason IS NOT NULL ORDER BY seller_id, product_id;
+```
+
 Runtime roles cannot change seller countries or read this operator report. Identical
 old product retries and seller retries without country still recover saved rows;
 new sellers require country. Existing profit balances remain intact, while new
 sellers initialize only their allowed currencies.
 
-## Page cache after an upgrade
+## Page cache
 
-The page, script and stylesheet use `Cache-Control: no-store` so redeployments
-load matching assets. After upgrading from the earlier cached version, reload
-the page once with **Cmd+Shift+R** on macOS or **Ctrl+Shift+R** on Windows/Linux.
-This discards the old HTML that browsers were previously allowed to retain for
-24 hours; the updated page also uses new asset URLs to bypass old CSS/JavaScript.
+The page, script and stylesheet use `Cache-Control: no-store`, so redeployments load
+matching assets. If a browser shows an old page, reload it with **Cmd+Shift+R** on
+macOS or **Ctrl+Shift+R** on Windows/Linux.
 
 ## Product page JavaScript checks
 

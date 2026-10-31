@@ -28,7 +28,7 @@ the modules contain all other procedures: configuration, tests, stop, recovery.
   newer on `PATH` ([details](RUNBOOK.md#java-and-maven)).
 - **Browser checks:** Node.js on `PATH` is required by the Maven verification
   module, including builds run by the lifecycle scripts. Missing Node fails the
-  build. Step 6.9 uses Node **24.22.2 LTS**. For a separate Homebrew keg, prepend
+  build. The acceptance run uses Node **24.22.2 LTS**. For a separate Homebrew keg, prepend
   `/opt/homebrew/opt/node@24/bin` to `PATH` before running Maven or the lifecycle
   scripts. See the
   [tool qualification and update requirement](VERSIONS.md#nodejs-browser-test-tool).
@@ -117,3 +117,21 @@ Each module guide tells how to start that application by itself:
 
 All commands use the `kind-shardshop` context. Each module guide describes its own
 monitors in detail.
+
+## Layout
+
+Each module has an `ARCHITECTURE.md` for its design, a `RUNBOOK.md` for its
+procedures and a README for its start and monitoring entry points.
+
+- `shardshop-core/`: shared libraries (`common`, `idgen`, `sharding`, `workload-control`).
+- `shardshop-workload/`: datasets, product seeder, product reader and order producer.
+- `shardshop-product/`, `shardshop-order/`, `shardshop-ledger/`: the services. Order is one
+  image with separate HTTP and saga Deployments.
+- `shardshop-testing/`: Cucumber scenarios, with a Testcontainers profile and a live kind profile.
+- `database/`: Flyway streams `shard/catalog`, `shard/ordering` and `ledger/ledger`.
+- `infra/`: `kind.yaml`, `shards.yaml`, `helmfile.yaml.gotmpl`, the Helm charts and the
+  image recipes. The optional AWS paths (`eks-values.yaml`, `terraform/`) belong to milestone 7.
+- `scripts/`: `cluster-create.sh`, `up.sh`, `down.sh`, `cluster-destroy.sh` and `webpages.sh`.
+
+Build only ShardShop or the affected module. Never run the root Maven build of the
+repository for this project. The disruptive kind drills are opt-in. `up.sh` never runs them.

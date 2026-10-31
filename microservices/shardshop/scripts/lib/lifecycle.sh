@@ -286,7 +286,7 @@ snapshot_configuration() {
 
 require_memory() {
     local mem
-    # The 12 GB Docker VM in PLAN.md §5 reports about 11.7 GiB.
+    # The 12 GB Docker VM of infra/ARCHITECTURE.md (Local infrastructure rules) reports about 11.7 GiB.
     mem=$(docker info --format '{{.MemTotal}}')
     (( mem >= 11 * 1024**3 + 512 * 1024**2 )) \
         || { echo "Docker VM has $(( mem / 1024**2 )) MiB; set Docker Desktop to 12 GB" >&2; exit 1; }

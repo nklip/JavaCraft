@@ -131,4 +131,4 @@ alone prove that both physical standbys are present. The observability gate
 also reads `pg_stat_replication` on each primary: both physical standbys must be
 streaming, and current WAL minus each `replay_lsn` shows their byte backlog.
 Watch this alongside CDC retained WAL and available disk. Logical-slot health
-does not prove failover readiness; promotion qualification belongs to step 6.2.
+does not prove failover readiness. The failover drill checks that.

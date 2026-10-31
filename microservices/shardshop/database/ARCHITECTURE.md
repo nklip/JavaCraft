@@ -8,14 +8,6 @@ with its own login role.
 
 - **Runs as:** three regional CloudNativePG clusters with three instances each,
   and one separate single-instance ledger cluster.
-- **Status:** regional shards, synchronous replication configuration, schemas,
-  role privileges and Flyway delivery are implemented. Step 5.2 implements the
-  transport cleanup described below; step 5.3 adds the restricted operator reset.
-  Coordinated backup/isolated restore is implemented in step 6.3, with backup and
-  target restore, final source checks and cleanup passing on 2026-10-26. Older-backup
-  audit and selected recovery passed [6.4](../CHANGELOG.md#step-64); cloud/Argo CD
-  delivery remains planned in [PLAN milestone 7](../PLAN.md).
-
 ## Sharding and replication
 
 Product and order share one **logical database deployment**, implemented as three
@@ -88,7 +80,7 @@ and [quorum-based failover](https://cloudnative-pg.io/docs/1.30/failover/).
 
 Changes are either declarative Kubernetes resources or versioned SQL migrations:
 nothing is applied by hand, and no step needs a superuser session. The same
-definitions therefore run on the kind lab and on EKS (PLAN milestone 7), where
+definitions therefore run on the kind lab and on EKS (milestone 7 in the [plan](../PLAN.md)), where
 Argo CD applies them.
 
 | Layer | Contents | Defined in | Applied on kind / on EKS |
@@ -104,7 +96,7 @@ Argo CD applies them.
 SQL files and a `flyway.toml` that fixes the schema, the history table
 `<schema>.flyway_schema_history`, the location, retries, and session timeouts.
 
-The migration Jobs run Flyway OSS 13.12.0 on the pinned Canonical OpenJDK 25 JRE
+The migration Jobs run Flyway OSS on the pinned Canonical OpenJDK 25 JRE
 as the stream's migrator. The applications use the same runtime.
 `infra/images/flyway/Dockerfile` assembles this image without an application JAR
 or Maven build and invokes Flyway's main class directly because the JRE image has
@@ -188,7 +180,7 @@ database/
 | Stream | Migration | Adds |
 |---|---|---|
 | catalog | `V1__catalog.sql` | Sellers, products with stock, per-order stock reservations and the regional placement checks |
-| catalog | `V2__catalog_creation.sql` | `companyName`, product `description`/`unitCost`, creation-key mappings and service-owned profit storage; the deployed V1 checksums did not change |
+| catalog | `V2__catalog_creation.sql` | `companyName`, product `description`/`unitCost`, creation-key mappings and service-owned profit storage; the V1 checksums stay unchanged |
 | catalog | `V3__stock_coordination.sql` | Permanent `stock_reservation_guards` |
 | catalog | `V4__profit_posting.sql` | Profit posting with the immutable credit identity in one seller-shard transaction |
 | catalog | `V5__product_browser.sql` | An index for the per-product earnings of the product page |
@@ -315,8 +307,7 @@ timestamps belong to `ordering.order_sagas` and are unaffected by that cleanup. 
 manual reconciliation reset is safe also after transport cleanup, because
 operation identity and outcome checks still apply.
 
-**Implemented in step 5.2:** the existing order saga and ledger processes run
-cleanup workers using their application roles. The default operational window is
+The order saga and ledger processes run cleanup workers using their application roles. The default operational window is
 24 hours, measured from inbox receipt or confirmed outbox publication, with bounded
 batches of 1,000 rows. Only inboxes and outboxes are cleanup targets. Ordering V8
 and ledger V3 add indexes for these queries without changing rows or privileges.
@@ -363,9 +354,31 @@ loss of that member's storage. Persistent volumes and backups remain necessary;
 broker high availability needs three brokers and three-member quorum queues, and
 ledger high availability requires its own replication design.
 
-The broker and ledger availability limits are present today. Synchronous promotion and primary-failure drills passed
-[step 6.2 qualification on 2026-10-26](../CHANGELOG.md#step-62). The optional
-physical asynchronous-loss demonstration remains unqualified. Older-backup
-operator audit and selected recovery passed [step 6.4](../CHANGELOG.md#step-64). The coordinated baseline backup and isolated restore
-passed step 6.3 target checks; final source checks and cleanup passed on 2026-10-26; see [scenarios 3, 6 and 8](../shardshop-testing/ARCHITECTURE.md#scenario-3)
-and [PLAN milestone 6](../PLAN.md#milestone-6-read-profiles-failover-restore-and-operation).
+The optional physical asynchronous-loss demonstration is not qualified. See
+[scenarios 3, 6 and 8](../shardshop-testing/ARCHITECTURE.md#scenario-3) for the
+drills that cover failover, backup, restore and audit.
+
+## Replication and backup policy
+
+The [replication contract](#sharding-and-replication) defines quorum synchronous
+replication and logical-slot synchronization. The
+[order recovery design](../shardshop-order/ARCHITECTURE.md#orders-lost-by-asynchronous-failover-or-restore)
+defines the audit for lost orders. These rules apply to backup and restore:
+
+- Dump the three shards and the ledger database to storage outside kind. Restore
+  them into isolated targets. For each database, record its identity, routing
+  names, region versions, owner schema versions and backup time.
+- Separate dumps are not one consistent snapshot. Before a baseline backup, stop
+  the producers and wait until no saga or relay has open work. If you do not,
+  reconcile the restored order and ledger state explicitly.
+- Keep the permanent ledger outcomes in each backup and restore. Export the broker
+  definitions. The outboxes and reconciliation supply the replay data.
+- A logical dump contains the old CDC offsets of its shard, but no replication
+  slot. Thus, a shard that returns to service from a dump needs the explicit CDC
+  recovery.
+- Keep the Snowflake epoch and layout, the dataset versions, the order-allocation
+  mappings, the reserved result identities and the allocator history with the
+  recovery metadata. A restore keeps the latest allocator high-water mark.
+- Replicas also copy accidental deletes, thus they do not replace backups.
+  Base backups with continuous WAL archiving for point-in-time recovery belong to
+  the optional AWS target (milestone 7).

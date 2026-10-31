@@ -59,8 +59,8 @@ replace the publisher connection, backing off from 500 ms to 30 seconds. When th
 broker or the network closed the connection while it was idle, the next publication
 opens a new one without a failed attempt. Each new connection logs one INFO line,
 `RabbitMQ result publisher connected to order.saga-results`. A restart resumes
-pending results. The retry log includes a bounded cause, without payloads. A
-timeout cause names its phase: the connection, the publication or its confirm.
+pending results. The retry log includes a bounded cause without payloads. A timeout cause names its
+phase: the connection, the publication or its confirm.
 
 ## Configuration
 
@@ -86,9 +86,8 @@ An enabled consumer requires both passwords. `shardshop.ledger.enabled=false`
 disables the consumer, publisher and cleanup worker. Database phases have a three-second deadline; broker
 connections use the configured timeout and reconnect with capped exponential
 backoff and 25% jitter. The ledger and order consumers share this
-loop (`QueueConsumer` in `shardshop-common`).
-The default database URL names `ledger-db-rw`, the read-write Service of the
-`ledger-db` cluster.
+loop (`QueueConsumer` in `shardshop-common`). The database URL names `ledger-db-rw`,
+the read-write Service of the `ledger-db` cluster.
 
 The publisher uses the same ledger database and broker credentials as the consumer:
 
@@ -105,11 +104,6 @@ the send and confirm phase, including a blocked socket write; connection cleanup
 can take one additional timeout. Failed streams are discarded before retry.
 Multiple ledger processes may publish duplicates, while the conditional mark
 preserves newer replay attempts.
-
-The order CDC relay and this relay share one publisher class,
-`dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher` in
-`shardshop-common`. Common declares the RabbitMQ client as an optional dependency,
-thus only order and ledger, which declare the client themselves, contain it.
 
 ## Transport cleanup
 
@@ -143,12 +137,9 @@ WHERE published_at < statement_timestamp() - INTERVAL '24 hours';
 ```
 
 The [retention contract](../database/ARCHITECTURE.md#retention) lists the permanent
-records. Verify cleanup, replay and concurrent rearm with:
-
-```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
-  '-Dcucumber.filter.tags=@transport-cleanup or @transport-cleanup-migration or @ledger-publisher'
-```
+records. Verify cleanup, replay and concurrent rearm with the tags
+`@transport-cleanup or @transport-cleanup-migration or @ledger-publisher` in the
+command of the [Tests](#tests) section.
 
 ## Metrics
 
@@ -175,20 +166,16 @@ read in-memory Agroal state and remain available during a database outage.
 
 ## Tests
 
-**Command consumer.** Build the ledger and run its disposable PostgreSQL/RabbitMQ
+Build the ledger and the order, then run the disposable PostgreSQL and RabbitMQ
 acceptance:
-
-```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-ledger -am -Paudit install
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
-  '-Dcucumber.filter.tags=@ledger-consumer or @ledger-migration'
-```
-
-**Result publisher**, with the consumer and the order CDC relay. Run the module
-builds and the disposable PostgreSQL/RabbitMQ checks:
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-ledger,shardshop-order -am -Paudit install
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \
-  '-Dcucumber.filter.tags=@ledger-publisher or @ledger-consumer or @ledger-migration or @cdc-relay'
+  '-Dcucumber.filter.tags=<tags>'
 ```
+
+| Scope | Tags |
+|---|---|
+| Command consumer | `@ledger-consumer or @ledger-migration` (build only `shardshop-ledger`) |
+| Result publisher, with the consumer and the order CDC relay | `@ledger-publisher or @ledger-consumer or @ledger-migration or @cdc-relay` |

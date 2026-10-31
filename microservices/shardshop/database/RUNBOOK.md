@@ -8,7 +8,7 @@ to monitor them.
 
 ## Shard clusters
 
-Each shard runs PostgreSQL 18.6 with one primary and two standbys, each on a separate
+Each shard runs PostgreSQL with one primary and two standbys, each on a separate
 worker with its own 2 GiB PVC. The nine pods share three workers; anti-affinity is
 scoped to each shard. Each shard is an independent database: physical replication
 never copies rows between shards. The version tag lets CNPG identify PostgreSQL
@@ -23,16 +23,12 @@ database and all access to schema `public` from `PUBLIC`; `CONNECT` stays. No
 passwords are committed or printed; the database layer provisions the catalog and
 ordering roles.
 
-Each database's memory limit is 512 MiB, reduced from 1 GiB after a measurement of
-the tiny-data lab; requests stay at 512 MiB and 250m CPU, with a one-CPU
-limit. The nine databases reserve 4.5 GiB in total. This measurement precedes the
-ledger, broker and application workloads: retain the 12 GB VM minimum and
-remeasure under load before treating these limits as a full-lab capacity budget.
-After all three drills on 2026-09-29, the database pods used about 563 MiB of
-working-set memory and the four kind nodes used 2.78 GiB. The
-[changelog](../CHANGELOG.md#step-21) records the evidence. The estimate for the complete lab is 6-10 GiB in steady
-state. Each kind node reports the full VM as its capacity, thus an overcommitted
-lab shows OOM kills or swapping, not Pending pods.
+Each database has a 512 MiB memory limit, requests of 512 MiB and 250m CPU, and a
+one-CPU limit. The nine databases reserve 4.5 GiB in total. These limits come from a
+tiny-data lab, thus retain the 12 GB VM minimum and remeasure under load before you
+treat them as a full-lab capacity budget. The estimate for the complete lab is 6-10
+GiB in steady state. Each kind node reports the full VM as its capacity, thus an
+overcommitted lab shows OOM kills or swapping, not Pending pods.
 
 The default quorum waits for durable WAL acknowledgement from any one standby.
 One absent standby leaves writes available; two absent standbys block synchronous
@@ -52,8 +48,8 @@ CloudNativePG cluster with one PostgreSQL instance, separate from the nine shard
 pods. It uses the same pinned PostgreSQL image and its own 2 GiB PVC. The kind
 values place it on a worker using `standard` storage; `cluster-create.sh` creates it and
 waits for readiness alongside the shards. Its 250m CPU/512 MiB memory requests
-and one-CPU/512 MiB limits match the tiny-data baseline. The ten databases now
-request 5 GiB of memory in total; remeasure when workloads arrive.
+and one-CPU/512 MiB limits match the tiny-data baseline. The ten databases request
+5 GiB of memory in total.
 
 Connect to database `ledger` through the internal Service
 `ledger-db-rw.shardshop.svc:5432`. CNPG generates `ledger-db-app` at runtime for
@@ -71,9 +67,8 @@ standby requirement or CDC setup; its implemented outbox relay polls its own tab
 It has **no database failover target**: ledger access stops during pod restarts
 or worker outages. Its PVC preserves data across ordinary pod replacement, but
 local-path storage cannot survive loss of its worker or volume and is not a
-backup. The coordinated backup and isolated restore baseline is implemented in step 6.3;
-backup and target restore passed, with final source checks and cleanup passing on 2026-10-26. See the
-[verification workflow](../shardshop-testing/RUNBOOK.md#coordinated-backup-and-isolated-restore).
+backup. The [verification workflow](../shardshop-testing/RUNBOOK.md#coordinated-backup-and-isolated-restore)
+describes the coordinated backup and isolated restore.
 
 `cluster-destroy.sh` removes the whole lab, including its storage and kind kubeconfig; kind storage is disposable and is not a backup.
 
@@ -137,19 +132,19 @@ preceding environment variable. The ledger Job uses its content-addressed
 ConfigMap, `ledger-migrator`, `ledger-db-ca`, and the `ledger-db-rw` endpoint/database `ledger`,
 without shard placement settings. The migration readiness gates check the cluster
 and Database's current-generation `applied` status before SQL runs. Each Job runs
-Flyway OSS 13.12.0 on the pinned Canonical OpenJDK 25 runtime. Its
+Flyway OSS on the pinned Canonical OpenJDK 25 runtime. Its
 [`Dockerfile`](../infra/images/flyway/Dockerfile) copies only Flyway's core and
 PostgreSQL plugin libraries, the PostgreSQL JDBC driver and the licenses from the
 pinned official distribution image;
-its final base is `ubuntu/jre` on Ubuntu 26.04. The Job logs in as the stream's
+its final base is `ubuntu/jre`. The Job logs in as the stream's
 migrator (`catalog_migrator` for catalog) over TLS with `verify-full` and the
 cluster's CA. It has a 180-second deadline and no automatic pod retry. Helm stops
 at the first failed hook, leaving later Jobs and the new routing/application
 release unattempted. Successful databases stay migrated because migrations are
 not a transaction across databases.
-Correct the failure and rerun. Retained versioned migrations are immutable; fix
+Correct the failure and rerun. Retained versioned migrations are immutable, thus fix
 forward with another version. Never repair checksums automatically, bypass
-validation, or clean a catalog that holds data. Normal Flyway configuration keeps
+validation, or clean a catalog that holds data. The Flyway configuration keeps
 `clean` disabled.
 
 Every `helmfile sync` creates revision-named migration hooks in stream/inventory
@@ -181,22 +176,18 @@ deleted after Helm observes completion; failed hooks retain bounded diagnostic
 availability until their default 24-hour TTL. Inspect a failed Job before it
 expires. SQL snapshots are immutable and remain content-addressed ConfigMaps.
 
-Helmfile does not automatically roll back or uninstall a failed release. Previously
-committed SQL is retained: correct the problem and rerun, using fix-forward
-versioned migrations where required. Never repair checksums automatically, delete
-history or PVCs to force validation, or invoke Flyway clean on retained data.
-Run migrations and application deployment through `up.sh` so the Helmfile gates stay in effect.
-
-After correcting the failure and any pending Helm bookkeeping, rerun with the
-same inventory.
-[Shard inventory and routing](../shardshop-core/sharding/RUNBOOK.md#shard-inventory-and-routing) describes the topology
-reservation, the routing publication and the export for local launches. Inspect
-the migration resources:
+Helmfile does not roll back or uninstall a failed release. Committed SQL stays.
+Never delete history or PVCs to force validation. Run migrations and application
+deployment through `up.sh` so the Helmfile gates stay in effect. After you correct the
+failure and any pending Helm bookkeeping, rerun with the same inventory.
+[Shard inventory and routing](../shardshop-core/sharding/README.md#shard-inventory-and-routing)
+describes the topology reservation, the routing publication and the export for local
+launches.
 
 The migration image and Job both select UID/GID 10001. The Job uses a
 read-only root filesystem, `HOME=/tmp`, no service-account token, and telemetry
 disabled. That fixed ID is an exception to the
-[portability rules](../PLAN.md#portability-beyond-kind), which OpenShift's assigned
+[portability rules](../infra/ARCHITECTURE.md#portability-beyond-kind), which OpenShift's assigned
 UIDs would need to replace.
 
 ### Catalog roles and tables
@@ -209,7 +200,7 @@ Secret.
 Runtime logins do not own objects or have SQL privileges for DDL, temporary
 tables or `SELECT` on the Flyway history.
 
-The implemented V1 `catalog.sellers` holds positive `BIGINT` seller IDs, names, and immutable
+`catalog.sellers` (V1) holds positive `BIGINT` seller IDs, names, and immutable
 `US`/`EU`/`ASIA` regions. Its checks require the deployed region and the exact
 shard selected by the unchanged version-2 SHA-256 rule. A `CHECK` expression
 uses PostgreSQL's built-in SHA-256, hexadecimal encoding, exact `NUMERIC`
@@ -279,11 +270,9 @@ has no ordering privileges; CDC has no SQL `SELECT` on catalog, other ordering
 tables or offsets. Order can update only the `stock` column of catalog products
 and cannot update sellers.
 
-For the step 5.3 upgrade, run `cluster-create.sh` before `up.sh` so the new
-operator Secret and roles exist before Flyway reapplies `R__ordering_grants.sql`.
-No versioned migration or business-row rewrite is required. The repeatable grants
-revoke stale table and column permissions before granting the narrow reset
-permissions. Use the checked-in [reset operation](operations/reset-reconciliation.sql)
+Run `cluster-create.sh` before `up.sh`, so the operator Secret and roles exist before
+Flyway reapplies `R__ordering_grants.sql`. The repeatable grants revoke stale table
+and column permissions before they grant the narrow reset permissions. Use the checked-in [reset operation](operations/reset-reconciliation.sql)
 through native `psql`; the [order runbook](../shardshop-order/RUNBOOK.md#manual-reconciliation-reset)
 documents selection, verified TLS, output and failure handling. The SQL operation
 is outside the Flyway directories and never runs during deployment.
@@ -341,11 +330,8 @@ Each shard has CNPG Publication `<shard>-order-outbox`, SQL name
 generation to be applied before publishing routing. CDC uses its own login; publication-status and offset
 writes use `order_app`. The precreated `ordering.debezium_offset_storage` follows
 the [Debezium JDBC offset-store column contract](https://debezium.io/documentation/reference/3.7/configuration/storage.html#_offset_table_defaults).
-The implemented Debezium relay sets `offset.storage.jdbc.table.name` to that
-qualified name and disables publication auto-creation. Step 4.4 qualified the
-connector and step 5.5 its crash recovery. Synchronous promotion and failover
-passed [step 6.2 qualification on 2026-10-26](../CHANGELOG.md#step-62), including
-acknowledged sagas, synchronized logical slots and CDC continuation.
+The Debezium relay sets `offset.storage.jdbc.table.name` to that qualified name and
+disables publication auto-creation.
 
 ## Ledger schema and replay records
 
