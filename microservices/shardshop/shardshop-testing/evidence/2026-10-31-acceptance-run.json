@@ -1,0 +1,606 @@
+{
+  "date": "2026-10-31",
+  "step": "6.9 complete demo and acceptance run on one disposable fresh lab",
+  "host": {
+    "macos": "26.6.2",
+    "hostMemoryBytes": 17179869184,
+    "dockerDesktop": "4.97.0 (build 244584)",
+    "dockerEngine": "29.9.2",
+    "dockerCpus": 12,
+    "dockerMemoryBytes": 13580972032,
+    "freeDockerDiskGiBBeforeCreation": 22,
+    "note": "Docker was restarted before the integration suite. Chrome stayed open; other applications were closed."
+  },
+  "tools": {
+    "kind": "0.33.0",
+    "kubectl": "1.37.2 (one minor version newer than the 1.36.4 API server)",
+    "helm": "4.3.1",
+    "helmfile": "1.8.2",
+    "skaffold": "2.25.0",
+    "jq": "1.7.1",
+    "node": "24.22.2",
+    "maven": "3.10.0",
+    "buildJdk": "Temurin 25.0.5"
+  },
+  "images": {
+    "application": [
+      "docker.io/library/shardshop-flyway@sha256:ff5fe1cabea61ad45f4c7ba9dbfb21ffe99d3bff79392001a80a49e6ab1bb19d",
+      "docker.io/library/shardshop-ledger@sha256:bb5c992d299fbcb359be017840af5e8f0fe4b6e35260eb9eb6b40dfd22db1431",
+      "docker.io/library/shardshop-order-producer@sha256:6b68ca2278544fe7d7eaee3b71f57dab2db64fdb66be2da73f7df2c3e263a851",
+      "docker.io/library/shardshop-order@sha256:d63a459fca307d0e359eced3b57ae935a4d00907aaeba547b8bac6cbb2fa078b",
+      "docker.io/library/shardshop-product-reader@sha256:fb7d4abcc7e26636a9db7b5641838efade0a957bec4636515ca1e0414699d159",
+      "docker.io/library/shardshop-product-seeder@sha256:188eb655ee9b436f4e91a835105057756caf93048d0c1fe76b4e207806460dae",
+      "docker.io/library/shardshop-product@sha256:4052506921eea4ea460e7989198f6d82c7d7e876896d145bcdc0f0b07697dd2a"
+    ],
+    "infrastructurePins": [
+      "docker.io/library/rabbitmq:4.3.7-management@sha256:19631289492291db06639e466539be96fa84236fc6ae22ab2babe90f6fa26af7",
+      "docker.io/library/shardshop-flyway:13.12.0-openjdk25@sha256:ff5fe1cabea61ad45f4c7ba9dbfb21ffe99d3bff79392001a80a49e6ab1bb19d",
+      "ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:39add80f5b1e573e2f6b641c66fd1a2f8dede67ca0330e870285bc1078551390"
+    ]
+  },
+  "integrationSuite": {
+    "command": "mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify",
+    "result": "BUILD SUCCESS",
+    "totalTime": "48:52 min",
+    "testsRun": 2300,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "cucumberFeatures": {
+      "CatalogMigration.feature": "8/8",
+      "CdcRelay.feature": "19/19",
+      "Contracts.feature": "4/4",
+      "GeneratorAllocation.feature": "11/11",
+      "LedgerConsumer.feature": "15/15",
+      "LedgerMigration.feature": "2/2",
+      "LedgerPublisher.feature": "8/8",
+      "ManualReconciliationReset.feature": "2/2",
+      "ManualReconciliationResetSql.feature": "7/7",
+      "OrderApi.feature": "9/9",
+      "OrderBrowser.feature": "1/1",
+      "OrderListing.feature": "3/3",
+      "OrderProducer.feature": "3/3",
+      "OrderResults.feature": "16/16",
+      "ProductApi.feature": "15/15",
+      "ProductBrowser.feature": "5/5",
+      "ProductReader.feature": "2/2",
+      "ProductSeeder.feature": "1/1",
+      "ProductTransport.feature": "4/4",
+      "RabbitMq.feature": "6/6",
+      "Reconciliation.feature": "4/4",
+      "StockReservation.feature": "8/8",
+      "TransportCleanup.feature": "3/3",
+      "TransportCleanupMigration.feature": "2/2",
+      "WorkloadControl.feature": "3/3"
+    },
+    "cucumberScenarios": 161,
+    "warnings": {
+      "Maven metadata of jvnet-nexus-releases: PKIX (repository declared by jvnet-parent)": 1,
+      "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 1,
+      "Testcontainers: Ryuk has been disabled (accepted, parent pom.xml)": 1
+    },
+    "note": "testsRun adds the Surefire unit and provider tests (2,060), the packaged startup tests of product (30) and order (49) and the 161 Cucumber scenarios. No lab ran during the suite."
+  },
+  "lab": {
+    "cluster": "shardshop-test-2c4297c59ff67ac9",
+    "kubeconfig": "private file in a mode-700 directory (SHARDSHOP_TEST_KUBECONFIG); the default kubeconfig was not used",
+    "retainedLabBefore": "stopped by down.sh at 2026-10-31T05:20:02Z; its prior state was running",
+    "procedure": "shardshop-testing/RUNBOOK.md#acceptance-run-on-a-disposable-lab",
+    "started": "2026-10-31T06:11:01Z",
+    "sequenceComplete": "2026-10-31T07:28:14Z",
+    "cleanupComplete": "2026-10-31T07:28:18Z",
+    "steps": [
+      {
+        "name": "cluster-create",
+        "exitStatus": 0,
+        "durationSeconds": 396,
+        "testsRun": 684,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 9,
+        "scenarios": [
+          "Lifecycle: Supported kind creation configuration",
+          "Lifecycle: Retained nodes match the immutable creation configuration",
+          "Lifecycle: Reconciliation preserves retained data ownership and generator state",
+          "Lifecycle: DNS works across all nodes after node startup",
+          "Lifecycle: Fresh generator initialization is protected by admission",
+          "Lifecycle: Retained generator allocation is protected by admission",
+          "Lifecycle: Infrastructure has reconciled and serves the required database topology",
+          "Lifecycle: RabbitMQ has reconciled and serves the durable retry and parking topology"
+        ],
+        "generatorHighWater": [
+          "0/1023"
+        ],
+        "warnings": {
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 8
+        }
+      },
+      {
+        "name": "up",
+        "exitStatus": 0,
+        "durationSeconds": 762,
+        "testsRun": 2158,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 22,
+        "scenarios": [
+          "Lifecycle: Supported kind creation configuration",
+          "Lifecycle: Retained nodes match the immutable creation configuration",
+          "Lifecycle: Reconciliation preserves retained data ownership and generator state",
+          "Lifecycle: DNS works across all nodes after node startup",
+          "Lifecycle: Retained generator allocation is protected by admission",
+          "Lifecycle: Retained generator allocation is protected by admission",
+          "Lifecycle: Infrastructure has reconciled and serves the required database topology",
+          "Lifecycle: RabbitMQ has reconciled and serves the durable retry and parking topology",
+          "Migration: SQL uses the retained immutable topology reservation",
+          "Migration: Another migration release cannot overlap existing SQL work",
+          "Migration: SQL uses the retained immutable topology reservation",
+          "Migration: Current CNPG publications permit routing publication",
+          "Migration: An application release cannot overlap a drill or its unrecovered changes",
+          "Deployment: Product and its workloads share the verified catalog",
+          "Deployment: The existing reader reaches both product replicas with clean primary reads",
+          "Deployment: The deployed saga resumes durable capture and completes its own scoped orders",
+          "Observability: Every process exposes fresh bounded metrics and native backlog counters",
+          "Release: The current release has converged to its qualified application and service intent",
+          "Topology: Every shard has its deployed routing and independent durable replication topology"
+        ],
+        "generatorHighWater": [
+          "0/1023",
+          "0/1023"
+        ],
+        "warnings": {
+          "Maven metadata of jvnet-nexus-releases: PKIX (repository declared by jvnet-parent)": 1,
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 9
+        }
+      },
+      {
+        "name": "webpages",
+        "exitStatus": 0,
+        "durationSeconds": 6
+      },
+      {
+        "name": "snapshot",
+        "exitStatus": 0,
+        "durationSeconds": 1
+      },
+      {
+        "name": "lifecycle-gates",
+        "exitStatus": 0,
+        "durationSeconds": 23,
+        "testsRun": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 1,
+        "scenarios": [
+          "Lifecycle: Supported kind creation configuration",
+          "Lifecycle: Retained nodes match the immutable creation configuration",
+          "Lifecycle: Reconciliation preserves retained data ownership and generator state",
+          "Lifecycle: Retained generator allocation is protected by admission",
+          "Lifecycle: DNS works across all nodes after node startup",
+          "Lifecycle: Infrastructure has reconciled and serves the required database topology",
+          "Lifecycle: RabbitMQ has reconciled and serves the durable retry and parking topology",
+          "Migration: SQL uses the retained immutable topology reservation",
+          "Migration: Another migration release cannot overlap existing SQL work",
+          "Migration: Current CNPG publications permit routing publication",
+          "Migration: An application release cannot overlap a drill or its unrecovered changes"
+        ],
+        "generatorHighWater": [
+          "5/1023"
+        ],
+        "warnings": {
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 1
+        }
+      },
+      {
+        "name": "broker-fixture",
+        "exitStatus": 0,
+        "durationSeconds": 0
+      },
+      {
+        "name": "backup",
+        "exitStatus": 0,
+        "durationSeconds": 74,
+        "testsRun": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 1,
+        "scenarios": [
+          "Backup: Quiesced shards and ledger form a complete host-side backup"
+        ],
+        "warnings": {
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 1
+        }
+      },
+      {
+        "name": "restore",
+        "exitStatus": 0,
+        "durationSeconds": 37,
+        "testsRun": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 1,
+        "scenarios": [
+          "Backup: A complete compatible backup requires explicit CDC recovery in isolation"
+        ],
+        "warnings": {
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 1,
+          "Testcontainers: Ryuk has been disabled (accepted, parent pom.xml)": 1
+        }
+      },
+      {
+        "name": "recovery-schema",
+        "exitStatus": 0,
+        "durationSeconds": 11,
+        "testsRun": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 1,
+        "scenarios": [
+          "Recovery: Native repeated ordering restore recreates its namespace and preserves security and isolation"
+        ],
+        "warnings": {
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 1,
+          "Testcontainers: Ryuk has been disabled (accepted, parent pom.xml)": 1
+        }
+      },
+      {
+        "name": "recovery-drill",
+        "exitStatus": 0,
+        "durationSeconds": 68,
+        "testsRun": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 1,
+        "scenarios": [
+          "Recovery: Previously acknowledged outcomes survive an older restore through explicit audit and recovery"
+        ],
+        "warnings": {
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 1,
+          "Testcontainers: Ryuk has been disabled (accepted, parent pom.xml)": 1
+        }
+      },
+      {
+        "name": "database-drill",
+        "exitStatus": 0,
+        "durationSeconds": 111,
+        "testsRun": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 1,
+        "scenarios": [
+          "Topology: One shard preserves replicated data and volumes while its quorum is disrupted"
+        ],
+        "warnings": {
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 1
+        }
+      },
+      {
+        "name": "workload-drill",
+        "exitStatus": 0,
+        "durationSeconds": 88,
+        "testsRun": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 1,
+        "scenarios": [
+          "WorkloadDrills: Repeated HTTP seeding and a fresh product JVM preserve service-issued IDs"
+        ],
+        "warnings": {
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 1
+        }
+      },
+      {
+        "name": "saga-drill",
+        "exitStatus": 0,
+        "durationSeconds": 139,
+        "testsRun": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 1,
+        "scenarios": [
+          "SagaDrills: Duplicate envelopes preserve decisions and two orders for the same stock never oversell",
+          "SagaDrills: A saga replacement on another worker resumes stored CDC offsets while writes continue",
+          "SagaDrills: Continuous HTTP writes survive a rolling update while its saga relay keeps ownership"
+        ],
+        "warnings": {
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 1
+        }
+      },
+      {
+        "name": "retry-drill",
+        "exitStatus": 0,
+        "durationSeconds": 1128,
+        "testsRun": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 1,
+        "scenarios": [
+          "RetryDrills: A shard outage outlasts broker retries and reconciliation recovers the parked result",
+          "RetryDrills: The unbound DLQ backpressures ledger.record-order and its application outbox recovers",
+          "RetryDrills: The unbound DLQ backpressures order.ledger-results and its application outbox recovers",
+          "RetryDrills: The full DLQ backpressures ledger.record-order and its application outbox recovers",
+          "RetryDrills: The full DLQ backpressures order.ledger-results and its application outbox recovers"
+        ],
+        "warnings": {
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 1
+        }
+      },
+      {
+        "name": "replica-read-drill",
+        "exitStatus": 0,
+        "durationSeconds": 304,
+        "testsRun": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 1,
+        "scenarios": [
+          "ReplicaReads: Replica reads stay bounded without primary fallback and all temporary settings recover"
+        ],
+        "warnings": {
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 1
+        }
+      },
+      {
+        "name": "failover-drill",
+        "exitStatus": 0,
+        "durationSeconds": 743,
+        "testsRun": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 1,
+        "scenarios": [
+          "Failover: Acknowledged saga data and CDC survive safe promotion and unsafe promotion is refused"
+        ],
+        "warnings": {
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 1
+        }
+      },
+      {
+        "name": "down",
+        "exitStatus": 0,
+        "durationSeconds": 11
+      },
+      {
+        "name": "resume-up",
+        "exitStatus": 0,
+        "durationSeconds": 625,
+        "testsRun": 2158,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 22,
+        "scenarios": [
+          "Lifecycle: Supported kind creation configuration",
+          "Lifecycle: Retained nodes match the immutable creation configuration",
+          "Lifecycle: Reconciliation preserves retained data ownership and generator state",
+          "Lifecycle: DNS works across all nodes after node startup",
+          "Lifecycle: Retained generator allocation is protected by admission",
+          "Lifecycle: Retained generator allocation is protected by admission",
+          "Lifecycle: Infrastructure has reconciled and serves the required database topology",
+          "Lifecycle: RabbitMQ has reconciled and serves the durable retry and parking topology",
+          "Migration: SQL uses the retained immutable topology reservation",
+          "Migration: Another migration release cannot overlap existing SQL work",
+          "Migration: SQL uses the retained immutable topology reservation",
+          "Migration: Current CNPG publications permit routing publication",
+          "Migration: An application release cannot overlap a drill or its unrecovered changes",
+          "Deployment: Product and its workloads share the verified catalog",
+          "Deployment: The existing reader reaches both product replicas with clean primary reads",
+          "Deployment: The deployed saga resumes durable capture and completes its own scoped orders",
+          "Observability: Every process exposes fresh bounded metrics and native backlog counters",
+          "Release: The current release has converged to its qualified application and service intent",
+          "Topology: Every shard has its deployed routing and independent durable replication topology"
+        ],
+        "generatorHighWater": [
+          "26/1023",
+          "26/1023"
+        ],
+        "warnings": {
+          "Maven metadata of jvnet-nexus-releases: PKIX (repository declared by jvnet-parent)": 1,
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 9
+        }
+      },
+      {
+        "name": "final-gates",
+        "exitStatus": 0,
+        "durationSeconds": 97,
+        "testsRun": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 1,
+        "scenarios": [
+          "Deployment: Product and its workloads share the verified catalog",
+          "Deployment: The existing reader reaches both product replicas with clean primary reads",
+          "Deployment: The deployed saga resumes durable capture and completes its own scoped orders",
+          "Lifecycle: Supported kind creation configuration",
+          "Lifecycle: Retained nodes match the immutable creation configuration",
+          "Lifecycle: Reconciliation preserves retained data ownership and generator state",
+          "Lifecycle: Retained generator allocation is protected by admission",
+          "Lifecycle: Infrastructure has reconciled and serves the required database topology",
+          "Lifecycle: RabbitMQ has reconciled and serves the durable retry and parking topology",
+          "Migration: An application release cannot overlap a drill or its unrecovered changes",
+          "Observability: Every process exposes fresh bounded metrics and native backlog counters",
+          "Topology: Every shard has its deployed routing and independent durable replication topology"
+        ],
+        "generatorHighWater": [
+          "31/1023"
+        ],
+        "warnings": {
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 1
+        }
+      },
+      {
+        "name": "backup-allocator",
+        "exitStatus": 0,
+        "durationSeconds": 9,
+        "testsRun": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 1,
+        "scenarios": [
+          "Backup: Current allocator history is independent of older database backups"
+        ],
+        "warnings": {
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 1
+        }
+      }
+    ],
+    "webpages": [
+      "URLs printed: 5",
+      "http://127.0.0.1:18080/products/ -> 200",
+      "http://127.0.0.1:18081/orders/ -> 200",
+      "http://127.0.0.1:18082/workload-order-producer/ -> 200",
+      "http://127.0.0.1:18083/workload-product-reader/ -> 200",
+      "http://127.0.0.1:18084/workload-product-seeder/ -> 200",
+      "{\"workload\":\"order-producer\",\"state\":\"RUNNING\",\"targetRate\":0.5}",
+      "{\"workload\":\"product-reader\",\"state\":\"RUNNING\",\"targetRate\":200}",
+      "{\"workload\":\"product-seeder\",\"state\":\"IDLE\",\"targetRate\":100}"
+    ],
+    "podsAfterWebpages": [
+      "1 Completed",
+      "20 Running"
+    ],
+    "cleanup": [
+      "2026-10-31T07:28:14Z destroy start (status 0)",
+      "2026-10-31T07:28:18Z destroy complete",
+      "2026-10-31T07:28:18Z no owned node remains",
+      "2026-10-31T07:28:18Z no owned container remains",
+      "2026-10-31T07:28:18Z no owned kubeconfig context remains"
+    ]
+  },
+  "generatorRegistry": {
+    "oneRegistryUidInAllLogs": true,
+    "allocatorHistoryUidUnchanged": true,
+    "highWaterSequence": "cluster-create 0, up 0 before the applications, lifecycle gates 5, resume-up 26, final gates 31 (of 1,023)",
+    "allocatorHistory": [
+      {
+        "highWaterMark": 5,
+        "observedAt": "2026-10-31T06:31:22.195947Z"
+      },
+      {
+        "highWaterMark": 10,
+        "observedAt": "2026-10-31T06:31:50.919860Z"
+      },
+      {
+        "highWaterMark": 31,
+        "observedAt": "2026-10-31T07:28:14.450179Z"
+      }
+    ]
+  },
+  "retainedLabRestore": {
+    "timeline": [
+      "2026-10-31T07:31:03Z start cluster-create",
+      "2026-10-31T07:40:13Z end cluster-create rc=0",
+      "2026-10-31T07:53:21Z end up rc=0"
+    ],
+    "steps": [
+      {
+        "name": "cluster-create",
+        "exitStatus": 0,
+        "testsRun": 684,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 9,
+        "scenarios": [
+          "Lifecycle: Supported kind creation configuration",
+          "Lifecycle: Retained nodes match the immutable creation configuration",
+          "Lifecycle: Reconciliation preserves retained data ownership and generator state",
+          "Lifecycle: Retained generator allocation is protected by admission",
+          "Lifecycle: DNS works across all nodes after node startup",
+          "Lifecycle: Retained generator allocation is protected by admission",
+          "Lifecycle: Infrastructure has reconciled and serves the required database topology",
+          "Lifecycle: RabbitMQ has reconciled and serves the durable retry and parking topology"
+        ],
+        "generatorHighWater": [
+          "260/1023",
+          "260/1023"
+        ],
+        "warnings": {
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 8
+        }
+      },
+      {
+        "name": "up",
+        "exitStatus": 0,
+        "testsRun": 2158,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "mavenRuns": 22,
+        "scenarios": [
+          "Lifecycle: Supported kind creation configuration",
+          "Lifecycle: Retained nodes match the immutable creation configuration",
+          "Lifecycle: Reconciliation preserves retained data ownership and generator state",
+          "Lifecycle: DNS works across all nodes after node startup",
+          "Lifecycle: Retained generator allocation is protected by admission",
+          "Lifecycle: Retained generator allocation is protected by admission",
+          "Lifecycle: Infrastructure has reconciled and serves the required database topology",
+          "Lifecycle: RabbitMQ has reconciled and serves the durable retry and parking topology",
+          "Migration: SQL uses the retained immutable topology reservation",
+          "Migration: Another migration release cannot overlap existing SQL work",
+          "Migration: SQL uses the retained immutable topology reservation",
+          "Migration: Current CNPG publications permit routing publication",
+          "Migration: An application release cannot overlap a drill or its unrecovered changes",
+          "Deployment: Product and its workloads share the verified catalog",
+          "Deployment: The existing reader reaches both product replicas with clean primary reads",
+          "Deployment: The deployed saga resumes durable capture and completes its own scoped orders",
+          "Observability: Every process exposes fresh bounded metrics and native backlog counters",
+          "Release: The current release has converged to its qualified application and service intent",
+          "Topology: Every shard has its deployed routing and independent durable replication topology"
+        ],
+        "generatorHighWater": [
+          "260/1023",
+          "260/1023"
+        ],
+        "warnings": {
+          "Maven metadata of jvnet-nexus-releases: PKIX (repository declared by jvnet-parent)": 1,
+          "Maven metadata of flyway-community-db-support: HTTP 401 (repository declared by flyway-parent)": 9
+        }
+      }
+    ],
+    "finalMessages": [
+      "ShardShop cluster, database and broker foundation are ready; no application release was changed.",
+      "ShardShop deployment verified: current images, seeded catalog, routing, reader traffic and order saga outcomes; workloads remain running."
+    ],
+    "registryUidCount": 1,
+    "after": {
+      "checkedAt": "2026-10-31T07:55Z",
+      "sameApplicationDigestsAsDisposableLab": true,
+      "helmRevisions": {
+        "shardshop-infrastructure": 2,
+        "shardshop-migrations": 12,
+        "shardshop-application": 14
+      },
+      "pods": {
+        "running": 36,
+        "completed": 4
+      },
+      "nodes": "4 running with the kind restart policy on-failure:1",
+      "postgresql": "10 pods on the new CNPG digest; ledger-db, shard-a, shard-b and shard-c healthy",
+      "rabbitmq": "4.3.7 with the pinned digest",
+      "generatorHighWaterBeforeRollout": "260/1023, the retained registry UID unchanged"
+    }
+  },
+  "outcome": "Passed. All 20 steps passed, and every Maven run reported no failure or error. The cleanup deleted the owned lab: no owned node, container or kubeconfig context remained. All eleven acceptance scenarios have commands and passing evidence (shardshop-testing/ARCHITECTURE.md#acceptance-scenarios).",
+  "limitations": [
+    "One run; no repeat.",
+    "The applications and the migration image run on Canonical OpenJDK 25.0.4.1 without the October 2026 Java fixes. Ubuntu 26.04 had no 25.0.5 package on 2026-10-31; the user renewed the local risk acceptance until 2026-11-30.",
+    "The retained foundation upgrade witness (kind-upgrade-before, -after, -replay) needs a lab from a pre-5.3 revision and is not part of this sequence. The optional physical asynchronous-loss drill stays outside qualification.",
+    "The older-backup recovery uses Testcontainers PostgreSQL restore targets outside kind, by design."
+  ]
+}

@@ -63,7 +63,8 @@ result returns `503`; clients retain the same key, allocation or order payload
 when retrying. Request validation rejects malformed/duplicate/unknown
 fields, numeric IDs, fractional quantities and invalid Unicode before database
 access. Bodies are limited to 256 KiB, enough for the contract's 1,000 items.
-HTTP/2 is disabled until its qualification in step 6.8.
+HTTP/2 is disabled: step 6.8 kept HTTP/1.1
+([decision](../CHANGELOG.md#decision-keep-http11--2026-10-30)).
 
 | Property | Default | Purpose |
 |---|---|---|

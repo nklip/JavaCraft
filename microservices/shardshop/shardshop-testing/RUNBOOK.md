@@ -114,7 +114,7 @@ objects.
 |---|---|
 | PostgreSQL | One container of the pinned `tc.image.postgresql` (18.6) for the run, with its port bound to `127.0.0.1`. Each scenario creates its own databases and drops them at its end |
 | Roles and databases | The catalog roles and memberships of the CNPG `DatabaseRole`s, the bootstrap hardening, and the schema `catalog` of `catalog_owner`, as on the lab |
-| Migrations | The Flyway **13.8.1** Java API applies `database/shard/catalog` as `catalog_migrator` with the settings of its `flyway.toml` and the inventory placeholders, as the migration Jobs do |
+| Migrations | The Flyway **13.12.0** Java API applies `database/shard/catalog` as `catalog_migrator` with the settings of its `flyway.toml` and the inventory placeholders, as the migration Jobs do |
 | TLS | `openssl` in the container makes a test CA and a server certificate for `localhost` only. Product connects with its `verify-full` default |
 | Kubernetes API | For each generator scenario, one container of the pinned `tc.image.k3s` (k3s v1.36.5) with `server --disable-agent`: no kubelet, no privileges, and the API port bound to `127.0.0.1`. The `pre-integration-test` phase renders the chart with `helm template` and the shared chart, kind environment values and ordered inventory. Each scenario applies the rendered `generator-allocation.yaml` and creates the registry with the same fresh-cluster create-then-pin sequence used by `cluster-create.sh`. For the host name check, product gets an OpenJDK hosts file (`jdk.net.hosts.file`) that points a name in the `.test` domain to `127.0.0.1`. The k3s certificate does not name it |
 | Applications | The packaged `quarkus-app` folders, started as JVMs with an empty environment. Product gets a new fixed test generator ID at each start, or in the generator scenarios it reserves an ID in the k3s API server with a service account token. It gets four shards (`shard-d` is a second US shard) and at most two connections for each endpoint |
@@ -1024,6 +1024,57 @@ greater throughput and 39.1% shorter drain time. The
 [validation record](../CHANGELOG.md#profit-worker-concurrency--2026-10-28) retains
 the first failed shutdown-log check, its correction and the passing rerun. These
 profit-stage gains cannot be added to the separate stock-stage percentage.
+
+## Acceptance run on a disposable lab
+
+Step 6.9 verifies the [README](../README.md) and the owning runbooks on one fresh
+owned lab, and the retained lab keeps its data. Obey the
+[disposable test clusters](../infra/RUNBOOK.md#disposable-test-clusters) rules:
+stop the retained lab and record its state, make sure that at least 20 GiB of the
+Docker disk is free, and register the cleanup before creation. Set
+`SHARDSHOP_TEST_CLUSTER` and `SHARDSHOP_TEST_KUBECONFIG` for every call.
+
+1. Run the [Testcontainers suite](#integration-tests-with-testcontainers) first,
+   while no lab runs.
+2. Run `cluster-create.sh`. On a new cluster it also runs `kind-admission-bootstrap`
+   with `shardshop.kind.fresh=true`.
+3. Run `up.sh`. It runs the unit, provider and startup tests, the image scan
+   gates, the migrations and the release gates.
+4. Run `webpages.sh`. Make sure that it prints the five URLs and that each page and
+   workload control API answers. Then press Ctrl+C: all tunnels close, and the
+   pods continue to run.
+5. Prepare the [snapshot](#kind-verification-snapshot). Use the owned name in the
+   copied `kind.yaml` and the owned nodes as DNS probe nodes.
+6. Run each row of the table below in order. `up.sh` installed all modules, thus
+   use this form for each tag:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Dshardshop.infrastructureOnly=true -Pkind \
+  test-compile failsafe:integration-test failsafe:verify \
+  -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.cluster="$SHARDSHOP_TEST_CLUSTER" \
+  -Dshardshop.kind.kubeconfig="$SHARDSHOP_TEST_KUBECONFIG" "-Dshardshop.kind.tags=$tag"
+```
+
+| Row | Tags and properties |
+|---|---|
+| Lifecycle gates | `kind-config \| kind-nodes \| kind-retention \| kind-allocator \| kind-infrastructure \| kind-dns \| kind-migration-reservation \| kind-migrations-idle \| kind-publications \| kind-drills-idle` |
+| Backup and restore | Render the broker fixture, then run `kind-backup` and `kind-restore` with the [backup properties](#coordinated-backup-and-isolated-restore) |
+| Older-backup recovery | `kind-recovery-schema`, then `kind-recovery-drill`, each with a new restore target and a new output directory |
+| Drills | `kind-database-drill`, `kind-workload-drill`, `kind-saga-drill`, `kind-retry-drill`, `kind-replica-read-drill` and `kind-failover-drill`. Add `-Dshardshop.kind.drillShard=shard-b` to the database, replica-read and failover drills |
+| Stop and resume | `down.sh`, then `up.sh`, which runs all release gates again |
+| Final gates | `kind-deployment \| kind-config \| kind-nodes \| kind-retention \| kind-allocator \| kind-infrastructure \| kind-drills-idle`, then `kind-backup-allocator` |
+
+7. The cleanup runs `cluster-destroy.sh`. Make sure that no owned node, container
+   or kubeconfig context remains. Then start the retained lab again with
+   `cluster-create.sh`, which reconciles changed infrastructure images, and
+   `up.sh`.
+
+On 2026-10-31 the sequence took 77 minutes from creation to cleanup. The retry
+drill took 19 minutes, the failover drill 12 minutes and each `up.sh` 10–13
+minutes ([CHANGELOG](../CHANGELOG.md#step-69--complete-demo-and-acceptance-run-done--2026-10-31)).
+
+If a step fails, keep the lab and examine it before the cleanup: a failed drill
+can keep the `shardshop-kind-drill` lock, and later drills then stop.
 
 ## Capacity measurement
 

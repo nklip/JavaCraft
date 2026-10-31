@@ -17,7 +17,7 @@ images:
 shards: []
 
 postgresql:
-  image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:28d95c3797e8ec648b240a48745f700ecb7a307b91c8b1fbb3ad83e5b25a3048
+  image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:39add80f5b1e573e2f6b641c66fd1a2f8dede67ca0330e870285bc1078551390
   storage:
     size: 2Gi
   resources:
@@ -55,7 +55,7 @@ ledger:
     wal_keep_size: "0"
 
 migration:
-  image: docker.io/library/shardshop-flyway:13.8.1-openjdk25@sha256:d07094252ac8d0a3f9b50c5e272064b29628a07dd13959a7ab34847ae536e23c
+  image: docker.io/library/shardshop-flyway:13.12.0-openjdk25@sha256:ff5fe1cabea61ad45f4c7ba9dbfb21ffe99d3bff79392001a80a49e6ab1bb19d
   activeDeadlineSeconds: 180
   ttlSecondsAfterFinished: 86400
   resources:
@@ -150,7 +150,7 @@ orderProducer:
 
 # A single durable broker for the lab; the image starts directly under the selected UID.
 rabbitmq:
-  image: docker.io/library/rabbitmq:4.3.6-management@sha256:b575d00b4e309e1eacc68e772298af74fe0f5672fac5b46ba698ffef379f68f7
+  image: docker.io/library/rabbitmq:4.3.7-management@sha256:19631289492291db06639e466539be96fa84236fc6ae22ab2babe90f6fa26af7
   replicas: 1
   runAsUser: 10001
   fsGroup: 10001

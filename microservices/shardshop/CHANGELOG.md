@@ -8304,3 +8304,138 @@ them in ShardShop.
 ```bash
 microservices/shardshop/scripts/up.sh   # default values: HTTP_1_1, no balancer
 ```
+
+## Step 6.9 — complete demo and acceptance run (Done) — 2026-10-31
+
+Step 6.9 verified the README and the owning runbooks on one disposable fresh lab.
+All 20 steps of the [documented sequence](shardshop-testing/RUNBOOK.md#acceptance-run-on-a-disposable-lab)
+passed in 77 minutes, and the cleanup deleted the lab. All eleven
+[acceptance scenarios](shardshop-testing/ARCHITECTURE.md#acceptance-commands-and-evidence)
+have commands and passing evidence, including the full generator lifecycle. The
+retained lab kept its data and runs again on the updated versions. The
+[evidence](shardshop-testing/evidence/2026-10-31-acceptance-run.json) records each
+step, its scenarios, the image digests and the generator registry values.
+
+### Security review and updates
+
+The security review that was overdue since 2026-10-28 came first. The user
+approved each update ([review](VERSIONS.md#security-review--2026-10-31)):
+
+- **Security updates:** Docker Desktop 4.97.0, Flyway 13.12.0 for the Java API and
+  the migration image, the rebuilt CNPG and test PostgreSQL images, and RabbitMQ
+  4.3.7.
+- **Routine updates:** Helm 4.3.1, Helmfile 1.8.2, Node 24.22.2, kubectl 1.37.2,
+  lz4-java 1.12.1, Surefire and Failsafe 3.6.1, Enforcer 3.7.0, JaCoCo 0.8.16,
+  Versions 2.23.0 and Sisu 1.1.1.
+- **No change:** the Canonical JRE and JDK. Ubuntu 26.04 has no OpenJDK 25.0.5
+  package, and the user decided to wait. A recheck after the run found the same
+  state. Canonical rebuilt the JRE and JDK images on 2026-10-31 with the same
+  package versions, thus the pins stay. The user renewed the local risk acceptance
+  until 2026-11-30.
+
+No installed component is outside its support window. The nearest date is the
+project deadline for the CNPG upgrade, 2026-11-30. Two uncached builds of the
+Flyway 13.12.0 migration image gave the same config `sha256:5c071d5b40ea…`. On a
+kind node, its manifest is `sha256:ff5fe1cabea6…`, which `values.yaml` pins.
+Docker Scout finds no vulnerable package in it. The Maven version report now runs
+in every module.
+
+### Integration suite
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
+```
+
+The suite ran after a Docker restart, when no lab ran. It passed in 48:52 min with
+no failure, error or skipped test:
+
+| Part | Tests |
+|---|---:|
+| Unit and provider tests of 12 modules | 2,060 |
+| Packaged startup tests of product and order | 30 and 49 |
+| Cucumber scenarios in 25 features | 161 |
+
+The scenarios include the 11 generator-allocation scenarios on k3s, the RabbitMQ
+4.3.7 version and retry-timing checks, and the Flyway 13.12.0 catalog and ledger
+migrations. The log has three warning lines:
+
+- Two Maven metadata requests failed: to `jvnet-nexus-releases` (PKIX) and to
+  `flyway-community-db-support` (HTTP 401). The unchanged third-party parents
+  `jvnet-parent` and `flyway-parent` declare these repositories. All artifacts
+  came from Maven Central.
+- The accepted Testcontainers line `Ryuk has been disabled`.
+
+### Acceptance run on a disposable lab
+
+A scratch wrapper ran the documented commands in order:
+
+- The owned cluster `shardshop-test-2c4297c59ff67ac9` used a private kubeconfig in
+  a mode-700 directory. The default `shardshop`/`kind-shardshop` workflow did not
+  change.
+- `down.sh` stopped the retained lab at 05:20 UTC, before the owned lab started.
+  The two labs never ran at the same time.
+- The wrapper registered the cleanup before the creation. If a step failed, the
+  wrapper kept the lab and waited for a decision. No step failed.
+- Docker had 22 GiB of free disk before the creation.
+
+| Step | Minutes | Result |
+|---|---:|---|
+| `cluster-create.sh` | 6.6 | 676 module tests and 8 lifecycle scenarios, including the fresh `kind-admission-bootstrap` |
+| `up.sh` | 12.7 | 2,139 module and startup tests, the Scout gate on 7 images, the migrations and 19 release-gate scenarios |
+| `webpages.sh` | 0.1 | Five URLs answered 200, and the three control APIs answered. Ctrl+C closed all tunnels, and the pods continued to run |
+| Snapshot | 0.0 | The owned name in the copied `kind.yaml` |
+| Lifecycle gates | 0.4 | 11 scenarios |
+| Broker fixture, `kind-backup` and `kind-restore` | 1.9 | 2 scenarios |
+| `kind-recovery-schema` and `kind-recovery-drill` | 1.3 | 2 scenarios |
+| `kind-database-drill` on `shard-b` | 1.9 | 1 scenario |
+| `kind-workload-drill` | 1.5 | 1 scenario |
+| `kind-saga-drill` | 2.3 | 3 scenarios, including `kind-http-rollout` |
+| `kind-retry-drill` | 18.8 | 5 scenarios: a shard outage, and an unbound and a full DLQ on both publishers |
+| `kind-replica-read-drill` on `shard-b` | 5.1 | 1 scenario |
+| `kind-failover-drill` on `shard-b` | 12.4 | 1 scenario |
+| `down.sh`, then `up.sh` | 10.6 | The lab stopped and resumed, and all release gates passed again |
+| Final gates and `kind-backup-allocator` | 1.8 | 13 scenarios |
+| Cleanup | 0.1 | No owned node, container or kubeconfig context remained |
+
+Every Maven run reported no failure, error or skipped test. The step logs have only
+the known warning lines: the Flyway repository line of each Maven run, one
+`jvnet-nexus-releases` line in each `up.sh`, and the Ryuk line in the three steps
+with restore targets.
+
+The generator lifecycle of scenario 10 used one registry UID in all steps. Of
+1,023, its high-water mark was 0 after the creation and before the first release, 5
+after that release, 26 before the resume and 31 at the end. The allocator history
+outside kind recorded 5 and 10 during the backup and 31 at the end.
+`kind-backup-allocator` showed that this history is independent of older database
+backups.
+
+### Retained lab
+
+After the cleanup, the documented update path restored the retained lab to its
+prior running state:
+
+- `cluster-create.sh` passed in 9.2 minutes. It started the stopped nodes and
+  rolled all ten PostgreSQL pods to the new CNPG digest. The four database clusters
+  are healthy, and RabbitMQ runs 4.3.7. The retention gates kept the registry UID,
+  with the high-water mark at 260 of 1,023.
+- `up.sh` passed in 13.1 minutes. It ran 2,139 module and startup tests and the
+  Scout gate, and it loaded the same seven image digests as the disposable lab.
+  The migrations release is revision 12, and the application release is revision
+  14. All 19 release-gate scenarios passed.
+
+The lab runs 36 pods, and its nodes have the kind restart policy again. The logs
+have only the known Maven metadata warnings.
+
+### Validation
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
+caffeinate -ims bash acceptance.sh OUTPUT_DIR   # scratch wrapper; runs the runbook rows in order
+microservices/shardshop/scripts/cluster-create.sh   # retained lab, after the cleanup
+microservices/shardshop/scripts/up.sh               # retained lab
+git diff --check
+```
+
+The wrapper used `JAVA_HOME` 25.0.5 and Node 24.22.2 on `PATH`, and it stays
+outside the repository. The run logs, the kind reports and the private backup and
+recovery artifacts stay in the scratch directory of the session.

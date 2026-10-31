@@ -30,7 +30,7 @@ import java.util.UUID;
 /** A newly created disposable restore server. No API can adopt an existing container or database. */
 public final class OwnedRestoreTarget implements AutoCloseable {
     private static final String OWNER_LABEL = "shardshop.javacraft.restore-owner";
-    private static final String POSTGRES_IMAGE = "docker.io/library/postgres@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336";
+    private static final String POSTGRES_IMAGE = "docker.io/library/postgres@sha256:979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4";
     static final Set<String> ROLES = Set.of("shardshop_owner", "catalog_owner", "catalog_reader",
             "catalog_writer", "catalog_reserver", "ordering_owner", "ordering_writer", "ordering_reconciler",
             "ordering_cdc_reader", "ledger_owner", "ledger_schema_owner", "ledger_writer", "catalog_migrator",

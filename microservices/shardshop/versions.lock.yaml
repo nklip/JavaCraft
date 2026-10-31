@@ -4,8 +4,8 @@
 ---
 schema_version: 1
 project: shardshop
-checked_on: '2026-09-28'
-review_by: '2026-10-28'
+checked_on: '2026-10-31'
+review_by: '2026-11-04'
 status: complete
 deployment_ready: false
 deployment_scope: The retained database baseline is unchanged. Cleanup of the latest
@@ -79,8 +79,8 @@ sources:
   cnpg_charts: https://github.com/cloudnative-pg/charts
   cnpg_chart_index: https://cloudnative-pg.io/charts/index.yaml
   helm: https://helm.sh/docs/topics/version_skew/
-  helm_release: https://github.com/helm/helm/releases/tag/v4.3.0
-  helmfile_release: https://github.com/helmfile/helmfile/releases/tag/v1.8.0
+  helm_release: https://github.com/helm/helm/releases/tag/v4.3.1
+  helmfile_release: https://github.com/helmfile/helmfile/releases/tag/v1.8.2
   helmfile_configuration: https://helmfile.readthedocs.io/en/stable/configuration/
   skaffold_release: https://github.com/GoogleContainerTools/skaffold/releases/tag/v2.25.0
   skaffold_docker_builder: https://skaffold.dev/docs/builders/builder-types/docker/
@@ -118,14 +118,14 @@ support_policies:
     note: "Open LTS branch, no fixed EOL; 2.21.8 vendor security release selected in step 6.0."
   flyway_13:
     model: maintained_stable
-    checked_on: '2026-10-29'
+    checked_on: '2026-10-31'
     review_by: '2026-11-28'
     source_refs:
     - flyway_docker
     - flyway_release_notes
     eol: null
     note: Flyway OSS Edition CLI with frequent releases and no published fixed EOL;
-      13.8.1 was the newest image on 2026-09-30. It replaces the earlier 12.4.0
+      13.12.0 was the newest image on 2026-10-31. It replaces the earlier 12.4.0
       library for migrations; qualify updates by running migration Jobs through scripts/up.sh on the lab.
     support_review_2026_10_29: Newest OSS image is 13.11.1 (2026-10-22). No fixed EOL is published.
       13.8.1 stays selected; an update needs a new flyway_cli build and migration Jobs through up.sh.
@@ -201,13 +201,13 @@ support_policies:
     upgrade_before: '2027-01-31'
   erlang_vendor_bundle:
     model: community_rolling
-    checked_on: '2026-10-16'
+    checked_on: '2026-10-31'
     review_by: '2026-11-16'
     source_refs:
     - erlang
     - otp_policy
     eol: null
-    note: No published fixed EOL; matrix supports selected OTP 27 for RabbitMQ 4.3.6.
+    note: No published fixed EOL; matrix supports selected OTP 27 for RabbitMQ 4.3.7.
       Update through the vendor broker image.
   ubuntu_26_04:
     model: standard_lts
@@ -259,12 +259,12 @@ support_policies:
       Installed 4.3.0 stays selected.
   helmfile:
     model: maintained_stable
-    checked_on: '2026-10-13'
+    checked_on: '2026-10-31'
     review_by: '2026-11-13'
     source_refs: [helmfile_release, helmfile_configuration]
     eol: null
-    note: Maintained stable 1.8 series; 1.8.0 is installed from Homebrew, with 1.8.1
-      available upstream. No fixed LTS term. Owns ordered Helm releases;
+    note: Maintained stable 1.8 series; 1.8.2, the newest release on 2026-10-31, is
+      installed from Homebrew. No fixed LTS term. Owns ordered Helm releases;
       cluster-create.sh selects infrastructure, and up.sh selects migrations/applications.
   skaffold:
     model: maintained_stable
@@ -377,9 +377,9 @@ compatibility:
     selected_image_ref: kind_node
     current_patch_exception_authorized: true
   rabbitmq:
-    version: 4.3.6
+    version: 4.3.7
     erlang_otp: 27.3.4.19
-    checked_on: '2026-10-16'
+    checked_on: '2026-10-31'
     review_by: '2026-11-16'
     support_refs:
     - rabbitmq_4_3
@@ -394,7 +394,7 @@ images:
     version: 1.30.1
     purpose: operator
     review_by: '2026-11-05'
-    security_review_by: '2026-10-28'
+    security_review_by: '2026-11-30'
     support_refs:
     - cnpg_1_30
     - debian_13
@@ -410,19 +410,26 @@ images:
     version: '18.6'
     purpose: three three-instance CNPG shard clusters and the single-instance ledger database
     review_by: '2026-11-13'
-    security_review_by: '2026-10-28'
+    security_review_by: '2026-11-30'
+    checked_on: '2026-10-31'
     support_refs:
     - postgresql_18
     - debian_13
     tag_observed: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie
-    reference: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:28d95c3797e8ec648b240a48745f700ecb7a307b91c8b1fbb3ad83e5b25a3048
-    index_digest: sha256:28d95c3797e8ec648b240a48745f700ecb7a307b91c8b1fbb3ad83e5b25a3048
-    linux_arm64_digest: sha256:e2560ffb5caec3ad7f45d6ab298e074c9c4afc09e93fb727322b9fd1563aac2d
-    linux_arm64_config_digest: sha256:a198bd4f12da4b32c16925145f11d1c7f95b30357a1442d9ac621ca8af40f894
-    manifest_url: https://ghcr.io/v2/cloudnative-pg/postgresql/manifests/sha256:28d95c3797e8ec648b240a48745f700ecb7a307b91c8b1fbb3ad83e5b25a3048
-    config_url: https://ghcr.io/v2/cloudnative-pg/postgresql/blobs/sha256:a198bd4f12da4b32c16925145f11d1c7f95b30357a1442d9ac621ca8af40f894
+    reference: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:39add80f5b1e573e2f6b641c66fd1a2f8dede67ca0330e870285bc1078551390
+    index_digest: sha256:39add80f5b1e573e2f6b641c66fd1a2f8dede67ca0330e870285bc1078551390
+    linux_arm64_digest: sha256:fd150f7237ae15549a2e10f90c437b39f5473689cf938d824d9b1ff11ebe42a5
+    linux_arm64_config_digest: sha256:6a49544429533e7af5f55682d8287bb2e891b280a677ae9b3a2190abfd7669ee
+    manifest_url: https://ghcr.io/v2/cloudnative-pg/postgresql/manifests/sha256:39add80f5b1e573e2f6b641c66fd1a2f8dede67ca0330e870285bc1078551390
+    config_url: https://ghcr.io/v2/cloudnative-pg/postgresql/blobs/sha256:6a49544429533e7af5f55682d8287bb2e891b280a677ae9b3a2190abfd7669ee
     variant: standard
-    source_revision: def4f476400e5f83c8a605f877ffa2e05d3db1c7
+    source_revision: 4c2710a78328becdadf708ca6d9cb3fb61f3f5ee
+    created_observed: '2026-10-26T08:24:33Z'
+    verification: Step 6.9 security review on 2026-10-31. The same 18.6-standard-trixie tag was rebuilt
+      on 2026-10-26 with newer Debian packages. The index digest was recomputed from the raw
+      index; the platform manifest and config digests come from that index and manifest.
+    advisories: 'Docker Scout on 2026-10-31: 0 critical, 4 high, 6 medium, 54 low, and no fixable
+      critical or high finding. The previous pin had six high findings.'
     source_refs:
     - cnpg_images
     note: Uses maintained standard variant, not deprecated system image. The version
@@ -435,28 +442,30 @@ images:
     - postgresql_18
     - debian_13
     tag_observed: docker.io/library/postgres:18.6-trixie
-    reference: docker.io/library/postgres@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
-    index_digest: sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
-    linux_arm64_digest: sha256:a63b24165ea0eacced7585766d790ac08bbaefe10a1841f87783a4505d29a69c
-    linux_arm64_config_digest: sha256:0336095afa072c685c93021dcfa4a5fee9cbce25ecd65121b58226c787afc0d0
-    manifest_url: https://registry-1.docker.io/v2/library/postgres/manifests/sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
-    config_url: https://registry-1.docker.io/v2/library/postgres/blobs/sha256:0336095afa072c685c93021dcfa4a5fee9cbce25ecd65121b58226c787afc0d0
-    checked_on: '2026-10-12'
+    reference: docker.io/library/postgres@sha256:979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4
+    index_digest: sha256:979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4
+    linux_arm64_digest: sha256:9a74990a5c776ff210361b67616b347750c66c36ea0dfbb4f575d19fcc3d8437
+    linux_arm64_config_digest: sha256:07ee628d2e71f8956c85fc5466906a6d4038cf00f6db07f067d810ef8fec8161
+    manifest_url: https://registry-1.docker.io/v2/library/postgres/manifests/sha256:979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4
+    config_url: https://registry-1.docker.io/v2/library/postgres/blobs/sha256:07ee628d2e71f8956c85fc5466906a6d4038cf00f6db07f067d810ef8fec8161
+    checked_on: '2026-10-31'
     review_by: '2026-11-13'
-    security_review_by: '2026-10-28'
-    created_observed: '2026-10-06T01:35:25Z'
+    security_review_by: '2026-11-30'
+    created_observed: '2026-10-28T01:33:41Z'
     version_environment_observed:
     - GOSU_VERSION=1.19
     - PG_MAJOR=18
     - PG_VERSION=18.6-1.pgdg13+2
-    verification: Raw index, linux/arm64 manifest and config SHA-256 recomputed on 2026-10-12. The tag's rebuild
-      of 2026-10-07 replaces the 2026-09-28 pin sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
-      with the same PostgreSQL build and newer Debian packages. All 27 step 3.10 scenarios pass on it.
-    advisories: 'Docker Scout on 2026-10-12: 6 critical, 36 high, 28 medium, 49 low. Go stdlib 1.24.6 of gosu
-      has 4 critical and 29 high; gnutls28, libxml2, cyrus-sasl2 and zlib have the others. The 2026-09-28 pin had 6
-      critical and 38 high; no newer build fixes the rest.'
+    verification: Step 6.9 security review on 2026-10-31. The tag was rebuilt on 2026-10-28 with the same
+      PostgreSQL build (PG_VERSION 18.6-1.pgdg13+2) and newer Debian packages. It replaces the 2026-10-12
+      pin sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336. The index digest was
+      recomputed from the raw index.
+    advisories: 'Docker Scout on 2026-10-31: 4 critical, 33 high, 31 medium, 55 low; upstream fixes exist for all
+      critical and 30 high findings (gosu Go stdlib and Debian packages). The 2026-10-12 pin had 6 critical
+      and 36 high.'
     acceptance: The user accepted the findings on 2026-10-12 for local test containers that run only during a
-      Maven integration build, with the port bound to 127.0.0.1. Recheck by the review date.
+      Maven integration build, with the port bound to 127.0.0.1. On 2026-10-31 the user renewed the
+      acceptance of the remaining findings until 2026-11-30.
     resource_reaper: Testcontainers runs with TESTCONTAINERS_RYUK_DISABLED=true. Ryuk 0.14.0, the newest release
       (index sha256:7c1a8a9a47c780ed0f983770a662f80deb115d95cce3e2daa3d12115b8cd28f0), publishes its port on all
       host interfaces, runs privileged with the Docker socket, and contains Go stdlib 1.23.12 with 4 critical and
@@ -476,7 +485,7 @@ images:
     config_url: https://registry-1.docker.io/v2/rancher/k3s/blobs/sha256:fdca60133c41721cc54efafaa58dd32a0517a3f9a340685ead17f44553939edc
     checked_on: '2026-10-12'
     review_by: '2026-11-28'
-    security_review_by: '2026-10-28'
+    security_review_by: '2026-11-30'
     created_observed: '2026-09-30T16:09:51Z'
     revision_observed: 3dd98cc58ec34991e7e59b93663eee2e26fc1f65
     verification: Raw index, linux/arm64 manifest and config SHA-256 recomputed on 2026-10-12. The pulled image has
@@ -493,23 +502,23 @@ images:
       containers that run only during a Maven integration build, with the port bound to 127.0.0.1. Recheck by the
       review date.
   flyway_cli:
-    version: 13.8.1
+    version: 13.12.0
     purpose: owner-only schema migration Jobs on the selected Canonical OpenJDK runtime
     support_refs:
     - flyway_13
     - canonical_openjdk_25_26_04
     - ubuntu_26_04
-    tag_observed: docker.io/library/shardshop-flyway:13.8.1-openjdk25
-    reference: "docker.io/library/shardshop-flyway:13.8.1-openjdk25@sha256:d07094252ac8d0a3f9b50c5e272064b29628a07dd13959a7ab34847ae536e23c"
-    linux_arm64_digest: "sha256:d07094252ac8d0a3f9b50c5e272064b29628a07dd13959a7ab34847ae536e23c"
-    linux_arm64_config_digest: "sha256:750b835a5675e3564836f04be3e84a7e16d7fa21976fdfcb3444dc805cc135e4"
+    tag_observed: docker.io/library/shardshop-flyway:13.12.0-openjdk25
+    reference: "docker.io/library/shardshop-flyway:13.12.0-openjdk25@sha256:ff5fe1cabea61ad45f4c7ba9dbfb21ffe99d3bff79392001a80a49e6ab1bb19d"
+    linux_arm64_digest: "sha256:ff5fe1cabea61ad45f4c7ba9dbfb21ffe99d3bff79392001a80a49e6ab1bb19d"
+    linux_arm64_config_digest: "sha256:5c071d5b40ea55609678fa56cbda639b357de17c4879e446e1d2e32f8e2063b7"
     dockerfile: infra/images/flyway/Dockerfile
     build_script: scripts/up.sh
     build_inputs:
     - flyway_distribution
     - application_jre
     source_date_epoch: 0
-    checked_on: "2026-10-25"
+    checked_on: "2026-10-31"
     review_by: "2026-11-25"
     java_runtime_version: 25.0.4.1+1-1-26.04.4-Ubuntu
     java_vendor: Ubuntu
@@ -530,13 +539,10 @@ images:
       owners match the reviewed original. The normalized artifact passes the
       restricted CLI check and the unchanged Scout high/critical gate. kind's
       loaded platform digest matches the new pin. The review deadline stays unchanged.
-    advisories: 'Docker Scout 1.24.0 on 2026-10-18: 74 packages. Only the Go stdlib
-      1.26.7 of /usr/bin/pebble has advisories (2 critical, 9 high, 2 medium), and the
-      reviewed statements of infra/images/application/vex/jre-pebble.openvex.json
-      (version 4) cover them. The scan of 2026-10-13 gave 2 critical, 8 high and 3
-      unrated. On 2026-09-30, Scout reported no findings. The image copies only Flyway
-      core, its PostgreSQL plugin, the PostgreSQL JDBC driver and licenses; recheck
-      the final image at the next Flyway/base refresh, by 2026-10-28.'
+    advisories: 'Docker Scout on 2026-10-31: 62 packages and no vulnerable package; the up.sh critical/high
+      gate with the reviewed VEX statements passes. Earlier scans of the 13.8.1 image reported only the
+      Go stdlib of /usr/bin/pebble (2 critical, 9 high, 2 medium on 2026-10-18), which the reviewed
+      statements of infra/images/application/vex/jre-pebble.openvex.json cover.'
     note: Locally built and loaded into kind one node at a time. up.sh scans it
       with the gate of the application
       images, verifies every node's loaded platform manifest digest against the pin of the chart values
@@ -545,57 +551,61 @@ images:
       reproduce that digest or require review and updated pins; cloud deployment needs
       a registry publication.
     step_6_0_build: "Two uncached ARM64 builds produce identical manifest/config hashes; arbitrary UID 584792, network-none/read-only Flyway 13.8.1 smoke and the existing Scout critical/high gate pass. Live migration qualification recorded separately."
+    step_6_9_build: "Two uncached ARM64 builds of the 13.12.0 Dockerfile gave identical config sha256:5c071d5b40ea
+      and loaded platform manifest sha256:ff5fe1cabea6 on a kind node. The CLI reports Flyway OSS Edition
+      13.12.0 on Java 25.0.4.1, from the unchanged pinned Canonical JRE."
   flyway_distribution:
-    version: 13.8.1
+    version: 13.12.0
     purpose: build-only source of Flyway libraries, drivers, configuration and licenses
     support_refs:
     - flyway_13
     - ubuntu_24_04
-    tag_observed: docker.io/flyway/flyway:13.8.1
-    reference: docker.io/flyway/flyway@sha256:6e00e7503a6fd48b12650fc6748088a356009f2aefb60736dc147518629263af
-    index_digest: sha256:6e00e7503a6fd48b12650fc6748088a356009f2aefb60736dc147518629263af
-    linux_arm64_digest: sha256:3f67b3dc7d2455b1ee28cd30319078bd33b0424b37049f6191e6a81c773d18f5
-    linux_arm64_config_digest: sha256:72dbe883d427eccf9ed7658d698ac527a869ed483dc2008046dfe9fe7aff5e31
-    manifest_url: https://registry-1.docker.io/v2/flyway/flyway/manifests/sha256:6e00e7503a6fd48b12650fc6748088a356009f2aefb60736dc147518629263af
-    config_url: https://registry-1.docker.io/v2/flyway/flyway/blobs/sha256:72dbe883d427eccf9ed7658d698ac527a869ed483dc2008046dfe9fe7aff5e31
-    checked_on: '2026-09-30'
+    tag_observed: docker.io/flyway/flyway:13.12.0
+    reference: docker.io/flyway/flyway@sha256:3704e17c99e22adb8385552cdf8dd7fbc05ae6c420cb78215d9ac6cf1261a15c
+    index_digest: sha256:3704e17c99e22adb8385552cdf8dd7fbc05ae6c420cb78215d9ac6cf1261a15c
+    linux_arm64_digest: sha256:28df6f622276cb51ced86ca9f761c16ea6e656e22c29fe3cb34cd34bef59a8e8
+    linux_arm64_config_digest: sha256:31a7989d679d188216d5b3b0081d9f04c4570fb75841da5912b9329842785048
+    manifest_url: https://registry-1.docker.io/v2/flyway/flyway/manifests/sha256:3704e17c99e22adb8385552cdf8dd7fbc05ae6c420cb78215d9ac6cf1261a15c
+    config_url: https://registry-1.docker.io/v2/flyway/flyway/blobs/sha256:31a7989d679d188216d5b3b0081d9f04c4570fb75841da5912b9329842785048
+    checked_on: '2026-10-31'
     review_by: '2026-11-28'
-    security_review_by: '2026-10-28'
-    java_runtime_version: 25.0.4.1+1 (Eclipse Temurin JRE)
+    security_review_by: '2026-11-30'
+    java_runtime_version: 25.0.5+8 (Eclipse Temurin JRE)
     ubuntu_version: '24.04'
     image_user_observed: ''
-    verification: Raw index, ARM64 manifest and config SHA-256 verified. Native ARM64
-      Jobs ran as UID 10001 with a read-only root filesystem.
-    advisories: 'Docker Scout on 2026-09-30: 548 packages (150 deb, 397 maven), 31
-      advisories (0 critical, 5 high, 19 medium, 7 low). The highs are in the bundled
-      SQL Server driver, HttpCore 5, jackson-databind and Ubuntu openssl, none on the
-      PostgreSQL migration path; accepted for the loopback-only lab.'
+    verification: Step 6.9 security review on 2026-10-31. The index digest was recomputed from the raw index.
+      The distribution bundles pgJDBC 42.7.14 (13.8.1 bundled 42.7.12) and no longer contains the
+      OAuth/OIDC helper libraries. The directories that the Dockerfile copies and deletes are unchanged.
+    advisories: 'Docker Scout on 2026-10-31: 556 packages, 0 critical, 16 high, 32 medium, 3 low. This image
+      is only a build source: the final shardshop-flyway image copies Flyway core, its PostgreSQL plugin,
+      the driver and licenses, and its own scan finds no vulnerable package.'
     note: Runs as root by default, so the Job sets UID/GID 10001, HOME=/tmp and
       REDGATE_DISABLE_TELEMETRY. The ~309 MiB Flyway distribution dominates the
       406 MiB of layers; the Alpine variant saves only about 25 MiB.
   rabbitmq:
-    version: 4.3.6
-    checked_on: '2026-10-16'
+    version: 4.3.7
+    checked_on: '2026-10-31'
     review_by: '2026-11-16'
+    security_review_by: '2026-11-30'
     purpose: broker and broker integration tests
     support_refs:
     - rabbitmq_4_3
     - erlang_vendor_bundle
     - ubuntu_24_04
-    tag_observed: docker.io/library/rabbitmq:4.3.6-management
-    reference: docker.io/library/rabbitmq@sha256:b575d00b4e309e1eacc68e772298af74fe0f5672fac5b46ba698ffef379f68f7
-    index_digest: sha256:b575d00b4e309e1eacc68e772298af74fe0f5672fac5b46ba698ffef379f68f7
-    linux_arm64_digest: sha256:ab142d7664d978084bf9156d0cd80d5851510a420314001549ad6113b06070c6
-    linux_arm64_config_digest: sha256:627737a930f78b41cb0626043adf209b7b9b2baec4f6c49583348510240f2923
-    manifest_url: https://registry-1.docker.io/v2/library/rabbitmq/manifests/sha256:b575d00b4e309e1eacc68e772298af74fe0f5672fac5b46ba698ffef379f68f7
-    config_url: https://registry-1.docker.io/v2/library/rabbitmq/blobs/sha256:627737a930f78b41cb0626043adf209b7b9b2baec4f6c49583348510240f2923
+    tag_observed: docker.io/library/rabbitmq:4.3.7-management
+    reference: docker.io/library/rabbitmq@sha256:19631289492291db06639e466539be96fa84236fc6ae22ab2babe90f6fa26af7
+    index_digest: sha256:19631289492291db06639e466539be96fa84236fc6ae22ab2babe90f6fa26af7
+    linux_arm64_digest: sha256:b38c91869609843c69e6e39dca2ede96b6621c036252579f6955296d42f86167
+    linux_arm64_config_digest: sha256:76ec85c4cf2f251522d676766648788fefdf0045501fa820f247179c800e2f70
+    manifest_url: https://registry-1.docker.io/v2/library/rabbitmq/manifests/sha256:19631289492291db06639e466539be96fa84236fc6ae22ab2babe90f6fa26af7
+    config_url: https://registry-1.docker.io/v2/library/rabbitmq/blobs/sha256:76ec85c4cf2f251522d676766648788fefdf0045501fa820f247179c800e2f70
+    created_observed: '2026-10-27T00:31:15Z'
     version_environment_observed:
-    - RABBITMQ_VERSION=4.3.6
-    advisories: 'Docker Scout 2026-10-16: 97 advisories (6 critical, 34 high,
-      53 medium, 4 low) in 10 of 238 packages. All critical/high findings belong
-      to Go stdlib 1.22.2 in the bundled gosu executable. The chart bypasses the
-      vendor entrypoint and never invokes gosu; non-root startup drops all Linux
-      capabilities. Remaining OS findings are medium/low. Recheck monthly and
+    - RABBITMQ_VERSION=4.3.7
+    advisories: 'Docker Scout 2026-10-31: 98 advisories (6 critical, 34 high, 54 medium,
+      4 low). As with 4.3.6, all critical/high findings belong to Go stdlib 1.22.2 in the bundled
+      gosu executable. The chart bypasses the vendor entrypoint and never invokes gosu; non-root
+      startup drops all Linux capabilities. Remaining OS findings are medium/low. Recheck monthly and
       before broader deployment; this record is scoped to the local lab.'
   shardshop_applications:
     purpose: Application images of product, order, ledger and the three workloads
@@ -611,7 +621,7 @@ images:
     source_date_epoch: 0
     checked_on: '2026-10-13'
     review_by: '2026-11-25'
-    security_review_by: '2026-10-28'
+    security_review_by: '2026-11-30'
     scan_tool: Docker Scout 1.24.0 from Docker Desktop 4.92.0
     advisory_gate: docker scout cves --exit-code --only-severity critical,high with
       the reviewed OpenVEX documents in infra/images/application/vex/ and the anchored
@@ -724,7 +734,7 @@ images:
       3.9 application images copy Maven packages that the host builds, thus they do not
       use this image.
     previous_reference: "docker.io/ubuntu/jdk@sha256:fd8e1a6f0f4e453ef6e0b703c7657989a03874e9019f1c3f48ad93d0267c0369"
-    security_review_by: "2026-10-28"
+    security_review_by: '2026-11-30'
   kind_node:
     version: 1.36.4
     purpose: kind nodes for the ShardShop local cluster
@@ -741,7 +751,7 @@ images:
     config_url: https://registry-1.docker.io/v2/kindest/node/blobs/sha256:7ea3e6957929c3fb38ee5639c8ed47502d522a94ef2a4b41f90a3eefd001c1dd
     checked_on: '2026-09-28'
     review_by: '2026-11-28'
-    security_review_by: '2026-10-28'
+    security_review_by: '2026-11-30'
     status: verified_selected
     selection: 'User-authorized 1.36.4 fallback after rechecking 1.36.5: registry
       returns 404 MANIFEST_UNKNOWN.'
@@ -776,15 +786,18 @@ installation_artifacts:
     - cnpg_chart_index
 tools:
   nodejs:
-    version: "24.22.1"
+    version: "24.22.2"
     platform: "darwin/arm64"
-    checked_on: "2026-10-25"
+    checked_on: "2026-10-31"
     review_by: "2026-11-25"
-    installed_executable_sha256: "866c14a9a2b5e95db35ff3632d9d4508517465e81bc6b4448e463b7d0f61ba77"
+    installed_executable_sha256: "7bbdec7ecd2bad159a981216b6ee03fd87e07e3eb2f018398ac0f656907574c5"
+    official_archive_sha256: "aa9549349e47dffaa42dcf95d6e06ade8c4bdafc980979883b88767670df385a"
+    checksum_url: "https://nodejs.org/dist/v24.22.2/SHASUMS256.txt"
+    verification: "Step 6.9 (2026-10-31): the Homebrew node@24 keg reports v24.22.2. The official darwin-arm64 archive SHA-256 was read from SHASUMS256.txt; the archive was not downloaded. 24.22.2 is not a security release."
     source_refs: ["nodejs_releases", "nodejs_support", "nodejs_schedule"]
     support_model: "Community LTS; select maintained patch from PATH."
     selection: "Separate Homebrew node@24 keg; prepend /opt/homebrew/opt/node@24/bin to PATH. No repository binary, wrapper or host version pin."
-    global_command: "Existing Homebrew node was repaired to 26.12.1 after its shared dependency update; project qualification uses 24.22.1."
+    global_command: "Homebrew node is 26.13.0 after the user's upgrade of 2026-10-31; project qualification uses node@24 24.22.2."
   kind:
     version: 0.33.0
     platform: darwin/arm64
@@ -799,48 +812,55 @@ tools:
     installed_executable_sha256: "f7ccf016f3874ed07ed771de3fefcefbf9a80f75d43eb1f8197dc3b2f3baeca5"
     observed_version: "0.33.0 go1.27.0 darwin/arm64"
   kubectl:
-    version: 1.36.5
+    version: 1.37.2
     support_refs:
     - kubernetes_1_36
     artifacts:
       darwin_arm64:
-        url: https://dl.k8s.io/release/v1.36.5/bin/darwin/arm64/kubectl
-        sha256: c5850a4a6b9469b26cce47c1ab456285f58e308283dcdf72b4ddda3db49b0ec0
-        checksum_url: https://dl.k8s.io/release/v1.36.5/bin/darwin/arm64/kubectl.sha256
-        verification: Downloaded executable matched published SHA-256; client reports
-          v1.36.5 go1.26.8 darwin/arm64. Tested version; kubectl comes from the user's PATH.
+        url: https://dl.k8s.io/release/v1.37.2/bin/darwin/arm64/kubectl
+        sha256: 55701af0d51815ee335f240e48acf0959c3c23017ed3fa816e880c4a92bae581
+        checksum_url: https://dl.k8s.io/release/v1.37.2/bin/darwin/arm64/kubectl.sha256
+        verification: Published SHA-256 read on 2026-10-31; the official executable was not
+          downloaded. kubectl comes from the user's PATH.
         purpose: Host administration
-    checked_on: "2026-10-25"
+    checked_on: "2026-10-31"
     review_by: "2026-11-25"
-    observed_version: "1.36.3 go1.26.5 darwin/arm64"
-    installed_executable_sha256: "14d503a76de30a848d8efd41db85cb525c0787094468ac06abebe99492345cac"
-    verification: "Official 1.36.3 and 1.36.5 reference executables freshly matched SHA-256 and keyless release signatures. Actual Homebrew command remains 1.36.3, compatible with server 1.36.4; no install performed."
+    observed_version: "v1.37.2 go1.26.10 darwin/arm64"
+    installed_executable_sha256: "671f7543f0da3f7661a9daa10a0c8fdbb7d55e4ed6a92846e434106a2041e7d8"
+    skew_policy: https://kubernetes.io/releases/version-skew-policy/#kubectl
+    verification: "Homebrew kubernetes-cli upgraded kubectl from 1.36.3 to 1.37.2 on 2026-10-31; Homebrew has no 1.36 formula. The user kept 1.37.2: the skew policy supports kubectl one minor version newer than the 1.36.4 API server. The Homebrew executable is a separate build from the official one."
+    qualified_on: "2026-10-31"
+    qualification: "The step 6.9 acceptance run on a disposable lab and the retained-lab restoration used kubectl 1.37.2 against the 1.36.4 API server; all lifecycle scripts, gates and drills passed (CHANGELOG step 6.9)."
   helm:
-    version: 4.3.0
+    version: 4.3.1
     platform: darwin/arm64
-    url: https://get.helm.sh/helm-v4.3.0-darwin-arm64.tar.gz
-    sha256: d3870437e1e95b67f8edbde964156c84a26503f560821d40c542441658934fba
-    checksum_url: https://get.helm.sh/helm-v4.3.0-darwin-arm64.tar.gz.sha256sum
-    verification: "Official archive freshly downloaded and matched SHA-256 plus valid release PGP signature. Installed Homebrew executable is a distinct build; existing 4.3.0 remains selected. 4.3.1 is a routine candidate."
+    url: https://get.helm.sh/helm-v4.3.1-darwin-arm64.tar.gz
+    sha256: 6b4e61c8cd27d99e5a801e63ff25dd5c70b36875c2cd659d3e9ce6b76fc23198
+    checksum_url: https://get.helm.sh/helm-v4.3.1-darwin-arm64.tar.gz.sha256sum
+    verification: "Step 6.9 (2026-10-31): the user upgraded the Homebrew formula from 4.3.0. The official archive checksum was read; the archive was not downloaded and no PGP check was done. The installed Homebrew executable is a distinct build. The release notes have no security entry."
     support_refs:
     - helm
-    checked_on: "2026-10-25"
+    checked_on: "2026-10-31"
     review_by: "2026-11-25"
-    installed_executable_sha256: "e78c4ec85d340d937f5874b97557fbf9f741d38fa6ae86df073e01303e791ec5"
+    installed_executable_sha256: "cab447f9f3c23e92dc3b925c8de46bc1b84b965d8b7511b6b6de28fbba3427c4"
   helmfile:
-    version: 1.8.0
+    version: 1.8.2
     platform: darwin/arm64
-    checked_on: '2026-10-13'
+    checked_on: '2026-10-31'
     review_by: '2026-11-13'
-    url: https://github.com/helmfile/helmfile/releases/download/v1.8.0/helmfile_1.8.0_darwin_arm64.tar.gz
-    sha256: b377e295940018fb0e49ca9e0aabdabb00fc612af3d9e12003f01635dc87e1ef
-    checksum_url: https://github.com/helmfile/helmfile/releases/download/v1.8.0/helmfile_1.8.0_checksums.txt
-    installed_executable_sha256: 89c2817df64e48ae86cf7c4a9e99550de5b3d7c223fcb0f4608c8bb5828cab2e
-    verification: Official archive checksum read; archive not downloaded. Homebrew
-      executable reports v1.8.0, commit brew, Go 1.27.1, darwin/arm64. Installed
-      executable hash is separate from the official archive identity.
-    qualified_on: '2026-10-14'
-    qualification: Two complete native up.sh invocations deployed all Helmfile
+    url: https://github.com/helmfile/helmfile/releases/download/v1.8.2/helmfile_1.8.2_darwin_arm64.tar.gz
+    sha256: 0e788f4aa7b4eea1ec0d1e278e0e66e845d5733be5f4e6cb7f832c779e656c72
+    checksum_url: https://github.com/helmfile/helmfile/releases/download/v1.8.2/helmfile_1.8.2_checksums.txt
+    installed_executable_sha256: 69d24e9702f917939d2bb6f8ae7ab8f9df7c8dc6683806debca7c731f44720ca
+    verification: Step 6.9 (2026-10-31). The user upgraded the Homebrew formula from
+      1.8.0. Official archive checksum read; archive not downloaded. The Homebrew
+      executable reports v1.8.2, commit brew. Installed executable hash is separate
+      from the official archive identity. The release notes have no security entry.
+    qualified_on: '2026-10-31'
+    qualification_6_9: Version 1.8.2. The step 6.9 acceptance run on a disposable lab used
+      it in cluster-create.sh, two up.sh invocations and the retained-lab restoration;
+      every Helmfile release, hook and gate passed (CHANGELOG step 6.9).
+    qualification: Version 1.8.0. Two complete native up.sh invocations deployed all Helmfile
       releases. The unchanged rerun from /private/tmp preserved both Deployment
       specs and UIDs, all 13 application/database pod UIDs, four Cluster UIDs,
       four Database UIDs and ten PVC bindings; allocator highWaterMark stayed 74.
@@ -886,13 +906,13 @@ tools:
       installed_executable_sha256: 8f69aa0ace8df6d0cf641e1ba0f30f0618301c9b3f83fee1f4f244883df476fa
       note: Preserved unchanged for other work; this original GA build is not the maintained patch selected for subsequent ShardShop qualification.
   docker_desktop:
-    version: "4.96.3"
-    build: "244472"
-    released_on: "2026-10-22"
+    version: "4.97.0"
+    build: "244584"
+    released_on: "2026-10-26"
     platform: darwin/arm64
-    checked_on: "2026-10-25"
+    checked_on: "2026-10-31"
     review_by: "2026-11-25"
-    verification: "Already installed; codesign --verify --deep --strict and spctl --assess pass. Running docker version/info match this bundle. No Desktop installation or new installer checksum verification performed."
+    verification: "The user updated 4.96.3 through Docker Desktop's updater on 2026-10-31. codesign --verify --deep --strict and spctl --assess pass. Running docker version/info match this bundle. No installer checksum verification performed. 4.97.0 fixes CVE-2026-114409 (tokens in cleartext logs) and CVE-2026-99999 (container corruption of the VM network stack)."
     support_refs:
     - docker_desktop
     source_refs:
@@ -900,7 +920,7 @@ tools:
     - docker_macos
     observed_host:
       macos: 26.6.2
-      docker_desktop: "4.96.3"
+      docker_desktop: "4.97.0"
       docker_engine: "29.9.2"
       containerd: "2.4.2"
       runc: "1.5.2"
@@ -919,23 +939,23 @@ vendor_bundles:
     source_refs:
     - rabbitmq_recipe
     - rabbitmq_management_recipe
-    checked_on: '2026-10-16'
+    checked_on: '2026-10-31'
     review_by: '2026-11-16'
-    verification: Native ARM64 broker management API reports RabbitMQ 4.3.6 and OTP
-      27.3.4.19 on the pinned rebuilt image. This supersedes the older recipe-based
-      OTP 27.3.4.17 inventory; runtime values are asserted by the broker acceptance suite.
+    verification: The native ARM64 image of RabbitMQ 4.3.7 contains /opt/erlang OTP_VERSION 27.3.4.19
+      on Ubuntu 24.04 (2026-10-31). The broker acceptance suite asserts RabbitMQ 4.3.7 and OTP 27.3.4.19.
+      The 4.3.6 record had the same OTP version.
   docker_desktop_target:
     tool_ref: docker_desktop
     containerd: "2.4.2"
-    checked_on: "2026-10-25"
+    checked_on: "2026-10-31"
     review_by: "2026-11-25"
     source_refs:
     - docker_desktop
-    verification: "Actual installed/running 4.96.3 bundle, code-signature and notarization checks; old 4.92.0 component inventory is historical. No blanket advisory acceptance."
+    verification: "Actual installed/running 4.97.0 bundle (Engine 29.9.2, containerd 2.4.2, runc 1.5.2), code-signature and notarization checks; old 4.92.0 component inventory is historical. No blanket advisory acceptance."
   kind_node:
     debian: '13'
     review_by: '2026-11-28'
-    security_review_by: '2026-10-28'
+    security_review_by: '2026-11-30'
     containerd: 2.3.4
     runc: 1.4.3
     crictl: 1.36.0
@@ -1001,8 +1021,8 @@ maven:
   override_review: pom.xml comments name the advisory each plugin override fixes.
   plugin_dependency_overrides:
     org.apache.maven.plugins:maven-resources-plugin:
-      org.eclipse.sisu:org.eclipse.sisu.plexus: "1.1.0"
-      org.eclipse.sisu:org.eclipse.sisu.inject: "1.1.0"
+      org.eclipse.sisu:org.eclipse.sisu.plexus: "1.1.1"
+      org.eclipse.sisu:org.eclipse.sisu.inject: "1.1.1"
       org.codehaus.plexus:plexus-utils: "3.6.2"
     org.apache.maven.plugins:maven-clean-plugin:
       org.codehaus.plexus:plexus-utils: "4.1.0"
@@ -1011,7 +1031,7 @@ maven:
     org.apache.maven.plugins:maven-help-plugin:
       org.jsoup:jsoup: "1.23.2"
     org.apache.maven.plugins:maven-enforcer-plugin:
-      org.apache.maven.enforcer:enforcer-rules: "3.6.3"
+      org.apache.maven.enforcer:enforcer-rules: "3.7.0"
     org.jacoco:jacoco-maven-plugin:
       org.codehaus.plexus:plexus-utils: "3.6.2"
     org.cyclonedx:cyclonedx-maven-plugin:
@@ -1038,12 +1058,12 @@ maven:
     com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.22.4: {"version":"2.22.4","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformat-xml/2.22.4/jackson-dataformat-xml-2.22.4.jar","checked_on":"2026-10-25","sha256":"f335b5148fcb4e53f9dcb5c491362ceb60fabfe59bcda5272289d0fbc4bbb6d6","published_checksum":{"algorithm":"sha1","value":"c5157395c6242c2e264e58499472fef0c62ce7bf","url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformat-xml/2.22.4/jackson-dataformat-xml-2.22.4.jar.sha1"},"review_by":"2026-11-25","verification":"Fresh Maven Central bytes match published SHA-1; SHA-256 independently computed on 2026-10-25."}
     com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.4: {"version":"2.22.4","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.22.4/jackson-dataformat-yaml-2.22.4.jar","checked_on":"2026-10-25","sha256":"2f55e2b864f6354b24d4bcccd488f7c4a3fce4977f8c8dbad07242a68e11dde9","published_checksum":{"algorithm":"sha1","value":"ca03cc73f60b521973613e03acab671230e5802a","url":"https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.22.4/jackson-dataformat-yaml-2.22.4.jar.sha1"},"review_by":"2026-11-25","verification":"Fresh Maven Central bytes match published SHA-1; SHA-256 independently computed on 2026-10-25."}
     commons-beanutils:commons-beanutils:1.11.0: {"sha256":"9e44ba68ec9a3f21286fa2a8bbb003b735c0f69101bb43144b79f4f8aaa74709","artifact_url":"https://repo.maven.apache.org/maven2/commons-beanutils/commons-beanutils/1.11.0/commons-beanutils-1.11.0.jar","upstream_checksum":{"algorithm":"sha1","value":"ac03ea606d13de04c2e4508227680faff151f491","url":"https://repo.maven.apache.org/maven2/commons-beanutils/commons-beanutils/1.11.0/commons-beanutils-1.11.0.jar.sha1"},"checked_on":"2026-10-25","review_by":"2026-11-25"}
-    org.apache.maven.enforcer:enforcer-rules:3.6.3: {"sha256":"24bad9159ed9af932488bad1be042471a170a5bc822bfc8f7b29f3c297c1e138","artifact_url":"https://repo.maven.apache.org/maven2/org/apache/maven/enforcer/enforcer-rules/3.6.3/enforcer-rules-3.6.3.jar","upstream_checksum":{"algorithm":"sha1","value":"10055ea71dbb2e98434e0a4192a64f3506abf524","url":"https://repo.maven.apache.org/maven2/org/apache/maven/enforcer/enforcer-rules/3.6.3/enforcer-rules-3.6.3.jar.sha1"},"checked_on":"2026-10-25","review_by":"2026-11-25"}
+    org.apache.maven.enforcer:enforcer-rules:3.7.0: {"sha256":"8c08e3499c7b901807e05d8937c44c77f73a639824fa76bb3786580a2525cd65","artifact_url":"https://repo.maven.apache.org/maven2/org/apache/maven/enforcer/enforcer-rules/3.7.0/enforcer-rules-3.7.0.jar","upstream_checksum":{"algorithm":"sha1","value":"92a6bde18cfb79a1ffac9d06e8351394355fbd3f","url":"https://repo.maven.apache.org/maven2/org/apache/maven/enforcer/enforcer-rules/3.7.0/enforcer-rules-3.7.0.jar.sha1"},"checked_on":"2026-10-31","review_by":"2026-11-30"}
     org.codehaus.plexus:plexus-utils:3.6.2: {"sha256":"7c2cdf8b4a02a2ee3f0514b8d74ad5eb6e2365eeb073a5cabd6f2d61d8f871df","artifact_url":"https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-utils/3.6.2/plexus-utils-3.6.2.jar","upstream_checksum":{"algorithm":"sha256","value":"7c2cdf8b4a02a2ee3f0514b8d74ad5eb6e2365eeb073a5cabd6f2d61d8f871df","url":"https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-utils/3.6.2/plexus-utils-3.6.2.jar.sha256"},"checked_on":"2026-10-25","review_by":"2026-11-25"}
     org.codehaus.plexus:plexus-utils:4.1.0: {"sha256":"6a2fe69e98301882bb2bb05afe36414eb82d6f7c63299cccdb2dc02b4358a968","artifact_url":"https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-utils/4.1.0/plexus-utils-4.1.0.jar","upstream_checksum":{"algorithm":"sha256","value":"6a2fe69e98301882bb2bb05afe36414eb82d6f7c63299cccdb2dc02b4358a968","url":"https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-utils/4.1.0/plexus-utils-4.1.0.jar.sha256"},"checked_on":"2026-10-25","review_by":"2026-11-25"}
     org.cyclonedx:cyclonedx-core-java:11.0.1: {"sha256":"989348cc6d385629a3ccb735d450b0f0f022167cb702c2fcb0e6f2bdd989dde7","artifact_url":"https://repo.maven.apache.org/maven2/org/cyclonedx/cyclonedx-core-java/11.0.1/cyclonedx-core-java-11.0.1.jar","upstream_checksum":{"algorithm":"sha256","value":"989348cc6d385629a3ccb735d450b0f0f022167cb702c2fcb0e6f2bdd989dde7","url":"https://repo.maven.apache.org/maven2/org/cyclonedx/cyclonedx-core-java/11.0.1/cyclonedx-core-java-11.0.1.jar.sha256"},"checked_on":"2026-10-25","review_by":"2026-11-25"}
-    org.eclipse.sisu:org.eclipse.sisu.inject:1.1.0: {"sha256":"f3edea5119c91be496e3ff55948fa16c89cdbacf9c2e74bdc9fafda1a3faba20","artifact_url":"https://repo.maven.apache.org/maven2/org/eclipse/sisu/org.eclipse.sisu.inject/1.1.0/org.eclipse.sisu.inject-1.1.0.jar","upstream_checksum":{"algorithm":"sha256","value":"f3edea5119c91be496e3ff55948fa16c89cdbacf9c2e74bdc9fafda1a3faba20","url":"https://repo.maven.apache.org/maven2/org/eclipse/sisu/org.eclipse.sisu.inject/1.1.0/org.eclipse.sisu.inject-1.1.0.jar.sha256"},"checked_on":"2026-10-25","review_by":"2026-11-25"}
-    org.eclipse.sisu:org.eclipse.sisu.plexus:1.1.0: {"sha256":"7ebc52738567e0450b6857a404a147639533d35c38a5ba42e4c5ab2910c6df94","artifact_url":"https://repo.maven.apache.org/maven2/org/eclipse/sisu/org.eclipse.sisu.plexus/1.1.0/org.eclipse.sisu.plexus-1.1.0.jar","upstream_checksum":{"algorithm":"sha256","value":"7ebc52738567e0450b6857a404a147639533d35c38a5ba42e4c5ab2910c6df94","url":"https://repo.maven.apache.org/maven2/org/eclipse/sisu/org.eclipse.sisu.plexus/1.1.0/org.eclipse.sisu.plexus-1.1.0.jar.sha256"},"checked_on":"2026-10-25","review_by":"2026-11-25"}
+    org.eclipse.sisu:org.eclipse.sisu.inject:1.1.1: {"sha256":"ce29aacb0b003aa47672a16a2809ebbecd495586550e5d269cd3b529e69df0c2","artifact_url":"https://repo.maven.apache.org/maven2/org/eclipse/sisu/org.eclipse.sisu.inject/1.1.1/org.eclipse.sisu.inject-1.1.1.jar","upstream_checksum":{"algorithm":"sha256","value":"ce29aacb0b003aa47672a16a2809ebbecd495586550e5d269cd3b529e69df0c2","url":"https://repo.maven.apache.org/maven2/org/eclipse/sisu/org.eclipse.sisu.inject/1.1.1/org.eclipse.sisu.inject-1.1.1.jar.sha256"},"checked_on":"2026-10-31","review_by":"2026-11-30"}
+    org.eclipse.sisu:org.eclipse.sisu.plexus:1.1.1: {"sha256":"27e22faf69849f10b54b83f50b136158bda97eb4f174cbecb071f95224ee74ca","artifact_url":"https://repo.maven.apache.org/maven2/org/eclipse/sisu/org.eclipse.sisu.plexus/1.1.1/org.eclipse.sisu.plexus-1.1.1.jar","upstream_checksum":{"algorithm":"sha256","value":"27e22faf69849f10b54b83f50b136158bda97eb4f174cbecb071f95224ee74ca","url":"https://repo.maven.apache.org/maven2/org/eclipse/sisu/org.eclipse.sisu.plexus/1.1.1/org.eclipse.sisu.plexus-1.1.1.jar.sha256"},"checked_on":"2026-10-31","review_by":"2026-11-30"}
     org.jsoup:jsoup:1.23.2: {"sha256":"e9d8c856856680427f096d156f02a414289985c930998fcb519ce5be39b42003","artifact_url":"https://repo.maven.apache.org/maven2/org/jsoup/jsoup/1.23.2/jsoup-1.23.2.jar","upstream_checksum":{"algorithm":"sha256","value":"e9d8c856856680427f096d156f02a414289985c930998fcb519ce5be39b42003","url":"https://repo.maven.apache.org/maven2/org/jsoup/jsoup/1.23.2/jsoup-1.23.2.jar.sha256"},"checked_on":"2026-10-25","review_by":"2026-11-25"}
   plugins:
     org.apache.maven.plugins:maven-compiler-plugin:
@@ -1066,17 +1086,17 @@ maven:
       checked_on: "2026-10-25"
       review_by: "2026-11-25"
     org.apache.maven.plugins:maven-surefire-plugin:
-      version: 3.6.0
+      version: 3.6.1
       extension: jar
-      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-surefire-plugin/3.6.0/maven-surefire-plugin-3.6.0.jar
-      sha256: 07117c7456920c14b9d3bdb9b1e82fbcb2fc5004ff2a3bd19c8fc6d25d6f15bb
+      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-surefire-plugin/3.6.1/maven-surefire-plugin-3.6.1.jar
+      sha256: a67d0fee7dd2db3cf5678a6fa8bdcd8faa4c4454c2ce4a69c327e92b5a653015
       published_checksum:
         algorithm: sha1
-        value: 852ab54e50b02f6d0880d2c36eb911cb4e37aa86
-        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-surefire-plugin/3.6.0/maven-surefire-plugin-3.6.0.jar.sha1
+        value: 45d90e10f710fd8dafa7fef78eb320649105fa74
+        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-surefire-plugin/3.6.1/maven-surefire-plugin-3.6.1.jar.sha1
       metadata_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-surefire-plugin/maven-metadata.xml
-      verification: Artifact bytes downloaded and hashed; matched published checksum.
-        No signature check. Step 0.1 did not execute it.
+      verification: Step 6.9 update from 3.6.0 on 2026-10-31. Artifact bytes downloaded and hashed; matched the published checksum.
+        No signature check.
       support_refs:
       - build_plugins
       declared_minimum_java: '1.8'
@@ -1085,17 +1105,17 @@ maven:
       checked_on: "2026-10-25"
       review_by: "2026-11-25"
     org.apache.maven.plugins:maven-failsafe-plugin:
-      version: 3.6.0
+      version: 3.6.1
       extension: jar
-      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-failsafe-plugin/3.6.0/maven-failsafe-plugin-3.6.0.jar
-      sha256: d75b10ff6dce52f47ec02105c3c0e5325737a8ea842b010c25daa9d9a497e640
+      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-failsafe-plugin/3.6.1/maven-failsafe-plugin-3.6.1.jar
+      sha256: 1631b4c05a2102d9ba774c8785f754d0ecf62632c32a6301b77791f9dfb148f7
       published_checksum:
         algorithm: sha1
-        value: 8a1ff33ed398f9e68337e00a3a34e009a7bb260d
-        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-failsafe-plugin/3.6.0/maven-failsafe-plugin-3.6.0.jar.sha1
+        value: 09ac488705f3a27fbe59af094f0a278376da2503
+        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-failsafe-plugin/3.6.1/maven-failsafe-plugin-3.6.1.jar.sha1
       metadata_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-failsafe-plugin/maven-metadata.xml
-      verification: Artifact bytes downloaded and hashed; matched published checksum.
-        No signature check. Step 0.1 did not execute it.
+      verification: Step 6.9 update from 3.6.0 on 2026-10-31. Artifact bytes downloaded and hashed; matched the published checksum.
+        No signature check.
       support_refs:
       - build_plugins
       declared_minimum_java: '1.8'
@@ -1237,17 +1257,17 @@ maven:
       checked_on: "2026-10-25"
       review_by: "2026-11-25"
     org.apache.maven.plugins:maven-enforcer-plugin:
-      version: 3.6.3
+      version: 3.7.0
       extension: jar
-      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-enforcer-plugin/3.6.3/maven-enforcer-plugin-3.6.3.jar
-      sha256: 32347686c513894a2fae96eeb11527883f47b8957850d793ea833646ad954dca
+      artifact_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-enforcer-plugin/3.7.0/maven-enforcer-plugin-3.7.0.jar
+      sha256: d2e4d609aba86e080ad6aeb859ee3790c0685270e211f56902fe0ccb4a9b412b
       published_checksum:
         algorithm: sha1
-        value: c0c7fbbc5e4da47956045ce91febb4a707e6be51
-        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-enforcer-plugin/3.6.3/maven-enforcer-plugin-3.6.3.jar.sha1
+        value: 902008fd7d76e8665f1e238591c74d0e8156703c
+        url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-enforcer-plugin/3.7.0/maven-enforcer-plugin-3.7.0.jar.sha1
       metadata_url: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-enforcer-plugin/maven-metadata.xml
-      verification: Artifact bytes downloaded and hashed; matched published checksum.
-        No signature check. Step 0.1 did not execute it.
+      verification: Step 6.9 update from 3.6.3 on 2026-10-31. Artifact bytes downloaded and hashed; matched the published checksum.
+        No signature check.
       support_refs:
       - build_plugins
       declared_minimum_java: '1.8'
@@ -1275,17 +1295,17 @@ maven:
       checked_on: "2026-10-25"
       review_by: "2026-11-25"
     org.jacoco:jacoco-maven-plugin:
-      version: 0.8.15
+      version: 0.8.16
       extension: jar
-      artifact_url: https://repo.maven.apache.org/maven2/org/jacoco/jacoco-maven-plugin/0.8.15/jacoco-maven-plugin-0.8.15.jar
-      sha256: f1b5a734742f99573f99c0af214f63c28156ef47f7467e434a7a1b723cdba9b2
+      artifact_url: https://repo.maven.apache.org/maven2/org/jacoco/jacoco-maven-plugin/0.8.16/jacoco-maven-plugin-0.8.16.jar
+      sha256: e591359822801222e937fbf9d1ed4c590b53b255544e7a9b1dc65fd6104b35ce
       published_checksum:
         algorithm: sha1
-        value: b2b3d900db98ffa7c7b1f66ebe7a02c8f5dfa7f4
-        url: https://repo.maven.apache.org/maven2/org/jacoco/jacoco-maven-plugin/0.8.15/jacoco-maven-plugin-0.8.15.jar.sha1
+        value: 61c2d20dda78bd741e102135517208c181945106
+        url: https://repo.maven.apache.org/maven2/org/jacoco/jacoco-maven-plugin/0.8.16/jacoco-maven-plugin-0.8.16.jar.sha1
       metadata_url: https://repo.maven.apache.org/maven2/org/jacoco/jacoco-maven-plugin/maven-metadata.xml
-      verification: Artifact bytes downloaded and hashed; matched published checksum.
-        No signature check. Step 0.1 did not execute it.
+      verification: Step 6.9 update from 0.8.15 on 2026-10-31. Artifact bytes downloaded and hashed; matched the published checksum.
+        No signature check.
       support_refs:
       - build_plugins
       declared_minimum_java: '8'
@@ -1338,17 +1358,17 @@ maven:
       source_refs:
       - quarkus_plugin
     org.codehaus.mojo:versions-maven-plugin:
-      version: 2.22.0
+      version: 2.23.0
       extension: jar
-      artifact_url: https://repo.maven.apache.org/maven2/org/codehaus/mojo/versions-maven-plugin/2.22.0/versions-maven-plugin-2.22.0.jar
-      sha256: 4892b927b299a9fc8607d33e9f8eb387ba5a078ea32089369ec7d8611e6cff29
+      artifact_url: https://repo.maven.apache.org/maven2/org/codehaus/mojo/versions-maven-plugin/2.23.0/versions-maven-plugin-2.23.0.jar
+      sha256: f1ef17ae935b5ee469907c6fb8db7a0c16898e37ea1c567f3b07d7163b82d490
       published_checksum:
         algorithm: sha512
-        value: f15e1b9c9df1b106ed12fde72711beda4e991825fc9178911ba44b8318ea810f9af87053449f5a5954498d8cfdaf88cbdd9d4ca496333389e2a477b43d400885
+        value: 3d8929a2f417bc8d5260f7bfe7d6c81e0cd3c5c7
         url: https://repo.maven.apache.org/maven2/org/codehaus/mojo/versions-maven-plugin/2.22.0/versions-maven-plugin-2.22.0.jar.sha512
       metadata_url: https://repo.maven.apache.org/maven2/org/codehaus/mojo/versions-maven-plugin/maven-metadata.xml
-      verification: Artifact bytes downloaded and hashed; matched published checksum.
-        No signature check. Step 0.1 did not execute it.
+      verification: Step 6.9 update from 2.22.0 on 2026-10-31. Artifact bytes downloaded and hashed; matched the published checksum.
+        No signature check.
       support_refs:
       - build_plugins
       declared_minimum_java: '1.8'
@@ -1513,7 +1533,7 @@ maven:
     kafka: 4.2.1
     postgresql_jdbc: 42.7.13
     rabbitmq_client: 5.37.0
-    lz4_java: 1.12.0
+    lz4_java: 1.12.1
     support: Maintained stable community release; no fixed LTS horizon claimed
     sources:
     - https://debezium.io/releases/3.7/
@@ -1524,7 +1544,7 @@ maven:
     advisories: OSV query of all 202 resolved third-party runtime JAR coordinates returned no findings after the order-local LZ4 override from 1.11.1 to 1.12.0
     compatibility: Fifteen packaged relay scenarios and one accepted-order relay scenario pass on Java 25, PostgreSQL 18.6 and RabbitMQ 4.3.6 with Quarkus-managed Kafka 4.2.1, Jackson 2.21.7 and PostgreSQL JDBC 42.7.13
     artifacts:
-      at.yawk.lz4:lz4-java: {"version":"1.12.0","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/at/yawk/lz4/lz4-java/1.12.0/lz4-java-1.12.0.jar","sha256":"31c287041eab41f2459e93659d49162eff015a0eb858877e1c5e9dcce1a10c26","published_checksum":{"algorithm":"sha1","value":"04aeb33effcf8f9e29f4a2e206c224afebd2621d","url":"https://repo.maven.apache.org/maven2/at/yawk/lz4/lz4-java/1.12.0/lz4-java-1.12.0.jar.sha1"}}
+      at.yawk.lz4:lz4-java: {"version":"1.12.1","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/at/yawk/lz4/lz4-java/1.12.1/lz4-java-1.12.1.jar","sha256":"c75bfbc6980e8b90ee76c75ec5b67058b6b9bfa1e19af6a3cf75dccde533e750","published_checksum":{"algorithm":"sha1","value":"f438d8998f717be8d3d77b71fec56bdb8ec4859e","url":"https://repo.maven.apache.org/maven2/at/yawk/lz4/lz4-java/1.12.1/lz4-java-1.12.1.jar.sha1"}}
       io.debezium:debezium-api: {"version":"3.7.0.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/debezium/debezium-api/3.7.0.Final/debezium-api-3.7.0.Final.jar","sha256":"70fa833f4a0e024da0691bec3dd271b90d1600e7bbdc4c88f1d8518fdae9ccff","published_checksum":{"algorithm":"sha1","value":"0107c80b2c9f25e8fb00eaeb3e8d71f9b3373f26","url":"https://repo.maven.apache.org/maven2/io/debezium/debezium-api/3.7.0.Final/debezium-api-3.7.0.Final.jar.sha1"}}
       io.debezium:debezium-config: {"version":"3.7.0.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/debezium/debezium-config/3.7.0.Final/debezium-config-3.7.0.Final.jar","sha256":"eec4ff3f22e16e94d34b78c4f577bf4ad767744e765fda9a58eeb25279be4d98","published_checksum":{"algorithm":"sha1","value":"8f12e428c6b323d949551e0916f1cdd69de66f20","url":"https://repo.maven.apache.org/maven2/io/debezium/debezium-config/3.7.0.Final/debezium-config-3.7.0.Final.jar.sha1"}}
       io.debezium:debezium-connect-plugins: {"version":"3.7.0.Final","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/debezium/debezium-connect-plugins/3.7.0.Final/debezium-connect-plugins-3.7.0.Final.jar","sha256":"ed47eea2b080c16aa67a3589cb5197227cf8f199e2aaa60dd3ac2c0cbd3b062b","published_checksum":{"algorithm":"sha1","value":"8f0f34d6ae449558be23d9cb3d72444e6a4d956a","url":"https://repo.maven.apache.org/maven2/io/debezium/debezium-connect-plugins/3.7.0.Final/debezium-connect-plugins-3.7.0.Final.jar.sha1"}}
@@ -1657,7 +1677,7 @@ maven:
       independently calculated. The imported cucumber-bom 8.0.4 replaces the version ranges that the Cucumber
       libraries declare for each other
     explicit_versions:
-      flyway: 13.8.1 instead of the platform's 12.0.0, the release of the lab's Flyway image; the CockroachDB
+      flyway: 13.12.0 instead of the platform's 12.0.0, the release of the lab's Flyway image; the CockroachDB
         plugin is excluded, as in the image
       cucumber: 8.0.4 through cucumber-bom; the repository root keeps 7.34.6 for its other modules
     support_and_advisories:
@@ -1666,8 +1686,8 @@ maven:
       docker_java: 3.7.1, managed by the platform. OSV lists no advisory on 2026-10-12
       jna: 5.8.0 (2021-03-22) is the platform version; docker-java declares 5.18.1, and 5.19.1 (2026-06-12) is the
         newest release. No override until a Quarkus patch moves it. OSV lists no advisory on 2026-10-12
-      flyway: 13.8.1 equals the migration image; Flyway publishes no fixed EOL. OSV lists no advisory on
-        2026-10-12. Review with the image by 2026-10-30
+      flyway: 13.12.0 equals the migration image since 2026-10-31; Flyway publishes no fixed EOL. The GitHub
+        advisory database lists no advisory for 13.12.0 on 2026-10-31. Review with the image by 2026-11-30
       cucumber: 8.0.4 (2026-10-02) is the newest release; the 8.0 line needs Java 17 and JUnit Platform 6.1. OSV
         lists no advisory for the 23 Cucumber artifacts on 2026-10-12
       picocontainer: 2.16 (2026-08-15) is the newest release. OSV lists no advisory on 2026-10-12
@@ -1707,8 +1727,8 @@ maven:
       io.cucumber:testng-xml-formatter: {"version":"0.9.0","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/cucumber/testng-xml-formatter/0.9.0/testng-xml-formatter-0.9.0.jar","sha256":"aba17e50fb024901e7d0cc5f01f8acd9dea85e2aa8937a68b064b7438528b83b","published_checksum":{"algorithm":"sha1","value":"fc4613cecbb2fbae7d25f94116bcbbac99895d68","url":"https://repo.maven.apache.org/maven2/io/cucumber/testng-xml-formatter/0.9.0/testng-xml-formatter-0.9.0.jar.sha1"}}
       io.cucumber:usage-formatter: {"version":"0.2.1","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/io/cucumber/usage-formatter/0.2.1/usage-formatter-0.2.1.jar","sha256":"cdad2d1750d70e72f13e8046e9a73bc92171528dfc3a370f00702fd658c90caa","published_checksum":{"algorithm":"sha1","value":"2ac2a4607f4471ca1ae07a465d3a65b23d2e8adf","url":"https://repo.maven.apache.org/maven2/io/cucumber/usage-formatter/0.2.1/usage-formatter-0.2.1.jar.sha1"}}
       net.java.dev.jna:jna: {"version":"5.8.0","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/net/java/dev/jna/jna/5.8.0/jna-5.8.0.jar","sha256":"930273cc1c492f25661ea62413a6da3fd7f6e01bf1c4dcc0817fc8696a7b07ac","published_checksum":{"algorithm":"sha1","value":"3551d8d827e54858214107541d3aff9c615cb615","url":"https://repo.maven.apache.org/maven2/net/java/dev/jna/jna/5.8.0/jna-5.8.0.jar.sha1"}}
-      org.flywaydb:flyway-core: {"version":"13.8.1","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/flywaydb/flyway-core/13.8.1/flyway-core-13.8.1.jar","sha256":"57020712645aaa7ac5e14df6e4565bb9a108516a29d0e0c4ace3607efe38dc4e","published_checksum":{"algorithm":"sha1","value":"3994d90a52fbaed11d2f898d3e9c81a2f406c7aa","url":"https://repo.maven.apache.org/maven2/org/flywaydb/flyway-core/13.8.1/flyway-core-13.8.1.jar.sha1"}}
-      org.flywaydb:flyway-database-postgresql: {"version":"13.8.1","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/flywaydb/flyway-database-postgresql/13.8.1/flyway-database-postgresql-13.8.1.jar","sha256":"13d84ec4eb029c75ec6fa7f1e4ca0c4927157350b4cf23e96c3f8f2113ab5bf3","published_checksum":{"algorithm":"sha1","value":"f0674eaea3ddadb73b0d855de48aec7f5accbb1b","url":"https://repo.maven.apache.org/maven2/org/flywaydb/flyway-database-postgresql/13.8.1/flyway-database-postgresql-13.8.1.jar.sha1"}}
+      org.flywaydb:flyway-core: {"version":"13.12.0","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/flywaydb/flyway-core/13.12.0/flyway-core-13.12.0.jar","sha256":"88e8aac8a19fec1e768fb64b693611eb9e0770222079567b0d5cf8b11de5d362","published_checksum":{"algorithm":"sha1","value":"eac36014b27905d62bc9a6abf6f59470b175731e","url":"https://repo.maven.apache.org/maven2/org/flywaydb/flyway-core/13.12.0/flyway-core-13.12.0.jar.sha1"}}
+      org.flywaydb:flyway-database-postgresql: {"version":"13.12.0","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/flywaydb/flyway-database-postgresql/13.12.0/flyway-database-postgresql-13.12.0.jar","sha256":"ccacc5f2a4b7dc7c09cdc4d64b6f36ed434f06384490c2a33a20ad155def815a","published_checksum":{"algorithm":"sha1","value":"acc73d312d60a07557b1dd149162e10183ca0af8","url":"https://repo.maven.apache.org/maven2/org/flywaydb/flyway-database-postgresql/13.12.0/flyway-database-postgresql-13.12.0.jar.sha1"}}
       org.jetbrains:annotations: {"version":"26.1.0","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/jetbrains/annotations/26.1.0/annotations-26.1.0.jar","sha256":"ebc7aec252ed0c7d2d04c039d7f00e69f7b86b1f493c741d67b3ef31b986b054","published_checksum":{"algorithm":"sha1","value":"c1e9226d7ca6661020c58c94397da0cc3673d5e4","url":"https://repo.maven.apache.org/maven2/org/jetbrains/annotations/26.1.0/annotations-26.1.0.jar.sha1"}}
       org.junit.platform:junit-platform-suite-api: {"version":"6.1.3","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-suite-api/6.1.3/junit-platform-suite-api-6.1.3.jar","sha256":"55ee464c0846fa4a695e5c2fc8d8ea8f16fb3d92b04746831b7a428519436c11","published_checksum":{"algorithm":"sha1","value":"6b6577612ce5f0c11ca66db60552552fb1ea6971","url":"https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-suite-api/6.1.3/junit-platform-suite-api-6.1.3.jar.sha1"}}
       org.junit.platform:junit-platform-suite-engine: {"version":"6.1.3","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-suite-engine/6.1.3/junit-platform-suite-engine-6.1.3.jar","sha256":"6334e2ca2ac26febda4f72b1ae739661124a6cc3396448a43e72334841843e2d","published_checksum":{"algorithm":"sha1","value":"720da7199a4e5766daf6e6fb4e4f2a8fdfb6e098","url":"https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-suite-engine/6.1.3/junit-platform-suite-engine-6.1.3.jar.sha1"}}
@@ -1850,7 +1870,7 @@ maven:
     jackson_annotations: '2.21'
     lombok_processor: 1.18.46
     testcontainers_testing: 2.0.5
-    flyway_testing: 13.8.1
+    flyway_testing: 13.12.0
     cucumber_testing: 8.0.4
     vertx_json_schema_contract_testing: "4.5.35"
     snakeyaml_contract_testing: '2.6'
@@ -1968,7 +1988,7 @@ maintenance_review_6_0:
     planning_due: "2026-11-02"
     qualify_by: "2027-01-15"
     upgrade_before: "2027-01-31"
-    procedure: "VERSIONS.md step 6.0; retain 4.3.6/OTP27.3.4.19 until rehearsal passes."
+    procedure: "VERSIONS.md step 6.0; retain 4.3.7/OTP27.3.4.19 until rehearsal passes."
   remaining_advisories:
     cnpg: "2 critical/9 high, including active manager Go1.27.1/x-net0.58.0; no reviewed successor build."
     k3s: "10 critical/27 high, active binary included; checked next compatible image absent. Existing local test acceptance is not a new blanket exception."
@@ -1994,6 +2014,42 @@ support_review_2026_10_29:
     java_and_applications: "compatibility.java and the application images use the 2026-10-25 6.0 review of application_jre, openjdk_25 and canonical_openjdk_25_26_04, valid until 2026-11-25. The Scout gate did not run again."
     historical_maven: "Five maven.step_4_5_ledger_dependencies artifacts use the top-level date. maven.step_6_0_security supersedes them; they are not reviewed."
   not_due: "Seven Maven records 2026-11-04, two 2026-11-05, Helmfile and Skaffold 2026-11-13, RabbitMQ 2026-11-16, others 2026-11-25."
+security_review_2026_10_31:
+  checked_on: "2026-10-31"
+  status: "complete"
+  scope: "Newest release of every entry with an overdue security_review_by, the host tools and the Maven dependency and plugin pins. Public release metadata only: GitHub releases, registry tags and digests, Maven Central metadata and the GitHub advisory database, queried by package name without versions. Docker Scout scanned every changed image."
+  user_decisions:
+  - "2026-10-31: approve Docker Desktop 4.97.0, Flyway 13.12.0, the rebuilt PostgreSQL images and RabbitMQ 4.3.7."
+  - "2026-10-31: keep the Canonical JRE and JDK 25.0.4.1 digests until OpenJDK 25.0.5 is published for Ubuntu 26.04."
+  - "2026-10-31: renew the local risk acceptance until 2026-11-30 for the remaining saved findings."
+  - "2026-10-31: approve Helm 4.3.1, Helmfile 1.8.2, Node 24.22.2, lz4-java 1.12.1, the routine Maven plugins and the version report fixes; keep the Homebrew kubectl 1.37.2."
+  - "2026-10-31: leave HttpClient 5.6.5, SnakeYAML 2.7, slf4j-jboss-logmanager 2.1.0 and Mockito 5.24.0 to the Quarkus platform."
+  updated:
+    docker_desktop: "4.96.3 -> 4.97.0; fixes CVE-2026-114409 and CVE-2026-99999"
+    flyway: "13.8.1 -> 13.12.0 for the Java API, the distribution and the migration image; bundled pgJDBC 42.7.14"
+    postgresql_cnpg: "same 18.6-standard-trixie tag, digest of 2026-10-26; Scout 0 critical, 4 high"
+    postgresql_test: "same 18.6-trixie tag, digest of 2026-10-28; Scout 4 critical, 33 high"
+    rabbitmq: "4.3.6 -> 4.3.7; OTP 27.3.4.19 unchanged; critical and high findings only in the unused gosu"
+    host_tools: "Helm 4.3.1, Helmfile 1.8.2, node@24 24.22.2, kubectl 1.37.2"
+    maven: "lz4-java 1.12.1; Surefire and Failsafe 3.6.1, Enforcer and enforcer-rules 3.7.0, JaCoCo 0.8.16, Versions 2.23.0, Sisu 1.1.1"
+  unchanged:
+    canonical_jre_jdk: "25.0.4.1; OpenJDK 25.0.5 only in the proposed pocket of a later Ubuntu series on 2026-10-31"
+    current: "kind 0.33.0, kind node 1.36.4, Skaffold 2.25.0, host JDK 25.0.5+8, k3s v1.36.5+k3s1, CNPG 1.30.1 and chart 0.29.1, PostgreSQL 18.6, Quarkus 3.40.1.1, pgJDBC 42.7.14, Jackson 2.21.8, Netty 4.1.139"
+    quarkus_managed: "HttpClient 5.6.4, SnakeYAML 2.6, slf4j-jboss-logmanager 2.0.2.Final and Mockito 5.21.0 follow the Quarkus platform"
+    advisories: "No GitHub advisory published since 2026-07-01 affects a pinned library version."
+  local_risk_acceptance:
+    accepted_on: "2026-10-31"
+    review_by: "2026-11-30"
+    authorized_by: "The user renewed the expired acceptance of 2026-10-25 for the remaining saved findings."
+    components:
+    - "Canonical application and Flyway JRE glibc and OpenJDK findings, including the missing October 2026 Java fixes"
+    - "K3s test image findings, including the active binary"
+    - "Test PostgreSQL image findings"
+    - "kind node image and CNPG operator findings; both images are unchanged and have no newer release"
+    resolved: "The Flyway bundled pgJDBC 42.7.12 finding; Flyway 13.12.0 bundles 42.7.14."
+    scope: "Only the currently pinned images and saved findings, for the loopback-only local lab and the unprivileged loopback-only Maven test containers. No production acceptance, unaffected claim, VEX change, scan-gate bypass or deadline extension."
+  report_fixes: "shardshop-workload/pom.xml sets shardshop.directory; versions-rules.xml ignores dot-separated qualifiers such as 4.0.0.Beta2."
+  next_review_by: "2026-11-30"
 unresolved:
 - id: KIND-1.36.5
   blocks:

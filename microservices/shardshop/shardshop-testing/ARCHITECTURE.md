@@ -30,12 +30,13 @@ explain the durability assumptions behind these scenarios.
 | [7](#scenario-7) | Broker retries, dead letters and reconciliation | Step 4.3 verifies broker policies and bounded retry/parking behavior. Step 5.1 adds durable reconciliation and lost-result recovery; step 5.2 adds transport cleanup with CDC checkpoints and retained-decision replay. Step 5.3 adds the restricted manual reset and replay after budget exhaustion. Step 5.4 measures retry timing and verifies shard-outage reconciliation plus unbound/full DLQ pressure and recovery on both application publishers; see the [drill runbook](RUNBOOK.md#retry-and-dlq-capacity-drills) and [dated evidence](../CHANGELOG.md#step-54) |
 | [8](#scenario-8) | Standby loss, promotion, restore and audit | Kind database drills cover standby/quorum behavior; the strict-read drill passed step 6.1 qualification. Steps 6.2–6.4 qualified synchronous promotion, coordinated backup/isolated restore and older-backup audit/repair on 2026-10-26 |
 | [9](#scenario-9) | HTTP validation and transaction boundaries | Covered by completed validation steps |
-| [10](#scenario-10) | ID generation and service-issued identity | ID generation/allocation and service-issued identity checks exist; step 6.6 requires the complete lifecycle acceptance run. Backup/restore preservation passed step 6.3 qualification |
+| [10](#scenario-10) | ID generation and service-issued identity | ID generation/allocation and service-issued identity checks exist. Backup/restore preservation passed step 6.3 qualification, and the complete lifecycle acceptance run passed step 6.9 on 2026-10-31 |
 | [11](#scenario-11) | Concurrent stock reservation | Covered by completed reservation steps |
 
 For scenarios 1, 2, 4, 5, 9 and 11, completed lifecycle, routing, saga, validation
 and reservation steps provide coverage; future transport/profile changes must
-preserve these requirements.
+preserve these requirements. The [commands and evidence](#acceptance-commands-and-evidence)
+section gives the tests of each scenario and their step 6.9 results.
 
 Acceptance scenarios for implementation:
 
@@ -178,6 +179,33 @@ Acceptance scenarios for implementation:
     changes, reactivation or deletion, and database `TRUNCATE` is refused. After
     every supported reserve/release run, each product's `stock` equals its
     `initial_stock` minus its active reserved quantities.
+
+## Acceptance commands and evidence
+
+Step 6.9 ran every scenario with two commands on 2026-10-31, and both passed. The
+[CHANGELOG](../CHANGELOG.md#step-69--complete-demo-and-acceptance-run-done--2026-10-31)
+gives the results, and the [evidence](evidence/2026-10-31-acceptance-run.json)
+gives each step and scenario:
+
+- **Integration suite:** the [Testcontainers suite](RUNBOOK.md#integration-tests-with-testcontainers)
+  runs the unit and provider tests of all modules, the packaged startup tests and
+  the Cucumber features in the table.
+- **Lab run:** the [acceptance run on a disposable lab](RUNBOOK.md#acceptance-run-on-a-disposable-lab)
+  runs the lifecycle scripts and the kind tags in the table.
+
+| Scenario | Integration suite | Lab run |
+|---:|---|---|
+| [1](#scenario-1) | `ProductSeeder`, `ProductReader` and `WorkloadControl` features | Release gates of both `up.sh` runs and `kind-deployment`: seeded catalog and reads on both product pods. `kind-workload-drill`: repeated seeding and a new product JVM |
+| [2](#scenario-2) | `CatalogMigration`, `LedgerMigration`, `ProductApi`, `OrderApi` and `StockReservation` features; routing vectors in `ShardRouterTest` | `kind-topology` in the release gates; `kind-migration-reservation`, `kind-migrations-idle` and `kind-publications` |
+| [3](#scenario-3) | `ProductApi` (replica read profile), `ProductReader` and `ProductTransport` features | `kind-deployment`: clean primary reads. `kind-replica-read-drill` on `shard-b`: lag, standby loss and hung queries |
+| [4](#scenario-4) | `OrderApi`, `OrderResults`, `LedgerConsumer`, `LedgerPublisher` and `CdcRelay` features | `kind-saga` in the release gates: USD and EUR orders with ledger, stock and profit effects. `kind-saga-drill`: duplicate envelopes |
+| [5](#scenario-5) | `LedgerConsumer`, `OrderResults` and `TransportCleanup` features: a rejected decision stays after cleanup and a policy change | `kind-saga-drill`: duplicate envelopes keep their decisions |
+| [6](#scenario-6) | `CdcRelay`, `LedgerPublisher`, `LedgerConsumer` and `OrderResults` features: crash boundaries and replay | `kind-saga-drill`: CDC relocation and a rolling update under HTTP writes. `kind-observability` in the release gates. `kind-failover-drill` on `shard-b` |
+| [7](#scenario-7) | `RabbitMq`, `Reconciliation`, `ManualReconciliationReset`, `ManualReconciliationResetSql`, `TransportCleanup` and `TransportCleanupMigration` features | `kind-retry-drill`: a shard outage, and an unbound and a full DLQ on both publishers |
+| [8](#scenario-8) | — | `kind-database-drill`, `kind-replica-read-drill` and `kind-failover-drill` on `shard-b`; `kind-backup`, `kind-restore`, `kind-recovery-schema` and `kind-recovery-drill`. The optional asynchronous-loss drill stays outside qualification |
+| [9](#scenario-9) | `OrderApi` and `ProductApi` features, and the order and product unit tests | — |
+| [10](#scenario-10) | `shardshop-core/idgen` unit tests (lost CAS, exhaustion, `TimeSource`), `IdParserTest`, `JsonFieldsTest`, `CatalogInputTest` and `OrderInputTest`; `GeneratorAllocation` on k3s; `ProductApi` and `OrderProducer` features | `kind-admission-bootstrap` in `cluster-create.sh`, `kind-allocator`, the rollouts of both `up.sh` runs, `kind-workload-drill`, `kind-backup`, `kind-restore` and `kind-backup-allocator`. One registry UID in all steps; the high-water mark increased from 0 to 31 of 1,023 |
+| [11](#scenario-11) | `StockReservation` feature | `kind-saga-drill`: two orders for the same stock never oversell |
 
 ## Coordinated backup and isolated restore
 

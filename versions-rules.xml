@@ -12,5 +12,7 @@
         <ignoreVersion type="regex">(?i).*-milestone[0-9A-Za-z.-]*</ignoreVersion>
         <ignoreVersion type="regex">(?i).*-M[0-9]*</ignoreVersion>
         <ignoreVersion type="regex">(?i).*-m[0-9]+[0-9A-Za-z.-]*</ignoreVersion>
+        <!-- Dot-separated qualifiers, for example Quarkus 4.0.0.Beta2 or 1.0.0.CR1. -->
+        <ignoreVersion type="regex">(?i).*\.(alpha|beta|cr)[0-9]*</ignoreVersion>
     </ignoreVersions>
 </ruleset>

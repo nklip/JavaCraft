@@ -3,20 +3,24 @@
 ## 1. Implementation milestones
 
 This is the implementation checklist for `microservices/shardshop`, updated on
-2026-10-28. Every step starts as **Planned**; existing design documents and routing
+2026-10-31. Every step starts as **Planned**; existing design documents and routing
 vectors do not mean the corresponding application behavior is implemented.
 
 ### Current position
 
-- **Completed:** milestones 0–5 and steps 6.0–6.6. The current deployment has
+- **Completed:** milestones 0–6. Step 6.8 ended as research with the decision to
+  keep HTTP/1.1. The current deployment has
   two order HTTP pods and one separate `shardshop-order-saga` pod, using the same
   order image. The [overview](ARCHITECTURE.md) and module designs describe current
   behavior; dated completion notes below describe what passed at that time. The
   older-lab foundation upgrade for 5.3 now passes in the isolated 6.0 rehearsal,
   including retained identities/data, restricted reset and once-only replay.
-- **Current:** steps **6.5 and 6.6 are Done**: the October 28 fixed load sequence
-  meets the 10/s latency and sustained 30/s write acceptance criteria, with
-  concurrent reads near 200/s. See the latest measurement below and
+- **Current:** step **6.9 is Done**. On 2026-10-31 the README and runbook
+  sequence passed on one disposable fresh lab in 77 minutes, with a verified
+  cleanup. All eleven acceptance scenarios have commands and passing evidence, and
+  the retained lab runs again on the updated versions. See the
+  [6.9 evidence](CHANGELOG.md#step-69--complete-demo-and-acceptance-run-done--2026-10-31).
+  Steps 6.5 and 6.6 passed on 2026-10-28; see the
   [milestone closure](CHANGELOG.md#steps-65-and-66--acceptance-closure--2026-10-28).
 - **Recovery qualification:** step **6.4, restore audit and recovery, is Done**.
   The full isolated older-dump drill passed on October 26: audit found previously
@@ -32,16 +36,16 @@ vectors do not mean the corresponding application behavior is implemented.
   cutover remain outside this qualified isolated recovery workflow.
   Step **6.0 remains Done under the user's reduced local-maintenance scope**.
   The user deferred capacity qualification to 6.5/6.6/6.7; write qualification
-  and 1,000/s read qualification now pass (6.5–6.7). Local advisory
-  acceptance ends October 28. The user authorized
+  and 1,000/s read qualification now pass (6.5–6.7). On 2026-10-31 the user
+  renewed the local risk acceptance until November 30
+  ([review](VERSIONS.md#security-review--2026-10-31)). The user authorized
   6.2 qualification on pinned CNPG 1.30.1/chart 0.29.1 despite its saved findings
   after October 26 verification that 1.30.1 remains latest GA; see the
   [decision](VERSIONS.md#step-62-existing-version-decision--2026-10-26).
-- **Remaining:** milestone 6 continues with the final demo and acceptance run
-  in **6.9**. Step 6.8 (HTTP/2) ended on 2026-10-30 with the
-  [decision](CHANGELOG.md#decision-keep-http11--2026-10-30) to keep HTTP/1.1. AWS remains optional and
-  starts only after local step 6.9.
-  Other remaining steps are **Planned**.
+- **Remaining:** only the optional AWS milestone 7. Its precondition, local step
+  6.9, passed on 2026-10-31. Step 6.8 (HTTP/2) ended on 2026-10-30 with the
+  [decision](CHANGELOG.md#decision-keep-http11--2026-10-30) to keep HTTP/1.1.
+  All milestone 7 steps are **Planned**.
 - **Latest read qualification (2026-10-28):** 6.7 is **Done**. The first three
   eligible primary-profile windows delivered **994.565 / 991.000 / 999.769 reads/s**,
   all OK with p95 **3 / 3 / 2 ms**, with writes paused and drained. Diagnostics
@@ -413,7 +417,7 @@ reader; step 4.9 adds order, ledger and the order producer when they are functio
 | 6.6 Sustained 30 new orders/s | 6.0, 6.5, 4.14 | Done | **2026-10-28 acceptance:** 2,643 accepted writes over 90.039492s (**29.3538/s**, above 28.5/s), final rolling write p95 **85.702 ms** and saga p95 2.228s; concurrent reads near 200/s. No new errors, cancellations, recoveries or observed backpressure; stock remained positive and bounded backlogs drained. Controls and retained state restored. [Closure evidence](CHANGELOG.md#steps-65-and-66--acceptance-closure--2026-10-28). At the user's explicit request, own all 30/s write qualification deferred from 6.0 after the incomplete backpressured attempt (987 new orders in 40.044426s, ~24.65/s; not a sustained result or maximum). Diagnose and restore sustained target 30 new orders/s, delivering at least 95% of target (28.5 new accepted orders/s) over the observation window, with concurrent product reads at 200/s, no write errors/deadline failures, no backpressure and bounded pending-order/profit-intent/command-outbox backlogs that drain after writes stop. Control and record initial/final stock, selection, cancellation mix and background work; exhausted stock must not bypass saga/ledger work. Final full-performance acceptance also requires producer rolling write p95 **<100 ms at 30/s**, measured separately from saga completion. Keep two HTTP replicas, one saga process, four submission workers, two observers and the 100-order bound unless a separately agreed scope changes them. Use 20s warmup, a predetermined monotonic observation >=90s and >=1,024 post-warmup new-write samples; never extend until passing. Preserve the valid 10/s 133.783 ms failure and all failed/incomplete evidence; 154.613 ms from the short 30/s capture is diagnostic only. Use bounded hypothesis-driven experiments and relevant regression checks. Preserve durability/idempotency and exclude CNPG/managed PostgreSQL changes. Restore saved controls/template and prior lab state, and record commands/artifacts/results. Passing 6.6 is not a 6.0 completion condition. |
 | 6.7 Qualify 1,000 product reads/s | 6.0, 4.15 | Done | At the user's explicit request, own read qualification deferred from 6.0. Target 1,000 reads/s on the primary profile with two product pods, 16 reader workers and at most 16 HTTP connections. Pause the producer, drain submissions/non-terminal and background backlogs, and keep the interactive seeder idle. After at least 30s warmup, require three complete eligible non-overlapping 30s windows within a bounded 150s phase, ignoring reports ending less than 60s after the rate update. Each window must deliver >=950 reads/s (95% of target), only OK outcomes and client p95 <100 ms. Preserve the failed 948.2/s window and later 955.8/s window (p95 10/9 ms, all OK); the second does not waive the first failure or missing third window. This is unqualified evidence, not a server-capacity limit. Use bounded hypothesis-driven investigation; do not repeat until passing or weaken assertions. Record hardware, workload controls and background activity, restore saved controls and prior lab state, and retain commands/results in CHANGELOG. CNPG/managed PostgreSQL changes remain excluded. Passing 6.7 is not a 6.0 completion condition. **2026-10-28:** one fixed instrumented run passes the first three eligible windows at 994.565/991.000/999.769 reads/s, all OK with p95 3/3/2 ms. Two product pods, 16 workers/connections, drained writes, idle seeder and original acceptance criteria were preserved. All release gates and cleanup pass; no optimization or maximum-capacity claim. [Evidence](CHANGELOG.md#step-67--primary-read-qualification-and-diagnostics--2026-10-28). |
 | 6.8 HTTP/2 transport | 6.4, 6.6, 6.7 | Research Done → Downgrade in performance → Decision to keep HTTP/1.1 | **2026-10-30:** h2c through Envoy gave no performance gain. With equal settings, reads passed 6,000/s against 8,000/s with HTTP/1.1, and p95 latencies were higher; with 32 reader streams, h2c reads also passed 8,000/s. Envoy added two pods. The user kept HTTP/1.1, and the h2c and Envoy implementation is reverted. The drills, scenario 1, the capacity figures and the pod counts stay those of HTTP/1.1 ([decision](CHANGELOG.md#decision-keep-http11--2026-10-30)). Original acceptance condition: All workload calls to product and order use HTTP/2 over cleartext (h2c) with prior knowledge. Qualify a request-level balancer, because a Kubernetes Service balances only TCP connections; the [selection](VERSIONS.md#step-68-request-balancer-selection) is standalone Envoy (user decision of 2026-10-29, after a memory comparison with Istio ambient). Only the reader, producer, interactive seeder and bootstrap seeder send to Envoy, and Envoy sends only to the product and order HTTP pods. The ten PostgreSQL pods, RabbitMQ, order saga, ledger and Flyway Jobs keep their direct paths. Prove actual HTTP, SQL, replication and AMQP paths from deployed configuration and traffic. Application namespaces keep `restricted` Pod Security, also for Envoy; record its identity under [rule 3](#5-local-infrastructure-details). The workloads change to an HTTP/2 client, because the classic Apache API supports only HTTP/1.1; verify Quarkus h2c prior knowledge. Update the [HTTP connection policy](shardshop-workload/shardshop-product-reader/ARCHITECTURE.md#http-connection-policy) and scenario 1 while preserving deadlines, bounded `503`, startup checks and metrics. Re-run 3.9, 4.14, 5.4, 5.5 and 6.1; also re-run any completed 6.2–6.4 drills on the final proxy topology. Compare HTTP/1.1 and HTTP/2 using the [capacity protocol](shardshop-testing/ARCHITECTURE.md#capacity-measurement) and the equal-stock procedure below. Update measured capacity and pod counts. |
-| 6.9 Complete demo and acceptance run | 6.4, 6.8 | Planned | Verify the README and owning runbooks on one disposable fresh lab, preserving the retained lab. Reuse and document the owned-cluster/private-kubeconfig test configuration qualified in 6.0; keep the default `shardshop`/`kind-shardshop` workflow unchanged. Stop the retained lab before creating the uniquely named owned four-node lab; never run both simultaneously. Register cleanup before creation, delete only the disposable lab on every exit, verify its containers/context are gone, and restore the retained lab's prior running state. Do not run the fixed-name destruction recipe against retained data. All eleven architecture scenarios have commands and passing evidence, including full Snowflake lifecycle checks. Every installed component is inside its support window. |
+| 6.9 Complete demo and acceptance run | 6.4, 6.8 | Done | **2026-10-31 acceptance:** after the integration suite (2,300 tests), all 20 steps of the [runbook sequence](shardshop-testing/RUNBOOK.md#acceptance-run-on-a-disposable-lab) passed on the owned lab `shardshop-test-2c4297c59ff67ac9` in 77 minutes. The cleanup left no owned node, container or kubeconfig context. All eleven scenarios have [commands and evidence](shardshop-testing/ARCHITECTURE.md#acceptance-commands-and-evidence), including the generator lifecycle (one registry UID, high-water mark 0 → 31 of 1,023). The retained lab was stopped during the run and runs again on the updated versions. No installed component is outside its support window; the October Java fixes wait for Canonical under the risk acceptance until 2026-11-30. [Evidence](CHANGELOG.md#step-69--complete-demo-and-acceptance-run-done--2026-10-31). Verify the README and owning runbooks on one disposable fresh lab, preserving the retained lab. Reuse and document the owned-cluster/private-kubeconfig test configuration qualified in 6.0; keep the default `shardshop`/`kind-shardshop` workflow unchanged. Stop the retained lab before creating the uniquely named owned four-node lab; never run both simultaneously. Register cleanup before creation, delete only the disposable lab on every exit, verify its containers/context are gone, and restore the retained lab's prior running state. Do not run the fixed-name destruction recipe against retained data. All eleven architecture scenarios have commands and passing evidence, including full Snowflake lifecycle checks. Every installed component is inside its support window. |
 
 Step 6.8 must give both transport measurements identical initial stock per product,
 catalog definitions, workload selection/quantities, warmup, duration and concurrency.

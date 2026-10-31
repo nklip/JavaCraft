@@ -137,7 +137,7 @@ preceding environment variable. The ledger Job uses its content-addressed
 ConfigMap, `ledger-migrator`, `ledger-db-ca`, and the `ledger-db-rw` endpoint/database `ledger`,
 without shard placement settings. The migration readiness gates check the cluster
 and Database's current-generation `applied` status before SQL runs. Each Job runs
-Flyway OSS 13.8.1 on the pinned Canonical OpenJDK 25 runtime. Its
+Flyway OSS 13.12.0 on the pinned Canonical OpenJDK 25 runtime. Its
 [`Dockerfile`](../infra/images/flyway/Dockerfile) copies only Flyway's core and
 PostgreSQL plugin libraries, the PostgreSQL JDBC driver and the licenses from the
 pinned official distribution image;

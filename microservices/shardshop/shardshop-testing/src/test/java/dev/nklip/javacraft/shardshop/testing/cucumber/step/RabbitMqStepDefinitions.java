@@ -46,7 +46,7 @@ public final class RabbitMqStepDefinitions {
     @Then("RabbitMQ exposes the pinned runtime, effective topology and readiness contract")
     public void topology() throws IOException, InterruptedException {
         JsonNode overview = broker.get("/api/overview");
-        assertEquals("4.3.6", overview.path("rabbitmq_version").asText());
+        assertEquals("4.3.7", overview.path("rabbitmq_version").asText());
         assertEquals("27.3.4.19", overview.path("erlang_version").asText());
         boolean streams = false;
         for (JsonNode flag : broker.get("/api/feature-flags")) {
@@ -236,8 +236,8 @@ public final class RabbitMqStepDefinitions {
                 assertArrayEquals(filler, parked.getBody());
                 channel.basicAck(parked.getEnvelope().getDeliveryTag(), false);
             }
-            // RabbitMQ 4.3.6 defaults dead_letter_worker_publisher_confirm_timeout to 180000 ms.
-            // https://github.com/rabbitmq/rabbitmq-server/blob/v4.3.6/deps/rabbit/Makefile
+            // RabbitMQ 4.3.7 defaults dead_letter_worker_publisher_confirm_timeout to 180000 ms.
+            // https://github.com/rabbitmq/rabbitmq-server/blob/v4.3.7/deps/rabbit/Makefile
             System.out.println("RabbitMQ waiting for the default 180-second dead-letter retry after capacity returns");
             GetResponse recovered = delivery(channel, queue + ".dlq", Duration.ofSeconds(210));
             assertArrayEquals(retained, recovered.getBody());

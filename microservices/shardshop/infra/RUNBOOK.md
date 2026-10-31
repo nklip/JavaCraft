@@ -252,7 +252,7 @@ token, database credential or persistent volume.
 
 ## RabbitMQ broker
 
-`cluster-create.sh` provisions one persistent RabbitMQ 4.3.6 broker through the
+`cluster-create.sh` provisions one persistent RabbitMQ 4.3.7 broker through the
 infrastructure Helm release. `shardshop-rabbitmq.shardshop.svc:5672` serves AMQP;
 port 15672 serves management inside the cluster. The `shardshop` vhost contains
 the durable direct exchanges `ledger.commands`, `order.saga-results` and

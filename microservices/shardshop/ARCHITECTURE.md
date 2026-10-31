@@ -4,8 +4,10 @@
 
 ShardShop is a local system-design lab. It runs a regional product catalog,
 sharded orders and an asynchronous ledger on one kind cluster. This overview
-describes the implemented architecture on **2026-10-26**. Remaining work in
-milestones 6–7 covers HTTP/2, operation and cloud features; the
+describes the implemented architecture on **2026-10-26**. Step 6.8 compared
+HTTP/2 and kept HTTP/1.1, and step 6.9 passed the complete acceptance run on
+2026-10-31. Remaining work in the optional milestone 7 covers the cloud target
+and its operation; the
 [detailed documents](#detailed-design-documents) identify the planned behavior.
 
 - **Shape:** six Quarkus applications, three regional PostgreSQL shards, one
@@ -269,7 +271,8 @@ were unchanged. Opt-in diagnostics found mean connection acquisition 0.0078 ms,
 zero sampled pool waiters and zero additional product/reader CPU throttling;
 host paging remained diagnostic. Controls and retained state were restored.
 This qualifies a local operating point, not maximum capacity or simultaneous
-1,000 reads/s and 30 orders/s. HTTP/2 remains planned in 6.8. See
+1,000 reads/s and 30 orders/s. Step 6.8 kept HTTP/1.1, because HTTP/2 gave no
+gain ([decision](CHANGELOG.md#decision-keep-http11--2026-10-30)). See
 [read diagnostic evidence](CHANGELOG.md#step-67--primary-read-qualification-and-diagnostics--2026-10-28).
 The short earlier 30/s capture's rolling 154.613 ms p95 is diagnostic
 only; the earlier valid 10/s latency was 133.783 ms, superseded by the

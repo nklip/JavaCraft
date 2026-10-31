@@ -1,5 +1,5 @@
 # Flyway is only an artifact source. Its Temurin runtime never enters the final image.
-FROM docker.io/flyway/flyway:13.8.1@sha256:6e00e7503a6fd48b12650fc6748088a356009f2aefb60736dc147518629263af AS distribution
+FROM docker.io/flyway/flyway:13.12.0@sha256:3704e17c99e22adb8385552cdf8dd7fbc05ae6c420cb78215d9ac6cf1261a15c AS distribution
 # Keep only the CLI, its core libraries and the PostgreSQL driver; migrations use nothing else.
 # SOURCE_DATE_EPOCH does not normalize timestamps copied into the final layer.
 RUN mkdir -p /dist/drivers \

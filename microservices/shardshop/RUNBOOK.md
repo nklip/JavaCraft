@@ -132,7 +132,7 @@ Surefire/Failsafe supply Mockito's startup agent through their plugin dependenci
 common and idgen declare Mockito for their controlled-source tests.
 Product and workload clients declare Mockito for their controlled IO tests. `shardshop-sharding`
 tests its router against golden vectors whose expected shards were computed
-independently. PostgreSQL 18.6 and RabbitMQ 4.3.6 test-image
+independently. PostgreSQL 18.6 and RabbitMQ 4.3.7 test-image
 properties use the lock's immutable digests. Only the `shardshop-testing`
 scenarios start a container, and only with `-Pintegration`
 ([integration tests](shardshop-testing/RUNBOOK.md#integration-tests-with-testcontainers)).

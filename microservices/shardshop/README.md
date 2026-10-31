@@ -14,9 +14,10 @@ the modules contain all other procedures: configuration, tests, stop, recovery.
 
 - **Tools on `PATH`:** `docker`, `kind`, `kubectl`, `helm`, `helmfile`,
   `skaffold`, `openssl` and `jq`; `webpages.sh` also needs `lsof`. The project
-  never downloads or pins tool binaries. It was tested with Docker Desktop 4.96.3,
-  kind 0.33.0, kubectl 1.36, Helm 4.3.0, Helmfile 1.8.0, Skaffold 2.25.0 and
-  jq 1.7.1; [VERSIONS.md](VERSIONS.md) records their qualification. The lifecycle
+  never downloads or pins tool binaries. It was tested with Docker Desktop 4.97.0,
+  kind 0.33.0, kubectl 1.37 (one minor version newer than the Kubernetes 1.36
+  cluster, as the skew policy permits), Helm 4.3.1, Helmfile 1.8.2, Skaffold
+  2.25.0 and jq 1.7.1; [VERSIONS.md](VERSIONS.md) records their qualification. The lifecycle
   commands need no Python runtime.
 - **Docker memory:** give Docker Desktop's VM at least 12 GB of memory
   (Settings → Resources). Both startup scripts stop early if it has less.
@@ -27,7 +28,7 @@ the modules contain all other procedures: configuration, tests, stop, recovery.
   newer on `PATH` ([details](RUNBOOK.md#java-and-maven)).
 - **Browser checks:** Node.js on `PATH` is required by the Maven verification
   module, including builds run by the lifecycle scripts. Missing Node fails the
-  build. Step 6.0 uses Node **24.22.1 LTS**. For a separate Homebrew keg, prepend
+  build. Step 6.9 uses Node **24.22.2 LTS**. For a separate Homebrew keg, prepend
   `/opt/homebrew/opt/node@24/bin` to `PATH` before running Maven or the lifecycle
   scripts. See the
   [tool qualification and update requirement](VERSIONS.md#nodejs-browser-test-tool).

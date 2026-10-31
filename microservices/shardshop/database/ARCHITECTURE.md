@@ -104,7 +104,7 @@ Argo CD applies them.
 SQL files and a `flyway.toml` that fixes the schema, the history table
 `<schema>.flyway_schema_history`, the location, retries, and session timeouts.
 
-The migration Jobs run Flyway OSS 13.8.1 on the pinned Canonical OpenJDK 25 JRE
+The migration Jobs run Flyway OSS 13.12.0 on the pinned Canonical OpenJDK 25 JRE
 as the stream's migrator. The applications use the same runtime.
 `infra/images/flyway/Dockerfile` assembles this image without an application JAR
 or Maven build and invokes Flyway's main class directly because the JRE image has

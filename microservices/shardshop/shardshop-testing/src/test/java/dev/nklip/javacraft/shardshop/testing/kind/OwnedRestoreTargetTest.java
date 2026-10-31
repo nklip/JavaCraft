@@ -26,7 +26,7 @@ class OwnedRestoreTargetTest {
 
     @Test
     void qualifiedFullyNamedDigestIsAcceptedByThePostgresContainerWithoutStartingDocker() {
-        String image = "docker.io/library/postgres@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336";
+        String image = "docker.io/library/postgres@sha256:979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4";
         assertDoesNotThrow(() -> new org.testcontainers.postgresql.PostgreSQLContainer(OwnedRestoreTarget.qualifiedImage(image)));
         assertThrows(IllegalArgumentException.class, () -> OwnedRestoreTarget.qualifiedImage("postgres:latest"));
     }

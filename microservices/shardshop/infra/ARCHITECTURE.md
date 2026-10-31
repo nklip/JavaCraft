@@ -465,7 +465,7 @@ uses one of the result IDs it reserved for that saga's command envelopes.
 
 ### Broker version
 
-The reviewed community baseline is RabbitMQ **4.3.6**, with a pinned image digest
+The reviewed community baseline is RabbitMQ **4.3.7**, with a pinned image digest
 and the compatible bundled **Erlang/OTP 27.3.4.19** runtime, for native quorum delayed
 retry. This is a rolling-support component, not a multi-year LTS release. Recheck
 the maintained GA release and runtime matrix under [VERSIONS.md](../VERSIONS.md)
@@ -475,7 +475,7 @@ VERSIONS.md and the lock record the support end date of 4.3.x and the date to
 qualify a successor. The successor must also have native delayed retry (4.3 or
 later). Before the cutover, verify its upgrade path and policies, and run
 [scenarios 6 and 7](../shardshop-testing/ARCHITECTURE.md#scenario-6) again when their
-complete drills exist. 4.3.6 is a dated lab baseline, not an indefinite deployment
+complete drills exist. 4.3.7 is a dated lab baseline, not an indefinite deployment
 target.
 
 ### Queue policies

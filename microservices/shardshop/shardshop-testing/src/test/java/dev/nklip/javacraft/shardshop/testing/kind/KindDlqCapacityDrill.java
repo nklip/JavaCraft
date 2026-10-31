@@ -33,7 +33,7 @@ public final class KindDlqCapacityDrill {
     private static final Duration RECOVERY = Duration.ofSeconds(270);
     // The pinned broker retries retained dead letters on a 180-second timer; sequential filler
     // timestamps can straddle a tick.
-    // https://github.com/rabbitmq/rabbitmq-server/blob/v4.3.6/deps/rabbit/src/rabbit_fifo_dlx_worker.erl
+    // https://github.com/rabbitmq/rabbitmq-server/blob/v4.3.7/deps/rabbit/src/rabbit_fifo_dlx_worker.erl
     private static final Duration FULL_RECOVERY = Duration.ofSeconds(450);
 
     private final KindLab lab;

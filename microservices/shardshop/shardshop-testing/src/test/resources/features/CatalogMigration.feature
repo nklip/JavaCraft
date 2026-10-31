@@ -1,6 +1,6 @@
 @catalog-migration
 Feature: Catalog migrations with the Flyway Java API
-  The database layer owns the catalog schema. Flyway 13.8.1 applies database/shard/catalog as catalog_migrator,
+  The database layer owns the catalog schema. Flyway 13.12.0 applies database/shard/catalog as catalog_migrator,
   which acts as catalog_owner, with the settings of the stream's flyway.toml. The roles, the memberships, the
   database hardening and the schema owner are the same as on the lab. The test database is the only shard of the
   region US, thus every seller ID agrees with its placement check.
