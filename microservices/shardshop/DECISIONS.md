@@ -31,6 +31,24 @@ plugin-only XML prereleases of the Quarkus plugin.
 **Result.** Each component has a review date, and the user approves each update
 ([update rules](VERSIONS.md#update-rules)).
 
+### AWS foundation with community modules
+
+**Decision.** Terraform creates the AWS foundation with the community modules
+`terraform-aws-modules/vpc` and `terraform-aws-modules/eks`. The workloads get AWS
+roles through EKS Pod Identity. There is one shared NAT gateway and no customer
+managed KMS key. The user selected the modules and the single NAT gateway on
+2026-10-31.
+
+**Reason.** The modules need much less custom code than plain AWS resources. Pod
+Identity needs no OIDC provider and no service account annotation. A customer
+managed key stays for at least 7 days after its deletion, thus `terraform destroy`
+could not remove everything. One NAT gateway costs a third of three gateways, and
+S3 traffic uses a free gateway endpoint.
+
+**Result.** If the zone of the NAT gateway fails, the workers of all zones lose
+their internet egress. `nat_gateway_per_zone = true` changes this
+([AWS foundation](infra/terraform/README.md#design)).
+
 ### Quarkus LTS in JVM mode
 
 **Decision.** The six applications use the Quarkus 3.40 LTS line in JVM mode with

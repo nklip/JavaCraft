@@ -82,3 +82,12 @@ build/
 **/secrets/
 *.pem
 *.p12
+
+# Provider and module downloads, local state and plans. Keep .terraform.lock.hcl in Git.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+*.tfvars

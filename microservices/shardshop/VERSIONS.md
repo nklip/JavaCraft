@@ -134,6 +134,23 @@ Other host tools: Docker Buildx and Docker Scout from Docker Desktop, `jq` from 
 from `PATH` for the
 [manual reconciliation reset](shardshop-order/RUNBOOK.md#manual-reconciliation-reset).
 
+### AWS foundation
+
+These versions apply only to the optional AWS target in [`infra/terraform/`](infra/terraform/README.md). The
+`.terraform.lock.hcl` file of each root module records the provider versions and their package checksums for all
+platforms. Terraform verifies these checksums at each `terraform init`.
+
+| Component | Version | Support end or policy | Next review |
+|---|---|---|---|
+| Terraform CLI | 1.17.1, Homebrew `hashicorp/tap/terraform` from `PATH` | Maintained stable, no LTS. Business Source License 1.1 | 2026-11-25 |
+| AWS provider | `hashicorp/aws` 6.71.0 | Maintained stable, no published fixed EOL | 2026-11-25 |
+| Providers of the EKS module | `hashicorp/tls` 4.4.2, `hashicorp/time` 0.14.2, `hashicorp/null` 3.3.2, `hashicorp/cloudinit` 2.4.1 | Maintained stable, no published fixed EOL | 2026-11-25 |
+| VPC module | `terraform-aws-modules/vpc/aws` 6.7.3 | Community module, maintained stable | 2026-11-25 |
+| EKS module | `terraform-aws-modules/eks/aws` 21.29.0 | Community module, maintained stable | 2026-11-25 |
+| EKS Kubernetes | 1.36 | EKS standard support until 2027-08-02. CNPG 1.30 supports 1.34–1.36 | 2026-11-28 |
+| EKS add-ons and node AMI | The newest version for EKS 1.36 when a node group or add-on is created | AWS managed | At each apply |
+| AWS CLI | 2.39.3, official macOS installer (universal binary) from `PATH` | Maintained stable, no LTS | 2026-11-25 |
+
 ## Update rules
 
 ### Approval
@@ -466,3 +483,4 @@ The full text of each review is in the Git tag `shardshop-docs-full-2026-10-31` 
 | 2026-10-29 | Step 6.8 security decision | Step 6.8 permitted with the security review open. |
 | 2026-10-29 | Step 6.8 balancer and HTTP/2 client | Envoy 1.40.2 and h2c selected. Reverted 2026-10-30, HTTP/1.1 kept. |
 | 2026-10-31 | Security review | Docker Desktop, Flyway, PostgreSQL, RabbitMQ, host tools and plugins updated. Risk acceptance until 2026-11-30. |
+| 2026-10-31 | Step 7.1 AWS foundation | Terraform 1.17.1, AWS provider 6.71.0, VPC module 6.7.3, EKS module 21.29.0 and EKS 1.36 selected. |

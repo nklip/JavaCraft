@@ -639,3 +639,16 @@ All 20 steps of the documented acceptance sequence passed on one disposable lab 
 The generator registry kept one UID, with high-water marks 0, 5, 26 and 31.
 Then `cluster-create.sh` and `up.sh` gave the updates to the retained lab.
 See the [acceptance run evidence](shardshop-testing/evidence/2026-10-31-acceptance-run.json).
+
+## Milestone 7: AWS deployment (optional)
+
+<a id="step-71"></a>
+### Step 7.1 — Terraform AWS foundation
+
+**Done 2026-10-31.**
+[`infra/terraform/`](infra/terraform/README.md) has two root modules. `state/` creates the S3 state bucket. `aws/` creates the VPC, EKS 1.36, one `t4g.medium` node group in each zone, seven ECR repositories, the backup bucket and the Pod Identity roles.
+The user attached the scoped operator policy and approved an estimate of US$0.40.
+The run in `eu-west-2` lasted 31 minutes and cost approximately US$0.25 by the price list.
+The apply created 88 resources in 13 minutes. Three arm64 nodes were `Ready`, one in each zone, and all five add-ons were healthy.
+A second run stopped at the S3 state lock. `terraform destroy` removed all 93 resources, and direct queries found nothing left.
+Lesson: a VPN with rotating exit addresses blocks a `/32` API filter.

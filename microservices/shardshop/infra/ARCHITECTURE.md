@@ -16,6 +16,9 @@ Argo CD GitOps, and may add cloud-only durability such as S3 backups with WAL
 archiving and a three-broker RabbitMQ. No local behavior or check may depend on a
 cloud service.
 
+The [AWS foundation](terraform/README.md) of step 7.1 describes the Terraform
+modules, the operator permissions and the costs.
+
 All runtimes, libraries, build plugins, and images follow [VERSIONS.md](../VERSIONS.md):
 LTS where available, otherwise maintained stable GA releases with explicit upgrade
 deadlines, plus the named support-policy exception for the requested

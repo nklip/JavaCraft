@@ -99,6 +99,12 @@ sources:
   canonical_jdk: https://hub.docker.com/r/ubuntu/jdk
   canonical_jre: https://hub.docker.com/r/ubuntu/jre
   canonical_java_rocks: https://ubuntu.com/developers/docs/tutorials/java-advanced/rocks-use/
+  terraform_releases: https://releases.hashicorp.com/terraform/1.17.1/
+  terraform_license: https://www.hashicorp.com/en/bsl
+  terraform_aws_provider: https://registry.terraform.io/providers/hashicorp/aws/6.71.0
+  terraform_aws_modules_vpc: https://registry.terraform.io/modules/terraform-aws-modules/vpc/aws/6.7.3
+  terraform_aws_modules_eks: https://registry.terraform.io/modules/terraform-aws-modules/eks/aws/21.29.0
+  eks_kubernetes_versions: https://docs.aws.amazon.com/eks/latest/userguide/kubernetes-versions.html
 support_policies:
   temurin_25:
     model: community_lts
@@ -302,6 +308,32 @@ support_policies:
     note: 0.0.2 is a pre-1.0 release published 2023-01-15 with no published LTS or
       future maintenance commitment. Review releases/advisories monthly; qualify on
       Java 25 in steps 0.3 and 3.3.
+  terraform:
+    model: maintained_stable
+    checked_on: '2026-10-31'
+    review_by: '2026-11-25'
+    source_refs: [terraform_releases, terraform_license]
+    eol: null
+    note: No LTS. 1.17.1 is the newest release on 2026-10-31. Business Source License
+      1.1, free use for this project. Only for the optional AWS target (step 7.1).
+  terraform_aws_dependencies:
+    model: maintained_stable
+    checked_on: '2026-10-31'
+    review_by: '2026-11-25'
+    source_refs: [terraform_aws_provider, terraform_aws_modules_vpc, terraform_aws_modules_eks]
+    eol: null
+    note: The AWS provider and the community modules have no published fixed EOL.
+      Exact pins in infra/terraform; provider checksums in each .terraform.lock.hcl.
+  eks_1_36:
+    model: vendor_standard_support
+    checked_on: '2026-10-31'
+    review_by: '2026-11-28'
+    standard_support_until: '2027-08-02'
+    extended_support_until: '2028-08-02'
+    source_refs: [eks_kubernetes_versions]
+    eol: '2027-08-02'
+    note: The upgrade policy STANDARD keeps the cluster out of paid extended support.
+      CNPG 1.30 supports Kubernetes 1.34-1.36.
 compatibility:
   java:
     version: '25'
@@ -931,6 +963,47 @@ tools:
       url: "https://desktop.docker.com/mac/main/arm64/240144/Docker.dmg"
       sha256: "e513bbfeca246165595e2f17cabf6579936f36057f3f4fb689c619e6aac6d188"
       checksum_url: "https://desktop.docker.com/mac/main/arm64/240144/checksums.txt"
+  terraform:
+    version: 1.17.1
+    platform: darwin/arm64
+    checked_on: '2026-10-31'
+    review_by: '2026-11-25'
+    url: https://releases.hashicorp.com/terraform/1.17.1/terraform_1.17.1_darwin_arm64.zip
+    sha256: b1ecb3fe0d0a0290c1ab6f83d967d43f25da05d0b671ee0fb355252268dce95a
+    checksum_url: https://releases.hashicorp.com/terraform/1.17.1/terraform_1.17.1_SHA256SUMS
+    installed_executable_sha256: 8f6a015b7b0d76933fccb5be4487d3d0c69edb49035483510b2b90727d83412e
+    verification: Step 7.1 (2026-10-31). The user approved the upgrade from 1.14.8. The
+      Homebrew formula hashicorp/tap/terraform installs the official archive with the
+      SHA-256 of SHA256SUMS; the archive was not downloaded separately. brew trust
+      covers only this formula.
+  aws_cli:
+    version: 2.39.3
+    platform: darwin (universal binary, arm64 used)
+    checked_on: '2026-10-31'
+    review_by: '2026-11-25'
+    verification: Step 7.1 (2026-10-31). The user updated 2.11.27 with the official
+      macOS installer (pkgutil com.amazon.aws.cli2 2.39.3). No installer checksum check.
+terraform:
+  checked_on: '2026-10-31'
+  review_by: '2026-11-25'
+  roots: [infra/terraform/state, infra/terraform/aws]
+  checksums: Each root has a .terraform.lock.hcl with the h1 hash for darwin/arm64 and
+    the zh hashes of all platforms from the signed registry checksums.
+  providers:
+    hashicorp/aws: 6.71.0
+    hashicorp/cloudinit: 2.4.1
+    hashicorp/null: 3.3.2
+    hashicorp/time: 0.14.2
+    hashicorp/tls: 4.4.2
+  modules:
+    terraform-aws-modules/vpc/aws: 6.7.3
+    terraform-aws-modules/eks/aws: 21.29.0
+  eks_kubernetes_version: '1.36'
+  qualification_7_1:
+    run: 2026-10-31T19:47:21Z to 2026-10-31T20:18:25Z, eu-west-2, apply 88 and destroy 93 resources.
+    observed: EKS platform eks.17; node AMI 1.36.5-20261031 (AL2023_ARM_64_STANDARD);
+      vpc-cni v1.23.2-eksbuild.8, eks-pod-identity-agent v1.4.1-eksbuild.3, kube-proxy
+      v1.36.0-eksbuild.58, coredns v1.14.7-eksbuild.22, aws-ebs-csi-driver v1.67.2-eksbuild.1.
 vendor_bundles:
   rabbitmq:
     image_ref: rabbitmq
