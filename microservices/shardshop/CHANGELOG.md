@@ -662,3 +662,13 @@ The [runbook](infra/terraform/README.md#install-the-database-tier) installed the
 `kind-topology` and `kind-database-drill` on all three shards passed on EKS.
 The run lasted 69 minutes and cost approximately US$0.40 (estimate US$0.85). No volume stayed.
 Lesson: the claim volumes are outside the Terraform state, thus remove the database tier before the destroy.
+
+<a id="step-73"></a>
+### Step 7.3 — Cloud durability
+
+**Done 2026-11-01.**
+On EKS, the Barman Cloud Plugin archives WAL and base backups of each cluster to S3 with Pod Identity. A point-in-time restore of all four clusters returned only the row before its target time.
+Terraform keeps write-only runtime secrets in Secrets Manager. The Secrets Store CSI add-on syncs them through a holder pod.
+Three brokers keep a leader for each three-member quorum queue when one stops. kind renders stay unchanged.
+The run lasted 2 hours and cost approximately US$0.90 (limit US$2.00).
+Lessons: open the webhook port 10260, restart the operator after the first release, use `t4g.large`, and enable quorum membership reconciliation.

@@ -12,12 +12,13 @@ acceptance scenario in this document must run and pass there. A later AWS target
 (EKS provisioned with Terraform, milestone 7 in the [plan](../PLAN.md)) is optional. It reuses the same
 shared Helm templates through environment values and the same verified operator
 Helm charts and values, delivers the database layer and the applications through
-Argo CD GitOps, and may add cloud-only durability such as S3 backups with WAL
-archiving and a three-broker RabbitMQ. No local behavior or check may depend on a
-cloud service.
+Argo CD GitOps, and adds cloud-only durability: S3 backups with WAL archiving, a
+three-broker RabbitMQ and runtime secrets from AWS Secrets Manager. No local
+behavior or check may depend on a cloud service.
 
 The [AWS foundation](terraform/README.md) describes the Terraform modules, the
-installation of the database tier on EKS, the operator permissions and the costs.
+installation of the database tier on EKS, its durability, the operator permissions
+and the costs.
 
 All runtimes, libraries, build plugins, and images follow [VERSIONS.md](../VERSIONS.md):
 LTS where available, otherwise maintained stable GA releases with explicit upgrade

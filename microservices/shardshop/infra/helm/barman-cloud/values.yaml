@@ -1,0 +1,9 @@
+# Values for the vendored Barman Cloud Plugin chart 0.8.1 (plugin v0.15.1), verified in
+# versions.lock.yaml. Only the EKS target uses this plugin. It needs cert-manager, and it
+# must run in the namespace of the CloudNativePG operator.
+image:
+  tag: "v0.15.1@sha256:c75acad19a36e8176cfe2885761ff1b836c6ef977d7257e298c99a28b5c302ef"
+# The plugin adds this sidecar to each PostgreSQL pod. The sidecar archives the WAL and
+# writes the base backups.
+sidecarImage:
+  tag: "v0.15.1@sha256:2287a793a804db751edd0d07d44cd549e357677e98a800eb12e2cf7c0d53f9b0"

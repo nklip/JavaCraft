@@ -1,0 +1,54 @@
+{{- /* Continuous WAL archiving and base backups of every database cluster to S3 (EKS). */ -}}
+{{- if and (eq .Values.render "infrastructure") .Values.backup }}
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: shardshop-backups
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  retentionPolicy: {{ .Values.backup.retentionPolicy | quote }}
+  configuration:
+    # Each cluster writes below its own name, for example shard-a/. Its pod identity
+    # can write only there.
+    destinationPath: {{ required "backup.destinationPath must name the backup bucket of the foundation" .Values.backup.destinationPath | quote }}
+    endpointURL: {{ .Values.backup.endpointURL | quote }}
+    s3Credentials:
+      inheritFromIAMRole: true
+    wal:
+      compression: gzip
+    data:
+      compression: gzip
+  instanceSidecarConfiguration:
+    env:
+      - name: AWS_DEFAULT_REGION
+        value: {{ .Values.backup.region | quote }}
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi
+{{- $clusters := list }}
+{{- range .Values.shards }}
+{{- $clusters = append $clusters .name }}
+{{- end }}
+{{- range append $clusters "ledger-db" }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ printf "%s-base" . | quote }}
+  namespace: {{ $.Release.Namespace | quote }}
+spec:
+  cluster:
+    name: {{ . | quote }}
+  schedule: {{ $.Values.backup.schedule | quote }}
+  # The first base backup starts with the cluster. A point-in-time restore needs one.
+  immediate: true
+  backupOwnerReference: self
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+{{- end }}
+{{- end }}

@@ -150,6 +150,9 @@ platforms. Terraform verifies these checksums at each `terraform init`.
 | EKS Kubernetes | 1.36 | EKS standard support until 2027-08-02. CNPG 1.30 supports 1.34–1.36 | 2026-11-28 |
 | EKS add-ons and node AMI | The newest version for EKS 1.36 when a node group or add-on is created | AWS managed | At each apply |
 | AWS CLI | 2.39.3, official macOS installer (universal binary) from `PATH` | Maintained stable, no LTS | 2026-11-25 |
+| Barman Cloud Plugin | v0.15.1 with its sidecar, vendored chart `plugin-barman-cloud` 0.8.1 in `infra/helm/barman-cloud/` | Maintained stable 0.x, no published fixed EOL. Needs CNPG 1.26 or newer and cert-manager | 2026-11-25 |
+| cert-manager | EKS community add-on, the newest version for EKS 1.36 at apply time (v1.21.3-eksbuild.1 on 2026-11-01) | cert-manager 1.21 supports Kubernetes 1.33–1.36 until the release of 1.23 | At each apply |
+| AWS Secrets Store CSI provider | EKS add-on `aws-secrets-store-csi-driver-provider`, the newest version at apply time (v3.1.4-eksbuild.3 on 2026-11-01) | AWS managed | At each apply |
 
 ## Update rules
 
@@ -252,6 +255,15 @@ change a VEX statement, bypass a scan gate or extend a deadline. The lock record
 Other recorded findings: RabbitMQ 4.3.7 has 6 critical and 34 high, all in the Go stdlib 1.22.2 of `gosu`. The
 chart never runs `gosu`. The shard and ledger PostgreSQL image has 0 critical and 4 high. The migration image has no
 vulnerable package.
+
+### EKS risk acceptance until 2026-11-30
+
+On 2026-11-01, the user accepted the findings of the Barman Cloud Plugin v0.15.1 images for the disposable EKS
+runs until **2026-11-30**. Docker Scout found 3 critical and 19 high in the plugin and 5 critical and 23 high in its
+sidecar, in Go stdlib 1.26.6, `golang.org/x/net` 0.58.0, UBI 9 packages and Python packages. No newer release
+exists, and the images have no cosign signature. The acceptance applies only to the pinned images on an EKS cluster
+that the runbook destroys after the run. The lock records the findings in `images.barman_cloud_plugin` and
+`images.barman_cloud_sidecar`.
 
 ### Canonical OpenJDK 25.0.5
 
@@ -484,3 +496,4 @@ The full text of each review is in the Git tag `shardshop-docs-full-2026-10-31` 
 | 2026-10-29 | Step 6.8 balancer and HTTP/2 client | Envoy 1.40.2 and h2c selected. Reverted 2026-10-30, HTTP/1.1 kept. |
 | 2026-10-31 | Security review | Docker Desktop, Flyway, PostgreSQL, RabbitMQ, host tools and plugins updated. Risk acceptance until 2026-11-30. |
 | 2026-10-31 | Step 7.1 AWS foundation | Terraform 1.17.1, AWS provider 6.71.0, VPC module 6.7.3, EKS module 21.29.0 and EKS 1.36 selected. |
+| 2026-11-01 | Step 7.3 cloud durability | Barman Cloud Plugin 0.15.1 (chart 0.8.1, chart signature verified, images unsigned), the cert-manager and Secrets Store CSI add-ons selected. External Secrets Operator not selected, because no supported release lists Kubernetes 1.36. |

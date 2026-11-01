@@ -33,9 +33,9 @@ variable "nat_gateway_per_zone" {
 }
 
 variable "node_instance_type" {
-  description = "Graviton (arm64) instance type of the workers. The images are linux/arm64 only. The default holds the database tier and the system pods, but not the applications."
+  description = "Graviton (arm64) instance type of the workers. The images are linux/arm64 only. The default holds the database tier with its backup sidecars, three brokers, a restore cluster and the add-ons, but not the applications."
   type        = string
-  default     = "t4g.medium"
+  default     = "t4g.large"
 }
 
 variable "nodes_per_zone" {

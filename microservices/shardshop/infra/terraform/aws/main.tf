@@ -35,6 +35,9 @@ locals {
   # (the shards of infra/shards.yaml and the ledger).
   images            = [for artifact in yamldecode(file("${path.module}/../../../skaffold.yaml")).build.artifacts : basename(artifact.image)]
   database_clusters = concat([for shard in yamldecode(file("${path.module}/../../shards.yaml")).shards : shard.name], ["ledger-db"])
+
+  # The EKS values of the shared chart name the runtime secrets that the cluster syncs.
+  runtime_secrets = yamldecode(file("${path.module}/../../helm/shardshop/eks-values.yaml")).runtimeSecrets
 }
 
 module "vpc" {
@@ -102,6 +105,25 @@ module "eks" {
         role_arn        = aws_iam_role.ebs_csi.arn
         service_account = "ebs-csi-controller-sa"
       }]
+    }
+    # The Barman Cloud Plugin of the backups needs cert-manager.
+    cert-manager = {}
+    # The driver writes the Secrets Manager values also to Kubernetes Secrets.
+    aws-secrets-store-csi-driver-provider = {
+      configuration_values = jsonencode({ secrets-store-csi-driver = { syncSecret = { enabled = true } } })
+    }
+  }
+
+  # The cert-manager add-on serves its admission webhook on 10260, which is not one of the
+  # webhook ports of the recommended node rules.
+  node_security_group_additional_rules = {
+    ingress_cluster_10260_webhook = {
+      description                   = "Cluster API to the cert-manager webhook"
+      protocol                      = "tcp"
+      from_port                     = 10260
+      to_port                       = 10260
+      type                          = "ingress"
+      source_cluster_security_group = true
     }
   }
 

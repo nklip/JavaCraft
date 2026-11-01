@@ -97,3 +97,70 @@ resource "aws_eks_pod_identity_association" "backup" {
   service_account = each.key
   role_arn        = aws_iam_role.backup[each.key].arn
 }
+
+# A point-in-time restore creates the new cluster <cluster>-pitr. Its pods can only read the
+# backups of the source cluster.
+resource "aws_iam_role" "restore" {
+  for_each = toset(local.database_clusters)
+
+  name               = "${local.name}-restore-${each.key}"
+  assume_role_policy = data.aws_iam_policy_document.pod_identity_trust.json
+}
+
+data "aws_iam_policy_document" "restore" {
+  for_each = toset(local.database_clusters)
+
+  statement {
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.backups.arn]
+  }
+
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.backups.arn}/${each.key}/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "restore" {
+  for_each = toset(local.database_clusters)
+
+  name   = "restore-prefix"
+  role   = aws_iam_role.restore[each.key].id
+  policy = data.aws_iam_policy_document.restore[each.key].json
+}
+
+resource "aws_eks_pod_identity_association" "restore" {
+  for_each = toset(local.database_clusters)
+
+  cluster_name    = module.eks.cluster_name
+  namespace       = "shardshop"
+  service_account = "${each.key}-pitr"
+  role_arn        = aws_iam_role.restore[each.key].arn
+}
+
+# The holder pod of the shared chart mounts the runtime secrets. The Secrets Store CSI
+# provider reads them with this role.
+resource "aws_iam_role" "runtime_secrets" {
+  name               = "${local.name}-runtime-secrets"
+  assume_role_policy = data.aws_iam_policy_document.pod_identity_trust.json
+}
+
+data "aws_iam_policy_document" "runtime_secrets" {
+  statement {
+    actions   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+    resources = concat([for secret in aws_secretsmanager_secret.database : secret.arn], [aws_secretsmanager_secret.broker.arn])
+  }
+}
+
+resource "aws_iam_role_policy" "runtime_secrets" {
+  name   = "read-runtime-secrets"
+  role   = aws_iam_role.runtime_secrets.id
+  policy = data.aws_iam_policy_document.runtime_secrets.json
+}
+
+resource "aws_eks_pod_identity_association" "runtime_secrets" {
+  cluster_name    = module.eks.cluster_name
+  namespace       = "shardshop"
+  service_account = "shardshop-runtime-secrets"
+  role_arn        = aws_iam_role.runtime_secrets.arn
+}

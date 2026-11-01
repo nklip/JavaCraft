@@ -1,6 +1,7 @@
-# Storage and placement constraints for the EKS foundation of infra/terraform: one worker
-# group in each of three zones. The runbook in infra/terraform/README.md sets the ECR copy
-# of the Flyway image, because the registry name contains the AWS account ID.
+# Storage, placement, durability and secret settings for the EKS foundation of
+# infra/terraform: one worker group in each of three zones. The runbook in
+# infra/terraform/README.md sets the ECR copy of the Flyway image and the backup bucket,
+# because their names contain the AWS account ID.
 orderProducer:
   runName: eks-saga-v1
 
@@ -21,6 +22,37 @@ postgresql:
     podAntiAffinityType: required
     topologyKey: topology.kubernetes.io/zone
 
+# Continuous WAL archiving and a daily base backup of each database cluster.
+backup:
+  endpointURL: https://s3.eu-west-2.amazonaws.com
+  region: eu-west-2
+  retentionPolicy: 7d
+  schedule: "0 0 3 * * *"
+
+# Terraform reads this list and creates one AWS Secrets Manager secret for each role,
+# and one for the broker.
+runtimeSecrets:
+  prefix: shardshop/
+  region: eu-west-2
+  databaseRoles:
+    - catalog_migrator
+    - ordering_migrator
+    - product_app
+    - order_app
+    - ordering_operator
+    - ordering_cdc
+    - ledger_migrator
+    - ledger_app
+
+# Three brokers, one in each zone. Each quorum queue has a member on each broker.
 rabbitmq:
+  replicas: 3
   storage:
     storageClass: shardshop-gp3
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: shardshop-rabbitmq
+          topologyKey: topology.kubernetes.io/zone

@@ -67,6 +67,24 @@ connection, thus one `/32` filter blocks kubectl.
 **Result.** IAM authentication and the access entries are the only protection of
 an open endpoint. Destroy the foundation after each run.
 
+### EKS durability with managed add-ons
+
+**Decision.** On EKS, the Barman Cloud Plugin archives the WAL and writes the base
+backups of each database cluster to S3, with cert-manager as an EKS community
+add-on. The AWS Secrets Store CSI add-on syncs the runtime secrets from AWS Secrets
+Manager into the Kubernetes Secrets of the shared chart, through a holder pod.
+RabbitMQ stays the StatefulSet of the shared chart with three brokers. The user
+selected these three choices on 2026-11-01.
+
+**Reason.** CloudNativePG 1.31.0 removes the in-tree `barmanObjectStore`, and the
+CNPG upgrade is due. External Secrets Operator supports only its newest release,
+which does not list Kubernetes 1.36. AWS selects the add-on versions for the EKS
+version. The shared StatefulSet keeps one broker definition for kind and EKS.
+
+**Result.** A synced Secret exists only while the holder pod mounts it. The
+Terraform `users_json` repeats the users and permissions of `users.jq`. kind keeps
+one broker, its logical dumps and the Secrets of `cluster-create.sh`.
+
 ### Quarkus LTS in JVM mode
 
 **Decision.** The six applications use the Quarkus 3.40 LTS line in JVM mode with

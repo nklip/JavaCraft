@@ -13,6 +13,7 @@
         "iam:ListRoles",
         "logs:DescribeLogGroups",
         "s3:ListAllMyBuckets",
+        "secretsmanager:ListSecrets",
         "tag:GetResources"
       ],
       "Resource": "*"
@@ -173,6 +174,18 @@
       "Sid": "EcrLogin",
       "Effect": "Allow",
       "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "SecretsManagerSecrets",
+      "Effect": "Allow",
+      "Action": "secretsmanager:*",
+      "Resource": "arn:aws:secretsmanager:eu-west-2:*:secret:shardshop/*"
+    },
+    {
+      "Sid": "SecretsManagerPasswords",
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetRandomPassword",
       "Resource": "*"
     },
     {

@@ -62,6 +62,13 @@ resources:
 affinity:
   {{- toYaml $affinity | nindent 2 }}
 {{- end -}}
+{{- if .root.Values.backup }}
+plugins:
+  - name: barman-cloud.cloudnative-pg.io
+    isWALArchiver: true
+    parameters:
+      barmanObjectName: shardshop-backups
+{{- end -}}
 {{- end -}}
 
 {{/* Restricted Pod Security without fixed IDs: each application image selects its non-root user. */}}

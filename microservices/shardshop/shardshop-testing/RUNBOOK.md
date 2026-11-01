@@ -136,6 +136,9 @@ and deployed lab with all nine running application pods. The saga scenario creat
 two scoped orders for the gate's own buyer. The other scenarios only observe.
 Run the default suite separately from the Testcontainers `integration` profile.
 
+The `eks-*` scenarios of `EksDurability.feature` run only on the
+[EKS target](../infra/terraform/README.md#run-the-drills). No kind tag selects them.
+
 Disruptive scenarios require explicit selection. `kind-drill` combines
 `kind-database-drill`, `kind-workload-drill`, `kind-saga-drill`, `kind-retry-drill`,
 `kind-replica-read-drill` and `kind-failover-drill`. The lifecycle gates are also

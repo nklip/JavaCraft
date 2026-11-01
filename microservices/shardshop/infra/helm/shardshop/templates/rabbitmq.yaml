@@ -1,4 +1,14 @@
 {{- if eq .Values.render "infrastructure" }}
+{{- $configuration := .Files.Get "files/rabbitmq/rabbitmq.conf" }}
+{{- $plugins := .Files.Get "files/rabbitmq/enabled_plugins" }}
+{{- $definitions := .Files.Get "files/rabbitmq/definitions.json" }}
+{{- $cluster := gt (int .Values.rabbitmq.replicas) 1 }}
+{{- if $cluster }}
+{{- /* Several brokers form one cluster, and each quorum queue has a member on each broker. */}}
+{{- $configuration = printf "%s%squorum_queue.continuous_membership_reconciliation.target_group_size = %d\n" $configuration (.Files.Get "files/rabbitmq/cluster.conf") (int .Values.rabbitmq.replicas) }}
+{{- $plugins = replace "[rabbitmq_management]" "[rabbitmq_management,rabbitmq_peer_discovery_k8s]" $plugins }}
+{{- $definitions = replace "\"x-quorum-initial-group-size\": 1" (printf "\"x-quorum-initial-group-size\": %d" (int .Values.rabbitmq.replicas)) $definitions }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -8,11 +18,11 @@ metadata:
     helm.sh/resource-policy: keep
 data:
   rabbitmq.conf: |
-    {{- .Files.Get "files/rabbitmq/rabbitmq.conf" | nindent 4 }}
+    {{- $configuration | nindent 4 }}
   enabled_plugins: |
-    {{- .Files.Get "files/rabbitmq/enabled_plugins" | nindent 4 }}
+    {{- $plugins | nindent 4 }}
   definitions.json: |
-    {{- .Files.Get "files/rabbitmq/definitions.json" | nindent 4 }}
+    {{- $definitions | nindent 4 }}
 ---
 apiVersion: v1
 kind: Service
@@ -63,6 +73,10 @@ metadata:
 spec:
   serviceName: shardshop-rabbitmq-headless
   replicas: {{ .Values.rabbitmq.replicas }}
+  {{- if $cluster }}
+  # The -0 seed must be able to wait for its peers after a full restart.
+  podManagementPolicy: Parallel
+  {{- end }}
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: Retain
     whenScaled: Retain
@@ -75,7 +89,7 @@ spec:
         app.kubernetes.io/name: shardshop-rabbitmq
         app.kubernetes.io/part-of: shardshop
       annotations:
-        shardshop.javacraft/configuration: {{ printf "%s%s%s" (.Files.Get "files/rabbitmq/rabbitmq.conf") (.Files.Get "files/rabbitmq/enabled_plugins") (.Files.Get "files/rabbitmq/definitions.json") | sha256sum | quote }}
+        shardshop.javacraft/configuration: {{ printf "%s%s%s" $configuration $plugins $definitions | sha256sum | quote }}
     spec:
       automountServiceAccountToken: false
       enableServiceLinks: false
@@ -114,8 +128,17 @@ spec:
               value: /tmp/rabbitmq
             - name: RABBITMQ_USE_LONGNAME
               value: "true"
+            {{- if $cluster }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: RABBITMQ_NODENAME
+              value: {{ printf "rabbit@$(POD_NAME).shardshop-rabbitmq-headless.%s.svc.cluster.local" .Release.Namespace | quote }}
+            {{- else }}
             - name: RABBITMQ_NODENAME
               value: {{ printf "rabbit@shardshop-rabbitmq-0.shardshop-rabbitmq-headless.%s.svc.cluster.local" .Release.Namespace | quote }}
+            {{- end }}
             - name: RABBITMQ_CONFIG_FILE
               value: /etc/rabbitmq/config/rabbitmq
             - name: RABBITMQ_ENABLED_PLUGINS_FILE
