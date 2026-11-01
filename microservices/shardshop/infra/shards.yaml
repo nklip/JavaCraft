@@ -1,4 +1,4 @@
-# Regions describe business ownership in this local lab, not physical node placement.
+# Regions describe business ownership in the local deployment, not physical node placement.
 # Routing order and regions are part of data ownership. Changing either requires
 # a coordinated reset/reseed in this lab; it is not an online resharding operation.
 shards:

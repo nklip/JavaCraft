@@ -1,11 +1,11 @@
 # AWS foundation
 
-[ShardShop](../../README.md) › [Infrastructure](../README.md) › **AWS foundation** · [Plan milestone 7](../../PLAN.md#milestone-7-aws-deployment-optional)
+[ShardShop](../../README.md) › [Infrastructure](../README.md) › **AWS foundation** · [Plan milestone 7](../../PLAN.md#milestone-7-aws-deployment)
 
-Terraform creates the AWS foundation of the optional milestone 7: a VPC, an EKS
+Terraform creates the AWS foundation of milestone 7: a VPC, an EKS
 cluster, ECR repositories, a backup bucket, the runtime secrets and the IAM roles of
 the workloads. The [runbook](#install-the-database-tier) then installs the database
-tier of the shared chart on EKS and runs the drills. The local kind lab does not use
+tier of the shared chart on EKS and runs the drills. The local deployment does not use
 these resources. The versions are in [VERSIONS.md](../../VERSIONS.md#aws-foundation).
 
 ## Design

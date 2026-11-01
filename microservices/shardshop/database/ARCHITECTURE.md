@@ -381,4 +381,4 @@ defines the audit for lost orders. These rules apply to backup and restore:
   recovery metadata. A restore keeps the latest allocator high-water mark.
 - Replicas also copy accidental deletes, thus they do not replace backups.
   Base backups with continuous WAL archiving for point-in-time recovery belong to
-  the optional [EKS target](../infra/terraform/README.md#design).
+  the [AWS deployment](../infra/terraform/README.md#design).

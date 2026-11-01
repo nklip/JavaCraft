@@ -1,5 +1,5 @@
 # Values for the vendored CloudNativePG chart 0.29.1 (operator 1.30.1), verified in
-# versions.lock.yaml. The local lab and any later cloud target share this file.
+# versions.lock.yaml. The local deployment and the AWS deployment share this file.
 image:
   # The tag keeps the release readable and the digest pins the bytes. The chart also
   # uses this reference as OPERATOR_IMAGE_NAME, so every PostgreSQL pod's bootstrap

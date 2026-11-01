@@ -12,9 +12,10 @@ step, is in the Git tag `shardshop-docs-full-2026-10-31`.
   2026-10-31 ([record](CHANGELOG.md#step-69)).
 - **Step 6.8 ended as research.** HTTP/2 gave no performance gain, thus ShardShop
   keeps HTTP/1.1 ([decision](DECISIONS.md#keep-http11)).
-- **Milestone 7 (AWS) is optional.** Steps 7.1, 7.2 and 7.3 are **Done**
+- **Milestone 7 (AWS deployment):** steps 7.1 to 7.4 are **Done**
   ([7.1](CHANGELOG.md#step-71), [7.2](CHANGELOG.md#step-72),
-  [7.3](CHANGELOG.md#step-73)). The other steps are **Planned**.
+  [7.3](CHANGELOG.md#step-73), [7.4](CHANGELOG.md#step-74)). The other steps are
+  **Planned**.
 - **Version deadlines:** the local risk acceptance ends and the CNPG upgrade is
   due on 2026-11-30 ([open findings](VERSIONS.md#open-findings-and-risk-acceptance)).
 
@@ -172,9 +173,9 @@ Each step name links to its CHANGELOG entry. Step 0.5 ran after step 2.4.
 | [6.8 HTTP/2 transport](CHANGELOG.md#step-68) | 6.4, 6.6, 6.7 | Research Done → Downgrade in performance → Decision to keep HTTP/1.1 |
 | [6.9 Complete demo and acceptance run](CHANGELOG.md#step-69) | 6.4, 6.8 | Done |
 
-## Milestone 7: AWS deployment (optional)
+## Milestone 7: AWS deployment
 
-This optional track adds a cloud target without a change to the local behavior:
+This milestone adds the AWS deployment without a change to the local deployment:
 every earlier step must still run and pass on kind. Qualify each new tool,
 provider and service under [VERSIONS.md](VERSIONS.md) before use. Record the costs
 and the teardown commands.
@@ -212,9 +213,24 @@ Depends on 7.2. Status: **Done** ([record](CHANGELOG.md#step-73)).
 - Runtime secrets come from AWS Secrets Manager.
 - The local profile keeps its single broker and logical dumps.
 
-### 7.4 GitOps delivery and cloud acceptance
+### 7.4 Local and AWS architecture overview
 
-Depends on 7.3. Status: **Planned**.
+Depends on 7.3. Status: **Done** ([record](CHANGELOG.md#step-74)).
+
+- [`microservices/README.md`](../README.md#modules) lists ShardShop, and the
+  ShardShop README has the same navigation link back as the other modules.
+- [ARCHITECTURE.md](ARCHITECTURE.md) explains what the local deployment and the
+  AWS deployment share, what only the local deployment has, and what the AWS
+  deployment adds.
+- Mermaid diagrams show this: the high-level design first, then the low-level
+  design of the delivery, the network and placement, the backups, the secrets and
+  the broker.
+- The text and the diagrams use ASD-STE100. Use a diagram instead of long text,
+  and clarity instead of small details.
+
+### 7.5 GitOps delivery and cloud acceptance
+
+Depends on 7.4. Status: **Planned**.
 
 - Argo CD applies the [database layer](database/ARCHITECTURE.md#database-change-management)
   and deploys the six application artifacts, with both order processes, from the
@@ -236,9 +252,9 @@ Depends on 7.3. Status: **Planned**.
 - All eleven scenarios pass on EKS with evidence and costs. The local Helmfile
   workflow still passes step 6.9 without changes.
 
-### 7.5 Stable AWS webpage URLs and access control
+### 7.6 Stable AWS webpage URLs and access control
 
-Depends on 4.10 and 7.4. Status: **Planned**.
+Depends on 4.10 and 7.5. Status: **Planned**.
 
 - Qualify an EKS-compatible Gateway API controller with its TLS and
   authentication integrations. Deliver the `GatewayClass`, `Gateway` and

@@ -1,4 +1,5 @@
 # ShardShop
+<sub>[Back to Microservices](../README.md#microservices)</sub>
 
 [Architecture](ARCHITECTURE.md) · [Runbook](RUNBOOK.md) · [Implementation plan](PLAN.md) ·
 [Version policy](VERSIONS.md) · [Changelog](CHANGELOG.md)
@@ -130,7 +131,7 @@ procedures and a README for its start and monitoring entry points.
 - `shardshop-testing/`: Cucumber scenarios, with a Testcontainers profile and a live kind profile.
 - `database/`: Flyway streams `shard/catalog`, `shard/ordering` and `ledger/ledger`.
 - `infra/`: `kind.yaml`, `shards.yaml`, `helmfile.yaml.gotmpl`, the Helm charts and the
-  image recipes. The optional AWS paths belong to milestone 7: [`terraform/`](infra/terraform/README.md)
+  image recipes. The AWS deployment of milestone 7 uses [`terraform/`](infra/terraform/README.md)
   and [`eks-values.yaml`](infra/helm/shardshop/eks-values.yaml).
 - `scripts/`: `cluster-create.sh`, `up.sh`, `down.sh`, `cluster-destroy.sh` and `webpages.sh`.
 

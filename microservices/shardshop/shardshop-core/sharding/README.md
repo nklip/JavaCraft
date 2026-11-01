@@ -153,7 +153,7 @@ per-shard Helm releases. The separate ledger is not in the shard list.
 - Empty, duplicate or malformed names, `ledger-db`, and missing or invalid regions fail before deployment.
 - Regions are only uppercase `US`, `EU` and `ASIA`. A custom inventory can assign multiple shards to one
   region. The chart adds the label `shardshop.javacraft/region` to each shard Cluster and its inherited
-  metadata. The regions are business regions in the local lab, not separate geographic locations.
+  metadata. The regions are business regions in the local deployment, not separate geographic locations.
 - The chart bounds the migration hook release prefix. Stream, inventory index and revision identify each attempt.
 
 Preview without Kubernetes access with native Helm. These commands use the same shared chart, environment

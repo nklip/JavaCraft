@@ -267,7 +267,7 @@ support_policies:
     - helm_release
     eol: null
     note: No fixed LTS; 4.3.x supports Kubernetes 1.34-1.37. Installs only vendored,
-      verified third-party charts; a later cloud target reuses the same charts.
+      verified third-party charts; the AWS deployment reuses the same charts.
     support_review_2026_10_29: Latest release is 4.3.1 (2026-10-15); the 4.3.x range is unchanged.
       Installed 4.3.0 stays selected.
   helmfile:
@@ -322,7 +322,7 @@ support_policies:
     source_refs: [terraform_releases, terraform_license]
     eol: null
     note: No LTS. 1.17.1 is the newest release on 2026-10-31. Business Source License
-      1.1, free use for this project. Only for the optional AWS target (step 7.1).
+      1.1, free use for this project. Only for the AWS deployment (step 7.1).
   terraform_aws_dependencies:
     model: maintained_stable
     checked_on: '2026-10-31'
@@ -700,7 +700,7 @@ images:
       4 low). As with 4.3.6, all critical/high findings belong to Go stdlib 1.22.2 in the bundled
       gosu executable. The chart bypasses the vendor entrypoint and never invokes gosu; non-root
       startup drops all Linux capabilities. Remaining OS findings are medium/low. Recheck monthly and
-      before broader deployment; this record is scoped to the local lab.'
+      before broader deployment; this record is scoped to the local deployment.'
   shardshop_applications:
     purpose: Application images of product, order, ledger and the three workloads
     dockerfile: infra/images/application/Dockerfile
@@ -1135,7 +1135,7 @@ vendor_bundles:
       runc, crictl and Kubernetes versions; Scout SBOM identifies CNI plugins 1.9.1.
       dpkg-query identifies fuse-overlayfs 1.14-1+b1 (binary banner 1.13-dev),
       correcting the source-recipe assumption. The advisory scan is summarized under
-      unresolved SBOM-AND-RUNTIME; its findings are accepted for the local lab.
+      unresolved SBOM-AND-RUNTIME; its findings are accepted for the local deployment.
     image_ref: kind_node
 maven:
   version_policy: Explicit GA plugin pins; exclude metadata entries for Maven 4 beta
@@ -2107,7 +2107,7 @@ maintenance_review_6_0:
     review_by: "2026-10-28"
     authorized_by: "User explicitly accepted this limited scope and proceeding with retained-lab validation."
     components: ["Canonical application/Flyway JRE glibc and OpenJDK findings", "K3s test-image findings including the active binary", "Flyway bundled pgJDBC 42.7.12 findings"]
-    scope: "Only the currently pinned images and saved findings, for the loopback-only local lab and unprivileged loopback-only Maven K3s fixture. No production acceptance, unaffected claim, VEX change, scan-gate bypass or deadline extension. CNPG and managed PostgreSQL remain excluded."
+    scope: "Only the currently pinned images and saved findings, for the loopback-only local deployment and unprivileged loopback-only Maven K3s fixture. No production acceptance, unaffected claim, VEX change, scan-gate bypass or deadline extension. CNPG and managed PostgreSQL remain excluded."
   scope: "All explicit/inherited October 28 component groups inspected; current support, artifact integrity and graph evidence below. Findings without a fix/disposition remain open, not silently renewed."
   reviewed_groups: ["support_policies", "compatibility", "images", "installation_artifacts.cnpg_chart", "tools", "vendor_bundles", "maven.plugins", "maven.plugin_dependency_overrides", "maven.plugin_override_artifacts", "maven.artifacts", "maven.review_qualification", "maven.dataset_qualification", "maven.step_4_5_ledger_dependencies", "maven.step_4_6_shared_rabbitmq_publisher", "maven.step_4_13_workload_control_dependencies"]
   current_maven_record: "maven.step_6_0_security; older dated step records preserve historical pins/tests and are superseded for current selections."
@@ -2215,7 +2215,7 @@ security_review_2026_10_31:
     - "Test PostgreSQL image findings"
     - "kind node image and CNPG operator findings; both images are unchanged and have no newer release"
     resolved: "The Flyway bundled pgJDBC 42.7.12 finding; Flyway 13.12.0 bundles 42.7.14."
-    scope: "Only the currently pinned images and saved findings, for the loopback-only local lab and the unprivileged loopback-only Maven test containers. No production acceptance, unaffected claim, VEX change, scan-gate bypass or deadline extension."
+    scope: "Only the currently pinned images and saved findings, for the loopback-only local deployment and the unprivileged loopback-only Maven test containers. No production acceptance, unaffected claim, VEX change, scan-gate bypass or deadline extension."
   report_fixes: "shardshop-workload/pom.xml sets shardshop.directory; versions-rules.xml ignores dot-separated qualifiers such as 4.0.0.Beta2."
   next_review_by: "2026-11-30"
 unresolved:
@@ -2314,7 +2314,7 @@ unresolved:
     - https://osv.dev/
     - https://ubuntu.com/security/cves
   resolution: Node findings accepted by the user on 2026-09-28 for the loopback-only,
-    disposable local lab; recheck when the kind node image changes. Complete the
+    disposable local deployment; recheck when the kind node image changes. Complete the
     application image inventories and advisory checks in step 3.9. Do not infer
     support from enclosing BOM/JDK. Maven boundaries remain unchanged. On 2026-10-10
     the product, seeder and reader images passed the critical/high gate with reviewed

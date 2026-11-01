@@ -1,5 +1,5 @@
 Feature: EKS durability, broker quorum and runtime secrets
-  These scenarios run only on the EKS target of infra/terraform/README.md. kind has no S3
+  These scenarios run only on the AWS deployment of infra/terraform/README.md. kind has no S3
   backups, one broker and the Secrets of cluster-create.sh.
   The restore drill restores each database cluster unless shardshop.kind.drillCluster names one.
 

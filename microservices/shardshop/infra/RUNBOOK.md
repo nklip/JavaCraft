@@ -531,7 +531,7 @@ CRDs if the release is ever uninstalled, so the database clusters survive. The
 operator installs before the shared database resources so its APIs and webhooks are
 ready for database resources. To upgrade, review the lock's support deadline, then
 vendor and verify the new chart and update `values.yaml` and the lock together;
-a later cloud target installs the same chart and values.
+the AWS deployment installs the same chart and values.
 
 ## One-time procedures
 

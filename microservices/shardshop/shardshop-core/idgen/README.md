@@ -92,7 +92,7 @@ ID identifies it.
 Generator 0 is never used by live processes or workloads. Workload datasets contain no IDs, and all new
 entities use the live generators of the services.
 
-For this finite local lab, the ConfigMap `shardshop-snowflake-generators` keeps an increasing allocation
+For this finite local deployment, the ConfigMap `shardshop-snowflake-generators` keeps an increasing allocation
 counter for live IDs 1-1023. Each product or order JVM reserves one fresh ID with a Kubernetes
 resource-version compare-and-set (CAS) at every start, also after a container restart in the same pod. Java
 code in that JVM does this before the generator exists. No kubectl binary, launcher process, init container,

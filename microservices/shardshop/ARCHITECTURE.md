@@ -2,11 +2,11 @@
 
 [README](README.md) · [Runbook](RUNBOOK.md) · [Implementation plan](PLAN.md) · [Version policy](VERSIONS.md) · [Dated evidence](CHANGELOG.md)
 
-ShardShop is a local system-design lab. It runs a regional product catalog,
-sharded orders and an asynchronous ledger on one kind cluster. This overview
-describes the implemented architecture. Only the optional cloud target (milestone 7
-in the [plan](PLAN.md)) is not implemented. The
-[detailed documents](#detailed-design-documents) own each topic.
+ShardShop is a system-design lab. Its local deployment runs a regional product
+catalog, sharded orders and an asynchronous ledger on one kind cluster. This overview
+describes the implemented architecture. The AWS deployment runs the same database
+tier on EKS ([section 5](#5-local-deployment-and-aws-deployment)). The applications
+run only in the local deployment. The [detailed documents](#detailed-design-documents) own each topic.
 
 - **Shape:** six Quarkus applications, three regional PostgreSQL shards, one
   ledger database and one RabbitMQ broker.
@@ -226,7 +226,7 @@ defines the code layers.
 
 ## 4. Performance
 
-These figures are **local-lab evidence, not a hardware-independent maximum**. One
+These figures are **local-deployment evidence, not a hardware-independent maximum**. One
 host ran the complete lab: 12 Docker CPUs, 12.65 GiB Docker memory and 16 GB
 physical memory.
 
@@ -287,6 +287,208 @@ Different kinds of figures answer different questions:
 The [measurement criteria](shardshop-testing/ARCHITECTURE.md#capacity-measurement)
 define the protocol. The runtime defaults stay at 0.5 orders/s and 200 product reads/s.
 
+## 5. Local deployment and AWS deployment
+
+ShardShop has two deployments. The local deployment on kind runs the complete
+system, and each contract, drill and acceptance scenario must pass there. The AWS
+deployment puts the same database tier on EKS and adds cloud durability. Each AWS
+run creates the resources, checks them and then destroys them.
+
+### High-level design
+
+Both deployments use one source. Each deployment adds only its environment values
+and its tools.
+
+```mermaid
+flowchart LR
+    subgraph Shared["Shared source in the repository"]
+        Inventory["Shard inventory<br/>shards.yaml"]
+        Chart["Shared Helm chart<br/>infra/helm/shardshop"]
+        Operator["CloudNativePG chart<br/>and its values"]
+        Schema["Flyway migrations<br/>database/"]
+        Images["Pinned images<br/>PostgreSQL, RabbitMQ, Flyway"]
+        Checks["Maven scenarios<br/>shardshop-testing"]
+    end
+    subgraph Local["Local deployment · kind"]
+        KindValues["kind-values.yaml"]
+        LocalTools["cluster-create.sh, up.sh<br/>Helmfile"]
+    end
+    subgraph Cloud["AWS deployment · EKS"]
+        EksValues["eks-values.yaml"]
+        CloudTools["Terraform<br/>runbook commands"]
+    end
+    Shared --> Local
+    Shared --> Cloud
+```
+
+| Topic | Shared | Local deployment (kind) | AWS deployment (EKS) |
+|---|---|---|---|
+| Cluster | Kubernetes 1.36, namespace `shardshop` with the restricted Pod Security Standard | One control plane and three workers on one computer | Three workers, one in each zone of `eu-west-2` |
+| Databases | CloudNativePG 1.30.1, three shards with three instances each, a ledger with one instance | One instance of each shard on each worker | One instance of each shard in each zone |
+| Storage | | The `standard` class of kind | The encrypted gp3 class `shardshop-gp3` |
+| Schema | The Flyway migrations and the same Flyway build | The image is loaded into kind | The image is copied to ECR |
+| Broker | RabbitMQ 4.3.7 and its definitions | One broker | Three brokers with three-member quorum queues |
+| Credentials | The same Secret names and keys | `cluster-create.sh` makes random passwords | AWS Secrets Manager, synced by the Secrets Store CSI driver |
+| Backups | | Coordinated logical dumps outside kind | WAL archive and base backups in S3, point-in-time restore |
+| Applications | The same images | Six applications and three workloads | Not yet. Argo CD delivery is [planned](PLAN.md#milestone-7-aws-deployment) |
+| Delivery | The shared Helm chart | Helmfile with Maven gates | [Runbook](infra/terraform/README.md#operation) commands |
+| Checks | The Maven `kind` profile | All gates, drills and acceptance scenarios | The topology drills and the `eks-*` durability scenarios |
+
+The local deployment runs the complete system on one computer:
+
+```mermaid
+flowchart TB
+    Dev["Developer computer<br/>Docker Desktop"]
+    subgraph Kind["kind cluster · one control plane, three workers"]
+        CNPG["CloudNativePG operator"]
+        subgraph NS["Namespace shardshop"]
+            Apps["Six applications<br/>three workloads"]
+            DB[("Three shards × three instances<br/>ledger · one instance")]
+            MQ["RabbitMQ · one broker"]
+        end
+    end
+    Dumps[("Logical backup bundles<br/>outside kind")]
+    Dev -->|"Build and load images<br/>deploy with Helmfile"| Kind
+    DB -.->|"Coordinated dumps"| Dumps
+```
+
+The AWS deployment runs the database tier with cloud services:
+
+```mermaid
+flowchart TB
+    Dev["Developer computer<br/>Terraform, Helm, Maven"]
+    subgraph Account["AWS account · eu-west-2"]
+        ECR["ECR<br/>Flyway image"]
+        S3[("S3 bucket<br/>WAL and base backups")]
+        SM["Secrets Manager<br/>runtime secrets"]
+        subgraph EKS["EKS cluster · three workers in three zones"]
+            Ops["CloudNativePG, Barman Cloud Plugin<br/>cert-manager, Secrets Store CSI driver"]
+            DB2[("Three shards × three instances<br/>ledger · one instance")]
+            MQ2["RabbitMQ · three brokers"]
+        end
+    end
+    Dev -->|"terraform apply, then destroy"| Account
+    Dev -->|"Helm, kubectl, Maven drills"| EKS
+    ECR -->|"Migration image"| EKS
+    SM -->|"Credentials"| EKS
+    DB2 -->|"WAL and base backups"| S3
+```
+
+### Low-level design
+
+#### Delivery
+
+The local deployment keeps its infrastructure and deploys new builds. An AWS run starts
+from nothing and ends with nothing.
+
+```mermaid
+flowchart TB
+    subgraph LocalFlow["Local deployment"]
+        direction LR
+        L1["cluster-create.sh<br/>kind cluster, credentials"] --> L2["Helmfile infrastructure<br/>operator, databases, broker"]
+        L2 --> L3["up.sh<br/>build, scan, load images"]
+        L3 --> L4["Helmfile application<br/>migrations, routing, applications"]
+        L4 --> L5["Maven gates<br/>before and after each release"]
+    end
+    subgraph CloudFlow["AWS deployment"]
+        direction LR
+        A1["terraform apply<br/>state bucket, foundation"] --> A2["Push the Flyway build<br/>to ECR"]
+        A2 --> A3["Helm<br/>operator, backup plugin"]
+        A3 --> A4["Helm infrastructure<br/>then restart the operator"]
+        A4 --> A5["Helm migrations<br/>routing ConfigMap"]
+        A5 --> A6["Maven drills"]
+        A6 --> A7["Remove the tier<br/>terraform destroy"]
+    end
+```
+
+#### Network and placement on AWS
+
+Required zone anti-affinity puts one instance of each shard and one broker in each
+zone. An EBS volume stays in its zone, thus each instance stays in its zone. On
+kind, the same rule uses the worker name instead of the zone.
+
+```mermaid
+flowchart TB
+    Endpoint["EKS API endpoint<br/>IAM authentication"]
+    subgraph VPC["VPC 10.40.0.0/16"]
+        NAT["One shared NAT gateway"]
+        S3E["S3 gateway endpoint"]
+        subgraph ZA["Zone a"]
+            WA["Worker t4g.large<br/>one instance of each shard<br/>one broker"]
+        end
+        subgraph ZB["Zone b"]
+            WB["Worker t4g.large<br/>one instance of each shard<br/>one broker"]
+        end
+        subgraph ZC["Zone c"]
+            WC["Worker t4g.large<br/>one instance of each shard<br/>one broker"]
+        end
+    end
+    Endpoint --> WA & WB & WC
+    WA & WB & WC -->|"Public images"| NAT
+    WA & WB & WC -->|"Backups, ECR layers"| S3E
+```
+
+#### Backups and restore on AWS
+
+Each database pod has a backup sidecar. The pod identity of a cluster can write
+only below its own prefix. A restore cluster can only read the prefix of its
+source. kind keeps its coordinated logical dumps
+([backup policy](database/ARCHITECTURE.md#replication-and-backup-policy)).
+
+```mermaid
+flowchart LR
+    subgraph Pod["Database pod, for example shard-a-1"]
+        PG["PostgreSQL"]
+        Side["Barman Cloud sidecar"]
+    end
+    Schedule["ScheduledBackup<br/>at the start and each day"]
+    Bucket[("S3 bucket<br/>shard-a/ shard-b/<br/>shard-c/ ledger-db/")]
+    Restore["Restore cluster shard-a-pitr<br/>at a target time"]
+    PG -->|"Each WAL segment"| Side
+    Schedule -->|"Base backup"| Side
+    Side -->|"Role shardshop-backup-shard-a<br/>writes only shard-a/"| Bucket
+    Bucket -->|"Role shardshop-restore-shard-a<br/>reads only shard-a/"| Restore
+```
+
+#### Runtime secrets
+
+The databases, the Flyway Jobs and the brokers read the same Secret names and keys
+on both targets. Only the source of the passwords is different.
+
+```mermaid
+flowchart LR
+    TF["Terraform<br/>ephemeral passwords"] -->|"Write-only values"| SM["Secrets Manager<br/>shardshop/"]
+    SM -->|"Role shardshop-runtime-secrets"| CSI["Secrets Store CSI driver<br/>AWS provider"]
+    CSI --> Holder["Holder pod<br/>mounts the secrets"]
+    Holder -->|"Sync"| KS["Kubernetes Secrets<br/>eight role Secrets, shardshop-rabbitmq"]
+    Script["kind: cluster-create.sh<br/>random passwords"] -.->|"Local deployment"| KS
+    KS --> Roles["CloudNativePG login roles"]
+    KS --> Jobs["Flyway Jobs"]
+    KS --> Brokers["RabbitMQ brokers"]
+```
+
+A synced Secret exists only while the holder pod mounts it. The Terraform state
+contains no password.
+
+#### Broker
+
+Broker 0 is the seed, and it declares the queues before the other brokers join.
+Membership reconciliation then adds a member on each new broker. If one broker
+stops, each queue elects a leader on a broker that still runs.
+
+```mermaid
+flowchart LR
+    subgraph LocalMQ["Local deployment"]
+        B0["Broker 0"] --- Q1["Each quorum queue<br/>one member"]
+    end
+    subgraph CloudMQ["AWS deployment · one broker in each zone"]
+        C0["Broker 0 · seed"]
+        C1["Broker 1"] -->|"Joins"| C0
+        C2["Broker 2"] -->|"Joins"| C0
+        C0 & C1 & C2 --- Q3["Each quorum queue<br/>three members, one leader"]
+    end
+```
+---
 ## Detailed design documents
 
 Each topic has one owning document. Runbooks keep the commands, and the
@@ -309,4 +511,5 @@ Each topic has one owning document. Runbooks keep the commands, and the
 | | [Order producer](shardshop-workload/shardshop-order-producer/README.md) | Deterministic regional order stream |
 | Platform | [Database](database/ARCHITECTURE.md) | Schemas, roles, migrations, replication and retention |
 | | [Infrastructure](infra/ARCHITECTURE.md) | Lab lifecycle, deployment, pod topology and RabbitMQ delivery |
+| | [AWS foundation](infra/terraform/README.md) | Terraform modules, EKS runbook, durability, permissions and costs |
 | Verification | [Testing](shardshop-testing/ARCHITECTURE.md) | Acceptance scenarios 1–11 and capacity measurement |

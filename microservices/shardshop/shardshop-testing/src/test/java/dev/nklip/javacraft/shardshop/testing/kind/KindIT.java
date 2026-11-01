@@ -8,7 +8,7 @@ import org.junit.platform.suite.api.Suite;
 import static io.cucumber.junit.platform.engine.Constants.GLUE_PROPERTY_NAME;
 import static io.cucumber.junit.platform.engine.Constants.PLUGIN_PROPERTY_NAME;
 
-/** Lifecycle gates against an explicitly selected local lab; selected only by the opt-in kind profile. */
+/** Lifecycle gates against an explicitly selected local or AWS deployment; selected only by the opt-in kind profile. */
 @Suite(failIfNoTests = true)
 @IncludeEngines("cucumber")
 @SelectPackages("kind-features")

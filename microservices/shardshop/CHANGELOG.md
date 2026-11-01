@@ -640,7 +640,7 @@ The generator registry kept one UID, with high-water marks 0, 5, 26 and 31.
 Then `cluster-create.sh` and `up.sh` gave the updates to the retained lab.
 See the [acceptance run evidence](shardshop-testing/evidence/2026-10-31-acceptance-run.json).
 
-## Milestone 7: AWS deployment (optional)
+## Milestone 7: AWS deployment
 
 <a id="step-71"></a>
 ### Step 7.1 — Terraform AWS foundation
@@ -672,3 +672,12 @@ Terraform keeps write-only runtime secrets in Secrets Manager. The Secrets Store
 Three brokers keep a leader for each three-member quorum queue when one stops. kind renders stay unchanged.
 The run lasted 2 hours and cost approximately US$0.90 (limit US$2.00).
 Lessons: open the webhook port 10260, restart the operator after the first release, use `t4g.large`, and enable quorum membership reconciliation.
+
+<a id="step-74"></a>
+### Step 7.4 — Local and AWS architecture overview
+
+**Done 2026-11-01.**
+[ARCHITECTURE.md](ARCHITECTURE.md#5-local-deployment-and-aws-deployment) section 5 compares the local deployment and the AWS deployment: a table of the shared, local and AWS parts, three high-level diagrams and five low-level diagrams for delivery, placement, backups, secrets and the broker.
+The [microservices list](../README.md#modules) has ShardShop, and the ShardShop README links back to it.
+All eight new Mermaid diagrams render with Mermaid 11.4.1.
+This step needs no AWS run.

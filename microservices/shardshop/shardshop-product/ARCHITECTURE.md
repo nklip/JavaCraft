@@ -164,7 +164,7 @@ when neither standby is ready, such as when one is down and the other is promote
 | Server request deadline | 4 s | Fail affected reads with `503 READ_REPLICA_UNAVAILABLE`, never `404` |
 | Database phase | 3 s in total | Covers pool acquisition, connection setup, SQL execution, and any retry; every individual timeout must fit the remaining budget |
 | Response margin | Final server second | Reserved for cancellation/error mapping and sending the response |
-| Reader deadline | 5 s | Leaves a one-second response margin in the local lab |
+| Reader deadline | 5 s | Leaves a one-second response margin in the local deployment |
 
 Discard broken connections and reconnect to `-ro` when a standby becomes ready.
 Record these failures separately from stale/missing products and continue requests

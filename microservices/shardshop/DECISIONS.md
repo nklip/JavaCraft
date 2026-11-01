@@ -7,16 +7,17 @@ linked [CHANGELOG](CHANGELOG.md) entry has the evidence. The Git tag
 
 ## Scope and platform
 
-### Local lab first, cloud optional
+### Local deployment first
 
 **Decision.** Milestones 0–6 run and are verified only on one machine: on a kind
-lab with four nodes or in local containers. AWS is the optional milestone 7.
+cluster with four nodes or in local containers. Milestone 7 adds the AWS
+deployment.
 
-**Reason.** A cloud target must add an environment, not change the local
-behavior.
+**Reason.** The AWS deployment must add an environment, not change the local
+deployment.
 
 **Result.** A local step never depends on a cloud service, and step 6.9 must
-still pass locally after the cloud work ([plan](PLAN.md#milestone-7-aws-deployment-optional)).
+still pass locally after the AWS work ([plan](PLAN.md#milestone-7-aws-deployment)).
 
 ### Community releases with regular upgrades
 

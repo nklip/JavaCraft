@@ -136,7 +136,7 @@ from `PATH` for the
 
 ### AWS foundation
 
-These versions apply only to the optional AWS target in [`infra/terraform/`](infra/terraform/README.md). The
+These versions apply only to the AWS deployment in [`infra/terraform/`](infra/terraform/README.md). The
 `.terraform.lock.hcl` file of each root module records the provider versions and their package checksums for all
 platforms. Terraform verifies these checksums at each `terraform init`.
 
@@ -247,7 +247,7 @@ On 2026-10-31, the user renewed the local risk acceptance until **2026-11-30** f
 - the test PostgreSQL image findings (4 critical and 33 high on 2026-10-31);
 - the kind node image and CNPG operator findings. Both images have no newer release.
 
-The acceptance applies only to the pinned images, for the loopback-only local lab and the unprivileged
+The acceptance applies only to the pinned images, for the loopback-only local deployment and the unprivileged
 loopback-only Maven test containers. It is not a production acceptance. It does not declare a package unaffected,
 change a VEX statement, bypass a scan gate or extend a deadline. The lock records it in
 `security_review_2026_10_31.local_risk_acceptance`.

@@ -7,14 +7,14 @@ kind lab. It also defines the runtime topology and the RabbitMQ delivery policy.
 
 ## Platform and versions
 
-The primary target is a local kind lab on one machine: every contract, drill, and
-acceptance scenario in this document must run and pass there. A later AWS target
-(EKS provisioned with Terraform, milestone 7 in the [plan](../PLAN.md)) is optional. It reuses the same
-shared Helm templates through environment values and the same verified operator
-Helm charts and values, delivers the database layer and the applications through
-Argo CD GitOps, and adds cloud-only durability: S3 backups with WAL archiving, a
-three-broker RabbitMQ and runtime secrets from AWS Secrets Manager. No local
-behavior or check may depend on a cloud service.
+The local deployment runs on a kind cluster on one machine: every contract, drill,
+and acceptance scenario in this document must run and pass there. The AWS
+deployment (EKS provisioned with Terraform, milestone 7 in the [plan](../PLAN.md))
+reuses the same shared Helm templates through environment values and the same
+verified operator Helm charts and values. It adds cloud-only durability: S3 backups
+with WAL archiving, a three-broker RabbitMQ and runtime secrets from AWS Secrets
+Manager. The Argo CD delivery of the database layer and the applications is
+planned. No local behavior or check may depend on a cloud service.
 
 The [AWS foundation](terraform/README.md) describes the Terraform modules, the
 installation of the database tier on EKS, its durability, the operator permissions
