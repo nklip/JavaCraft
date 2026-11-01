@@ -1,0 +1,26 @@
+# Storage and placement constraints for the EKS foundation of infra/terraform: one worker
+# group in each of three zones. The runbook in infra/terraform/README.md sets the ECR copy
+# of the Flyway image, because the registry name contains the AWS account ID.
+orderProducer:
+  runName: eks-saga-v1
+
+storageClass:
+  name: shardshop-gp3
+  provisioner: ebs.csi.aws.com
+  parameters:
+    type: gp3
+    encrypted: "true"
+    # The destroy check finds a volume that a claim leaves by this tag.
+    tagSpecification_1: Project=shardshop
+
+postgresql:
+  storage:
+    storageClass: shardshop-gp3
+  affinity:
+    # One instance of each shard in each zone. An EBS volume stays in its zone.
+    podAntiAffinityType: required
+    topologyKey: topology.kubernetes.io/zone
+
+rabbitmq:
+  storage:
+    storageClass: shardshop-gp3

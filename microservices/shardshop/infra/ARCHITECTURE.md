@@ -16,8 +16,8 @@ Argo CD GitOps, and may add cloud-only durability such as S3 backups with WAL
 archiving and a three-broker RabbitMQ. No local behavior or check may depend on a
 cloud service.
 
-The [AWS foundation](terraform/README.md) of step 7.1 describes the Terraform
-modules, the operator permissions and the costs.
+The [AWS foundation](terraform/README.md) describes the Terraform modules, the
+installation of the database tier on EKS, the operator permissions and the costs.
 
 All runtimes, libraries, build plugins, and images follow [VERSIONS.md](../VERSIONS.md):
 LTS where available, otherwise maintained stable GA releases with explicit upgrade
@@ -69,8 +69,8 @@ distribution inside the cluster bootstrap and the environment values:
    manifest is plain Kubernetes.
 2. Keep one ordered shard inventory of names and immutable regions in
    `infra/shards.yaml`, and shared Helm templates in `infra/helm/shardshop/`.
-   Environment values (`kind-values.yaml`) set only what differs between clusters,
-   such as the storage class and the anti-affinity. Helmfile manages the real Helm
+   Environment values (`kind-values.yaml`, `eks-values.yaml`) set only what differs
+   between clusters, such as the storage class and the anti-affinity. Helmfile manages the real Helm
    releases. Bootstrap resources outside release ownership stay ordinary Kubernetes
    manifests. Never add a directory or a copied manifest for another shard.
 3. Every application, database and broker pod meets the Kubernetes `restricted`

@@ -12,8 +12,9 @@ step, is in the Git tag `shardshop-docs-full-2026-10-31`.
   2026-10-31 ([record](CHANGELOG.md#step-69)).
 - **Step 6.8 ended as research.** HTTP/2 gave no performance gain, thus ShardShop
   keeps HTTP/1.1 ([decision](DECISIONS.md#keep-http11)).
-- **Milestone 7 (AWS) is optional.** Step 7.1 is **Done**
-  ([record](CHANGELOG.md#step-71)). The other steps are **Planned**.
+- **Milestone 7 (AWS) is optional.** Steps 7.1 and 7.2 are **Done**
+  ([7.1](CHANGELOG.md#step-71), [7.2](CHANGELOG.md#step-72)). The other steps are
+  **Planned**.
 - **Version deadlines:** the local risk acceptance ends and the CNPG upgrade is
   due on 2026-11-30 ([open findings](VERSIONS.md#open-findings-and-risk-acceptance)).
 
@@ -191,7 +192,7 @@ Depends on 6.9. Status: **Done** ([record](CHANGELOG.md#step-71)).
 
 ### 7.2 EKS values and operators
 
-Depends on 7.1. Status: **Planned**.
+Depends on 7.1. Status: **Done** ([record](CHANGELOG.md#step-72)).
 
 - The same vendored CloudNativePG chart and `values.yaml` install the operator on
   EKS.

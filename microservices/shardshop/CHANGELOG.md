@@ -652,3 +652,13 @@ The run in `eu-west-2` lasted 31 minutes and cost approximately US$0.25 by the p
 The apply created 88 resources in 13 minutes. Three arm64 nodes were `Ready`, one in each zone, and all five add-ons were healthy.
 A second run stopped at the S3 state lock. `terraform destroy` removed all 93 resources, and direct queries found nothing left.
 Lesson: a VPN with rotating exit addresses blocks a `/32` API filter.
+
+<a id="step-72"></a>
+### Step 7.2 — EKS values and operators
+
+**Done 2026-11-01.**
+[`eks-values.yaml`](infra/helm/shardshop/eks-values.yaml) makes the shared chart create an encrypted gp3 StorageClass and put one instance of each shard in each zone. `EksValuesChartTest` shows that the order HTTP and saga Deployments are the same as on kind.
+The [runbook](infra/terraform/README.md#install-the-database-tier) installed the vendored CloudNativePG chart, the infrastructure release and the migrations with the ECR copy of the reviewed Flyway build.
+`kind-topology` and `kind-database-drill` on all three shards passed on EKS.
+The run lasted 69 minutes and cost approximately US$0.40 (estimate US$0.85). No volume stayed.
+Lesson: the claim volumes are outside the Terraform state, thus remove the database tier before the destroy.

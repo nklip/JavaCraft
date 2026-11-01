@@ -11,12 +11,12 @@ variable "kubernetes_version" {
 }
 
 variable "api_allowed_cidrs" {
-  description = "Public CIDR blocks that can reach the EKS API endpoint, for example [\"203.0.113.10/32\"]."
+  description = "Public CIDR blocks that can reach the EKS API endpoint, for example [\"203.0.113.10/32\"]. With [\"0.0.0.0/0\"], IAM authentication and the access entries are the only protection."
   type        = list(string)
 
   validation {
-    condition     = length(var.api_allowed_cidrs) > 0 && !contains(var.api_allowed_cidrs, "0.0.0.0/0")
-    error_message = "Give at least one CIDR block, and do not open the API endpoint to 0.0.0.0/0."
+    condition     = length(var.api_allowed_cidrs) > 0 && alltrue([for cidr in var.api_allowed_cidrs : can(cidrhost(cidr, 0))])
+    error_message = "Give at least one valid CIDR block."
   }
 }
 
@@ -33,7 +33,7 @@ variable "nat_gateway_per_zone" {
 }
 
 variable "node_instance_type" {
-  description = "Graviton (arm64) instance type of the workers. The images are linux/arm64 only. The default is enough for the system pods only."
+  description = "Graviton (arm64) instance type of the workers. The images are linux/arm64 only. The default holds the database tier and the system pods, but not the applications."
   type        = string
   default     = "t4g.medium"
 }

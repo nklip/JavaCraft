@@ -242,11 +242,36 @@
       "properties": {
         "image": {
           "type": "string",
-          "pattern": "^docker\\.io/library/shardshop-flyway(:[a-zA-Z0-9_.-]+)?@sha256:[0-9a-f]{64}$"
+          "pattern": "^(docker\\.io/library|[0-9]{12}\\.dkr\\.ecr\\.[a-z0-9-]+\\.amazonaws\\.com)/shardshop-flyway(:[a-zA-Z0-9_.-]+)?@sha256:[0-9a-f]{64}$"
         },
         "ttlSecondsAfterFinished": {
           "type": "integer",
           "minimum": 86400
+        }
+      }
+    },
+    "storageClass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "provisioner",
+        "parameters"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+        },
+        "provisioner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       }
     },

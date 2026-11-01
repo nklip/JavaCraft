@@ -131,7 +131,7 @@ procedures and a README for its start and monitoring entry points.
 - `database/`: Flyway streams `shard/catalog`, `shard/ordering` and `ledger/ledger`.
 - `infra/`: `kind.yaml`, `shards.yaml`, `helmfile.yaml.gotmpl`, the Helm charts and the
   image recipes. The optional AWS paths belong to milestone 7: [`terraform/`](infra/terraform/README.md)
-  and, in step 7.2, `eks-values.yaml`.
+  and [`eks-values.yaml`](infra/helm/shardshop/eks-values.yaml).
 - `scripts/`: `cluster-create.sh`, `up.sh`, `down.sh`, `cluster-destroy.sh` and `webpages.sh`.
 
 Build only ShardShop or the affected module. Never run the root Maven build of the

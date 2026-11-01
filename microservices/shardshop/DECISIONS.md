@@ -49,6 +49,24 @@ S3 traffic uses a free gateway endpoint.
 their internet egress. `nat_gateway_per_zone = true` changes this
 ([AWS foundation](infra/terraform/README.md#design)).
 
+### EKS database tier from the shared chart
+
+**Decision.** EKS uses the same CloudNativePG chart, shared chart and inventory as
+kind. `eks-values.yaml` changes only the storage and the zone placement, and makes
+the shared chart create an encrypted gp3 StorageClass. Plain Helm and kubectl
+commands in the [runbook](infra/terraform/README.md#install-the-database-tier)
+install the database tier, without a script or Helmfile. The user selected the
+runbook commands and an API endpoint open to all addresses on 2026-11-01.
+
+**Reason.** The EBS CSI add-on can create only a default class without an explicit
+volume type or encryption. A class in the chart is explicit, testable and leaves
+with the infrastructure release. Argo CD and Secrets Manager replace the runbook
+later in milestone 7. The exit address of the operator's VPN changes for each
+connection, thus one `/32` filter blocks kubectl.
+
+**Result.** IAM authentication and the access entries are the only protection of
+an open endpoint. Destroy the foundation after each run.
+
 ### Quarkus LTS in JVM mode
 
 **Decision.** The six applications use the Quarkus 3.40 LTS line in JVM mode with

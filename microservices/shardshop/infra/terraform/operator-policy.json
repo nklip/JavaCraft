@@ -170,6 +170,23 @@
       "Resource": "arn:aws:ecr:eu-west-2:*:repository/shardshop-*"
     },
     {
+      "Sid": "EcrLogin",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "EbsVolumeCleanup",
+      "Effect": "Allow",
+      "Action": "ec2:DeleteVolume",
+      "Resource": "arn:aws:ec2:eu-west-2:*:volume/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/Project": "shardshop"
+        }
+      }
+    },
+    {
       "Sid": "EksLogGroup",
       "Effect": "Allow",
       "Action": [
