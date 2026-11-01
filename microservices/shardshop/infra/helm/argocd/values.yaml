@@ -1,0 +1,43 @@
+# Values for the vendored Argo CD chart 10.11.6 (Argo CD v3.5.6), verified in
+# versions.lock.yaml. Only the AWS deployment uses Argo CD. The runbook installs it with
+# Helm, and Argo CD then applies the database layer from OCI charts in ECR.
+global:
+  image:
+    tag: "v3.5.6@sha256:8e5cc5bb008df8a09dba439462e58c94c55b7735888d3ebde0c25fc05e4e5335"
+redis:
+  image:
+    tag: "8.6.4-alpine@sha256:2cc044fc5a07c9b701f8f1255a309ae9ad7856e694ac03513bf3648c01e40763"
+# The runbook uses kubectl, thus no login provider, notifications or ApplicationSets.
+dex:
+  enabled: false
+notifications:
+  enabled: false
+applicationSet:
+  replicas: 0
+configs:
+  params:
+    # A sync that waits for a degraded wave fails after 30 minutes instead of waiting forever.
+    controller.sync.timeout.seconds: "1800"
+  cm:
+    # The root Application applies the next sync wave only after the child Applications of
+    # the current wave are healthy. Argo CD has no health for an Application, thus this
+    # check gives one: Degraded after a failed sync, and the health of the child only
+    # after a successful sync.
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {status = "Progressing", message = "Waiting for a successful sync"}
+      if obj.status ~= nil then
+        local operation = obj.status.operationState
+        if operation ~= nil and (operation.phase == "Failed" or operation.phase == "Error") then
+          hs.status = "Degraded"
+          hs.message = operation.message or operation.phase
+          return hs
+        end
+        if operation ~= nil and operation.phase == "Running" then
+          return hs
+        end
+        if obj.status.sync ~= nil and obj.status.sync.status == "Synced" and obj.status.health ~= nil then
+          hs.status = obj.status.health.status
+          hs.message = obj.status.health.message or ""
+        end
+      end
+      return hs

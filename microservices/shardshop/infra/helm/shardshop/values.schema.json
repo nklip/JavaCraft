@@ -250,6 +250,13 @@
         }
       }
     },
+    "delivery": {
+      "type": "string",
+      "enum": [
+        "helm",
+        "argocd"
+      ]
+    },
     "storageClass": {
       "type": "object",
       "additionalProperties": false,

@@ -1,15 +1,20 @@
 {{- define "shardshop.migrationConfigMap" -}}
 {{- $files := include "shardshop.migrationFiles" . | fromJson -}}
 {{- if $files -}}
-{{- dict "apiVersion" "v1" "kind" "ConfigMap" "immutable" true
-      "metadata" (dict "name" (include "shardshop.migrationConfigMapName" .) "namespace" .root.Release.Namespace)
-      "data" $files | toPrettyJson -}}
+{{- $metadata := dict "name" (include "shardshop.migrationConfigMapName" .) "namespace" .root.Release.Namespace -}}
+{{- if eq (.root.Values.delivery | default "helm") "argocd" -}}
+{{- /* A changed migration gives a new ConfigMap. The earlier one stays for the retained
+       Jobs, and Argo CD must not report it as a difference, because no Application prunes. */ -}}
+{{- $_ := set $metadata "annotations" (dict "argocd.argoproj.io/compare-options" "IgnoreExtraneous") -}}
+{{- end -}}
+{{- dict "apiVersion" "v1" "kind" "ConfigMap" "immutable" true "metadata" $metadata "data" $files | toPrettyJson -}}
 {{- end -}}
 {{- end -}}
 
 {{- define "shardshop.migrationJob" -}}
 {{- $root := .root -}}
 {{- $ledger := eq .stream "ledger" -}}
+{{- $argocd := and .hook (eq ($root.Values.delivery | default "helm") "argocd") -}}
 {{- $shardIndex := .index | default 0 -}}
 {{- $region := "" -}}
 {{- range $index, $shard := $root.Values.shards -}}
@@ -21,9 +26,21 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
+  {{- if $argocd }}
+  # Argo CD renders with helm template, thus the release revision cannot name a new sync.
+  # Each sync creates new Jobs. Argo CD deletes only a successful Job, and a failed or
+  # interrupted Job stays until its TTL ends.
+  generateName: {{ printf "%s-%s-%d-" ($root.Release.Name | trunc 32 | trimSuffix "-") .stream .index }}
+  {{- else }}
   name: {{ include "shardshop.migrationJobName" . }}
+  {{- end }}
   namespace: {{ $root.Release.Namespace | quote }}
-  {{- if .hook }}
+  {{- if $argocd }}
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/sync-wave: {{ .weight | quote }}
+  {{- else if .hook }}
   annotations:
     helm.sh/hook: post-install,post-upgrade
     helm.sh/hook-weight: {{ .weight | quote }}

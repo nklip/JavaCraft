@@ -223,9 +223,7 @@ public final class EksDurability {
     }
 
     private String sql(String pod, String database, String statement) throws IOException, InterruptedException {
-        return KindTopology.successfulSql(lab.kubectlAttempt("exec", pod, "-c", "postgres", "--", "env",
-                "PGOPTIONS=-c statement_timeout=15000 -c lock_timeout=5000", "psql", "-X", "-qAt", "-v", "ON_ERROR_STOP=1",
-                "-U", "postgres", "-d", database, "-c", statement));
+        return new KindTopology(lab).sql(pod, database, statement);
     }
 
     static boolean condition(JsonNode resource, String type) {

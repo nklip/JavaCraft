@@ -85,6 +85,10 @@ sources:
   eks_community_addons: https://docs.aws.amazon.com/eks/latest/userguide/community-addons.html
   aws_secrets_store_csi_provider: https://docs.aws.amazon.com/secretsmanager/latest/userguide/ascp-eks-installation.html
   external_secrets_support: https://external-secrets.io/latest/introduction/stability-support/
+  argo_cd_releases: https://github.com/argoproj/argo-cd/releases
+  argo_cd_tested_kubernetes: https://argo-cd.readthedocs.io/en/stable/operator-manual/tested-kubernetes-versions/
+  argo_cd_oci: https://argo-cd.readthedocs.io/en/stable/user-guide/oci/
+  argo_helm_index: https://argoproj.github.io/argo-helm/index.yaml
   helm: https://helm.sh/docs/topics/version_skew/
   helm_release: https://github.com/helm/helm/releases/tag/v4.3.1
   helmfile_release: https://github.com/helmfile/helmfile/releases/tag/v1.8.2
@@ -364,6 +368,14 @@ support_policies:
     eol: null
     note: AWS manages the add-on versions for each EKS version. External Secrets Operator was not selected on
       2026-11-01, because only 2.14 is supported and it lists only Kubernetes 1.37 (external_secrets_support).
+  argo_cd_3_5:
+    model: community_three_minor_lines
+    checked_on: '2026-11-01'
+    review_by: '2026-11-25'
+    source_refs: [argo_cd_releases, argo_cd_tested_kubernetes, argo_cd_oci]
+    eol: when the third later minor release is published
+    note: Argo CD supports the three newest minor lines (3.5, 3.4, 3.3 on 2026-11-01). 3.5 lists Kubernetes 1.33 to
+      1.36. The EKS managed Argo CD capability needs IAM Identity Center and was not selected.
       CNPG 1.30 supports Kubernetes 1.34-1.36.
 compatibility:
   java:
@@ -500,6 +512,37 @@ images:
     verification: Digests calculated from the raw registry bytes on 2026-11-01. The image has no cosign signature.
     advisories: 'Docker Scout 1.27.0 on 2026-11-01 (linux/arm64): 5 critical, 23 high, 6 medium, 1 low in Go stdlib
       1.26.6, golang.org/x/net 0.58.0 and the Python packages certifi, pyasn1, msgpack, urllib3 and setuptools.'
+  argocd:
+    version: 3.5.6
+    purpose: Argo CD controller, repository server, server and ApplicationSet controller on EKS
+    checked_on: '2026-11-01'
+    review_by: '2026-11-25'
+    security_review_by: '2026-11-30'
+    support_refs: [argo_cd_3_5]
+    tag_observed: quay.io/argoproj/argocd:v3.5.6
+    reference: quay.io/argoproj/argocd:v3.5.6@sha256:8e5cc5bb008df8a09dba439462e58c94c55b7735888d3ebde0c25fc05e4e5335
+    index_digest: sha256:8e5cc5bb008df8a09dba439462e58c94c55b7735888d3ebde0c25fc05e4e5335
+    linux_arm64_digest: sha256:35cab048d4536c3214c4b3d01da45803b943e4470ad3637d925d0a927c074986
+    linux_arm64_config_digest: sha256:a705c0666109bf53f1e7c21c4a4e52a3e47e16f50be269b5224c44d1e3ee90ac
+    verification: Digests calculated from the raw registry bytes on 2026-11-01. cosign verified the keyless
+      signature from the argoproj/argo-cd release workflow (GitHub Actions issuer).
+    advisories: 'Docker Scout 1.27.0 on 2026-11-01 (linux/arm64): 28 critical, 133 high, 91 medium, 9 low, mostly in
+      the Go stdlib and golang.org/x modules of the bundled tools. 3.5.6 is the newest release.'
+  argocd_redis:
+    version: 8.6.4-alpine
+    purpose: Redis cache of Argo CD on EKS
+    checked_on: '2026-11-01'
+    review_by: '2026-11-25'
+    security_review_by: '2026-11-30'
+    support_refs: [argo_cd_3_5]
+    tag_observed: ecr-public.aws.com/docker/library/redis:8.6.4-alpine
+    reference: ecr-public.aws.com/docker/library/redis:8.6.4-alpine@sha256:2cc044fc5a07c9b701f8f1255a309ae9ad7856e694ac03513bf3648c01e40763
+    index_digest: sha256:2cc044fc5a07c9b701f8f1255a309ae9ad7856e694ac03513bf3648c01e40763
+    linux_arm64_digest: sha256:8767d84b0adc89c37a352a17372a5e97bf21bb723890e244c212bb44b9f11177
+    linux_arm64_config_digest: sha256:bc7388e40963525ee0eeef0b4514ae5d097104c024598b5b660003ed092b01fc
+    verification: Digests calculated from the raw registry bytes on 2026-11-01. The chart 10.11.6 selects this tag.
+    advisories: 'Docker Scout 1.27.0 on 2026-11-01 (linux/arm64): 2 critical, 14 high, 2 medium in openssl,
+      util-linux and zlib.'
   postgresql_cnpg:
     version: '18.6'
     purpose: three three-instance CNPG shard clusters and the single-instance ledger database
@@ -897,6 +940,22 @@ installation_artifacts:
     source_refs:
     - cnpg_charts
     - cnpg_chart_index
+  argocd_chart:
+    chart: argo-cd
+    version: 10.11.6
+    app_version: v3.5.6
+    url: https://github.com/argoproj/argo-helm/releases/download/argo-cd-10.11.6/argo-cd-10.11.6.tgz
+    sha256: d8f096d87513b41ff754053a7f9604c943bf29c15436a79226fd51595ea67d05
+    review_by: '2026-11-25'
+    vendored_path: infra/helm/argocd/argo-cd-10.11.6.tgz
+    values_path: infra/helm/argocd/values.yaml
+    verification: The archive matched the official argo-helm index digest on 2026-11-01. No cosign signature was
+      found for an OCI copy. values.yaml sets the tag and index digest of images.argocd and images.argocd_redis,
+      and turns off Dex, notifications and the ApplicationSet controller.
+    support_refs:
+    - argo_cd_3_5
+    source_refs:
+    - argo_helm_index
 tools:
   nodejs:
     version: "24.22.2"
@@ -1099,6 +1158,12 @@ terraform:
       v1.4.1-eksbuild.3, kube-proxy v1.36.0-eksbuild.58, vpc-cni v1.23.2-eksbuild.8; workers t4g.large; Barman
       Cloud Plugin 0.15.1 with EKS Pod Identity (inheritFromIAMRole); the Flyway ECR push gave the 7.2 manifest
       digest again.
+  qualification_7_5:
+    run: 2026-11-01T18:50:37Z to 2026-11-01T22:09:26Z, eu-west-2, apply 128 and destroy 128 resources.
+    observed: Argo CD 3.5.6 from chart 10.11.6; hook Jobs with generateName are named generateName + the first
+      seven characters of the revision + "-postsync-" + time, thus a digest revision ("sha256:") is invalid there;
+      the CNPG webhook removes "login false" from DatabaseRole; prune false keeps an earlier migration ConfigMap as
+      an extraneous resource; a failed sync is not repeated for unchanged manifests.
 vendor_bundles:
   rabbitmq:
     image_ref: rabbitmq

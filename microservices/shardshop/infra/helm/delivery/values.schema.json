@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "definitions": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  },
+  "required": [
+    "mode",
+    "registry",
+    "charts",
+    "account"
+  ],
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": [
+        "root",
+        "children"
+      ]
+    },
+    "registry": {
+      "type": "string",
+      "pattern": "^[0-9]{12}\\.dkr\\.ecr\\.[a-z0-9-]+\\.amazonaws\\.com$"
+    },
+    "charts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cnpg",
+        "barmanCloud",
+        "shardshop"
+      ],
+      "properties": {
+        "delivery": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/digest"
+            },
+            {
+              "const": ""
+            }
+          ]
+        },
+        "cnpg": {
+          "$ref": "#/definitions/digest"
+        },
+        "barmanCloud": {
+          "$ref": "#/definitions/digest"
+        },
+        "shardshop": {
+          "$ref": "#/definitions/digest"
+        },
+        "shardshopVersion": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+-[0-9a-z]+$"
+            },
+            {
+              "const": ""
+            }
+          ]
+        }
+      }
+    },
+    "account": {
+      "type": "object"
+    }
+  }
+}

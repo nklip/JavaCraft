@@ -1,0 +1,100 @@
+{{- /*
+The delivery contract of the database layer on the AWS deployment. Each layer is one
+child Application in a sync wave. The root Application applies a wave only after the
+child Applications of the earlier waves are healthy. A failed migration thus stops the
+routing publication. The sources are OCI charts in ECR with digest pins.
+*/ -}}
+{{- $base := printf "oci://%s/shardshop-charts" .Values.registry -}}
+{{- if eq .Values.mode "root" }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shardshop
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: {{ printf "%s/shardshop-delivery" $base | quote }}
+    targetRevision: {{ required "charts.delivery must be the digest of the packaged delivery chart" .Values.charts.delivery | quote }}
+    path: .
+    helm:
+      valuesObject:
+        {{- toYaml (omit .Values "mode") | nindent 8 }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+{{- else }}
+{{- $layers := list
+      (dict "wave" 0 "name" "cnpg" "namespace" "cnpg-system" "chart" "cloudnative-pg" "digest" .Values.charts.cnpg "values" "files/cnpg-values.yaml")
+      (dict "wave" 1 "name" "barman-cloud" "namespace" "cnpg-system" "chart" "plugin-barman-cloud" "digest" .Values.charts.barmanCloud "values" "files/barman-cloud-values.yaml")
+      (dict "wave" 2 "name" "shardshop-namespace" "render" "namespace")
+      (dict "wave" 3 "name" "shardshop-infrastructure" "render" "infrastructure")
+      (dict "wave" 4 "name" "shardshop-migrations" "render" "migrations")
+      (dict "wave" 5 "name" "shardshop-routing" "render" "routing") }}
+{{- range $layers }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .name }}
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .wave | quote }}
+spec:
+  project: default
+  source:
+    {{- if eq (.render | default "") "migrations" }}
+    # Argo CD 3.5 puts the first seven characters of the revision into the name of each
+    # generated hook Job. A digest starts with "sha256:", which a name cannot contain.
+    # Thus the migrations use the Helm OCI source with the version, which ECR keeps
+    # immutable.
+    repoURL: {{ printf "%s/shardshop-charts" $.Values.registry | quote }}
+    chart: shardshop
+    targetRevision: {{ required "charts.shardshopVersion must be the version of the shared chart" $.Values.charts.shardshopVersion | quote }}
+    {{- else }}
+    repoURL: {{ printf "%s/%s" $base (.chart | default "shardshop") | quote }}
+    targetRevision: {{ .digest | default $.Values.charts.shardshop | quote }}
+    path: .
+    {{- end }}
+    helm:
+      releaseName: {{ .name }}
+      {{- if .render }}
+      # The packaged shared chart contains the inventory and the EKS values.
+      valueFiles:
+        - shards.yaml
+        - eks-values.yaml
+      valuesObject:
+        {{- toYaml (merge (dict "render" .render "delivery" "argocd") (deepCopy $.Values.account)) | nindent 8 }}
+      {{- else }}
+      values: |
+        {{- required (printf "The packaged delivery chart must contain %s" .values) ($.Files.Get .values) | nindent 8 }}
+      {{- end }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .namespace | default "shardshop" }}
+  {{- if eq (.render | default "") "infrastructure" }}
+  # The CNPG webhook removes "login: false" (Go omitempty), thus the role would stay
+  # out of sync and stop the later waves.
+  ignoreDifferences:
+    - group: postgresql.cnpg.io
+      kind: DatabaseRole
+      jsonPointers:
+        - /spec/login
+  {{- end }}
+  # No prune and no resources finalizer: neither a removed manifest nor a deleted
+  # Application deletes a database, a volume or a broker.
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: false
+    {{- if .chart }}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    {{- end }}
+{{- end }}
+{{- end }}

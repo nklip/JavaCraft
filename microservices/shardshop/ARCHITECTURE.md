@@ -315,7 +315,7 @@ flowchart LR
     end
     subgraph Cloud["AWS deployment · EKS"]
         EksValues["eks-values.yaml"]
-        CloudTools["Terraform<br/>runbook commands"]
+        CloudTools["Terraform, Argo CD<br/>runbook commands"]
     end
     Shared --> Local
     Shared --> Cloud
@@ -330,8 +330,8 @@ flowchart LR
 | Broker | RabbitMQ 4.3.7 and its definitions | One broker | Three brokers with three-member quorum queues |
 | Credentials | The same Secret names and keys | `cluster-create.sh` makes random passwords | AWS Secrets Manager, synced by the Secrets Store CSI driver |
 | Backups | | Coordinated logical dumps outside kind | WAL archive and base backups in S3, point-in-time restore |
-| Applications | The same images | Six applications and three workloads | Not yet. Argo CD delivery is [planned](PLAN.md#milestone-7-aws-deployment) |
-| Delivery | The shared Helm chart | Helmfile with Maven gates | [Runbook](infra/terraform/README.md#operation) commands |
+| Applications | The same images | Six applications and three workloads | Not yet. Their Argo CD delivery is [planned](PLAN.md#milestone-7-aws-deployment) |
+| Delivery | The shared Helm chart | Helmfile with Maven gates | Argo CD from digest-pinned OCI charts in ECR ([runbook](infra/terraform/README.md#deliver-the-database-layer-with-argo-cd)) |
 | Checks | The Maven `kind` profile | All gates, drills and acceptance scenarios | The topology drills and the `eks-*` durability scenarios |
 
 The local deployment runs the complete system on one computer:
@@ -362,13 +362,13 @@ flowchart TB
         S3[("S3 bucket<br/>WAL and base backups")]
         SM["Secrets Manager<br/>runtime secrets"]
         subgraph EKS["EKS cluster · three workers in three zones"]
-            Ops["CloudNativePG, Barman Cloud Plugin<br/>cert-manager, Secrets Store CSI driver"]
+            Ops["Argo CD, CloudNativePG, Barman Cloud Plugin<br/>cert-manager, Secrets Store CSI driver"]
             DB2[("Three shards × three instances<br/>ledger · one instance")]
             MQ2["RabbitMQ · three brokers"]
         end
     end
     Dev -->|"terraform apply, then destroy"| Account
-    Dev -->|"Helm, kubectl, Maven drills"| EKS
+    Dev -->|"Root Application, Maven drills"| EKS
     ECR -->|"Migration image"| EKS
     SM -->|"Credentials"| EKS
     DB2 -->|"WAL and base backups"| S3
@@ -392,13 +392,34 @@ flowchart TB
     end
     subgraph CloudFlow["AWS deployment"]
         direction LR
-        A1["terraform apply<br/>state bucket, foundation"] --> A2["Push the Flyway build<br/>to ECR"]
-        A2 --> A3["Helm<br/>operator, backup plugin"]
-        A3 --> A4["Helm infrastructure<br/>then restart the operator"]
-        A4 --> A5["Helm migrations<br/>routing ConfigMap"]
+        A1["terraform apply<br/>state bucket, foundation"] --> A2["Push the Flyway build<br/>and the charts to ECR"]
+        A2 --> A3["Helm<br/>install Argo CD"]
+        A3 --> A4["Apply the root Application"]
+        A4 --> A5["Argo CD sync waves<br/>database layer"]
         A5 --> A6["Maven drills"]
         A6 --> A7["Remove the tier<br/>terraform destroy"]
     end
+```
+
+#### Argo CD sync waves on AWS
+
+Each layer is one child Application with a digest-pinned chart. Only the migrations
+use the immutable chart version, because Argo CD puts the revision into the generated
+Job names. The root Application starts a wave only after the earlier waves are synced
+and healthy. Each
+sync gives the migration Jobs new names, and a failed or interrupted Job stays. No
+Application deletes a database.
+
+```mermaid
+flowchart LR
+    Charts[("ECR<br/>OCI charts with digests")] -.-> Root["Root Application<br/>delivery chart"]
+    Root --> W0["Wave 0<br/>CloudNativePG"]
+    W0 --> W1["Wave 1<br/>backup plugin"]
+    W1 --> W2["Wave 2<br/>namespace"]
+    W2 --> W3["Wave 3<br/>infrastructure<br/>ObjectStore before clusters"]
+    W3 --> W4["Wave 4<br/>migration Jobs<br/>PostSync hooks"]
+    W4 --> W5["Wave 5<br/>routing ConfigMap"]
+    W4 -.->|"A failed Job"| Stop["The routing stays<br/>at its earlier revision"]
 ```
 
 #### Network and placement on AWS

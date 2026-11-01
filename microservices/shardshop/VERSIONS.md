@@ -153,6 +153,7 @@ platforms. Terraform verifies these checksums at each `terraform init`.
 | Barman Cloud Plugin | v0.15.1 with its sidecar, vendored chart `plugin-barman-cloud` 0.8.1 in `infra/helm/barman-cloud/` | Maintained stable 0.x, no published fixed EOL. Needs CNPG 1.26 or newer and cert-manager | 2026-11-25 |
 | cert-manager | EKS community add-on, the newest version for EKS 1.36 at apply time (v1.21.3-eksbuild.1 on 2026-11-01) | cert-manager 1.21 supports Kubernetes 1.33–1.36 until the release of 1.23 | At each apply |
 | AWS Secrets Store CSI provider | EKS add-on `aws-secrets-store-csi-driver-provider`, the newest version at apply time (v3.1.4-eksbuild.3 on 2026-11-01) | AWS managed | At each apply |
+| Argo CD | v3.5.6 with Redis 8.6.4-alpine, vendored chart `argo-cd` 10.11.6 in `infra/helm/argocd/` | The three newest minor lines are supported. 3.5 supports Kubernetes 1.33–1.36 | 2026-11-25 |
 
 ## Update rules
 
@@ -258,12 +259,18 @@ vulnerable package.
 
 ### EKS risk acceptance until 2026-11-30
 
-On 2026-11-01, the user accepted the findings of the Barman Cloud Plugin v0.15.1 images for the disposable EKS
-runs until **2026-11-30**. Docker Scout found 3 critical and 19 high in the plugin and 5 critical and 23 high in its
-sidecar, in Go stdlib 1.26.6, `golang.org/x/net` 0.58.0, UBI 9 packages and Python packages. No newer release
-exists, and the images have no cosign signature. The acceptance applies only to the pinned images on an EKS cluster
-that the runbook destroys after the run. The lock records the findings in `images.barman_cloud_plugin` and
-`images.barman_cloud_sidecar`.
+On 2026-11-01, the user accepted these findings for the disposable EKS runs until **2026-11-30**. No newer release
+exists for these images:
+
+- Barman Cloud Plugin v0.15.1: 3 critical and 19 high in the plugin and 5 critical and 23 high in its sidecar, in
+  Go stdlib 1.26.6, `golang.org/x/net` 0.58.0, UBI 9 packages and Python packages. The images have no cosign
+  signature.
+- Argo CD v3.5.6: 28 critical and 133 high, mostly in the Go stdlib and `golang.org/x` modules of the bundled
+  tools. cosign verified the image signature.
+- Redis 8.6.4-alpine of the Argo CD chart: 2 critical and 14 high in openssl and util-linux.
+ The acceptance applies only to the pinned images on an EKS cluster that the runbook destroys after the run. The lock
+records the findings in `images.barman_cloud_plugin`, `images.barman_cloud_sidecar`, `images.argocd` and
+`images.argocd_redis`.
 
 ### Canonical OpenJDK 25.0.5
 
@@ -496,4 +503,5 @@ The full text of each review is in the Git tag `shardshop-docs-full-2026-10-31` 
 | 2026-10-29 | Step 6.8 balancer and HTTP/2 client | Envoy 1.40.2 and h2c selected. Reverted 2026-10-30, HTTP/1.1 kept. |
 | 2026-10-31 | Security review | Docker Desktop, Flyway, PostgreSQL, RabbitMQ, host tools and plugins updated. Risk acceptance until 2026-11-30. |
 | 2026-10-31 | Step 7.1 AWS foundation | Terraform 1.17.1, AWS provider 6.71.0, VPC module 6.7.3, EKS module 21.29.0 and EKS 1.36 selected. |
+| 2026-11-01 | Step 7.5 Argo CD delivery | Argo CD 3.5.6 (chart 10.11.6, image signature verified) selected, self-managed. The EKS managed capability needs IAM Identity Center. |
 | 2026-11-01 | Step 7.3 cloud durability | Barman Cloud Plugin 0.15.1 (chart 0.8.1, chart signature verified, images unsigned), the cert-manager and Secrets Store CSI add-ons selected. External Secrets Operator not selected, because no supported release lists Kubernetes 1.36. |

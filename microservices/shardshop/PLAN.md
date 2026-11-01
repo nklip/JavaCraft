@@ -12,10 +12,10 @@ step, is in the Git tag `shardshop-docs-full-2026-10-31`.
   2026-10-31 ([record](CHANGELOG.md#step-69)).
 - **Step 6.8 ended as research.** HTTP/2 gave no performance gain, thus ShardShop
   keeps HTTP/1.1 ([decision](DECISIONS.md#keep-http11)).
-- **Milestone 7 (AWS deployment):** steps 7.1 to 7.4 are **Done**
+- **Milestone 7 (AWS deployment):** steps 7.1 to 7.5 are **Done**
   ([7.1](CHANGELOG.md#step-71), [7.2](CHANGELOG.md#step-72),
-  [7.3](CHANGELOG.md#step-73), [7.4](CHANGELOG.md#step-74)). The other steps are
-  **Planned**.
+  [7.3](CHANGELOG.md#step-73), [7.4](CHANGELOG.md#step-74),
+  [7.5](CHANGELOG.md#step-75)). The other steps are **Planned**.
 - **Version deadlines:** the local risk acceptance ends and the CNPG upgrade is
   due on 2026-11-30 ([open findings](VERSIONS.md#open-findings-and-risk-acceptance)).
 
@@ -228,33 +228,56 @@ Depends on 7.3. Status: **Done** ([record](CHANGELOG.md#step-74)).
 - The text and the diagrams use ASD-STE100. Use a diagram instead of long text,
   and clarity instead of small details.
 
-### 7.5 GitOps delivery and cloud acceptance
+### 7.5 Argo CD delivery of the database layer
 
-Depends on 7.4. Status: **Planned**.
+Depends on 7.4. Status: **Done** ([record](CHANGELOG.md#step-75)).
 
+- A self-managed Argo CD 3.5 from a vendored, verified Helm chart runs on EKS.
 - Argo CD applies the [database layer](database/ARCHITECTURE.md#database-change-management)
-  and deploys the six application artifacts, with both order processes, from the
-  EKS overlay with ECR digest pins.
+  from the EKS values: the CloudNativePG operator with the same vendored chart, the
+  backup plugin, the infrastructure, the migrations and the routing ConfigMap.
+- The source is an OCI artifact in ECR with a digest pin. Only the migrations use
+  the immutable chart version, because Argo CD puts the revision into the names of
+  generated hook Jobs. The runbook packages the charts from the working tree, thus
+  a run needs no Git push.
 - Implement an explicit delivery contract that replaces the Helmfile stage
-  dependencies and hooks and the Helm revision-based Job identities. Argo
+  dependencies and the Helm revision-based Job identities. Argo
   [renders with `helm template`](https://argo-cd.readthedocs.io/en/stable/user-guide/helm/),
-  thus `.Release.Revision` cannot identify a new sync.
-- Use [sync phases and waves](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/)
-  with readiness checks. Run the current Maven safety and acceptance checks in
-  pre-sync and post-sync verification Jobs or in a gated CI workflow.
-- Give each migration and seeder attempt an identity without collisions, and safe
-  retention and deletion policies. Never delete an active or interrupted migration
-  to retry it.
+  thus `.Release.Revision` cannot identify a new sync. Use
+  [sync phases and waves](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/)
+  with readiness checks.
+- Give each migration attempt an identity without collisions, and safe retention
+  and deletion policies. Never delete an active or interrupted migration to retry
+  it.
 - Verify a resync without changes, changed migrations, a failure before the
-  publication, interrupted attempts, recovery and seeder reruns. Do not cache a
-  completed Job, and do not claim an SQL rollback.
+  publication, interrupted attempts and recovery. Do not cache a completed Job, and
+  do not claim an SQL rollback.
+- The kind renders and the local Helmfile workflow do not change.
+
+### 7.6 Applications and gates through Argo CD
+
+Depends on 7.5. Status: **Planned**.
+
+- Argo CD deploys the six application artifacts, with both order processes, from
+  ECR with digest pins.
+- The current Maven safety and acceptance checks run in pre-sync and post-sync
+  verification Jobs with a gates image. Checks that read kind nodes get an EKS
+  variant.
+- Give each seeder attempt an identity without collisions, and verify seeder
+  reruns.
 - Prevent a selective sync that bypasses the required hooks or gates.
-- All eleven scenarios pass on EKS with evidence and costs. The local Helmfile
-  workflow still passes step 6.9 without changes.
 
-### 7.6 Stable AWS webpage URLs and access control
+### 7.7 Cloud acceptance
 
-Depends on 4.10 and 7.5. Status: **Planned**.
+Depends on 7.6. Status: **Planned**.
+
+- All eleven scenarios pass on EKS with evidence and costs. A check that cannot
+  run on EKS has a documented reason.
+- The local Helmfile workflow still passes step 6.9 without changes.
+
+### 7.8 Stable AWS webpage URLs and access control
+
+Depends on 4.10 and 7.7. Status: **Planned**.
 
 - Qualify an EKS-compatible Gateway API controller with its TLS and
   authentication integrations. Deliver the `GatewayClass`, `Gateway` and

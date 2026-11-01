@@ -249,10 +249,18 @@ public final class KindTopology {
         return successfulSql(sqlAttempt(pod, statement));
     }
 
+    String sql(String pod, String database, String statement) throws IOException, InterruptedException {
+        return successfulSql(sqlAttempt(pod, database, statement));
+    }
+
     KindLab.CommandResult sqlAttempt(String pod, String statement) throws IOException, InterruptedException {
+        return sqlAttempt(pod, "shardshop", statement);
+    }
+
+    KindLab.CommandResult sqlAttempt(String pod, String database, String statement) throws IOException, InterruptedException {
         return lab.kubectlAttempt("exec", pod, "-c", "postgres", "--", "env",
                 "PGOPTIONS=-c statement_timeout=15000 -c lock_timeout=5000", "psql", "-X", "-qAt", "-v",
-                "ON_ERROR_STOP=1", "-v", "VERBOSITY=sqlstate", "-U", "postgres", "-d", "shardshop", "-c", statement);
+                "ON_ERROR_STOP=1", "-v", "VERBOSITY=sqlstate", "-U", "postgres", "-d", database, "-c", statement);
     }
 
     static String successfulSql(KindLab.CommandResult result) throws IOException {

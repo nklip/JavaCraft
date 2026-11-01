@@ -658,7 +658,7 @@ Lesson: a VPN with rotating exit addresses blocks a `/32` API filter.
 
 **Done 2026-11-01.**
 [`eks-values.yaml`](infra/helm/shardshop/eks-values.yaml) makes the shared chart create an encrypted gp3 StorageClass and put one instance of each shard in each zone. `EksValuesChartTest` shows that the order HTTP and saga Deployments are the same as on kind.
-The [runbook](infra/terraform/README.md#install-the-database-tier) installed the vendored CloudNativePG chart, the infrastructure release and the migrations with the ECR copy of the reviewed Flyway build.
+The [runbook](infra/terraform/README.md#deliver-the-database-layer-with-argo-cd) installed the vendored CloudNativePG chart, the infrastructure release and the migrations with the ECR copy of the reviewed Flyway build.
 `kind-topology` and `kind-database-drill` on all three shards passed on EKS.
 The run lasted 69 minutes and cost approximately US$0.40 (estimate US$0.85). No volume stayed.
 Lesson: the claim volumes are outside the Terraform state, thus remove the database tier before the destroy.
@@ -681,3 +681,14 @@ Lessons: open the webhook port 10260, restart the operator after the first relea
 The [microservices list](../README.md#modules) has ShardShop, and the ShardShop README links back to it.
 All eight new Mermaid diagrams render with Mermaid 11.4.1.
 This step needs no AWS run.
+
+<a id="step-75"></a>
+### Step 7.5 — Argo CD delivery of the database layer
+
+**Done 2026-11-02.**
+A self-managed Argo CD 3.5.6 applies the database layer from OCI charts in ECR: six child Applications in sync waves, with digest pins except the migrations, which use the immutable version because generated hook names contain the revision.
+Each sync creates new migration Jobs, and failed or interrupted Jobs stay.
+`eks-delivery` and the delivery drill passed: resync, interrupted and failed migrations, routing held back, explicit recovery.
+The ObjectStore wave removed the plugin race of 7.3.
+The run lasted 3 h 19 min and cost approximately US$1.60 (limit US$2.00).
+Lesson: Argo CD reports webhook defaults and extra resources as differences, thus ignore them explicitly.

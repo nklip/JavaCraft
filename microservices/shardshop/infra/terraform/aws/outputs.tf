@@ -14,6 +14,10 @@ output "ecr_repository_urls" {
   value = { for name, repository in aws_ecr_repository.images : name => repository.repository_url }
 }
 
+output "chart_repository_urls" {
+  value = { for name, repository in aws_ecr_repository.charts : name => repository.repository_url }
+}
+
 output "backup_bucket" {
   value = aws_s3_bucket.backups.bucket
 }

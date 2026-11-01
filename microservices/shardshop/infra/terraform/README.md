@@ -4,7 +4,7 @@
 
 Terraform creates the AWS foundation of milestone 7: a VPC, an EKS
 cluster, ECR repositories, a backup bucket, the runtime secrets and the IAM roles of
-the workloads. The [runbook](#install-the-database-tier) then installs the database
+the workloads. The [runbook](#deliver-the-database-layer-with-argo-cd) then installs the database
 tier of the shared chart on EKS and runs the drills. The local deployment does not use
 these resources. The versions are in [VERSIONS.md](../../VERSIONS.md#aws-foundation).
 
@@ -25,7 +25,8 @@ There are two Terraform root modules:
 | Workers | One managed node group in each zone, because an EBS volume stays in its zone. Graviton `t4g.large` with Amazon Linux 2023 arm64, because the images are linux/arm64. This size holds the database tier with the backup sidecars, three brokers, one restore cluster and the add-ons, but not the applications (`node_instance_type`). A `t4g.medium` (4 GiB) does not hold the backup sidecars. IMDSv2 with a hop limit of 1. |
 | Storage | [`eks-values.yaml`](../helm/shardshop/eks-values.yaml) makes the shared chart create the StorageClass `shardshop-gp3`: encrypted gp3 volumes with the tag `Project=shardshop`, created in the zone of the scheduled pod and deleted with their claim. Each shard has one instance in each zone. |
 | Add-ons | `vpc-cni`, `eks-pod-identity-agent`, `kube-proxy`, `coredns`, `aws-ebs-csi-driver`, the community add-on `cert-manager` for the backup plugin (its webhook port 10260 has its own node rule), and `aws-secrets-store-csi-driver-provider` with the Kubernetes Secret sync. Each one uses the newest add-on version for the cluster version at apply time. |
-| Images | One ECR repository for each image in [`skaffold.yaml`](../../skaffold.yaml), with immutable tags and a scan on push. |
+| Images | One ECR repository for each image in [`skaffold.yaml`](../../skaffold.yaml), with immutable tags and a scan on push. Four repositories below `shardshop-charts/` keep the OCI charts that Argo CD applies. |
+| Delivery | A self-managed [Argo CD](../helm/argocd/values.yaml) applies the database layer from the [delivery chart](../helm/delivery): one child Application for each layer, in sync waves, with digest-pinned charts. |
 | Backups | Bucket `shardshop-backups-<account>-<region>` with SSE-S3 encryption, blocked public access and a TLS-only policy. The [Barman Cloud Plugin](../helm/barman-cloud/values.yaml) archives the WAL of each database cluster continuously below the prefix of the cluster, for example `shard-a/`. A base backup starts with the cluster and then runs each day. The plugin keeps 7 days. |
 | Secrets | One AWS Secrets Manager secret for each login role of `runtimeSecrets` in `eks-values.yaml`, and `shardshop/rabbitmq` with the broker passwords, the Erlang cookie and the `users.json` of [`users.jq`](../helm/shardshop/files/rabbitmq/users.jq). The passwords are ephemeral and the values write-only, thus no password is in the Terraform state. A destroy deletes the secrets without a recovery window. The shared chart syncs them to the Kubernetes Secrets that kind creates with `cluster-create.sh`, through a holder pod that mounts them. |
 | Broker | Three RabbitMQ brokers, one in each zone. Each quorum queue has a member on each broker. |
@@ -185,12 +186,29 @@ kubectl --context kind-shardshop-test-eks -n kube-system get pods
 There must be three `Ready` arm64 nodes, one in each zone of the
 `availability_zones` output, and all the `kube-system` pods must be `Running`.
 
-### Install the database tier
+### Deliver the database layer with Argo CD
 
-These steps install the CloudNativePG operator, the backup plugin, the infrastructure
-release of the shared chart and the schema migrations. The applications stay on kind.
-The topology drills need the migrated `catalog` and `ordering` constraints and the
-routing ConfigMap.
+Argo CD applies the database layer from OCI charts in ECR, with a digest pin for
+each chart. The delivery chart [`infra/helm/delivery`](../helm/delivery) makes one
+child Application for each layer, in this sync-wave order:
+
+| Wave | Application | Contents |
+|---:|---|---|
+| 0 | `cnpg` | The vendored CloudNativePG chart and its values |
+| 1 | `barman-cloud` | The vendored Barman Cloud Plugin chart and its values |
+| 2 | `shardshop-namespace` | The namespace with the restricted Pod Security Standard |
+| 3 | `shardshop-infrastructure` | Databases, backups, broker and runtime secrets. The ObjectStore comes before the clusters |
+| 4 | `shardshop-migrations` | The Flyway Jobs as PostSync hooks |
+| 5 | `shardshop-routing` | The routing ConfigMap, only after successful migrations |
+
+The root Application `shardshop` applies a wave only after the Applications of the
+earlier waves have synced successfully and are healthy. Each Application has a digest
+pin, except `shardshop-migrations`: Argo CD 3.5 puts the first seven characters of
+the revision into the name of each generated hook Job, and a digest starts with
+`sha256:`. Thus the migrations use the chart version, and ECR keeps it immutable. Each sync creates new
+migration Jobs with `generateName`. Argo CD deletes only a successful Job. A failed
+or interrupted Job stays until its TTL of 24 hours ends. No Application prunes
+resources or deletes them with the Application.
 
 1. Copy the reviewed Flyway build to ECR. Set `config` to the
    `linux_arm64_config_digest` of `flyway_cli` in
@@ -217,43 +235,57 @@ routing ConfigMap.
    printf 'migration:\n  image: %s@%s\nbackup:\n  destinationPath: s3://%s/\n' "$registry" "$digest" "$bucket" >"$run/aws-values.yaml"
    ```
 
-3. Install the operator with the same vendored chart and values as kind. Then
-   install the vendored Barman Cloud Plugin in the same namespace. The plugin needs
-   the `cert-manager` add-on of the foundation:
+3. Install Argo CD from its vendored chart:
 
    ```bash
-   helm upgrade --install cnpg microservices/shardshop/infra/helm/cnpg/cloudnative-pg-0.29.1.tgz --kube-context kind-shardshop-test-eks --namespace cnpg-system --create-namespace --values microservices/shardshop/infra/helm/cnpg/values.yaml --server-side=true --wait --timeout 10m
-   helm upgrade --install barman-cloud microservices/shardshop/infra/helm/barman-cloud/plugin-barman-cloud-0.8.1.tgz --kube-context kind-shardshop-test-eks --namespace cnpg-system --values microservices/shardshop/infra/helm/barman-cloud/values.yaml --wait --timeout 10m
+   helm upgrade --install argocd microservices/shardshop/infra/helm/argocd/argo-cd-10.11.6.tgz --kube-context kind-shardshop-test-eks --namespace argocd --create-namespace --values microservices/shardshop/infra/helm/argocd/values.yaml --wait --timeout 10m
    ```
 
-4. Create the namespace. The infrastructure release syncs the credentials from
-   AWS Secrets Manager, thus there is no credential step:
+4. Push the charts to ECR. The shared chart contains the migrations and the
+   inventory, and the delivery chart contains the values of the vendored charts. A
+   new version for each push keeps the tags immutable. Each push prints the digest:
 
    ```bash
+   charts="${registry%%/*}/shardshop-charts"
+   aws ecr get-login-password --region eu-west-2 | helm registry login --username AWS --password-stdin "${registry%%/*}"
+   push() { helm push "$1" "oci://$charts" 2>&1 | awk '/^Digest:/ {print $2}'; }
+   version="0.3.0-run$(date -u +%Y%m%d%H%M%S)"
    chart=microservices/shardshop/infra/helm/shardshop
-   helm template shardshop "$chart" --namespace shardshop --values microservices/shardshop/infra/shards.yaml --values "$chart/eks-values.yaml" --values "$run/aws-values.yaml" --set-string render=namespace | kubectl --context kind-shardshop-test-eks apply -f -
+   cp -R "$chart" "$run/shardshop" && cp -R microservices/shardshop/database "$run/shardshop/migrations" && cp microservices/shardshop/infra/shards.yaml "$run/shardshop/"
+   cp -R microservices/shardshop/infra/helm/delivery "$run/delivery" && mkdir "$run/delivery/files"
+   cp microservices/shardshop/infra/helm/cnpg/values.yaml "$run/delivery/files/cnpg-values.yaml"
+   cp microservices/shardshop/infra/helm/barman-cloud/values.yaml "$run/delivery/files/barman-cloud-values.yaml"
+   mkdir "$run/packages"
+   helm package "$run/shardshop" --version "$version" --destination "$run/packages"
+   helm package "$run/delivery" --version "0.1.0-run${version#0.3.0-run}" --destination "$run/packages"
+   cnpg_digest=$(push microservices/shardshop/infra/helm/cnpg/cloudnative-pg-0.29.1.tgz)
+   barman_digest=$(push microservices/shardshop/infra/helm/barman-cloud/plugin-barman-cloud-0.8.1.tgz)
+   shardshop_digest=$(push "$run/packages/shardshop-$version.tgz")
+   delivery_digest=$(push "$run/packages/shardshop-delivery-0.1.0-run${version#0.3.0-run}.tgz")
    ```
 
-5. Install the infrastructure release. Then restart the operator, and wait for the
-   four database clusters. The plugin 0.15.1 can stop the first reconciliation of a
-   cluster that arrives together with its ObjectStore, and CNPG 1.30.1 does not
-   repeat it. The restart reconciles each cluster again:
+5. Give Argo CD the ECR login for the charts, as an OCI credential and as a Helm OCI
+   repository for the migrations. The token is valid for 12 hours:
 
    ```bash
-   helm upgrade --install shardshop-infrastructure "$chart" --kube-context kind-shardshop-test-eks --namespace shardshop --values microservices/shardshop/infra/shards.yaml --values "$chart/eks-values.yaml" --values "$run/aws-values.yaml" --set-string render=infrastructure --server-side=false --wait --timeout 15m
-   kubectl --context kind-shardshop-test-eks -n cnpg-system rollout restart deployment/cnpg-cloudnative-pg
-   kubectl --context kind-shardshop-test-eks -n cnpg-system rollout status deployment/cnpg-cloudnative-pg --timeout=5m
-   kubectl --context kind-shardshop-test-eks -n shardshop wait --for=condition=Ready cluster --all --timeout=15m
+   aws ecr get-login-password --region eu-west-2 >"$run/ecr-token"
+   kubectl --context kind-shardshop-test-eks -n argocd create secret generic shardshop-charts --from-literal=type=oci --from-literal="url=oci://$charts" --from-literal=username=AWS --from-file="password=$run/ecr-token"
+   kubectl --context kind-shardshop-test-eks -n argocd label secret shardshop-charts argocd.argoproj.io/secret-type=repo-creds
+   kubectl --context kind-shardshop-test-eks -n argocd create secret generic shardshop-helm-charts --from-literal=type=helm --from-literal=enableOCI=true --from-literal="url=$charts" --from-literal=username=AWS --from-file="password=$run/ecr-token"
+   kubectl --context kind-shardshop-test-eks -n argocd label secret shardshop-helm-charts argocd.argoproj.io/secret-type=repository
    ```
 
-6. Run the migrations, then publish the routing ConfigMap. On kind, the
-   application release publishes this ConfigMap:
+6. Write the delivery values, apply the root Application, and wait until all layers
+   are synced and healthy. The sync of the root Application succeeds only after its
+   last wave. A wait for the health of all Applications alone is not sufficient,
+   because it ignores the child Applications that do not exist yet:
 
    ```bash
-   cp -R "$chart" "$run/chart"
-   cp -R microservices/shardshop/database "$run/chart/migrations"
-   helm upgrade --install shardshop-migrations "$run/chart" --kube-context kind-shardshop-test-eks --namespace shardshop --values microservices/shardshop/infra/shards.yaml --values "$chart/eks-values.yaml" --values "$run/aws-values.yaml" --set-string render=migrations --server-side=false --wait --timeout 20m
-   helm template shardshop "$chart" --namespace shardshop --values microservices/shardshop/infra/shards.yaml --values "$chart/eks-values.yaml" --values "$run/aws-values.yaml" --set-string render=routing | kubectl --context kind-shardshop-test-eks apply -f -
+   { printf 'registry: %s\ncharts:\n  delivery: %s\n  cnpg: %s\n  barmanCloud: %s\n  shardshop: %s\n  shardshopVersion: %s\naccount:\n' "${registry%%/*}" "$delivery_digest" "$cnpg_digest" "$barman_digest" "$shardshop_digest" "$version"; sed 's/^/  /' "$run/aws-values.yaml"; } >"$run/delivery-values.yaml"
+   helm template shardshop microservices/shardshop/infra/helm/delivery --values "$run/delivery-values.yaml" --set-string mode=root | kubectl --context kind-shardshop-test-eks apply -f -
+   kubectl --context kind-shardshop-test-eks -n argocd wait --for=jsonpath='{.status.operationState.phase}'=Succeeded application/shardshop --timeout=30m
+   kubectl --context kind-shardshop-test-eks -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy application --all --timeout=5m
+   kubectl --context kind-shardshop-test-eks -n argocd get applications
    ```
 
 ### Run the drills
@@ -270,19 +302,11 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Dshard
 ```
 
 Run the [topology check](../../shardshop-testing/RUNBOOK.md#topology-check-and-database-drill),
-then the reversible database drill on each shard. The drill disrupts the reads and
-writes of its shard:
-
-```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags=kind-topology
-for shard in shard-a shard-b shard-c; do
-    mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags=kind-database-drill -Dshardshop.kind.drillShard="$shard" || break
-done
-```
-
-Run the EKS durability scenarios of
+the delivery check and the EKS durability scenarios of
 [`EksDurability.feature`](../../shardshop-testing/src/test/resources/kind-features/EksDurability.feature):
 
+- `eks-delivery`: each layer comes from a digest-pinned OCI chart, is synced and
+  healthy, and cannot prune or delete its resources.
 - `eks-runtime-secrets`: each database and broker Secret comes from Secrets Manager,
   and CNPG applied each login role.
 - `eks-backup`: each cluster archives its WAL and has a completed base backup.
@@ -295,27 +319,79 @@ Run the EKS durability scenarios of
   volume. `-Dshardshop.kind.drillCluster=<cluster>` restores only one cluster.
 
 ```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags='eks-runtime-secrets | eks-backup | eks-broker-quorum'
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags='kind-topology | eks-delivery | eks-runtime-secrets | eks-backup | eks-broker-quorum'
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags=eks-pitr-drill
 ```
+
+The reversible database drill of each shard disrupts the reads and writes of its
+shard:
+
+```bash
+for shard in shard-a shard-b shard-c; do
+    mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags=kind-database-drill -Dshardshop.kind.drillShard="$shard" || break
+done
+```
+
+The delivery drill uses two drill charts. The changed chart adds a catalog migration
+that sleeps 12 seconds. The failure chart also adds a migration that always fails.
+The drill does these steps:
+
+1. It syncs again without changes. Then it checks for new migration Jobs and an
+   unchanged schema history.
+2. It applies the changed chart and interrupts the migration during its sleep. It
+   checks that the interrupted Job and the routing stay, then it tries again.
+3. It applies the failure chart and checks that the routing stays at the earlier
+   revision.
+4. It recovers with the changed chart, then it returns to the chart of the run.
+
+```bash
+drill=microservices/shardshop/shardshop-testing/src/test/resources/eks-delivery
+cp -R "$run/shardshop" "$run/changed" && cp -R "$drill/changed/shard" "$run/changed/migrations/"
+cp -R "$run/changed" "$run/failing" && cp -R "$drill/failing/shard" "$run/failing/migrations/"
+helm package "$run/changed" --version "0.3.0-changed${version#0.3.0-run}" --destination "$run/packages"
+helm package "$run/failing" --version "0.3.0-failing${version#0.3.0-run}" --destination "$run/packages"
+changed_digest=$(push "$run/packages/shardshop-0.3.0-changed${version#0.3.0-run}.tgz")
+failing_digest=$(push "$run/packages/shardshop-0.3.0-failing${version#0.3.0-run}.tgz")
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags=eks-delivery-drill -Dshardshop.eks.changedChart="$changed_digest" -Dshardshop.eks.changedVersion="0.3.0-changed${version#0.3.0-run}" -Dshardshop.eks.failingChart="$failing_digest" -Dshardshop.eks.failingVersion="0.3.0-failing${version#0.3.0-run}"
+```
+
+The drill migrations stay in the databases. Thus a second drill on the same
+databases needs drill charts that keep `V9001` and add copies with higher versions,
+for example `V9003` and `V9004`. Give their versions with
+`-Dshardshop.eks.changedMigration=9003 -Dshardshop.eks.failingMigration=9004`.
+Without `V9001`, Flyway stops, because an applied migration is not in the chart.
+
+After a failed migration, change the root Application to the corrected chart. If the
+corrected chart was applied before, its ConfigMaps exist, and Argo CD does not repeat
+the failed sync. Then sync the migrations again:
+
+```bash
+kubectl --context kind-shardshop-test-eks -n argocd patch application shardshop-migrations --type merge -p "{\"operation\":{\"initiatedBy\":{\"username\":\"runbook\"},\"sync\":{\"revision\":\"$version\"}}}"
+```
+
+If the drill stops before its end, the root Application can stay on a drill chart.
+Set `charts.shardshop` and `charts.shardshopVersion` of the root Application back to
+`$shardshop_digest` and `$version`.
 
 ### Remove the database tier
 
 CAUTION: Make a copy of the data that you want to keep before you do this step.
 This step deletes all the databases, the broker data and their EBS volumes.
 
-The clusters have the Helm keep policy, thus the namespace deletion removes them.
-The EBS CSI driver then deletes each volume. There must be no persistent volume
-after the wait. The backups stay in the bucket until the destroy. A new installation
-in the same foundation needs empty prefixes, because the plugin refuses to archive
-into the WAL archive of an earlier cluster with the same name. Empty the bucket with
-`aws s3 rm "s3://$bucket/" --recursive` before you install the tier again:
+First stop the delivery: delete the root Application before its children, and
+uninstall Argo CD. The Applications have no resources finalizer, thus the resources
+stay. The namespace deletion then removes the clusters, and the EBS CSI driver
+deletes each volume. There must be no persistent volume after the wait. The backups
+stay in the bucket until the destroy:
 
 ```bash
-helm uninstall shardshop-migrations shardshop-infrastructure --kube-context kind-shardshop-test-eks --namespace shardshop --wait
+kubectl --context kind-shardshop-test-eks -n argocd delete application shardshop
+kubectl --context kind-shardshop-test-eks -n argocd delete application --all
+helm uninstall argocd --kube-context kind-shardshop-test-eks --namespace argocd --wait
 kubectl --context kind-shardshop-test-eks delete namespace shardshop --timeout=10m
 kubectl --context kind-shardshop-test-eks wait --for=delete persistentvolume --all --timeout=5m
-helm uninstall barman-cloud cnpg --kube-context kind-shardshop-test-eks --namespace cnpg-system --wait
+kubectl --context kind-shardshop-test-eks delete namespace cnpg-system --timeout=5m
+helm registry logout "${registry%%/*}"
 docker logout "${registry%%/*}"
 ```
 

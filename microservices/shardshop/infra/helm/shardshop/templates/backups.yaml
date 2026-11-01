@@ -5,6 +5,13 @@ kind: ObjectStore
 metadata:
   name: shardshop-backups
   namespace: {{ .Release.Namespace | quote }}
+  {{- if eq (.Values.delivery | default "helm") "argocd" }}
+  annotations:
+    # Helm creates the kinds in alphabetical order, thus Cluster before ObjectStore. The
+    # plugin then stops a cluster that refers to a missing ObjectStore, and CNPG 1.30.1
+    # does not repeat it. Argo CD creates the ObjectStore first.
+    argocd.argoproj.io/sync-wave: "-1"
+  {{- end }}
 spec:
   retentionPolicy: {{ .Values.backup.retentionPolicy | quote }}
   configuration:

@@ -11,6 +11,16 @@ resource "aws_ecr_repository" "images" {
   }
 }
 
+# The OCI Helm charts that Argo CD applies: the vendored operator and plugin charts, the
+# shared chart and the delivery chart. The runbook pushes each chart with a new version.
+resource "aws_ecr_repository" "charts" {
+  for_each = toset(["cloudnative-pg", "plugin-barman-cloud", "shardshop", "shardshop-delivery"])
+
+  name                 = "${local.name}-charts/${each.key}"
+  image_tag_mutability = "IMMUTABLE"
+  force_delete         = true
+}
+
 resource "aws_s3_bucket" "backups" {
   bucket = "${local.name}-backups-${local.account_id}-${var.region}"
   # terraform destroy also deletes all backups.

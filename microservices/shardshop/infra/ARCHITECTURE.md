@@ -13,8 +13,8 @@ deployment (EKS provisioned with Terraform, milestone 7 in the [plan](../PLAN.md
 reuses the same shared Helm templates through environment values and the same
 verified operator Helm charts and values. It adds cloud-only durability: S3 backups
 with WAL archiving, a three-broker RabbitMQ and runtime secrets from AWS Secrets
-Manager. The Argo CD delivery of the database layer and the applications is
-planned. No local behavior or check may depend on a cloud service.
+Manager. Argo CD delivers the database layer, and the Argo CD delivery of the
+applications is planned. No local behavior or check may depend on a cloud service.
 
 The [AWS foundation](terraform/README.md) describes the Terraform modules, the
 installation of the database tier on EKS, its durability, the operator permissions

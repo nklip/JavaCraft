@@ -55,18 +55,41 @@ their internet egress. `nat_gateway_per_zone = true` changes this
 **Decision.** EKS uses the same CloudNativePG chart, shared chart and inventory as
 kind. `eks-values.yaml` changes only the storage and the zone placement, and makes
 the shared chart create an encrypted gp3 StorageClass. Plain Helm and kubectl
-commands in the [runbook](infra/terraform/README.md#install-the-database-tier)
-install the database tier, without a script or Helmfile. The user selected the
-runbook commands and an API endpoint open to all addresses on 2026-11-01.
+commands in the [runbook](infra/terraform/README.md#deliver-the-database-layer-with-argo-cd)
+installed the database tier, without a script or Helmfile, until Argo CD replaced
+them. The user selected the runbook commands and an API endpoint open to all
+addresses on 2026-11-01.
 
 **Reason.** The EBS CSI add-on can create only a default class without an explicit
 volume type or encryption. A class in the chart is explicit, testable and leaves
-with the infrastructure release. Argo CD and Secrets Manager replace the runbook
-later in milestone 7. The exit address of the operator's VPN changes for each
-connection, thus one `/32` filter blocks kubectl.
+with the infrastructure release. Secrets Manager and Argo CD later replaced the
+credential and delivery commands of the runbook. The exit address of the
+operator's VPN changes for each connection, thus one `/32` filter blocks kubectl.
 
 **Result.** IAM authentication and the access entries are the only protection of
 an open endpoint. Destroy the foundation after each run.
+
+### Argo CD delivery from OCI charts in ECR
+
+**Decision.** A self-managed Argo CD 3.5 applies the database layer on EKS. The
+source is OCI charts in ECR with digest pins, which the runbook packages from the
+working tree. A root Application applies one child Application for each layer in
+sync waves. The user selected the split of the GitOps step, the self-managed Argo
+CD, the OCI source and gate Jobs in the cluster on 2026-11-01.
+
+**Reason.** An AWS run then needs no Git push. Argo CD renders with
+`helm template`, thus the Helm release revision cannot name a migration attempt.
+`generateName` gives each attempt a new Job, and the delete policy `HookSucceeded`
+keeps a failed or interrupted attempt. A wave starts only after the earlier waves
+are healthy, thus a failed migration stops the routing publication. The managed
+Argo CD of EKS needs IAM Identity Center.
+
+**Result.** No child Application prunes resources or has a resources finalizer,
+thus Argo CD never deletes a database. kind keeps Helmfile and the Helm names. The
+migrations use the immutable chart version instead of the digest. Argo CD 3.5 puts
+the start of the revision into the generated hook names, and `sha256:` is not valid
+there. The infrastructure ignores `/spec/login` of `DatabaseRole`,
+because the CNPG webhook removes `login: false`.
 
 ### EKS durability with managed add-ons
 
