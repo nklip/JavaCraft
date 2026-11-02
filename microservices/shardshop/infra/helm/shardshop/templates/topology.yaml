@@ -9,7 +9,8 @@
 {{- dict "apiVersion" "v1" "kind" "ConfigMap" "immutable" true
       "metadata" (dict "name" "shardshop-migration-topology" "namespace" .Release.Namespace "annotations" (dict "helm.sh/resource-policy" "keep"))
       "data" (dict "version" $version "regionVersion" $regionVersion) | toPrettyJson }}
-{{- else if or (eq .Values.render "routing") (eq .Values.render "application-release") }}
+{{- /* With Argo CD, only the routing Application publishes the routing, after the migrations. */ -}}
+{{- else if or (eq .Values.render "routing") (and (eq .Values.render "application-release") (ne (.Values.delivery | default "helm") "argocd")) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

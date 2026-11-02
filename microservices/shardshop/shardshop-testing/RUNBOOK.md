@@ -136,8 +136,11 @@ and deployed lab with all nine running application pods. The saga scenario creat
 two scoped orders for the gate's own buyer. The other scenarios only observe.
 Run the default suite separately from the Testcontainers `integration` profile.
 
-The `eks-*` scenarios of `EksDurability.feature` run only on the
+The `eks-*` scenarios of `EksDurability.feature`, `EksDelivery.feature` and
+`EksApplications.feature` run only on the
 [AWS deployment](../infra/terraform/README.md#run-the-drills). No kind tag selects them.
+On EKS, the gates image runs the lifecycle gates in Argo CD hook Jobs with the JUnit
+console launcher, without Maven.
 
 Disruptive scenarios require explicit selection. `kind-drill` combines
 `kind-database-drill`, `kind-workload-drill`, `kind-saga-drill`, `kind-retry-drill`,
@@ -673,14 +676,14 @@ follow a replaced HTTP pod. The drill verifies commits before, during and after 
 replacement, the unchanged saga pod UID and active slot PIDs, and complete stock,
 ledger and profit effects for every accepted order. It restores the rollout annotation
 through the drill guard. No new workload pod is necessary. `kind-observability` is
-also part of the normal deployment gate. The [monitoring guide](../infra/README.md#monitoring)
+also part of the normal deployment gate. The [monitoring guide](../infra/README.md#3-monitoring)
 names the endpoints and signals.
 
 ## Acceptance run on a disposable lab
 
 This procedure verifies the [README](../README.md) and the owning runbooks on one
 fresh owned lab. The retained lab keeps its data. Obey the
-[disposable test clusters](../infra/RUNBOOK.md#disposable-test-clusters) rules: stop
+[disposable test clusters](../infra/RUNBOOK.md#7-disposable-test-clusters) rules: stop
 the retained lab and record its state, make sure that at least 20 GiB of the Docker
 disk is free, and register the cleanup before creation. Set `SHARDSHOP_TEST_CLUSTER`
 and `SHARDSHOP_TEST_KUBECONFIG` for every call.
@@ -726,7 +729,7 @@ keep the `shardshop-kind-drill` lock, and later drills then stop.
 ## Capacity measurement
 
 Read the [measurement protocol](ARCHITECTURE.md#capacity-measurement) first. Use an
-already prepared lab. Follow the [lifecycle runbook](../infra/RUNBOOK.md#stop-and-resume-the-cluster)
+already prepared lab. Follow the [lifecycle runbook](../infra/RUNBOOK.md#5-stop-and-resume-the-cluster)
 to resume it if necessary, and record its prior running state. Reuse the deployed lab
 without a rebuild of images or new migrations.
 

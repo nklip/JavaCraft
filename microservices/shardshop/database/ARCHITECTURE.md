@@ -163,7 +163,7 @@ seconds for exact current-generation applied outbox Publications before the
 application release can publish routing. Failed releases retain already committed
 SQL; there is no automatic SQL rollback, history repair or database reset.
 
-The [lifecycle locking, retained shutdown and destructive reset contract](../infra/ARCHITECTURE.md#retained-lifecycle-safety)
+The [lifecycle locking, retained shutdown and destructive reset contract](../infra/ARCHITECTURE.md#7-retained-lifecycle-safety)
 applies to migrations as well as infrastructure.
 
 ### Schema versions

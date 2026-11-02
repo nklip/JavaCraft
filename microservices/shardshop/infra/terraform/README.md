@@ -1,11 +1,11 @@
 # AWS foundation
 
-[ShardShop](../../README.md) › [Infrastructure](../README.md) › **AWS foundation** · [Plan milestone 7](../../PLAN.md#milestone-7-aws-deployment)
+[ShardShop](../../README.md) › [Infrastructure](../README.md) › **AWS foundation** · [Container images](../images/README.md) · [Plan milestone 7](../../PLAN.md#milestone-7-aws-deployment)
 
 Terraform creates the AWS foundation of milestone 7: a VPC, an EKS
 cluster, ECR repositories, a backup bucket, the runtime secrets and the IAM roles of
-the workloads. The [runbook](#deliver-the-database-layer-with-argo-cd) then installs the database
-tier of the shared chart on EKS and runs the drills. The local deployment does not use
+the workloads. The [runbook](#deliver-shardshop-with-argo-cd) then delivers ShardShop
+on EKS with Argo CD and runs the drills. The local deployment does not use
 these resources. The versions are in [VERSIONS.md](../../VERSIONS.md#aws-foundation).
 
 ## Design
@@ -22,11 +22,11 @@ There are two Terraform root modules:
 |---|---|
 | Network | VPC `10.40.0.0/16` in the first three zones of `eu-west-2`. In each zone, a private `/20` subnet for the workers and a public `/24` subnet. One shared NAT gateway (`nat_gateway_per_zone = true` gives one in each zone). A free S3 gateway endpoint for backups and ECR image layers. |
 | Cluster | EKS `shardshop` on Kubernetes 1.36, because CloudNativePG 1.30 supports 1.34–1.36. The upgrade policy `STANDARD` prevents paid extended support. The public API endpoint accepts only `api_allowed_cidrs`. Access entries only (`authentication_mode = "API"`), and the creator is a cluster administrator. Audit and authenticator logs stay 7 days. |
-| Workers | One managed node group in each zone, because an EBS volume stays in its zone. Graviton `t4g.large` with Amazon Linux 2023 arm64, because the images are linux/arm64. This size holds the database tier with the backup sidecars, three brokers, one restore cluster and the add-ons, but not the applications (`node_instance_type`). A `t4g.medium` (4 GiB) does not hold the backup sidecars. IMDSv2 with a hop limit of 1. |
+| Workers | One managed node group in each zone, because an EBS volume stays in its zone. Graviton `t4g.xlarge` with Amazon Linux 2023 arm64, because the images are linux/arm64. This size holds the database tier with the backup sidecars, three brokers, one restore cluster, Argo CD, the applications, the gates and the add-ons (`node_instance_type`). A `t4g.large` holds all of them except the applications, and a `t4g.medium` (4 GiB) does not hold the backup sidecars. IMDSv2 with a hop limit of 1. The cluster API can reach the pods on 8080 and 9187, because the gates read the application and CloudNativePG metrics through the API server proxy. |
 | Storage | [`eks-values.yaml`](../helm/shardshop/eks-values.yaml) makes the shared chart create the StorageClass `shardshop-gp3`: encrypted gp3 volumes with the tag `Project=shardshop`, created in the zone of the scheduled pod and deleted with their claim. Each shard has one instance in each zone. |
 | Add-ons | `vpc-cni`, `eks-pod-identity-agent`, `kube-proxy`, `coredns`, `aws-ebs-csi-driver`, the community add-on `cert-manager` for the backup plugin (its webhook port 10260 has its own node rule), and `aws-secrets-store-csi-driver-provider` with the Kubernetes Secret sync. Each one uses the newest add-on version for the cluster version at apply time. |
-| Images | One ECR repository for each image in [`skaffold.yaml`](../../skaffold.yaml), with immutable tags and a scan on push. Four repositories below `shardshop-charts/` keep the OCI charts that Argo CD applies. |
-| Delivery | A self-managed [Argo CD](../helm/argocd/values.yaml) applies the database layer from the [delivery chart](../helm/delivery): one child Application for each layer, in sync waves, with digest-pinned charts. |
+| Images | One ECR repository for each image in [`skaffold.yaml`](../../skaffold.yaml) and for the [gates image](../images/README.md#4-gates-image), with immutable tags and a scan on push. Four repositories below `shardshop-charts/` keep the OCI charts that Argo CD applies. |
+| Delivery | A self-managed [Argo CD](../helm/argocd/values.yaml) applies ShardShop from the [delivery chart](../helm/delivery): one child Application for each layer, in sync waves, with pinned charts. The Maven gates of the local deployment run as hook Jobs. An admission policy denies a sync that skips the hooks. |
 | Backups | Bucket `shardshop-backups-<account>-<region>` with SSE-S3 encryption, blocked public access and a TLS-only policy. The [Barman Cloud Plugin](../helm/barman-cloud/values.yaml) archives the WAL of each database cluster continuously below the prefix of the cluster, for example `shard-a/`. A base backup starts with the cluster and then runs each day. The plugin keeps 7 days. |
 | Secrets | One AWS Secrets Manager secret for each login role of `runtimeSecrets` in `eks-values.yaml`, and `shardshop/rabbitmq` with the broker passwords, the Erlang cookie and the `users.json` of [`users.jq`](../helm/shardshop/files/rabbitmq/users.jq). The passwords are ephemeral and the values write-only, thus no password is in the Terraform state. A destroy deletes the secrets without a recovery window. The shared chart syncs them to the Kubernetes Secrets that kind creates with `cluster-create.sh`, through a holder pod that mounts them. |
 | Broker | Three RabbitMQ brokers, one in each zone. Each quorum queue has a member on each broker. |
@@ -41,7 +41,7 @@ There are two Terraform root modules:
   AWS owned key.
 
 The Terraform state does not contain the EBS volumes of the database and broker
-claims. Thus [remove the database tier](#remove-the-database-tier) before the
+claims. Thus [remove ShardShop from the cluster](#remove-shardshop-from-the-cluster) before the
 destroy, while the EBS CSI driver still runs.
 
 [`operator-policy.json`](operator-policy.json) gives the permissions for these
@@ -66,11 +66,11 @@ price list of 2026-10-29:
 | EKS control plane, standard support | US$0.10 for each hour |
 | NAT gateway | US$0.05 for each hour, and US$0.05 for each GB |
 | Public IPv4 address of the NAT gateway | US$0.005 for each hour |
-| Three `t4g.large` workers | US$0.2256 for each hour (3 × US$0.0752, price list of 2026-11-01) |
+| Three `t4g.xlarge` workers | US$0.4512 for each hour (3 × US$0.1504, price list of 2026-11-01) |
 | Three 20 GB gp3 root volumes | US$0.0076 for each hour (US$0.0928 for each GB-month) |
 | Thirteen 2 GiB gp3 database and broker volumes of the database tier | US$0.0033 for each hour |
 | Nine Secrets Manager secrets | US$0.40 for each secret-month (US$0.005 for each hour), and US$0.05 for each 10,000 API calls |
-| Total while the foundation and the database tier run | Approximately US$0.40 for each hour, or US$290 for each month |
+| Total while the foundation and ShardShop run | Approximately US$0.62 for each hour, or US$455 for each month |
 | EKS audit and authenticator logs | US$0.5985 for each GB |
 
 S3, ECR and the S3 gateway endpoint cost almost nothing with the small backups of a
@@ -186,71 +186,137 @@ kubectl --context kind-shardshop-test-eks -n kube-system get pods
 There must be three `Ready` arm64 nodes, one in each zone of the
 `availability_zones` output, and all the `kube-system` pods must be `Running`.
 
-### Deliver the database layer with Argo CD
+### Deliver ShardShop with Argo CD
 
-Argo CD applies the database layer from OCI charts in ECR, with a digest pin for
-each chart. The delivery chart [`infra/helm/delivery`](../helm/delivery) makes one
-child Application for each layer, in this sync-wave order:
+Argo CD applies ShardShop from OCI charts in ECR. The delivery chart
+[`infra/helm/delivery`](../helm/delivery) makes one child Application for each layer,
+in this sync-wave order:
 
 | Wave | Application | Contents |
 |---:|---|---|
+| -1 | — | The admission policy `shardshop-full-sync` |
 | 0 | `cnpg` | The vendored CloudNativePG chart and its values |
 | 1 | `barman-cloud` | The vendored Barman Cloud Plugin chart and its values |
 | 2 | `shardshop-namespace` | The namespace with the restricted Pod Security Standard |
-| 3 | `shardshop-infrastructure` | Databases, backups, broker and runtime secrets. The ObjectStore comes before the clusters |
-| 4 | `shardshop-migrations` | The Flyway Jobs as PostSync hooks |
+| 3 | `shardshop-infrastructure` | Databases, backups, broker, runtime secrets and the identity of the gates. The ObjectStore comes before the clusters |
+| 4 | `shardshop-migrations` | A PreSync gate, then the Flyway Jobs as PostSync hooks |
 | 5 | `shardshop-routing` | The routing ConfigMap, only after successful migrations |
+| 6 | `shardshop-applications` | A PreSync gate, the six applications with both order processes, then the seeder and a PostSync gate |
 
 The root Application `shardshop` applies a wave only after the Applications of the
 earlier waves have synced successfully and are healthy. Each Application has a digest
-pin, except `shardshop-migrations`: Argo CD 3.5 puts the first seven characters of
-the revision into the name of each generated hook Job, and a digest starts with
-`sha256:`. Thus the migrations use the chart version, and ECR keeps it immutable. Each sync creates new
-migration Jobs with `generateName`. Argo CD deletes only a successful Job. A failed
-or interrupted Job stays until its TTL of 24 hours ends. No Application prunes
-resources or deletes them with the Application.
+pin, except the two layers with generated hook Jobs: Argo CD 3.5 puts the first seven
+characters of the revision into the name of each generated hook Job, and a digest
+starts with `sha256:`. Thus these layers use the chart version, and ECR keeps it
+immutable. Each sync creates new hook Jobs with `generateName`. Argo CD deletes only a
+successful migration Job. A failed or interrupted Job, each gate and each seeder
+attempt stay until their TTL of 24 hours ends. No Application prunes resources or
+deletes them with the Application.
 
-1. Copy the reviewed Flyway build to ECR. Set `config` to the
-   `linux_arm64_config_digest` of `flyway_cli` in
-   [versions.lock.yaml](../../versions.lock.yaml). If Docker does not have this
-   image, run `scripts/up.sh` on the kind lab first.
+The gates are the Maven gates of the [Helmfile workflow](../helmfile.yaml.gotmpl), as
+hook Jobs:
+
+| Gate | Tags |
+|---|---|
+| PreSync of `shardshop-migrations` | `kind-allocator`, `kind-infrastructure`, `kind-migration-reservation`, `kind-migrations-idle` |
+| PreSync of `shardshop-applications` | `kind-publications`, `kind-migration-reservation`, `kind-drills-idle` |
+| PostSync of `shardshop-applications`, after the seeder | `eks-release`, `kind-deployment` |
+
+The [gates image](../images/README.md#4-gates-image) runs `KindIT` with the
+ServiceAccount `shardshop-gates`. `eks-release` replaces `kind-release`, because
+`kind-release` reads the images on the kind nodes. A failed PreSync gate stops the
+sync before Argo CD applies a resource.
+
+Argo CD runs no hook in a selective sync or with the `apply` sync strategy. Thus the
+admission policy `shardshop-full-sync` denies both for the ShardShop Applications.
+Always sync all the resources of an Application.
+
+1. Build and scan the images from the current sources, as `scripts/up.sh` does. The
+   build runs all the tests. A scan stops at a critical or high finding without a
+   [VEX statement](../images/application/vex):
+
+   ```bash
+   mvn -B -ntp -f microservices/shardshop/pom.xml clean install -DinstallAtEnd=true
+   printf '{}\n' >"$run/skaffold-global.yaml"
+   (cd microservices/shardshop && skaffold build --config "$run/skaffold-global.yaml" --cache-artifacts=true --cache-file="$run/skaffold-cache" --file-output="$run/builds.json")
+   jq -r '.builds[] | [(.imageName | split("/")[-1]), .tag] | @tsv' "$run/builds.json" >"$run/builds.tsv"
+   while IFS=$'\t' read -r name tag; do docker scout cves --exit-code --only-severity critical,high --format only-packages --only-vuln-packages --vex-location microservices/shardshop/infra/images/application/vex --vex-author '^ShardShop image review$' --ignore-suppressed "local://$tag" || echo "STOP: $name failed the scan"; done <"$run/builds.tsv"
+   ```
+
+2. Copy the images to ECR. Set `config` to the `linux_arm64_config_digest` of
+   `flyway_cli` in [versions.lock.yaml](../../versions.lock.yaml). The function
+   `push_image` tags each image with its configuration digest, because ECR keeps tags
+   immutable. ECR gives a different manifest digest from the local build, because
+   Docker compresses the layers for the push. Thus the function makes sure that the
+   ECR manifest refers to the local image configuration, and prints the ECR reference
+   with its digest. The last command must show `true`:
 
    ```bash
    config=sha256:<linux_arm64_config_digest>
-   registry=$(terraform -chdir=microservices/shardshop/infra/terraform/aws output -json ecr_repository_urls | jq -r '."shardshop-flyway"')
-   aws ecr get-login-password --region eu-west-2 | docker login --username AWS --password-stdin "${registry%%/*}"
-   docker tag "$config" "$registry:${config#sha256:}"
-   docker push "$registry:${config#sha256:}"
+   repositories=$(terraform -chdir=microservices/shardshop/infra/terraform/aws output -json ecr_repository_urls)
+   registry=$(jq -r '."shardshop-flyway" | split("/")[0]' <<<"$repositories")
+   aws ecr get-login-password --region eu-west-2 | docker login --username AWS --password-stdin "$registry"
+   push_image() {
+       local config repository tag
+       config=$(docker image inspect --format '{{.Id}}' "$2") && repository=$(jq -r --arg name "$1" '.[$name]' <<<"$repositories") && tag=${config#sha256:}
+       docker tag "$2" "$repository:$tag" && docker push --quiet "$repository:$tag" >/dev/null || return 1
+       aws ecr batch-get-image --region eu-west-2 --repository-name "$1" --image-ids "imageTag=$tag" --query 'images[0].imageManifest' --output text | jq -e --arg config "$config" '.config.digest == $config' >/dev/null || return 1
+       printf '%s@%s\n' "$repository" "$(aws ecr describe-images --region eu-west-2 --repository-name "$1" --image-ids "imageTag=$tag" --query 'imageDetails[0].imageDigest' --output text)"
+   }
+   [[ $(docker image inspect --format '{{.Id}}' "$(awk '$1 == "shardshop-flyway" {print $2}' "$run/builds.tsv")") == "$config" ]] && echo 'reviewed Flyway build'
+   migration=$(push_image shardshop-flyway "$config")
+   images='{}'
+   while IFS=$'\t' read -r name tag; do [[ $name == shardshop-flyway ]] || images=$(jq --arg key "${name#shardshop-}" --arg image "$(push_image "$name" "$tag")" '.[$key] = $image' <<<"$images"); done <"$run/builds.tsv"
+   jq -e 'length == 6 and all(.[]; test("@sha256:[0-9a-f]{64}$"))' <<<"$images"
    ```
 
-2. Make sure that the ECR manifest refers to the reviewed image configuration. ECR
-   gives a different manifest digest from the kind pin, because Docker compresses
-   the layers for the push. Then write the values that contain the account ID: the
-   ECR image and the backup bucket:
+3. Write the values that contain the account ID: the ECR images and the backup
+   bucket. Then write the invocation snapshot of the gates and the drills. The `kind`
+   profile requires `kind.json`, but these scenarios do not read it:
 
    ```bash
-   aws ecr batch-get-image --region eu-west-2 --repository-name shardshop-flyway --image-ids "imageTag=${config#sha256:}" --query 'images[0].imageManifest' --output text | jq -e --arg config "$config" '.config.digest == $config'
-   digest=$(aws ecr describe-images --region eu-west-2 --repository-name shardshop-flyway --image-ids "imageTag=${config#sha256:}" --query 'imageDetails[0].imageDigest' --output text)
    bucket=$(terraform -chdir=microservices/shardshop/infra/terraform/aws output -raw backup_bucket)
-   printf 'migration:\n  image: %s@%s\nbackup:\n  destinationPath: s3://%s/\n' "$registry" "$digest" "$bucket" >"$run/aws-values.yaml"
+   jq -n --arg migration "$migration" --arg bucket "$bucket" --argjson images "$images" '{migration: {image: $migration}, backup: {destinationPath: "s3://\($bucket)/"}, images: $images}' >"$run/aws-values.json"
+   chart=microservices/shardshop/infra/helm/shardshop
+   render() { helm template shardshop "$chart" --namespace shardshop --values microservices/shardshop/infra/shards.yaml --values "$chart/eks-values.yaml" --values "$run/aws-values.json" --set-string delivery=argocd --set-string "render=$1" "${@:2}"; }
+   mkdir "$run/snapshot"
+   render inventory | sed '/^# Source:/d; /^---$/d' >"$run/snapshot/inventory.json"
+   render infrastructure >"$run/snapshot/infrastructure.yaml"
+   printf '{}\n' >"$run/snapshot/kind.json"
+   jq '{images}' "$run/aws-values.json" >"$run/snapshot/images.json"
    ```
 
-3. Install Argo CD from its vendored chart:
+4. Build the gates image from the tests of step 1, the snapshot and the golden routing
+   vectors of the topology check, and copy it to ECR. Report each critical or high finding of the scan before the run continues:
+
+   ```bash
+   mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true dependency:copy-dependencies -DincludeScope=test -DoutputDirectory="$run/gates/gates/lib"
+   cp -R microservices/shardshop/shardshop-testing/target/test-classes "$run/gates/gates/classes"
+   cp -R "$run/snapshot" "$run/gates/gates/snapshot"
+   vectors=shardshop-core/sharding/src/test/resources/routing-vectors.csv
+   mkdir -p "$run/gates/gates/source/${vectors%/*}" && cp "microservices/shardshop/$vectors" "$run/gates/gates/source/$vectors"
+   mkdir "$run/gates/gates/kube" && cp microservices/shardshop/infra/images/gates/kubeconfig "$run/gates/gates/kube/config"
+   docker buildx build --platform linux/arm64 --provenance=false --sbom=false --load --tag shardshop-gates:run --file microservices/shardshop/infra/images/gates/Dockerfile "$run/gates"
+   docker scout cves --only-severity critical,high --format only-packages --only-vuln-packages local://shardshop-gates:run
+   gates=$(push_image shardshop-gates shardshop-gates:run)
+   jq --arg gates "$gates" '.gates.image = $gates' "$run/aws-values.json" >"$run/aws-values.next" && mv "$run/aws-values.next" "$run/aws-values.json"
+   ```
+
+5. Install Argo CD from its vendored chart:
 
    ```bash
    helm upgrade --install argocd microservices/shardshop/infra/helm/argocd/argo-cd-10.11.6.tgz --kube-context kind-shardshop-test-eks --namespace argocd --create-namespace --values microservices/shardshop/infra/helm/argocd/values.yaml --wait --timeout 10m
    ```
 
-4. Push the charts to ECR. The shared chart contains the migrations and the
+6. Push the charts to ECR. The shared chart contains the migrations and the
    inventory, and the delivery chart contains the values of the vendored charts. A
    new version for each push keeps the tags immutable. Each push prints the digest:
 
    ```bash
-   charts="${registry%%/*}/shardshop-charts"
-   aws ecr get-login-password --region eu-west-2 | helm registry login --username AWS --password-stdin "${registry%%/*}"
+   charts="$registry/shardshop-charts"
+   aws ecr get-login-password --region eu-west-2 | helm registry login --username AWS --password-stdin "$registry"
    push() { helm push "$1" "oci://$charts" 2>&1 | awk '/^Digest:/ {print $2}'; }
    version="0.3.0-run$(date -u +%Y%m%d%H%M%S)"
-   chart=microservices/shardshop/infra/helm/shardshop
    cp -R "$chart" "$run/shardshop" && cp -R microservices/shardshop/database "$run/shardshop/migrations" && cp microservices/shardshop/infra/shards.yaml "$run/shardshop/"
    cp -R microservices/shardshop/infra/helm/delivery "$run/delivery" && mkdir "$run/delivery/files"
    cp microservices/shardshop/infra/helm/cnpg/values.yaml "$run/delivery/files/cnpg-values.yaml"
@@ -264,8 +330,8 @@ resources or deletes them with the Application.
    delivery_digest=$(push "$run/packages/shardshop-delivery-0.1.0-run${version#0.3.0-run}.tgz")
    ```
 
-5. Give Argo CD the ECR login for the charts, as an OCI credential and as a Helm OCI
-   repository for the migrations. The token is valid for 12 hours:
+7. Give Argo CD the ECR login for the charts, as an OCI credential and as a Helm OCI
+   repository for the layers with hooks. The token is valid for 12 hours:
 
    ```bash
    aws ecr get-login-password --region eu-west-2 >"$run/ecr-token"
@@ -275,38 +341,65 @@ resources or deletes them with the Application.
    kubectl --context kind-shardshop-test-eks -n argocd label secret shardshop-helm-charts argocd.argoproj.io/secret-type=repository
    ```
 
-6. Write the delivery values, apply the root Application, and wait until all layers
-   are synced and healthy. The sync of the root Application succeeds only after its
-   last wave. A wait for the health of all Applications alone is not sufficient,
-   because it ignores the child Applications that do not exist yet:
+8. Write the delivery values and apply the root Application:
 
    ```bash
-   { printf 'registry: %s\ncharts:\n  delivery: %s\n  cnpg: %s\n  barmanCloud: %s\n  shardshop: %s\n  shardshopVersion: %s\naccount:\n' "${registry%%/*}" "$delivery_digest" "$cnpg_digest" "$barman_digest" "$shardshop_digest" "$version"; sed 's/^/  /' "$run/aws-values.yaml"; } >"$run/delivery-values.yaml"
-   helm template shardshop microservices/shardshop/infra/helm/delivery --values "$run/delivery-values.yaml" --set-string mode=root | kubectl --context kind-shardshop-test-eks apply -f -
-   kubectl --context kind-shardshop-test-eks -n argocd wait --for=jsonpath='{.status.operationState.phase}'=Succeeded application/shardshop --timeout=30m
-   kubectl --context kind-shardshop-test-eks -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy application --all --timeout=5m
-   kubectl --context kind-shardshop-test-eks -n argocd get applications
+   jq -n --arg registry "$registry" --arg delivery "$delivery_digest" --arg cnpg "$cnpg_digest" --arg barman "$barman_digest" --arg shardshop "$shardshop_digest" --arg version "$version" --slurpfile account "$run/aws-values.json" '{registry: $registry, charts: {delivery: $delivery, cnpg: $cnpg, barmanCloud: $barman, shardshop: $shardshop, shardshopVersion: $version}, account: $account[0]}' >"$run/delivery-values.json"
+   helm template shardshop microservices/shardshop/infra/helm/delivery --values "$run/delivery-values.json" --set-string mode=root | kubectl --context kind-shardshop-test-eks apply -f -
    ```
+
+9. Create the generator registry and its identity one time for each new cluster, as
+   `cluster-create.sh` does for a new kind cluster. They are not chart resources, thus
+   no sync can reset the counter. Until they exist, the PreSync gate of the migrations
+   fails, and Argo CD tries the sync again. First wait for the infrastructure, because
+   its retention policy must protect the registry. Then the admission check must pass:
+
+   ```bash
+   kubectl --context kind-shardshop-test-eks -n argocd wait --for=create application/shardshop-infrastructure --timeout=10m
+   kubectl --context kind-shardshop-test-eks -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy application/shardshop-infrastructure --timeout=20m
+   mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.fresh=true -Dshardshop.kind.tags=kind-admission-bootstrap
+   registry_uid=$(kubectl --context kind-shardshop-test-eks -n shardshop create configmap shardshop-snowflake-generators --from-literal=highWaterMark=0 -o jsonpath='{.metadata.uid}')
+   render generator-identity --set-literal "generatorRegistryUid=$registry_uid" | kubectl --context kind-shardshop-test-eks create -f -
+   ```
+
+10. Wait until all layers are synced and healthy. The sync of the root Application
+    succeeds after it applied its last wave, but Argo CD does not wait for the health
+    of the last wave. Thus also wait for the sync of the applications, with their
+    seeder and PostSync gate. A wait for the health of all Applications alone is not
+    sufficient, because it ignores the child Applications that do not exist yet. If
+    the retries of the migrations end before step 9, sync them again with the command
+    below:
+
+    ```bash
+    kubectl --context kind-shardshop-test-eks -n argocd wait --for=jsonpath='{.status.operationState.phase}'=Succeeded application/shardshop --timeout=60m
+    kubectl --context kind-shardshop-test-eks -n argocd wait --for=jsonpath='{.status.operationState.phase}'=Succeeded application/shardshop-applications --timeout=30m
+    kubectl --context kind-shardshop-test-eks -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy application --all --timeout=5m
+    kubectl --context kind-shardshop-test-eks -n argocd get applications
+    ```
+
+If a gate fails, the sync of its Application fails, and the root Application stops at
+its wave. The gate Job stays. Read its report, correct the cause, then sync the
+Application again:
+
+```bash
+kubectl --context kind-shardshop-test-eks -n shardshop get jobs -l app.kubernetes.io/name=shardshop-gates
+kubectl --context kind-shardshop-test-eks -n shardshop logs job/<gate-job>
+kubectl --context kind-shardshop-test-eks -n argocd patch application <application> --type merge -p "{\"operation\":{\"initiatedBy\":{\"username\":\"runbook\"},\"sync\":{\"revision\":\"$version\"}}}"
+```
 
 ### Run the drills
 
-Prepare the snapshot of the `kind` profile and build the observers. The profile
-requires `kind.json`, but these scenarios do not read it:
-
-```bash
-mkdir "$run/snapshot"
-helm template shardshop "$chart" --namespace shardshop --values microservices/shardshop/infra/shards.yaml --values "$chart/eks-values.yaml" --values "$run/aws-values.yaml" --set-string render=inventory | sed '/^# Source:/d; /^---$/d' >"$run/snapshot/inventory.json"
-helm template shardshop "$chart" --namespace shardshop --values microservices/shardshop/infra/shards.yaml --values "$chart/eks-values.yaml" --values "$run/aws-values.yaml" --set-string render=infrastructure >"$run/snapshot/infrastructure.yaml"
-printf '{}\n' >"$run/snapshot/kind.json"
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Dshardshop.infrastructureOnly=true install -DinstallAtEnd=true
-```
+The build of step 1 compiled the observers, and step 3 wrote their snapshot.
 
 Run the [topology check](../../shardshop-testing/RUNBOOK.md#topology-check-and-database-drill),
-the delivery check and the EKS durability scenarios of
+the delivery checks and the EKS durability scenarios of
 [`EksDurability.feature`](../../shardshop-testing/src/test/resources/kind-features/EksDurability.feature):
 
-- `eks-delivery`: each layer comes from a digest-pinned OCI chart, is synced and
-  healthy, and cannot prune or delete its resources.
+- `eks-delivery`: each layer comes from a pinned OCI chart, is synced and healthy,
+  and cannot prune or delete its resources.
+- `eks-release` and `kind-deployment`: the PostSync gate also runs these checks. All
+  the pods run the pinned ECR images, the seeder attempt of the last sync succeeded,
+  the reader reads from both product pods, and the gate's own orders complete.
 - `eks-runtime-secrets`: each database and broker Secret comes from Secrets Manager,
   and CNPG applied each login role.
 - `eks-backup`: each cluster archives its WAL and has a completed base backup.
@@ -319,7 +412,7 @@ the delivery check and the EKS durability scenarios of
   volume. `-Dshardshop.kind.drillCluster=<cluster>` restores only one cluster.
 
 ```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags='kind-topology | eks-delivery | eks-runtime-secrets | eks-backup | eks-broker-quorum'
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags='kind-topology | eks-delivery | eks-release | kind-deployment | eks-runtime-secrets | eks-backup | eks-broker-quorum'
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags=eks-pitr-drill
 ```
 
@@ -330,6 +423,20 @@ shard:
 for shard in shard-a shard-b shard-c; do
     mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags=kind-database-drill -Dshardshop.kind.drillShard="$shard" || break
 done
+```
+
+The application drill does these steps:
+
+1. It syncs `shardshop-applications` again without changes. Then it checks for a
+   seeder attempt with a new name, the earlier attempt, both gates and unchanged
+   Deployments.
+2. It holds the drill lock and syncs again. The PreSync gate must fail, and Argo CD
+   must apply no resource. After the lock is released, a sync recovers.
+3. It starts a selective sync and a sync with the `apply` strategy. The admission
+   policy must deny both.
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags=eks-application-drill
 ```
 
 The delivery drill uses two drill charts. The changed chart adds a catalog migration
@@ -343,6 +450,8 @@ The drill does these steps:
 3. It applies the failure chart and checks that the routing stays at the earlier
    revision.
 4. It recovers with the changed chart, then it returns to the chart of the run.
+   The drill lock stops the PreSync gate of the applications during the drill. Thus
+   the drill syncs the applications again after the drill.
 
 ```bash
 drill=microservices/shardshop/shardshop-testing/src/test/resources/eks-delivery
@@ -373,26 +482,30 @@ If the drill stops before its end, the root Application can stay on a drill char
 Set `charts.shardshop` and `charts.shardshopVersion` of the root Application back to
 `$shardshop_digest` and `$version`.
 
-### Remove the database tier
+### Remove ShardShop from the cluster
 
 CAUTION: Make a copy of the data that you want to keep before you do this step.
 This step deletes all the databases, the broker data and their EBS volumes.
 
 First stop the delivery: delete the root Application before its children, and
 uninstall Argo CD. The Applications have no resources finalizer, thus the resources
-stay. The namespace deletion then removes the clusters, and the EBS CSI driver
-deletes each volume. There must be no persistent volume after the wait. The backups
-stay in the bucket until the destroy:
+stay. The retention policy of the generator registry denies each deletion of the
+registry while the data stays. This step deletes the data, thus delete the policy
+too. The namespace deletion then removes the applications and the clusters, and the
+EBS CSI driver deletes each volume. There must be no persistent volume after the
+wait. The backups stay in the bucket until the destroy:
 
 ```bash
 kubectl --context kind-shardshop-test-eks -n argocd delete application shardshop
 kubectl --context kind-shardshop-test-eks -n argocd delete application --all
+kubectl --context kind-shardshop-test-eks delete validatingadmissionpolicybinding,validatingadmissionpolicy shardshop-full-sync
 helm uninstall argocd --kube-context kind-shardshop-test-eks --namespace argocd --wait
+kubectl --context kind-shardshop-test-eks delete validatingadmissionpolicybinding,validatingadmissionpolicy shardshop-generator-retention
 kubectl --context kind-shardshop-test-eks delete namespace shardshop --timeout=10m
 kubectl --context kind-shardshop-test-eks wait --for=delete persistentvolume --all --timeout=5m
 kubectl --context kind-shardshop-test-eks delete namespace cnpg-system --timeout=5m
-helm registry logout "${registry%%/*}"
-docker logout "${registry%%/*}"
+helm registry logout "$registry"
+docker logout "$registry"
 ```
 
 ### Destroy the foundation
@@ -401,7 +514,7 @@ CAUTION: Make a copy of the backups and the images that you want to keep before 
 do this step. `terraform destroy` deletes all the backups in the backup bucket and
 all the images in ECR.
 
-[Remove the database tier](#remove-the-database-tier) first, if it is installed.
+[Remove ShardShop from the cluster](#remove-shardshop-from-the-cluster) first, if it is installed.
 Then destroy the foundation, then the state bucket:
 
 ```bash

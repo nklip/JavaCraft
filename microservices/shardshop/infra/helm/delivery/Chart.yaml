@@ -1,5 +1,5 @@
 apiVersion: v2
 name: shardshop-delivery
-description: Argo CD Applications that deliver the ShardShop database layer to the AWS deployment
+description: Argo CD Applications that deliver ShardShop to the AWS deployment
 type: application
 version: 0.1.0

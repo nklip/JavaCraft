@@ -4,9 +4,8 @@
 
 ShardShop is a system-design lab. Its local deployment runs a regional product
 catalog, sharded orders and an asynchronous ledger on one kind cluster. This overview
-describes the implemented architecture. The AWS deployment runs the same database
-tier on EKS ([section 5](#5-local-deployment-and-aws-deployment)). The applications
-run only in the local deployment. The [detailed documents](#detailed-design-documents) own each topic.
+describes the implemented architecture. The AWS deployment runs the same system on
+EKS with Argo CD ([section 5](#5-local-deployment-and-aws-deployment)). The [detailed documents](#detailed-design-documents) own each topic.
 
 - **Shape:** six Quarkus applications, three regional PostgreSQL shards, one
   ledger database and one RabbitMQ broker.
@@ -85,7 +84,7 @@ terminal decisions remain unchanged.
 Application metrics report pending work, exhausted retries, quarantine, database
 pool pressure and CDC recovery state. RabbitMQ and PostgreSQL expose their queue
 and replication pressure through native monitoring. These endpoints add no pods;
-the [monitoring guide](infra/README.md#monitoring) owns their operational details.
+the [monitoring guide](infra/README.md#3-monitoring) owns their operational details.
 
 ```mermaid
 sequenceDiagram
@@ -137,7 +136,7 @@ node containers (one control plane and three workers) are hosts for these pods,
 not more pods. The counts describe this lab, not a production size. The broker and
 the ledger database have one pod each, thus the lab gives them no high availability.
 
-The [infrastructure design](infra/ARCHITECTURE.md#runtime-topology) owns the process
+The [infrastructure design](infra/ARCHITECTURE.md#5-runtime-topology) owns the process
 roles and the counting scope. Its [README](infra/README.md#pod-inventory) shows
 how to count the pods of a running lab.
 
@@ -219,7 +218,7 @@ for the contracts. The [failover evidence](CHANGELOG.md#step-62), the
 
 The [product](shardshop-product/ARCHITECTURE.md#product-api),
 [order](shardshop-order/ARCHITECTURE.md#order-creation-and-ledger-saga) and
-[infrastructure](infra/ARCHITECTURE.md#rabbitmq-and-delivery-reliability) designs
+[infrastructure](infra/ARCHITECTURE.md#6-rabbitmq-and-delivery-reliability) designs
 define the HTTP contracts, the validation order, the saga, reconciliation,
 quarantine and message delivery. The repository [AGENTS.md](../../AGENTS.md)
 defines the code layers.
@@ -291,8 +290,8 @@ define the protocol. The runtime defaults stay at 0.5 orders/s and 200 product r
 
 ShardShop has two deployments. The local deployment on kind runs the complete
 system, and each contract, drill and acceptance scenario must pass there. The AWS
-deployment puts the same database tier on EKS and adds cloud durability. Each AWS
-run creates the resources, checks them and then destroys them.
+deployment puts the same system on EKS, delivers it with Argo CD and adds cloud
+durability. Each AWS run creates the resources, checks them and then destroys them.
 
 ### High-level design
 
@@ -330,9 +329,9 @@ flowchart LR
 | Broker | RabbitMQ 4.3.7 and its definitions | One broker | Three brokers with three-member quorum queues |
 | Credentials | The same Secret names and keys | `cluster-create.sh` makes random passwords | AWS Secrets Manager, synced by the Secrets Store CSI driver |
 | Backups | | Coordinated logical dumps outside kind | WAL archive and base backups in S3, point-in-time restore |
-| Applications | The same images | Six applications and three workloads | Not yet. Their Argo CD delivery is [planned](PLAN.md#milestone-7-aws-deployment) |
-| Delivery | The shared Helm chart | Helmfile with Maven gates | Argo CD from digest-pinned OCI charts in ECR ([runbook](infra/terraform/README.md#deliver-the-database-layer-with-argo-cd)) |
-| Checks | The Maven `kind` profile | All gates, drills and acceptance scenarios | The topology drills and the `eks-*` durability scenarios |
+| Applications | The same sources and image recipe | Six applications and three workloads, loaded into kind | The same, copied to ECR with digest pins |
+| Delivery | The shared Helm chart | Helmfile with Maven gates | Argo CD from pinned OCI charts in ECR, with the Maven gates as hook Jobs ([runbook](infra/terraform/README.md#deliver-shardshop-with-argo-cd)) |
+| Checks | The Maven `kind` profile | All gates, drills and acceptance scenarios | The gates, the topology drills and the `eks-*` scenarios |
 
 The local deployment runs the complete system on one computer:
 
@@ -352,24 +351,26 @@ flowchart TB
     DB -.->|"Coordinated dumps"| Dumps
 ```
 
-The AWS deployment runs the database tier with cloud services:
+The AWS deployment runs the same system with cloud services:
 
 ```mermaid
 flowchart TB
     Dev["Developer computer<br/>Terraform, Helm, Maven"]
     subgraph Account["AWS account · eu-west-2"]
-        ECR["ECR<br/>Flyway image"]
+        ECR["ECR<br/>images and charts"]
         S3[("S3 bucket<br/>WAL and base backups")]
         SM["Secrets Manager<br/>runtime secrets"]
         subgraph EKS["EKS cluster · three workers in three zones"]
             Ops["Argo CD, CloudNativePG, Barman Cloud Plugin<br/>cert-manager, Secrets Store CSI driver"]
+            Apps2["Six applications<br/>three workloads"]
+            Gates["Gate Jobs"]
             DB2[("Three shards × three instances<br/>ledger · one instance")]
             MQ2["RabbitMQ · three brokers"]
         end
     end
     Dev -->|"terraform apply, then destroy"| Account
     Dev -->|"Root Application, Maven drills"| EKS
-    ECR -->|"Migration image"| EKS
+    ECR -->|"Images and charts"| EKS
     SM -->|"Credentials"| EKS
     DB2 -->|"WAL and base backups"| S3
 ```
@@ -392,34 +393,54 @@ flowchart TB
     end
     subgraph CloudFlow["AWS deployment"]
         direction LR
-        A1["terraform apply<br/>state bucket, foundation"] --> A2["Push the Flyway build<br/>and the charts to ECR"]
+        A1["terraform apply<br/>state bucket, foundation"] --> A2["Build, scan and push<br/>the images, the gates image<br/>and the charts to ECR"]
         A2 --> A3["Helm<br/>install Argo CD"]
         A3 --> A4["Apply the root Application"]
-        A4 --> A5["Argo CD sync waves<br/>database layer"]
+        A4 --> A5["Argo CD sync waves<br/>with gate Jobs"]
         A5 --> A6["Maven drills"]
-        A6 --> A7["Remove the tier<br/>terraform destroy"]
+        A6 --> A7["Remove ShardShop<br/>terraform destroy"]
     end
 ```
 
 #### Argo CD sync waves on AWS
 
-Each layer is one child Application with a digest-pinned chart. Only the migrations
-use the immutable chart version, because Argo CD puts the revision into the generated
-Job names. The root Application starts a wave only after the earlier waves are synced
-and healthy. Each
-sync gives the migration Jobs new names, and a failed or interrupted Job stays. No
-Application deletes a database.
+Each layer is one child Application with a pinned chart. The layers with generated
+hook Jobs use the immutable chart version, because Argo CD puts the revision into the
+generated Job names. The others use a digest. The root Application starts a wave only
+after the earlier waves are synced and healthy. Each sync gives the hook Jobs new
+names, and a failed or interrupted Job stays. No Application deletes a database.
 
 ```mermaid
 flowchart LR
-    Charts[("ECR<br/>OCI charts with digests")] -.-> Root["Root Application<br/>delivery chart"]
+    Charts[("ECR<br/>OCI charts")] -.-> Root["Root Application<br/>delivery chart"]
     Root --> W0["Wave 0<br/>CloudNativePG"]
     W0 --> W1["Wave 1<br/>backup plugin"]
     W1 --> W2["Wave 2<br/>namespace"]
     W2 --> W3["Wave 3<br/>infrastructure<br/>ObjectStore before clusters"]
     W3 --> W4["Wave 4<br/>migration Jobs<br/>PostSync hooks"]
     W4 --> W5["Wave 5<br/>routing ConfigMap"]
-    W4 -.->|"A failed Job"| Stop["The routing stays<br/>at its earlier revision"]
+    W5 --> W6["Wave 6<br/>applications"]
+    W4 -.->|"A failed Job"| Stop["The routing and the applications<br/>stay at their earlier revision"]
+```
+
+The Maven gates of Helmfile run as hook Jobs around the migrations and the
+applications. A failed PreSync gate stops the sync before Argo CD applies a resource.
+Argo CD runs no hook in a selective sync, thus an admission policy denies it.
+
+```mermaid
+flowchart LR
+    subgraph Migrations["Wave 4 · shardshop-migrations"]
+        direction LR
+        MPre["PreSync gate<br/>allocator, infrastructure,<br/>reservation, no active migration"] --> MJobs["PostSync<br/>Flyway Jobs"]
+    end
+    subgraph Applications["Wave 6 · shardshop-applications"]
+        direction LR
+        APre["PreSync gate<br/>publications, reservation,<br/>no drill"] --> ASync["Sync<br/>six applications"]
+        ASync --> Seeder["PostSync<br/>seeder"]
+        Seeder --> APost["PostSync gate<br/>pinned images, catalog,<br/>reads, orders"]
+    end
+    Migrations --> Applications
+    Policy["Admission policy"] -.->|"Denies a selective sync<br/>and the apply strategy"| Applications
 ```
 
 #### Network and placement on AWS
@@ -435,13 +456,13 @@ flowchart TB
         NAT["One shared NAT gateway"]
         S3E["S3 gateway endpoint"]
         subgraph ZA["Zone a"]
-            WA["Worker t4g.large<br/>one instance of each shard<br/>one broker"]
+            WA["Worker t4g.xlarge<br/>one instance of each shard<br/>one broker<br/>application pods"]
         end
         subgraph ZB["Zone b"]
-            WB["Worker t4g.large<br/>one instance of each shard<br/>one broker"]
+            WB["Worker t4g.xlarge<br/>one instance of each shard<br/>one broker<br/>application pods"]
         end
         subgraph ZC["Zone c"]
-            WC["Worker t4g.large<br/>one instance of each shard<br/>one broker"]
+            WC["Worker t4g.xlarge<br/>one instance of each shard<br/>one broker<br/>application pods"]
         end
     end
     Endpoint --> WA & WB & WC

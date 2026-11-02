@@ -55,7 +55,7 @@ their internet egress. `nat_gateway_per_zone = true` changes this
 **Decision.** EKS uses the same CloudNativePG chart, shared chart and inventory as
 kind. `eks-values.yaml` changes only the storage and the zone placement, and makes
 the shared chart create an encrypted gp3 StorageClass. Plain Helm and kubectl
-commands in the [runbook](infra/terraform/README.md#deliver-the-database-layer-with-argo-cd)
+commands in the [runbook](infra/terraform/README.md#deliver-shardshop-with-argo-cd)
 installed the database tier, without a script or Helmfile, until Argo CD replaced
 them. The user selected the runbook commands and an API endpoint open to all
 addresses on 2026-11-01.
@@ -90,6 +90,31 @@ migrations use the immutable chart version instead of the digest. Argo CD 3.5 pu
 the start of the revision into the generated hook names, and `sha256:` is not valid
 there. The infrastructure ignores `/spec/login` of `DatabaseRole`,
 because the CNPG webhook removes `login: false`.
+
+### Gates as Argo CD hook Jobs
+
+**Decision.** On EKS, the Maven gates of the Helmfile workflow run as Argo CD PreSync
+and PostSync hook Jobs. A gates image runs `KindIT` with the JUnit console launcher,
+kubectl and the invocation snapshot of the run. A ValidatingAdmissionPolicy denies a
+selective sync and the `apply` sync strategy of the ShardShop Applications. The user
+selected the gate Jobs in the cluster on 2026-11-01, and the console launcher and
+kubectl 1.37.2 on 2026-11-02.
+
+**Reason.** A hook gate runs in each sync, also in an automated sync. A failed
+PreSync gate stops the sync before Argo CD applies a resource. Argo CD runs no hook
+in a selective sync or with the `apply` strategy, and its RBAC cannot tell these
+syncs apart. The admission policy also stops them when they come through kubectl.
+The console launcher uses the same tag expressions as the Failsafe groups, and the
+image needs no Maven repository and no shell.
+
+**Result.** The gates use the tags of the Helmfile hooks. `eks-release` replaces
+`kind-release`, because `kind-release` reads the images on the kind nodes. The
+seeder and the gates are generated hook Jobs, thus each sync has its own attempt.
+The PostSync gate finds the seeder attempt in the sync result. The gates can exec
+into the database and broker pods and read the broker management credential, as the
+operator can on kind. They read no other Secret. The runbook builds
+the gates image for each run, because the image contains the snapshot of the run.
+Only the routing Application publishes the routing.
 
 ### EKS durability with managed add-ons
 

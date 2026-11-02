@@ -89,7 +89,7 @@ Wait until `webpages.sh` prints all five URLs, then keep its terminal open:
   applications.
 
 To stop the lab and keep its data, run `down.sh`; the
-[infrastructure runbook](infra/RUNBOOK.md#stop-and-resume-the-cluster) describes
+[infrastructure runbook](infra/RUNBOOK.md#5-stop-and-resume-the-cluster) describes
 stop, destruction and recovery.
 
 ### Start one application outside Kubernetes
@@ -113,7 +113,7 @@ Each module guide tells how to start that application by itself:
 | Saga recovery and database pressure | `/q/metrics` on order and ledger; native broker/database observations | [Recovery metrics](infra/README.md#saga-and-database-pressure) |
 | Application logs | `kubectl logs` of each Deployment or Job | Each module guide lists its log lines |
 | RabbitMQ management | Port 15672 of Service `shardshop-rabbitmq` | [Infrastructure](infra/README.md#rabbitmq-management) |
-| Pods, databases and migrations | `kubectl` and `helm` | [Infrastructure](infra/README.md#monitoring), [database](database/README.md#monitoring) |
+| Pods, databases and migrations | `kubectl` and `helm` | [Infrastructure](infra/README.md#3-monitoring), [database](database/README.md#monitoring) |
 | Test results | Maven report folders | [Verification](shardshop-testing/README.md#results) |
 
 All commands use the `kind-shardshop` context. Each module guide describes its own

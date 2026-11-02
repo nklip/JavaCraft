@@ -12,7 +12,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
 import static dev.nklip.javacraft.shardshop.testing.kind.KindTopology.equal;
@@ -21,20 +20,22 @@ import static dev.nklip.javacraft.shardshop.testing.kind.KindTopology.require;
 /** EKS-only checks and drills of the Argo CD delivery contract of the database layer. */
 public final class EksDelivery {
     static final List<String> LAYERS = List.of("cnpg", "barman-cloud", "shardshop-namespace",
-            "shardshop-infrastructure", "shardshop-migrations", "shardshop-routing");
-    private static final String ROOT = "shardshop";
+            "shardshop-infrastructure", "shardshop-migrations", "shardshop-routing", EksApplications.APPLICATIONS);
+    static final String ROOT = "shardshop";
     private static final String MIGRATIONS = "shardshop-migrations";
     private static final String ROUTING = "shardshop-routing";
+    /** The layers with generated hook Jobs use the immutable chart version instead of a digest. */
+    private static final Set<String> VERSIONED = Set.of(MIGRATIONS, EksApplications.APPLICATIONS);
     private static final String DRILL = "eks-delivery-drill";
-    private static final Duration SYNC = Duration.ofMinutes(10);
+    private static final Duration SYNC = ArgoCd.SYNC;
     private static final Pattern DIGEST = Pattern.compile("sha256:[0-9a-f]{64}");
     private static final Pattern VERSION = Pattern.compile("[0-9]+\\.[0-9]+\\.[0-9]+-[0-9a-z]+");
-    private static final Set<String> FINISHED = Set.of("Succeeded", "Failed", "Error");
     private final KindLab lab;
     private final KindTopology topology;
+    private final ArgoCd argo;
 
     public EksDelivery() { this(new KindLab()); }
-    EksDelivery(KindLab lab) { this.lab = lab; this.topology = new KindTopology(lab); }
+    EksDelivery(KindLab lab) { this.lab = lab; this.topology = new KindTopology(lab); this.argo = new ArgoCd(lab, DRILL); }
 
     /** Each layer comes from a digest-pinned OCI chart, is synced and healthy, and cannot delete data. */
     public void delivered() throws IOException, InterruptedException {
@@ -44,9 +45,9 @@ public final class EksDelivery {
             JsonNode application = application(name);
             require(settled(application), name + " is not synced and healthy");
             JsonNode source = application.path("spec").path("source");
-            if (name.equals(MIGRATIONS)) {
+            if (VERSIONED.contains(name)) {
                 // Generated hook names contain the revision; ECR keeps this version immutable.
-                equal(source.path("targetRevision").asText(), base.version(), "Chart version of the migrations");
+                equal(source.path("targetRevision").asText(), base.version(), "Chart version of " + name);
             } else {
                 require(source.path("repoURL").asText().startsWith("oci://") && DIGEST.matcher(source.path("targetRevision").asText()).matches(),
                         name + " is not a digest-pinned OCI source");
@@ -63,6 +64,7 @@ public final class EksDelivery {
     /**
      * A resync without changes, a changed migration that is interrupted and then retried, a failed migration
      * before the routing publication, and the recovery. The runbook gives the digests of the two drill charts.
+     * The drill lock stops the PreSync gate of the applications, thus they get the chart of the run after the drill.
      */
     public void contractDrill() throws IOException, InterruptedException {
         Chart changed = chartProperties("shardshop.eks.changedChart", "shardshop.eks.changedVersion");
@@ -121,12 +123,13 @@ public final class EksDelivery {
                 for (Chart chart : List.of(changed, base)) {
                     setShardshopChart(chart);
                     recoverMigrations(chart);
-                    lab.await("the root Application on " + chart.version(), SYNC, () -> settled(application(ROOT))
-                            && chart.digest().equals(routingRevision()) && settled(application(MIGRATIONS)));
+                    lab.await("the migrations and the routing on " + chart.version(), SYNC, () ->
+                            chart.digest().equals(routingRevision()) && settled(application(MIGRATIONS)));
                 }
                 migrationHooks(application(MIGRATIONS));
             });
         }
+        recoverApplications(shardshopChart());
     }
 
     /** The PostSync migration Jobs of the last sync: one successful Job for each stream and database. */
@@ -190,6 +193,24 @@ public final class EksDelivery {
         }
     }
 
+    /**
+     * Argo CD does not repeat the failed sync of the applications after the drill lock is released. A root sync
+     * that waits for their wave continues after this sync.
+     */
+    private void recoverApplications(Chart chart) throws IOException, InterruptedException {
+        String applications = EksApplications.APPLICATIONS;
+        lab.await("the applications on " + chart.version(), SYNC, () -> chart.version().equals(
+                application(applications).path("spec").path("source").path("targetRevision").asText())
+                && argo.finished(applications));
+        if (!settled(application(applications))) {
+            String started = operationStart(applications);
+            argo.sync(applications, chart.version());
+            argo.awaitOperation(applications, chart.version(), started, true, EksApplications.APPLICATION_SYNC);
+        }
+        if (argo.finished(ROOT) && !settled(application(ROOT))) syncRoot();
+        lab.await("a synced and healthy root Application", SYNC, () -> settled(application(ROOT)));
+    }
+
     /** Stop a root sync that waits for a degraded wave, then change the shared chart of all layers. */
     private void setShardshopChart(Chart chart) throws IOException, InterruptedException {
         stopRootOperation();
@@ -199,14 +220,19 @@ public final class EksDelivery {
         lab.kubectl("-n", "argocd", "patch", "application", ROOT, "--type", "merge", "-p", patch.toString());
     }
 
-    /** The root Application publishes the later waves only in a new sync. */
+    /**
+     * The root Application publishes the later waves only in a new sync. While a drill holds the lock, the
+     * PreSync gate of the applications fails, thus this waits only for the routing publication.
+     */
     private void syncRoot() throws IOException, InterruptedException {
         stopRootOperation();
         String started = operationStart(ROOT);
+        String routing = application(ROOT).path("spec").path("source").path("helm").path("valuesObject").path("charts")
+                .path("shardshop").asText();
         sync(ROOT, application(ROOT).path("spec").path("source").path("targetRevision").asText());
         lab.await("a root sync after the retry", SYNC, () -> {
             JsonNode operation = application(ROOT).path("status").path("operationState");
-            return !operation.path("startedAt").asText().equals(started) && operation.path("phase").asText().equals("Succeeded");
+            return !operation.path("startedAt").asText().equals(started) && routing.equals(routingRevision());
         });
     }
 
@@ -214,38 +240,20 @@ public final class EksDelivery {
         if (!application(ROOT).path("status").path("operationState").path("phase").asText().equals("Running")) return;
         lab.kubectl("-n", "argocd", "patch", "application", ROOT, "--type", "merge", "-p",
                 "{\"status\":{\"operationState\":{\"phase\":\"Terminating\"}}}");
-        lab.await("the end of the waiting root sync", SYNC, () -> FINISHED.contains(
-                application(ROOT).path("status").path("operationState").path("phase").asText()));
+        lab.await("the end of the waiting root sync", SYNC, () -> argo.finished(ROOT));
     }
 
     private void sync(String name, String revision) throws IOException, InterruptedException {
-        ObjectNode patch = JsonNodeFactory.instance.objectNode();
-        ObjectNode operation = patch.putObject("operation");
-        operation.putObject("initiatedBy").put("username", DRILL);
-        operation.putObject("sync").put("revision", revision);
-        lab.kubectl("-n", "argocd", "patch", "application", name, "--type", "merge", "-p", patch.toString());
+        argo.sync(name, revision);
     }
 
-    /** Wait for a new, finished sync of the revision, and check its result. */
     private JsonNode awaitOperation(String name, String revision, String previousStart, boolean success)
             throws IOException, InterruptedException {
-        AtomicReference<JsonNode> result = new AtomicReference<>();
-        lab.await(name + " sync of " + revision, SYNC, () -> {
-            JsonNode application = application(name);
-            JsonNode operation = application.path("status").path("operationState");
-            boolean finished = FINISHED.contains(operation.path("phase").asText())
-                    && !operation.path("startedAt").asText().equals(previousStart)
-                    && revision.equals(operation.path("syncResult").path("revision").asText());
-            if (finished) result.set(application);
-            return finished;
-        });
-        String phase = result.get().path("status").path("operationState").path("phase").asText();
-        require(success == phase.equals("Succeeded"), name + " sync of " + revision + " ended " + phase);
-        return result.get();
+        return argo.awaitOperation(name, revision, previousStart, success, SYNC);
     }
 
     private String operationStart(String name) throws IOException, InterruptedException {
-        return application(name).path("status").path("operationState").path("startedAt").asText();
+        return argo.operationStart(name);
     }
 
     private Chart shardshopChart() throws IOException, InterruptedException {
@@ -258,14 +266,11 @@ public final class EksDelivery {
     }
 
     private JsonNode application(String name) throws IOException, InterruptedException {
-        return KindLab.parse(lab.kubectl("-n", "argocd", "get", "application", name, "-o", "json"));
+        return argo.application(name);
     }
 
-    static boolean settled(JsonNode application) {
-        JsonNode status = application.path("status");
-        String operation = status.path("operationState").path("phase").asText("Succeeded");
-        return status.path("sync").path("status").asText().equals("Synced") && status.path("health").path("status").asText().equals("Healthy")
-                && operation.equals("Succeeded");
+    private static boolean settled(JsonNode application) {
+        return ArgoCd.settled(application);
     }
 
     private static Chart chartProperties(String digest, String version) throws IOException {

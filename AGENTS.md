@@ -1,24 +1,31 @@
 # Project Instructions for Coding Agents (Codex)
 
-## Subagent model selection
+[JavaCraft](README.md) › **Agent instructions** · [Claude Code notes](CLAUDE.md)
 
-- Use `gpt-5.6-luna` with `low` reasoning effort for straightforward read-only subtasks. If unavailable, use a suitable available model and note the substitution; if delegation is unavailable, do the work in the main agent.
-- For other subtasks, choose the model and reasoning effort according to complexity. Use low reasoning for routine edits; reserve higher reasoning for work that warrants it instead of automatically inheriting `ultra`.
-- Default to `fork_turns="none"`. Give each subagent a compact, self-contained assignment with its objective, relevant paths, constraints, and acceptance criteria. Include selected history only when needed; use full history only for dependencies that cannot be captured in the assignment.
-- Delegate when independent work can save time or improve quality. Keep trivial lookups and small, cohesive edits with the main agent; batch related inventory questions into one assignment.
-- Batch independent searches and file reads. Request relevant excerpts and concise output; reuse established findings instead of rereading unchanged files or logs.
-- Ask subagents to return concise findings or changes, supporting file references, validation results, and unresolved questions.
-- Define integration boundaries and give editing agents clear file ownership before implementation to reduce conflicting changes.
-- Keep synthesis, decisions, and final verification with the main agent. Return ambiguous findings or work requiring deeper reasoning to the main agent.
-- Subagents share the parent's investigation and time budgets. Give each question one owner; do not duplicate investigations, builds or test runs across agents. Reuse concise findings instead of restarting the same work.
-- The main agent must still read applicable repository instructions and required skills directly.
+## Contents
+0. [Prime directive](#0-prime-directive)
+1. [How to work in this repo](#1-how-to-work-in-this-repo)
+2. [Build and validation](#2-build-and-validation)
+3. [Coding standards](#3-coding-standards)
+4. [Architecture boundaries](#4-architecture-boundaries)
+5. [Testing rules (Java)](#5-testing-rules-java)
+6. [Logging and observability](#6-logging-and-observability)
+7. [Security and data handling](#7-security-and-data-handling)
+8. [Performance and reliability](#8-performance-and-reliability)
+9. [Output expectations](#9-output-expectations)
+10. [Do not do](#10-do-not-do)
+11. [Cloud resources and cost](#11-cloud-resources-and-cost)
+12. [Documentation](#12-documentation)
+13. [Subagent model selection](#13-subagent-model-selection)
 
 ## 0) Prime directive
+<sub>[Back to Contents](#contents)</sub>
 
 - Optimize for: correctness > safety > maintainability > performance.
 - Prefer small, reviewable diffs. Avoid broad refactors unless explicitly requested.
 
 ## 1) How to work in this repo
+<sub>[Back to Contents](#contents)</sub>
 
 - Read the root README, the affected module's README and RUNBOOK.md when present, and the nearest relevant ARCHITECTURE.md when present. Inspect comparable code and tests within that module.
 - Keep changes scoped to the requested feature or bugfix.
@@ -36,6 +43,7 @@
 - Always finish necessary cleanup and restore owned temporary changes before stopping. Budgets must never justify leaving a disruptive experiment running, weakening assertions or describing incomplete qualification as passing.
 
 ## 2) Build and validation
+<sub>[Back to Contents](#contents)</sub>
 
 - For code or build changes, run relevant tests and required checks from the repository root with explicit module selection. Do not run an unrestricted whole-repository build.
 - Unit tests: `mvn -pl <module> test`.
@@ -49,12 +57,14 @@
 - Run the narrowest relevant check first, then required acceptance checks once the candidate is stable. Avoid repeated `clean` builds, full reactors, image rebuilds/scans and lab recreation when existing outputs remain valid and the workflow permits reuse. Preserve failed results even if a later run passes; never weaken required verification to fit a budget.
 
 ## 3) Coding standards
+<sub>[Back to Contents](#contents)</sub>
 
 - Prefer readability over cleverness (KISS); keep functions small and cohesive.
 - Avoid duplication that will likely change together (DRY), without premature abstractions.
 - For Java, prefer constructor injection and immutable data structures where practical. Avoid static state unless truly constant.
 
 ## 4) Architecture boundaries
+<sub>[Back to Contents](#contents)</sub>
 
 - Follow the affected module's documented architecture; infer from existing structure when documentation is absent. Apply the defaults below where appropriate.
 - Controllers/handlers own transport mapping, validation, and translation to domain operations.
@@ -63,6 +73,7 @@
 - No cross-module imports that violate layering.
 
 ## 5) Testing rules (Java)
+<sub>[Back to Contents](#contents)</sub>
 
 - Cover new or changed observable behavior, relevant boundaries, errors, and regression risks. Reuse or extend existing tests; each test must identify the requirement, plausible failure, or bug it protects against.
 - Derive expectations from contracts, requirements, or independent examples; resolve ambiguity instead of encoding assumptions. Assert meaningful results, state, or errors, without copying implementation logic, checking incidental calls, or adding dummy assertions for unused return values.
@@ -76,29 +87,34 @@
 - Never remove or weaken assertions merely to make code pass.
 
 ## 6) Logging and observability
+<sub>[Back to Contents](#contents)</sub>
 
 - Keep logs actionable and not noisy.
 - Use DEBUG for high-volume details; INFO for key lifecycle events; WARN/ERROR for actionable failures.
 
 ## 7) Security and data handling
+<sub>[Back to Contents](#contents)</sub>
 
 - Never log secrets, tokens, passwords, PII, or payloads containing them.
 - Validate all external inputs; use prepared statements / parameterized queries.
 - For crypto/auth, do not invent schemes; use existing utilities.
 
 ## 8) Performance and reliability
+<sub>[Back to Contents](#contents)</sub>
 
 - Prefer streaming over loading big payloads into memory.
 - Use explicit timeouts for remote calls. Retry only transient failures when repetition is safe or protected by an idempotency mechanism; bound attempts and total duration, use backoff with jitter, and reuse existing retry handling.
 - Avoid blocking calls on event-loop threads.
 
 ## 9) Output expectations
+<sub>[Back to Contents](#contents)</sub>
 
 - What changed: 1–3 bullets.
 - Validation: exact commands executed and their outcomes; identify skipped or blocked checks and explain why.
 - Risks or tradeoffs, if any; follow-ups are optional.
 
 ## 10) Do not do
+<sub>[Back to Contents](#contents)</sub>
 
 - Do not reformat unrelated files.
 - Do not rename widely-used public APIs without need.
@@ -106,6 +122,7 @@
 - Do not create SQL functions or triggers without an explicit request from the user.
 
 ## 11) Cloud resources and cost
+<sub>[Back to Contents](#contents)</sub>
 
 These rules apply to each task that uses AWS or a different paid cloud service.
 
@@ -121,3 +138,29 @@ These rules apply to each task that uses AWS or a different paid cloud service.
 - If resources must stay while the task waits for the user, tell the user immediately. Give each resource, its cost for each hour and the destroy command.
 - Record the start time, the end time and the estimated cost of each billable run in the step record.
 - Do not change account settings, IAM permissions, quotas or billing. The user makes these changes.
+
+## 12) Documentation
+<sub>[Back to Contents](#contents)</sub>
+
+These rules apply when you write or change a Markdown (`.md`) file.
+
+- **12.1 Navigation links.** Under the title, put a line of links to the parent document and to the related documents. For example: `[ShardShop](../README.md) › **Infrastructure** · [Runbook](RUNBOOK.md)`. In the text, link to the document or section that owns a topic. Do not copy its text.
+- **12.2 Contents.** If a document has more than two `##` titles, put a `## Contents` list after the introduction, with a link to each `##` title.
+- **12.3 Diagrams.** Use a Mermaid diagram instead of a long explanation of a flow, a structure, a sequence or a dependency. Keep the text near the diagram short. Make sure that each diagram renders.
+- **12.4 Structure.** Write one topic in each section. Put the summary first, then the details. Use tables to compare items, numbered lists for steps and bullet lists for other items.
+- **12.5 Simple language.** Write simple, natural explanations for a human reader. Use short sentences and common words. If a reader possibly does not know a term, explain it at its first use.
+- **12.6 Numbered titles.** In a document with a `## Contents` list, number the list, and give each other `##` title the same number as its entry, for example `## 2. Build`. Under each numbered title, put the line `<sub>[Back to Contents](#contents)</sub>`.
+
+## 13) Subagent model selection
+<sub>[Back to Contents](#contents)</sub>
+
+- Use `gpt-5.6-luna` with `low` reasoning effort for straightforward read-only subtasks. If unavailable, use a suitable available model and note the substitution; if delegation is unavailable, do the work in the main agent.
+- For other subtasks, choose the model and reasoning effort according to complexity. Use low reasoning for routine edits; reserve higher reasoning for work that warrants it instead of automatically inheriting `ultra`.
+- Default to `fork_turns="none"`. Give each subagent a compact, self-contained assignment with its objective, relevant paths, constraints, and acceptance criteria. Include selected history only when needed; use full history only for dependencies that cannot be captured in the assignment.
+- Delegate when independent work can save time or improve quality. Keep trivial lookups and small, cohesive edits with the main agent; batch related inventory questions into one assignment.
+- Batch independent searches and file reads. Request relevant excerpts and concise output; reuse established findings instead of rereading unchanged files or logs.
+- Ask subagents to return concise findings or changes, supporting file references, validation results, and unresolved questions.
+- Define integration boundaries and give editing agents clear file ownership before implementation to reduce conflicting changes.
+- Keep synthesis, decisions, and final verification with the main agent. Return ambiguous findings or work requiring deeper reasoning to the main agent.
+- Subagents share the parent's investigation and time budgets. Give each question one owner; do not duplicate investigations, builds or test runs across agents. Reuse concise findings instead of restarting the same work.
+- The main agent must still read applicable repository instructions and required skills directly.

@@ -658,7 +658,7 @@ Lesson: a VPN with rotating exit addresses blocks a `/32` API filter.
 
 **Done 2026-11-01.**
 [`eks-values.yaml`](infra/helm/shardshop/eks-values.yaml) makes the shared chart create an encrypted gp3 StorageClass and put one instance of each shard in each zone. `EksValuesChartTest` shows that the order HTTP and saga Deployments are the same as on kind.
-The [runbook](infra/terraform/README.md#deliver-the-database-layer-with-argo-cd) installed the vendored CloudNativePG chart, the infrastructure release and the migrations with the ECR copy of the reviewed Flyway build.
+The [runbook](infra/terraform/README.md#deliver-shardshop-with-argo-cd) installed the vendored CloudNativePG chart, the infrastructure release and the migrations with the ECR copy of the reviewed Flyway build.
 `kind-topology` and `kind-database-drill` on all three shards passed on EKS.
 The run lasted 69 minutes and cost approximately US$0.40 (estimate US$0.85). No volume stayed.
 Lesson: the claim volumes are outside the Terraform state, thus remove the database tier before the destroy.
@@ -692,3 +692,15 @@ Each sync creates new migration Jobs, and failed or interrupted Jobs stay.
 The ObjectStore wave removed the plugin race of 7.3.
 The run lasted 3 h 19 min and cost approximately US$1.60 (limit US$2.00).
 Lesson: Argo CD reports webhook defaults and extra resources as differences, thus ignore them explicitly.
+
+<a id="step-76"></a>
+### Step 7.6 — Applications and gates through Argo CD
+
+**Done 2026-11-02.**
+Argo CD delivers the six applications from ECR with digest pins in a seventh wave.
+The Helmfile gates run as PreSync and PostSync hook Jobs from a gates image. `eks-release` replaces the kind-node image check.
+Each sync has its own seeder attempt, and an admission policy denies selective and `apply` syncs.
+The gates, the delivery checks, the application drill and the delivery drill passed on EKS.
+The run found three gaps: the bootstrap of the generator registry, node rules for the metrics proxy, and the broker Secret of the observability check.
+The run lasted 1 h 55 min and cost approximately US$1.30 (limit US$4.00).
+Lesson: Argo CD does not wait for the health of the last wave.

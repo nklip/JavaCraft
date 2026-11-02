@@ -1,128 +1,131 @@
 # Infrastructure architecture
 
-[ShardShop](../ARCHITECTURE.md) › **Infrastructure** · [README](README.md) · [Runbook](RUNBOOK.md) · [Database architecture](../database/ARCHITECTURE.md) · [Verification requirements](../shardshop-testing/ARCHITECTURE.md)
+[ShardShop](../ARCHITECTURE.md) › **Infrastructure** · [README](README.md) · [Runbook](RUNBOOK.md) · [Database architecture](../database/ARCHITECTURE.md) · [Verification requirements](../shardshop-testing/ARCHITECTURE.md) · [Container images](images/README.md)
 
-The infrastructure layer creates, deploys, verifies, stops and destroys the local
-kind lab. It also defines the runtime topology and the RabbitMQ delivery policy.
+This document explains the design of the infrastructure: the platform rules, the
+lifecycle of the local deployment, the runtime topology and the RabbitMQ delivery
+policy. The [runbook](RUNBOOK.md) has the procedures, and the
+[AWS foundation](terraform/README.md) describes the AWS deployment.
 
-## Platform and versions
+## Contents
+1. [Platform and versions](#1-platform-and-versions)
+2. [Local infrastructure rules](#2-local-infrastructure-rules)
+3. [Tool ownership](#3-tool-ownership)
+4. [Lab lifecycle](#4-lab-lifecycle)
+5. [Runtime topology](#5-runtime-topology)
+6. [RabbitMQ and delivery reliability](#6-rabbitmq-and-delivery-reliability)
+7. [Retained lifecycle safety](#7-retained-lifecycle-safety)
 
-The local deployment runs on a kind cluster on one machine: every contract, drill,
-and acceptance scenario in this document must run and pass there. The AWS
-deployment (EKS provisioned with Terraform, milestone 7 in the [plan](../PLAN.md))
-reuses the same shared Helm templates through environment values and the same
-verified operator Helm charts and values. It adds cloud-only durability: S3 backups
-with WAL archiving, a three-broker RabbitMQ and runtime secrets from AWS Secrets
-Manager. Argo CD delivers the database layer, and the Argo CD delivery of the
-applications is planned. No local behavior or check may depend on a cloud service.
+## 1. Platform and versions
+<sub>[Back to Contents](#contents)</sub>
 
-The [AWS foundation](terraform/README.md) describes the Terraform modules, the
-installation of the database tier on EKS, its durability, the operator permissions
-and the costs.
+| Topic | Rule |
+|---|---|
+| Deployments | The local deployment runs on a kind cluster on one computer. Each contract, drill and acceptance scenario of this document must pass there. The [AWS deployment](terraform/README.md) uses the same chart and the same vendored operator charts on EKS. It adds S3 backups with WAL archiving, three brokers and runtime secrets from AWS Secrets Manager, and Argo CD delivers it with the Maven gates as hook Jobs. No local behavior or check depends on a cloud service. |
+| Versions | [VERSIONS.md](../VERSIONS.md) sets the rules: an LTS release when one exists, else a maintained stable GA release with an upgrade deadline. The named exceptions are the `de.mkammerer.snowflake-id:snowflake-id` library and three exact Quarkus plugin XML dependencies. The version gate also checks the dependency overrides that ShardShop inherits from the repository. |
+| Java | Build and test with JDK 25 or newer, with bytecode release 25. The applications run on OpenJDK 25. The Maven toolchain uses the JDK of `JAVA_HOME`, from any vendor and patch. Preview features stay off. |
+| Images | The [container images](images/README.md) use the verified Canonical OpenJDK 25 images on Ubuntu 26.04 from the version lock. The JRE has no shell, and each image declares a non-root user. Product and order reserve their generator IDs with Java code in their own JVM. The images pass the qualification gates of the version policy. |
 
-All runtimes, libraries, build plugins, and images follow [VERSIONS.md](../VERSIONS.md):
-LTS where available, otherwise maintained stable GA releases with explicit upgrade
-deadlines, plus the named support-policy exception for the requested
-`de.mkammerer.snowflake-id:snowflake-id` library and the three exact Quarkus
-plugin XML dependencies documented in the version policy. The version gate also
-includes repository-inherited dependency overrides.
+## 2. Local infrastructure rules
+<sub>[Back to Contents](#contents)</sub>
 
-Build and test with JDK 25 or newer (bytecode targets release 25), and run the
-applications on OpenJDK 25. The Maven toolchain uses the installation selected by
-`JAVA_HOME`, without a vendor or exact-patch restriction; preview features remain
-disabled. Container bases are the verified Canonical OpenJDK 25 JDK/JRE images on
-Ubuntu 26.04 in the version lock. The JRE is shell-free; product and order reserve
-their generator IDs with Java code in their own JVM. Configure a non-root container
-user explicitly. Final application images retain the deployment qualification gates
-in the version policy.
-
-## Local infrastructure rules
-
-The runbooks describe the [cluster](RUNBOOK.md#kind-topology),
-[storage and database sizing](../database/RUNBOOK.md#shard-clusters) and the
+The runbooks describe the [cluster](RUNBOOK.md#1-kind-topology), the
+[storage and database sizes](../database/RUNBOOK.md#shard-clusters) and the
 [generator registry](../shardshop-core/idgen/README.md#generator-allocation-at-jvm-startup).
-These rules apply to every change:
+These rules apply to each change:
 
-- Use namespace `shardshop` and context `kind-shardshop`. Scripts pass the context
-  explicitly on every command. Keep the operator installation version explicit.
-- Bootstrap secrets at runtime from environment input or generated credentials.
-  Commit references only. Separate the migration, application and CDC permissions.
-  Workload applications receive HTTP configuration, never SQL credentials.
-- Run the applications in Kubernetes, so that Service DNS resolves normally. Keep
-  the database and broker endpoints internal. Expose the APIs by port-forward.
-- Start the infrastructure and the services, then the idempotent product seeder Job
-  and the workload Deployments. Each workload decides in Java when it sends load.
-  The reader and the order producer start only after they verify the complete
-  seeded dataset through product, and they stop with an error after a bounded
-  wait. The default workload writes no product after seeding.
+- **Target.** Use the namespace `shardshop` and the context `kind-shardshop`. The
+  scripts give the context to each command. The operator version stays explicit.
+- **Credentials.** Make the secrets at runtime, from environment input or as
+  generated passwords. Commit only references to them. Keep the permissions of the
+  migrations, the applications and CDC separate. The workload applications get HTTP
+  settings, never SQL credentials.
+- **Network.** The applications run in Kubernetes, thus the Service DNS names work
+  normally. The database and broker endpoints stay inside the cluster. Use a port
+  forward to reach the APIs.
+- **Start order.** First the infrastructure and the services start, then the
+  idempotent product seeder Job, then the workload Deployments. Each workload decides
+  in Java when it sends load. The reader and the order producer send load only after
+  they find the complete seeded dataset through product. After a limited wait, they
+  stop with an error. The default workload writes no product after the seeding.
 - **Docker VM.** The Docker Desktop VM needs 12 GB of memory. It reports
-  approximately 11.7 GiB, and `up.sh` refuses to start with less than 11.5 GiB.
+  approximately 11.7 GiB, and `up.sh` does not start with less than 11.5 GiB.
 
-Multiple local nodes share one physical machine. This setup teaches the handling of
-pod and process failures. It cannot protect against laptop or disk failure.
+All the local nodes share one computer. Thus the lab shows how the system recovers
+from failures of pods and processes, but not from a failure of the computer or its
+disk.
 
 ### Portability beyond kind
 
-These rules keep a later move to AWS EKS (milestone 7), OpenShift or another
-distribution inside the cluster bootstrap and the environment values:
+These rules keep each cluster-specific setting in the cluster bootstrap and in the
+environment values. Thus the same manifests run on kind and on EKS, and can move to
+another distribution, for example OpenShift. [Section 5 of the overview](../ARCHITECTURE.md#5-local-deployment-and-aws-deployment)
+shows the shared parts and the differences.
 
-1. Keep everything kind-specific in `infra/kind.yaml` and the bootstrap. Every other
-   manifest is plain Kubernetes.
-2. Keep one ordered shard inventory of names and immutable regions in
-   `infra/shards.yaml`, and shared Helm templates in `infra/helm/shardshop/`.
-   Environment values (`kind-values.yaml`, `eks-values.yaml`) set only what differs
-   between clusters, such as the storage class and the anti-affinity. Helmfile manages the real Helm
-   releases. Bootstrap resources outside release ownership stay ordinary Kubernetes
-   manifests. Never add a directory or a copied manifest for another shard.
-3. Every application, database and broker pod meets the Kubernetes `restricted`
-   Pod Security Standard: non-root, no privilege escalation, all capabilities
-   dropped and `RuntimeDefault` seccomp. Label `shardshop` with
-   `pod-security.kubernetes.io/enforce: restricted` and leave the CNPG
-   `podSecurityContext` unset. Prefer admission-assigned IDs. The Flyway Jobs and
-   the RabbitMQ StatefulSet use UID/GID 10001 explicitly, and RabbitMQ also uses
-   fsGroup 10001. Fixed nonzero IDs meet Kubernetes Restricted. They do not
-   establish OpenShift restricted-SCC compatibility, because namespace-assigned
-   ranges can reject them. An OpenShift port must adapt these settings and qualify
-   the image and PVC permissions without a blind change of retained volume
-   ownership. See [Kubernetes Restricted](https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted)
-   and [OpenShift SCC rules](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/authentication_and_authorization/managing-pod-security-policies).
-4. Drills cause failures through the Kubernetes API (force-delete pods, cordon or
-   drain nodes). A drill that must stop a whole node is a kind-only extra, kept
-   separate from the portable drills.
-5. A different admission-assigned identity for RabbitMQ and the OpenShift SCC
-   behavior need separate verification before the lab claims portability.
-6. Install third-party operators from their vendored, verified Helm charts with
-   shared values in `infra/helm/`. Every cluster then runs the same chart version
-   and image pins. Cluster-specific settings belong in that cluster's values file.
+1. **kind settings.** Keep each kind-specific setting in `infra/kind.yaml` and in the
+   bootstrap. All other manifests are plain Kubernetes.
+2. **One inventory and one chart.** Keep one ordered shard inventory, with the names
+   and the immutable regions, in `infra/shards.yaml`. Keep the shared Helm templates in
+   `infra/helm/shardshop/`. The environment values (`kind-values.yaml`,
+   `eks-values.yaml`) set only what is different between clusters, for example the
+   storage class and the anti-affinity. Helmfile applies the chart on kind, and Argo CD
+   applies it on EKS. The bootstrap resources outside the releases stay ordinary
+   Kubernetes manifests. Never add a directory or a copied manifest for another shard.
+3. **Restricted pods.** Each application, database and broker pod meets the
+   Kubernetes `restricted` Pod Security Standard: non-root, no privilege escalation,
+   all capabilities dropped and the `RuntimeDefault` seccomp profile. Label the
+   namespace `shardshop` with `pod-security.kubernetes.io/enforce: restricted`, and
+   leave the CNPG `podSecurityContext` unset. Prefer the IDs that the admission
+   assigns. The Flyway Jobs and the RabbitMQ StatefulSet use the UID and GID 10001
+   explicitly, and RabbitMQ also uses `fsGroup` 10001.
+   - Fixed nonzero IDs meet Kubernetes Restricted, but possibly not the OpenShift
+     restricted SCC, because OpenShift can assign a different ID range to each
+     namespace.
+   - An OpenShift port must adapt these settings and qualify the image and volume
+     permissions. It must not change the owner of retained volumes without a check.
+   - See [Kubernetes Restricted](https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted)
+     and the [OpenShift SCC rules](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/authentication_and_authorization/managing-pod-security-policies).
+4. **Drills.** Drills cause failures through the Kubernetes API, for example a forced
+   pod deletion or a cordoned or drained node. A drill that stops a whole node is a
+   kind-only extra, separate from the portable drills.
+5. **Open verification.** A different admission-assigned identity for RabbitMQ and the
+   OpenShift SCC behavior need their own verification before the lab claims
+   portability.
+6. **Vendored operators.** Install third-party operators from their vendored,
+   verified Helm charts, with shared values in `infra/helm/`. Each cluster then runs
+   the same chart version and image pins. A setting for one cluster goes into the
+   values file of that cluster.
 
-An OpenShift move also needs a decision on the PostgreSQL operator. Community
+A move to OpenShift also needs a decision about the PostgreSQL operator. Community
 CloudNativePG does not support OpenShift. The certified EDB operator (API group
-`postgresql.k8s.enterprisedb.io`) is a commercial product outside the
-community-only policy in [VERSIONS.md](../VERSIONS.md).
+`postgresql.k8s.enterprisedb.io`) is a commercial product, outside the
+community-only policy of [VERSIONS.md](../VERSIONS.md).
 
-## Tool ownership
+## 3. Tool ownership
+<sub>[Back to Contents](#contents)</sub>
 
 | Tool | Owns |
 |---|---|
-| Bash: the four lifecycle scripts | Local bootstrap, snapshots/locks, Maven/Scout invocation, native kind/Docker lifecycle and image delivery |
-| Skaffold | Image build recipes and artifact tags |
-| Helmfile | The order of the real Helm releases and their Maven phase hooks |
-| Helm | Infrastructure, routing and application resources and Flyway/seeder hook Jobs; it also renders DNS probes and bootstrap identity manifests |
-| Kubernetes and CloudNativePG | Reconciliation of the resources |
-| Maven: opt-in kind Cucumber scenarios | Invariants and readiness, with the same invocation snapshot |
+| Bash: the four lifecycle scripts | The local bootstrap, the snapshots and locks, the Maven and Scout calls, the kind and Docker lifecycle and the image delivery to kind |
+| Skaffold | The image build recipes and the artifact tags |
+| Helmfile | The order of the Helm releases and their Maven gate hooks |
+| Helm | The infrastructure, routing and application resources, and the Flyway and seeder hook Jobs. It also renders the DNS probes and the bootstrap identity manifests |
+| Kubernetes and CloudNativePG | The reconciliation of the resources |
+| Maven: the opt-in `kind` scenarios | The invariants and the readiness checks, with the same invocation snapshot |
+| Terraform and Argo CD, AWS deployment only | The AWS foundation, and on EKS the order of the layers and the gate hook Jobs ([AWS foundation](terraform/README.md)) |
 
-Namespace, credential Secrets and allocator registry/identity remain outside
-release ownership. The lifecycle uses Helmfile and Skaffold from `PATH`, with
-their shared configuration kept in the repository.
+These resources stay outside the Helm releases: the namespace, the credential Secrets,
+and the generator registry with its identity. The lifecycle uses Helmfile and Skaffold
+from `PATH`, and their shared configuration is in the repository.
 
-Manual saga reconciliation uses native `psql` and database-owned SQL, through the
-restricted `ordering_operator` login. `cluster-create.sh` creates its missing
-Secret and CNPG reconciles its group/login roles; the ordinary Flyway ordering
-stream grants its column permissions. No application receives that Secret, and
-no lifecycle command performs a reset. See the
-[operator procedure](../shardshop-order/RUNBOOK.md#manual-reconciliation-reset).
+The manual saga reconciliation uses `psql` and SQL that the database owns, with the
+restricted `ordering_operator` login. `cluster-create.sh` creates its Secret when the
+Secret is missing, CNPG reconciles its roles, and the Flyway ordering stream grants
+its column permissions. No application gets this Secret, and no lifecycle command
+does a reset. See the [operator procedure](../shardshop-order/RUNBOOK.md#manual-reconciliation-reset).
 
-## Lab lifecycle
+## 4. Lab lifecycle
+<sub>[Back to Contents](#contents)</sub>
 
 ```mermaid
 flowchart LR
@@ -134,224 +137,249 @@ flowchart LR
 
 | Entry point | Does | Never does |
 |---|---|---|
-| `cluster-create.sh` | Cluster creation, infrastructure reconciliation and fresh database/allocator preparation. On an existing cluster it resumes stopped nodes and reconciles supported infrastructure changes after retained-state guards pass | Deploy applications, build application images or run migrations |
-| `up.sh` | Application startup, retained-node resumption, readiness checks, migration and deployment | Recreate a missing cluster, or provision namespaces, credentials or infrastructure releases |
-| `down.sh` | Retained shutdown: stops every node and keeps all data | Delete a node, volume, Secret or allocator identity |
-| `cluster-destroy.sh` | Explicit reset: removes the lab, its attached volumes and `kind-shardshop` kubeconfig entries | Touch repository configuration or shared Docker networks/images |
+| `cluster-create.sh` | Creates the cluster, reconciles the infrastructure and prepares new databases and the allocator. On an existing cluster, it resumes stopped nodes and reconciles supported infrastructure changes after the retained-state guards pass | Deploy applications, build application images or run migrations |
+| `up.sh` | Starts the applications: resumes retained nodes, checks the readiness, migrates and deploys | Create a missing cluster, or make namespaces, credentials or infrastructure releases |
+| `down.sh` | Stops each node and keeps all data | Delete a node, volume, Secret or allocator identity |
+| `cluster-destroy.sh` | Explicit reset: removes the lab, its attached volumes and the `kind-shardshop` kubeconfig entries | Touch the repository configuration or the shared Docker networks and images |
 
-The four maintained entry points are `cluster-create.sh`, `up.sh`, `down.sh` and
-`cluster-destroy.sh`; manifest previews use native `helm template` with the shared
-chart and values. `cluster-create.sh` and `up.sh` source `scripts/lib/lifecycle.sh`
-for locks, traps, snapshots, rendering, verifiers, readiness and retained-node
-resumption; this helper is not an entry point. `down.sh` and `cluster-destroy.sh`
-source it for target selection, the lock and traps, then call `docker stop` and
-`kind delete cluster`. After any node start, the lifecycle restarts kindnet.
+- These four scripts are the only entry points. For a manifest preview, use
+  `helm template` with the shared chart and values.
+- `cluster-create.sh` and `up.sh` use the helper `scripts/lib/lifecycle.sh` for the
+  lock, the traps, the snapshot, the Helm renders, the gates, the readiness checks and
+  the resumption of stopped nodes. `down.sh` and `cluster-destroy.sh` use it only for
+  the target, the lock and the traps, then call `docker stop` or
+  `kind delete cluster`. The helper is not an entry point.
+- After each node start, the lifecycle restarts kindnet, because a node can get a new
+  address.
 
 ### Owned qualification labs
 
-The lifecycle helper also provides an opt-in target for disposable test
-orchestration: paired `SHARDSHOP_TEST_CLUSTER` and `SHARDSHOP_TEST_KUBECONFIG`.
-Only the `shardshop-test-` DNS-label namespace is accepted, with a mandatory
-absolute single kubeconfig in a private directory outside the user's default
-kubeconfig directory. Validation precedes every lifecycle mutation, including
-deletion. The immutable invocation copy changes only the kind cluster name;
-application namespace, releases and manifests retain their existing contracts.
-The selected context and kubeconfig propagate through native CLIs, Helmfile
-release hooks, Maven observers and their local HTTP proxies.
-
-The invoking test owner establishes a fresh unique name and registers cleanup
-before creation. Production lifecycle traps still own only transient invocation
-files/probes and the lock; they never turn a failed retained bootstrap into an
-automatic reset. See the [test-lab procedure](RUNBOOK.md#disposable-test-clusters)
-for the environment contract, cleanup boundary and shared host resources.
+A test orchestration can select its own disposable lab with the variables
+`SHARDSHOP_TEST_CLUSTER` and `SHARDSHOP_TEST_KUBECONFIG`. The invocation copy then
+changes only the kind cluster name, and all the tools use the selected context and
+kubeconfig. The test owner registers the cleanup before the creation. The lifecycle
+traps remove only the files, probes and lock of the invocation, and never change a
+failed retained bootstrap into an automatic reset. The
+[test-lab procedure](RUNBOOK.md#7-disposable-test-clusters) gives the rules of the
+variables, the cleanup and the shared host resources.
 
 ### Accepted changes
 
-`up.sh` snapshots the inventory, environment values, database migration files,
-kind configuration, operator chart and operator values once per invocation. It
-accepts only the fixed kind topology of one control plane and three workers and
-reviewed image/port settings; changes requiring cluster recreation, storage or
-placement changes, bootstrap changes, PostgreSQL major version changes, or a
-different replica shape are rejected. Supported resource, PostgreSQL configuration
-and reviewed operator changes are reconciled in place; failures stop with recovery
-guidance and retained data.
+`up.sh` takes a snapshot of its inputs one time for each invocation: the inventory,
+the environment values, the migration files, the kind configuration, the operator
+chart and the operator values. Then it accepts or rejects each change:
 
-For Helm-owned databases, retained protected declarations come from the pinned
-current release manifest, while live values are checked for drift. This separates
-API defaults from intended storage/placement/bootstrap changes; the legacy kubectl
-annotation remains the baseline only for resources outside Helm ownership.
+| Change | Result |
+|---|---|
+| Resources, PostgreSQL configuration, reviewed operator changes | Reconciled in place |
+| A kind configuration other than one control plane, three workers and the reviewed node image and port settings | Rejected |
+| A change that needs a new cluster, a change of storage, placement or bootstrap settings, a new PostgreSQL major version, a different replica shape | Rejected |
+
+A failure stops with recovery instructions and keeps the data. For a Helm-owned
+database, the protected declarations come from the pinned current release manifest,
+and the check compares the live values with them. Thus a default that the API adds is
+not a requested change. A missing or wrong Helm ownership or history, a pending
+revision, or a revision that changes during the check stops the script. A failed
+revision stays retryable when its protected settings agree. Only resources outside
+Helm ownership use the earlier kubectl annotation as their baseline.
 
 ### Cluster creation
 
-1. `cluster-create.sh` first caches repository and microservices parent POM
-   metadata using non-recursive `install:install-file` calls, without building
-   their reactors.
-2. It builds, verifies and installs only `shardshop-testing` and its shared common
-   test-helper dependencies with
+1. `cluster-create.sh` caches the metadata of the repository and microservices parent
+   POMs with non-recursive `install:install-file` calls. It builds no reactor of these
+   parents.
+2. It builds, verifies and installs only `shardshop-testing` and its shared test
+   helpers, with
    `-pl shardshop-testing -am -Dshardshop.infrastructureOnly=true clean install -DinstallAtEnd=true`.
-   This invocation disables application reactor-order dependencies, and its direct
-   Failsafe gates use the same property; creation does not build applications or
-   require installed application POMs. Default builds retain those dependencies.
-3. It syncs `cnpg` and `shardshop-infrastructure` through Helmfile, then
-   initializes allocator identity only for a cluster demonstrably created by that
-   invocation. Partial allocator initialization requires explicit recovery and
-   never authorizes a counter reset.
-4. It also provisions a retained single-broker RabbitMQ StatefulSet, public
-   topology ConfigMap and runtime-generated credential Secret. Broker configuration
-   imports public topology and private users through a clean temporary directory,
-   excluding Kubernetes projection metadata. The broker runs with configured
-   non-root UID/GID 10001 and a read-only root filesystem; its PVC is writable
-   through fsGroup 10001. This meets Kubernetes Restricted; admission-assigned
-   OpenShift UID/group ranges and retained-volume permissions remain unqualified.
-5. The infrastructure gate verifies the broker's persistent storage, readiness,
-   stream feature flag, exact quorum queue arguments, bindings and effective
-   delivery policies. Creation verifies database and broker readiness and returns
-   without migrations or application deployment or application image builds.
+   This property removes the build-order dependencies on the applications, and the
+   Failsafe gates of the script use it too. Thus the creation builds no application
+   and needs no installed application POM. The default build keeps these
+   dependencies.
+3. It syncs `cnpg` and `shardshop-infrastructure` through Helmfile. Then it makes the
+   generator identity, but only for a cluster that this invocation created. A partial
+   identity needs an explicit recovery and never permits a counter reset.
+4. The infrastructure release makes the retained single-broker RabbitMQ StatefulSet
+   and its public topology ConfigMap. The script makes the broker credential Secret at
+   runtime.
+   - The broker imports the public topology and the private users through a clean
+     temporary directory, without the Kubernetes projection metadata.
+   - It runs as UID and GID 10001 with a read-only root filesystem, and `fsGroup`
+     10001 makes its volume writable. This meets Kubernetes Restricted. The OpenShift
+     ID ranges and the permissions of retained volumes are not qualified.
+5. The infrastructure gate checks the persistent storage and the readiness of the
+   broker, the stream feature flag, the exact quorum queue arguments, the bindings and
+   the effective delivery policies. The creation also checks the database readiness.
+   It runs no migration, deploys no application and builds no application image.
 
 ### Deployment pipeline
 
-`up.sh` requires valid retained allocator state, observes prepared infrastructure
-readiness and never provisions namespaces, credentials or infrastructure releases.
+`up.sh` needs a valid retained generator registry and prepared infrastructure. It
+never makes namespaces, credentials or infrastructure releases.
 
-1. **Snapshot.** Take the invocation snapshot and reject unsupported changes, as
-   [accepted changes](#accepted-changes) defines. Each guard runs before the
-   mutation, migration or routing publication that it protects.
-2. **Build.** The initial ShardShop-only Maven build,
-   `clean install -DinstallAtEnd=true`, includes `verify` and installs verified
-   reactor artifacts in Maven's local cache after the reactor succeeds; subsequent
-   Failsafe gates resolve these packages without another build. This is local
-   artifact caching, without tool installation or remote publication.
-3. **Image delivery.** Skaffold builds current Maven outputs; its standalone build
-   has no deployer and does not load kind images. Native image delivery verifies
-   the qualified build's config ID and a consistent manifest digest on every node
-   before migrations or a new application release.
-4. **Migrations.** After readiness/image delivery, Helmfile syncs
-   `shardshop-migrations` and `shardshop-application` in dependency order. Each
-   revision runs ordered Flyway hooks and idempotent seeding. Flyway's actual
-   history is authoritative; no completed Job cache suppresses validation. The
-   [database layer](../database/ARCHITECTURE.md#migration-delivery) defines the
-   stream order.
-5. **Application release.** The application release's `presync` hook also runs
-   `kind-drills-idle`: a retained drill lock stops the release. Every `up.sh`
-   deployment changes a shared restart annotation on all application Deployment
-   templates through Helm, triggering replacement followed by the seeding and
-   acceptance gates even for unchanged code.
-6. **Acceptance.** The application release's native Helmfile `postsync` hook
-   invokes the final Maven acceptance with `kind-release | kind-deployment` after
-   the application resources and seeder hook Job succeed. `kind-release` checks
-   the snapshot images, rendered desired configuration, current deployed Helm
-   revision and Deployment generations, pod ownership and runtime digests, the
-   current successful seeder, and ready product and order EndpointSlices;
-   `kind-deployment` checks product traffic, reader load and the saga effects of
-   the gate's own orders.
+```mermaid
+flowchart TB
+    Snapshot["Snapshot<br/>reject unsupported changes"] --> Build["Build<br/>Maven clean install with all tests"]
+    Build --> Images["Image delivery<br/>Skaffold build, Scout gate, kind load"]
+    Images --> Migrations["Migration release<br/>presync gate, Flyway hook Jobs"]
+    Migrations --> Release["Application release<br/>presync gate, new pods, seeder hook Job"]
+    Release --> Acceptance["Acceptance<br/>postsync gate"]
+```
 
-After the deployment gates succeed, `up.sh` releases its deployment lock and
-exits.
+1. **Snapshot.** Each guard of the [accepted changes](#accepted-changes) runs before
+   the change, migration or routing publication that it protects.
+2. **Build.** The ShardShop-only build `clean install -DinstallAtEnd=true` includes
+   `verify`, and installs the verified artifacts in the local Maven cache after the
+   reactor succeeds. The later Failsafe gates use them without a second build. Nothing
+   goes to a remote repository.
+3. **Image delivery.** Skaffold has no deployer and loads nothing into kind. The script
+   loads the images and checks the configuration ID and one manifest digest on all
+   nodes.
+4. **Migrations.** Each revision runs the ordered Flyway hooks and the idempotent
+   seeding. The real Flyway history is authoritative, and no cache of completed Jobs
+   skips its validation. The [database layer](../database/ARCHITECTURE.md#migration-delivery)
+   defines the stream order.
+5. **Application release.** Each `up.sh` changes one shared restart annotation on all
+   application Deployments. Thus Kubernetes replaces all their pods, also for
+   unchanged code.
+6. **Acceptance.** The `postsync` hook runs after the application resources and the
+   seeder Job succeed.
 
-- Each new product or order JVM consumes a fresh, non-reusable generator slot; a
-  normal rollout of two product replicas, two order HTTP replicas and one saga
-  replica uses at least five slots.
-- Product's pod checksum is SHA-256 of the full rendered `application.properties`,
-  sharing the mounted file's named template and static defaults.
-  Image/resource/workload settings are direct template inputs.
-- Seeder revision identity is recorded on reader and order-producer Deployment
-  metadata, outside its pod template. Successful seeder Jobs retain 24-hour
-  verification logs; after TTL cleanup, standalone workload checks require a fresh
-  `up.sh` run.
+The Helmfile hooks run these gates:
+
+| Release | Hook | Gate tags | Checks |
+|---|---|---|---|
+| `shardshop-migrations` | presync | `kind-allocator`, `kind-infrastructure`, `kind-migration-reservation`, `kind-migrations-idle` | The allocator, the databases and the broker, the topology reservation, no active migration |
+| `shardshop-application` | presync | `kind-publications`, `kind-migration-reservation`, `kind-drills-idle` | The CDC publications, the reservation, no drill lock |
+| `shardshop-application` | postsync | `kind-release`, `kind-deployment` | The release and the workload, as below |
+
+- `kind-release` checks the snapshot images, the rendered configuration, the deployed
+  Helm revision, the Deployment generations, the pod owners and runtime digests, the
+  current successful seeder, and the ready product and order EndpointSlices. When kind
+  reports an archive-index digest, the check reads its single platform descriptor
+  through containerd and requires the qualified manifest.
+- `kind-deployment` checks the product traffic, the reader load and the saga effects
+  of the gate's own orders.
+- A retained drill lock stops the application release in its presync gate.
+
+After the gates pass, `up.sh` releases its lock and stops. Each deployment also has
+these effects:
+
+- Each new product or order JVM takes a new generator slot that it never gives back.
+  A normal rollout of two product, two order HTTP and one saga replica uses at least
+  five slots.
+- The product pod checksum is the SHA-256 of the complete rendered
+  `application.properties`. The checksum and the mounted file use the same named
+  template and static defaults. The image, resource and workload settings are direct
+  template inputs.
+- The reader and order-producer Deployments record the identity of the seeder
+  revision in their metadata, outside the pod template. A successful seeder Job keeps
+  its verification logs for 24 hours. After that, a standalone workload check needs a
+  new `up.sh` run.
 
 ### Release failures
 
-The release hook failure is fatal to Helmfile and `up.sh`, although Helm may still
-report the release as deployed. The observer does not repair resources, retry the
-release or roll it back; Kubernetes continues its normal reconciliation.
-Diagnostics remain bounded and contain no secrets. The reader and order producer
-remain running and disruptive drills are still explicitly selected. A new
-`kind-release` run requires `images.json` in the snapshot; standalone legacy
-`kind-deployment` runs do not. The lifecycle uses no extra wrappers, embedded
-Python, downloaded tool binaries or Java lifecycle controller.
+- A failed release hook stops Helmfile and `up.sh`. Helm can still report the release
+  as deployed.
+- The observer does not repair resources, repeat the release or roll it back.
+  Kubernetes continues its normal reconciliation.
+- The diagnostics are bounded and contain no secrets.
+- The reader and the order producer continue to run, and the disruptive drills stay
+  opt-in.
+- A new `kind-release` run needs `images.json` in the snapshot, with the `images` and
+  the deployed `restartToken`. A standalone `kind-deployment` run does not need it.
+- The lifecycle uses no extra wrappers, embedded Python, downloaded tool binaries or
+  Java lifecycle controller.
 
 ### Helm ownership and adoption
 
-Retained resources created by the earlier apply workflow require an explicit
-one-time ownership transfer after safety checks and resource/UID inspection,
-including existing immutable SQL ConfigMaps matching the current snapshot.
-Metadata-only patches test UID/resourceVersion and preserve specifications/data.
-Normal startup never adopts another Helm release. Namespace, credentials and
-allocator state are excluded from transfer.
-
-ShardShop releases use Helm's three-way merge for previously apply-managed
-resources; `cnpg` retains server-side updates. Helm owns hook completion and
-bounded rollout waits; Maven retains topology/allocator/readiness and
-current-generation Publication checks. Helm's client-side three-way merge keeps an
-environment variable or a node selector that a drill added out of band, thus an
-unrecovered drill change would otherwise stay in the new release; the
-`kind-drills-idle` gate prevents that.
+- Retained resources from the earlier apply workflow need an explicit one-time
+  transfer of ownership, after safety checks and an inspection of each resource and
+  its UID. This includes the existing immutable SQL ConfigMaps that agree with the
+  current snapshot. The metadata-only patches test the UID and the `resourceVersion`,
+  and keep the specifications and the data.
+- A normal startup never adopts a different Helm release. The namespace, the
+  credentials and the allocator state are never transferred.
+- The ShardShop releases use the three-way merge of Helm for the resources that the
+  earlier workflow applied. `cnpg` keeps server-side updates.
+- Helm owns the hook completion and the bounded rollout waits. Maven keeps the
+  topology, allocator, readiness and current-generation Publication checks.
+- The client-side three-way merge of Helm keeps an environment variable or a node
+  selector that a drill added out of band. Thus an unrecovered drill change would
+  stay in the new release. The `kind-drills-idle` gate prevents this.
 
 ### Verification gates and drills
 
-Opt-in Maven kind Cucumber scenarios verify invariants and readiness using the
-same invocation snapshot: guards run before protected mutations, and readiness
-checks observe DNS from a pod on every node, current-generation database
-resources, actual SQL connectivity and configuration, and both streaming quorum
-standbys of every shard. DNS probes allow 15 minutes for cold image startup in
-addition to their 120-second execution limit; every probe must succeed. Native
-bounded waits are used where their status proves the requirement; cross-resource
-and SQL assertions stay in Java tests. These tests do not replace reconciliation
-with a Java controller.
+The opt-in Maven `kind` scenarios check the invariants and the readiness with the
+same invocation snapshot. Each guard runs before the change that it protects. The
+readiness checks observe:
+
+- DNS from a pod on each node. A DNS probe gets 15 minutes for a cold image start and
+  120 seconds for its run, and each probe must succeed.
+- The current generation of the database resources, real SQL connections and the
+  database configuration.
+- Both streaming quorum standbys of each shard.
+
+Native bounded waits are used where their status proves the requirement.
+Cross-resource and SQL assertions stay in Java tests. These tests do not replace the
+reconciliation with a Java controller.
 
 | Profile | Selection | Checks |
 |---|---|---|
-| `kind-deployment` | Default of the `kind` profile through `shardshop.kind.tags` | Deployed routing, independent replication and persistent-volume identity (`kind-topology`), product workload (`kind-workload`), saga effects (`kind-saga`) and recovery/pressure metrics (`kind-observability`) |
-| `kind-database-drill` | Explicit `kind-drill` | Standby replacement, quorum availability/blocking and WAL retention on the first inventory shard, or `shardshop.kind.drillShard` |
+| `kind-deployment` | Default of the `kind` profile through `shardshop.kind.tags` | Deployed routing, independent replication and persistent-volume identity (`kind-topology`), product workload (`kind-workload`), saga effects (`kind-saga`) and recovery and pressure metrics (`kind-observability`) |
+| `kind-database-drill` | Explicit `kind-drill` | Standby replacement, quorum availability, blocked commits and WAL retention on the first inventory shard, or on `shardshop.kind.drillShard` |
 | `kind-workload-drill` | Explicit `kind-drill` | Repeated temporary seeder Jobs, identical saved IDs and the replacement of one product pod |
-| `kind-saga-drill` | Explicit `kind-drill` | Duplicate delivery, policy-change replay, two orders for the same stock, cross-worker saga replacement and continuous writes during HTTP replacement with unchanged saga/CDC ownership |
-| `kind-retry-drill` | Explicit `kind-drill` | Shard outage beyond broker retries, reconciliation, and unbound/full DLQ pressure on both application publishers; see the [retry runbook](../shardshop-testing/RUNBOOK.md#retry-and-dlq-capacity-drills) |
+| `kind-saga-drill` | Explicit `kind-drill` | Duplicate delivery, replay after a policy change, two orders for the same stock, saga replacement between workers, and continuous writes while the HTTP pods change, with unchanged saga and CDC ownership |
+| `kind-retry-drill` | Explicit `kind-drill` | A shard outage longer than the broker retries, reconciliation, and pressure from an unbound or full DLQ on both application publishers. See the [retry runbook](../shardshop-testing/RUNBOOK.md#retry-and-dlq-capacity-drills) |
 
-**Default profile.** `kind-workload` checks credential restrictions, the saved
-151 seller/201 product IDs of `catalog-v2` (only the retained 150/300 `catalog-v1`
-rows and the saga gate fixtures may also exist), matching seeder/reader digests,
-traffic through both Ready product pods within 120 seconds, and a fresh all-OK
-reader interval at 180 requests/s or more. These checks require an
-already-migrated, deployed lab with two Ready product pods and one running reader;
-they preserve reader replicas. Reader interval reports repeat the resolved catalog
-digest so bounded recent logs retain verification evidence after startup-log
-rotation. Workload settings are restricted to documented literal HTTP
-configuration; generic JVM and command overrides are rejected.
+**Default profile.** `kind-workload` checks these items:
 
-**Saga gate.** Normal deployment acceptance does not examine producer orders. It
-creates one USD and one EUR order for its own buyer, sellers and products, and
-checks their durable saga effects. The normal seven-currency ledger policy must
-confirm both orders; the gate changes no deployment or workload setting. These
-gate entities use fixed `kind-saga-gate-v2.*` creation keys, thus later runs
-recover the same IDs.
+- The credential restrictions.
+- The saved 151 seller and 201 product IDs of `catalog-v2`. Only the retained 150/300
+  `catalog-v1` rows and the saga gate fixtures can also exist.
+- The same digests in the seeder and the reader.
+- Traffic through both ready product pods within 120 seconds.
+- A new reader interval at 180 requests/s or more, with only correct results.
 
-**Drills.** In the workload drill, the replaced product pod's fresh generator ID
-must exceed the pre-replacement registry `highWaterMark`; traffic and an all-OK
-reader interval are checked again after recovery. The three saga-drill scenarios
-also cover HTTP rollout preserving the saga pod/CDC active PIDs and saga restart
-while writes continue. A separate scenario tests competing stock coordinators.
+These checks need a lab that is already migrated and deployed, with two ready product
+pods and one reader that runs. They keep the reader replicas. Each reader interval
+report repeats the resolved catalog digest, thus the recent logs keep the evidence
+after the startup logs rotate. The workload settings accept only the documented
+literal HTTP configuration. The checks reject generic JVM and command overrides.
 
-- All drill families share the `shardshop-kind-drill` ConfigMap lock, register
-  recovery before mutation, and restore temporary changes in reverse order on
-  completion, failure or ordinary JVM termination. Failed recovery retains the
-  lock and reports required operator action. While the lock exists, the
+**Saga gate.** The normal deployment acceptance does not examine producer orders. It
+makes one USD and one EUR order for its own buyer, sellers and products, and checks
+their durable saga effects. The normal seven-currency ledger policy must confirm both
+orders. The gate changes no deployment or workload setting. Its entities use the fixed
+creation keys `kind-saga-gate-v2.*`, thus later runs recover the same IDs.
+
+**Drills.**
+
+- In the workload drill, the new generator ID of the replaced product pod must be
+  higher than the `highWaterMark` of the registry before the replacement. The traffic
+  and a new correct reader interval are checked again after the recovery.
+- The three saga-drill scenarios also cover an HTTP rollout that keeps the active PIDs
+  of the saga pod and CDC, and a saga restart while writes continue. A separate
+  scenario tests stock coordinators that compete.
+- All drill families share the `shardshop-kind-drill` ConfigMap lock. They register
+  each recovery before the change, and restore the temporary changes in reverse order
+  at completion, after a failure or at an ordinary JVM end. A failed recovery keeps the
+  lock and reports the necessary operator action. While the lock exists, the
   `kind-drills-idle` gate stops the application release before Helm changes it.
-- Fence mutations atomically test Cluster identity and resource version to
-  preserve concurrent operator changes. Allocator state is never rewound.
+- Fence changes test the Cluster identity and the resource version atomically, thus
+  they keep concurrent operator changes. The allocator state never moves back.
 
-**Snapshots.** Every standalone suite consumes an explicit `shardshop.kind.snapshot`
-containing `chart/`, `environment.yaml`, `inventory.yaml`, `inventory.json`,
-`kind.json` and `infrastructure.yaml`; DNS gates additionally use
-`dns-probes.yaml`. Existing infrastructure safety gates remain individually
-selectable. Tests observe native reconciliation, create the scoped orders of the
-saga gate, or make only the explicitly selected temporary drill changes;
-production migration and deployment run through `up.sh`.
+**Snapshots.** Each standalone suite reads an explicit `shardshop.kind.snapshot`
+directory with `chart/`, `environment.yaml`, `inventory.yaml`, `inventory.json`,
+`kind.json` and `infrastructure.yaml`. The DNS gates also use `dns-probes.yaml`. Each
+infrastructure safety gate stays selectable alone. The tests observe the native
+reconciliation, make the scoped orders of the saga gate, or make only the explicitly
+selected temporary drill changes. The production migration and deployment run only
+through `up.sh`.
 
 ### Local web access
 
-Both `up.sh` and `webpages.sh` accept no arguments. The separate `webpages.sh`
-serves local access through five owned `kubectl port-forward` processes, all bound
-to localhost:
+`up.sh` and `webpages.sh` accept no arguments. `webpages.sh` opens local access through
+five `kubectl port-forward` processes that it owns, all on localhost:
 
 | Port | Page |
 |---:|---|
@@ -361,20 +389,19 @@ to localhost:
 | 18083 | Product reader control page |
 | 18084 | Interactive seeder control page |
 
-- Exiting or interrupting the script closes all its tunnels without stopping
-  workloads; a failed tunnel ends the access session and reports the failure.
-  Cluster shutdown remains the responsibility of `down.sh`.
-- `webpages.sh` uses `lsof` to find processes listening on ports 18080–18084 and
-  stops them before opening tunnels: TERM, a five-second grace period, then KILL
-  for remaining listeners. It requires the ports to be released within two further
-  seconds. A second inspection before opening tunnels catches newly occupied ports
-  and reports an access failure.
-- `webpages.sh` clears the ports and runs only the supervised access session
-  against the existing deployment, without the deployment lock, build, rollout or
-  acceptance gates. It permits access recovery without consuming more generator
-  slots in an unnecessary rollout.
+- When the script ends or you interrupt it, it closes all its tunnels and keeps the
+  workloads. A failed tunnel ends the access session with a report. Only `down.sh`
+  stops the cluster.
+- Before it opens the tunnels, the script uses `lsof` to find the processes on ports
+  18080–18084 and stops them: TERM, five seconds for a clean stop, then KILL. The
+  ports must be free within two more seconds. A second check just before the tunnels
+  open finds newly used ports and reports an access failure.
+- The script uses only the existing deployment. It takes no deployment lock, and does
+  no build, rollout or acceptance gate. Thus it recovers the access without a rollout
+  that uses more generator slots.
 
-## Runtime topology
+## 5. Runtime topology
+<sub>[Back to Contents](#contents)</sub>
 
 ```mermaid
 flowchart LR
@@ -425,120 +452,149 @@ flowchart LR
     MQ -->|"Saga result delivery"| CDC
 ```
 
-After seeding, nine application pods run: one reader, one order producer, two
-product pods, two order HTTP pods, one order saga pod, one ledger consumer pod and
-one interactive seeder pod. The completed bootstrap seeder Job is separate.
-The nine shared PostgreSQL pods, one ledger PostgreSQL pod, one RabbitMQ broker
-pod and operator/system pods are additional. CDC offsets live in each shard database.
-The ledger's result-outbox relay polls its own database.
+After the seeding, nine application pods run: one reader, one order producer, two
+product pods, two order HTTP pods, one order saga pod, one ledger consumer pod and one
+interactive seeder pod. The completed bootstrap seeder Job is separate. The nine
+shared PostgreSQL pods, the ledger PostgreSQL pod, the broker pod and the operator and
+system pods come in addition. The CDC offsets are in each shard database. The result
+outbox relay of the ledger polls its own database.
 
 ### Process roles
 
-- Both order Deployments use one image. `shardshop.order.process` selects `http`
-  (default) or `saga`. HTTP uses `RollingUpdate` with two replicas; saga uses one
-  replica and `Recreate`. Only saga owns stock/profit workers, the CDC relay and
-  result consumption. Every JVM reserves its own generator slot. The
+- **Order processes.** Both order Deployments use one image, and
+  `shardshop.order.process` selects `http` (the default) or `saga`. HTTP uses
+  `RollingUpdate` with two replicas. The saga uses one replica and `Recreate`. Only the
+  saga owns the stock and profit workers, the CDC relay and the result consumer. Each
+  JVM reserves its own generator slot. The
   [order architecture](../shardshop-order/ARCHITECTURE.md#processes) describes the
   split.
-- The saga process supports one non-overlapping stock scan per buyer shard, with
-  at most three concurrent shard scans by default. Sagas within a shard's batch
-  remain sequential; `shardshop.order.stock.shard-concurrency=1` restores the
+- **Stock worker.** The saga runs one stock scan at a time for each buyer shard, and
+  at most three shard scans at the same time by default. The sagas in the batch of one
+  shard stay sequential. `shardshop.order.stock.shard-concurrency=1` gives back the
   original serial global scan.
-- The lab's profit worker polls every 100 ms with at most 32 intents per
-  buyer shard. A separate bounded pool permits three concurrent buyer-shard scans
-  by default, with one non-overlapping scan per shard and sequential intents
-  within each scan. `shardshop.order.profit.shard-concurrency=1` restores the
-  original serial global scan. The standalone polling defaults remain 250 ms and
-  eight intents. Stock and profit share the per-shard database pools. Capacity
-  checks include unapplied profit intents as well as non-terminal orders and
-  unpublished commands: confirmation can precede seller-profit posting, so a flat
-  order backlog alone does not establish sustainable throughput.
-- The producer's configured run name stays independent of Helm revisions and
-  startup restart tokens.
-- Both product pods are stateless and interchangeable. They use the same shard
-  mapping and database constraints; pod-local state must not determine
-  correctness. Clients connect through Kubernetes Services, and applications
-  connect through database role Services rather than pod addresses.
+- **Profit worker.** In the lab, the profit worker polls each 100 ms with at most 32
+  intents for each buyer shard. A separate bounded pool permits three buyer-shard
+  scans at the same time by default, with one scan at a time for each shard and
+  sequential intents in each scan. `shardshop.order.profit.shard-concurrency=1` gives
+  back the original serial global scan. Without the lab values, the worker polls each
+  250 ms with eight intents. Stock and profit share the database pools of each shard.
+- **Capacity.** The capacity checks include the profit intents that are not applied,
+  the orders that are not final and the commands that are not published. A
+  confirmation can come before the seller profit, thus a flat order backlog alone does
+  not prove a sustainable throughput.
+- **Producer.** The configured run name of the producer stays independent of the Helm
+  revisions and the restart tokens.
+- **Product.** Both product pods are stateless and interchangeable. They use the same
+  shard mapping and database constraints, and no pod-local state decides correctness.
+  Clients connect through Kubernetes Services, and applications connect through the
+  database role Services, not to pod addresses.
 
-### Pod counting scope
+### Scope of the pod counts
 
-Counts describe the steady kind deployment after successful seeding and rollout,
-with the default inventory and values. They count pods, not containers, Kubernetes
-Services, logical modules or kind node containers. During a rollout, replacement
-and terminating pods can temporarily exceed these numbers.
+The counts describe the steady kind deployment after the seeding and the rollout,
+with the default inventory and values. They count pods, not containers, Services,
+logical modules or kind node containers. During a rollout, the new pods and the pods in
+the `Terminating` state can be more than these numbers for a short time.
 
 | Category | Role breakdown | Steady pods |
 |---|---|---:|
-| Applications | Product 2; order HTTP 2; order saga 1; ledger 1; reader 1; order producer 1; interactive seeder 1 | 9 |
-| Shared PostgreSQL | Three primaries and six standbys; three CNPG Clusters × three instances | 9 |
+| Applications | Product 2, order HTTP 2, order saga 1, ledger 1, reader 1, order producer 1, interactive seeder 1 | 9 |
+| Shared PostgreSQL | Three primaries and six standbys: three CNPG Clusters × three instances | 9 |
 | Dedicated ledger PostgreSQL | One primary with no standby | 1 |
 | RabbitMQ | One retained broker | 1 |
-| Application/database/broker subtotal | Excludes operator, system and Job pods | **20** |
-| CloudNativePG operator | Vendored chart default `replicaCount: 1`, unchanged by operator values | 1 |
-| Subtotal including operator | Excludes Kubernetes system and Job pods | **21** |
+| Application, database and broker subtotal | Without operator, system and Job pods | **20** |
+| CloudNativePG operator | Vendored chart default `replicaCount: 1`, unchanged by the operator values | 1 |
+| Subtotal with the operator | Without Kubernetes system and Job pods | **21** |
 | Kubernetes system | Control-plane static pods, DNS, kindnet, kube-proxy, storage provisioner and any extra installed components | Observe separately |
-| Transient Jobs | Bootstrap seeder, Flyway hooks, DNS probes and temporary drill Jobs | Excluded |
+| Transient Jobs | Bootstrap seeder, Flyway hooks, DNS probes and temporary drill Jobs | Not counted |
 
-Sources: [inventory](shards.yaml), [shared defaults](helm/shardshop/values.yaml),
-[kind overrides](helm/shardshop/kind-values.yaml),
-[application templates](helm/shardshop/templates/applications.yaml),
-[order/ledger/producer templates](helm/shardshop/templates/saga-applications.yaml),
-[database instances](helm/shardshop/templates/clusters.yaml),
+The sources of these counts are the [inventory](shards.yaml), the
+[shared defaults](helm/shardshop/values.yaml), the
+[kind overrides](helm/shardshop/kind-values.yaml), the
+[application templates](helm/shardshop/templates/applications.yaml), the
+[order, ledger and producer templates](helm/shardshop/templates/saga-applications.yaml),
+the [database instances](helm/shardshop/templates/clusters.yaml), the
 [broker template](helm/shardshop/templates/rabbitmq.yaml), and the vendored
-[CNPG chart](helm/cnpg/cloudnative-pg-0.29.1.tgz) with
-[operator values](helm/cnpg/values.yaml). The kind configuration defines one
-control-plane node and three worker nodes; these four node containers are not
-four pods. The repository does not contain every rendered kind system manifest,
-so it cannot establish the exact system-pod subtotal by itself. Record it from an
-already-running lab using the [inventory procedure](README.md#pod-inventory);
-never start a stopped lab merely to fill that number. A running lab has 14
-`kube-system` pods and one local-path provisioner, for
-[36 pods in total](../ARCHITECTURE.md#2-runtime-topology).
+[CNPG chart](helm/cnpg/cloudnative-pg-0.29.1.tgz) with its
+[operator values](helm/cnpg/values.yaml).
 
-## RabbitMQ and delivery reliability
+The four kind nodes (one control plane and three workers) are containers, not pods.
+The repository does not contain all the rendered kind system manifests, thus it
+cannot give the exact number of system pods. Record it from a lab that runs, with the
+[inventory procedure](README.md#pod-inventory), and never start a stopped lab only for
+this number. A lab that runs has 14 `kube-system` pods and one local-path provisioner,
+for [36 pods in total](../ARCHITECTURE.md#2-runtime-topology).
+
+## 6. RabbitMQ and delivery reliability
+<sub>[Back to Contents](#contents)</sub>
+
+Order and ledger exchange commands and results through RabbitMQ. Each message goes
+through a durable quorum queue with a short retry budget. After this budget, the
+message goes to a parking queue, and the saga reconciliation creates the command or
+the result again from the database state.
 
 ### Topology
 
-| Message | Route / destination queue | Consumer |
+```mermaid
+flowchart LR
+    Saga["Order saga<br/>CDC relay"] -->|"RecordOrder"| Commands["ledger.commands<br/>direct exchange"]
+    Commands --> CommandQueue["ledger.record-order<br/>quorum queue"]
+    CommandQueue --> Ledger["Ledger consumer"]
+    Ledger -->|"LedgerRecorded or<br/>LedgerRejected"| Results["order.saga-results<br/>direct exchange"]
+    Results --> ResultQueue["order.ledger-results<br/>quorum queue"]
+    ResultQueue --> Saga
+    CommandQueue -.->|"Delivery limit"| DLX["shardshop.dlx<br/>direct exchange"]
+    ResultQueue -.->|"Delivery limit"| DLX
+    DLX -.-> CommandPark["ledger.record-order.dlq<br/>parking queue"]
+    DLX -.-> ResultPark["order.ledger-results.dlq<br/>parking queue"]
+```
+
+| Message | Route and destination queue | Consumer |
 |---|---|---|
 | `RecordOrder` | `ledger.commands` exchange, `ledger.record-order` queue | Ledger module |
 | `LedgerRecorded`, `LedgerRejected` | `order.saga-results` exchange, `order.ledger-results` queue | Order module |
 
-Declare `ledger.commands` as a durable direct exchange and bind
-`ledger.record-order` with the routing key `ledger.record-order` before CDC starts.
+Declare `ledger.commands` as a durable direct exchange, and bind `ledger.record-order`
+with the routing key `ledger.record-order` before CDC starts.
 
 ### Message envelope
 
-Messages carry `messageId`, logical `commandId`, `sagaId`, `orderId`, `buyerId`,
-`type`, `schemaVersion`, `requestFingerprint`, `occurredAt`, and immutable business
-data. Commands also carry `resultMessageId`, reserved by order for ledger to copy
-into the result's `messageId`. Results retain command/saga correlation, including
-the buyer ID, and the stored outcome. All ID fields use the same canonical
-decimal-string Snowflake contract and originate in order; ledger never generates
-them. The buyer ID routes results to the order's shard. Order checks that a result
-uses one of the result IDs it reserved for that saga's command envelopes.
+Each message carries `messageId`, the logical `commandId`, `sagaId`, `orderId`,
+`buyerId`, `type`, `schemaVersion`, `requestFingerprint`, `occurredAt` and the
+immutable business data.
+
+- A command also carries `resultMessageId`. Order reserves this ID, and ledger copies
+  it into the `messageId` of its result.
+- A result keeps the command and saga correlation, with the buyer ID, and the stored
+  outcome. The buyer ID routes the result to the shard of the order.
+- All ID fields use the same canonical decimal-string Snowflake contract. Order makes
+  all of them, and ledger never makes one.
+- Order checks that a result uses one of the result IDs that it reserved for the
+  command envelopes of that saga.
 
 ### Broker version
 
-The community RabbitMQ baseline and its bundled Erlang/OTP runtime use a pinned image
-digest. The design needs native quorum delayed retry, which RabbitMQ 4.3 and later
-provide. Earlier brokers need a separately specified retry design. This is a
-rolling-support component, not a multi-year LTS release. [VERSIONS.md](../VERSIONS.md)
-and the lock record the pinned versions, the support end date and the date to
-qualify a successor. The successor must also have native delayed retry. Before the
-cutover, verify its upgrade path and policies, and run
-[scenarios 6 and 7](../shardshop-testing/ARCHITECTURE.md#scenario-6) again. See
-[RabbitMQ release information](https://www.rabbitmq.com/release-information).
+- The community RabbitMQ baseline and its bundled Erlang/OTP runtime use a pinned
+  image digest.
+- The design needs the native delayed retry of quorum queues, which RabbitMQ 4.3 and
+  later give. An earlier broker needs a separately specified retry design.
+- RabbitMQ has no multi-year LTS release, and its community support moves to each
+  new release series.
+  [VERSIONS.md](../VERSIONS.md) and the lock record the pinned versions, the support end
+  and the date to qualify a successor.
+- The successor must also have native delayed retry. Before the change, verify its
+  upgrade path and policies, and run
+  [scenarios 6 and 7](../shardshop-testing/ARCHITECTURE.md#scenario-6) again. See the
+  [RabbitMQ release information](https://www.rabbitmq.com/release-information).
 
 ### Queue policies
 
-Declare both processing queues as durable quorum queues. Install one complete
-policy per source queue so each has its own dead-letter routing key; do not rely
-on merging overlapping regular policies. The following provisioning specification
-uses delays in milliseconds and local capacity budgets of 1,000 messages or
-16 MiB of message bodies per queue, whichever admission limit is reached first.
-Enable the `stream_queue` feature flag required for at-least-once dead-lettering
-and verify the effective policies and queue arguments at startup:
+Declare both processing queues as durable quorum queues. Give each source queue one
+complete policy, thus each queue has its own dead-letter routing key. Do not rely on a
+merge of regular policies that overlap. The delays are in milliseconds. Each queue
+accepts at most 1,000 messages or 16 MiB of message bodies, the limit that comes
+first. Turn on the `stream_queue` feature flag, which at-least-once dead-lettering
+needs, and verify the effective policies and queue arguments at startup:
 
 ```yaml
 policies:
@@ -579,122 +635,135 @@ policies:
       max-length-bytes: 16777216
 ```
 
-Bind each durable quorum parking queue to the durable direct exchange
-`shardshop.dlx` using its own name as routing key: `ledger.record-order.dlq` or
-`order.ledger-results.dlq`. Declare parking queues with `x-delivery-limit=-1`, no
-TTL/expiry, no automatic consumer, and no onward DLX. Their capacity policy above
-rejects new arrivals when full, so the source retains unconfirmed dead letters.
-Parked messages are diagnostic copies, and an operator removes them after
-inspection. Processing queues keep the bounded delivery limit above. Declare
-`x-quorum-initial-group-size=1` explicitly for this one-broker lab and use a PVC;
-quorum queue type alone does not give a single broker high availability.
+The parking queues have these rules:
+
+- Bind each durable quorum parking queue to the durable direct exchange
+  `shardshop.dlx`, with its own name as the routing key: `ledger.record-order.dlq` or
+  `order.ledger-results.dlq`.
+- Declare the parking queues with `x-delivery-limit=-1`, no TTL or expiry, no
+  automatic consumer and no next DLX.
+- When a parking queue is full, its capacity policy rejects new arrivals, thus the
+  source queue keeps the unconfirmed dead letters.
+- Parked messages are diagnostic copies. An operator removes them after an
+  inspection.
+- The processing queues keep the bounded delivery limit above.
+- Declare `x-quorum-initial-group-size=1` explicitly for the one-broker lab, and use a
+  PVC. A quorum queue on a single broker is not highly available.
 
 ### Retry budget
 
-The retry formula is `min(delayed-retry-min * delivery_count,
-delayed-retry-max)`: counts 1–5 imply delays of 1–5 seconds, approximately 15
-seconds of delay plus processing time. A measurement on the pinned broker
-confirms five delayed redeliveries and parking on the sixth rejection:
-15.176 seconds for commands and 15.185 seconds for results, including client/broker
-IO. The [dated evidence](../CHANGELOG.md#step-54) records each delay;
-the [retry runbook](../shardshop-testing/RUNBOOK.md#retry-and-dlq-capacity-drills)
-provides the repeatable check. Application processing during an outage adds time
-to this broker delay budget.
+```mermaid
+flowchart LR
+    Deliver["Delivery"] -->|"Success"| Ack["Acknowledge<br/>after the commit"]
+    Deliver -->|"Rejections 1 to 5"| Wait["Delay of 1 to 5 seconds<br/>in the same queue"]
+    Wait --> Deliver
+    Deliver -->|"Rejection 6"| Park["Parking queue"]
+    Park -.-> Reconcile["Saga reconciliation<br/>creates the message again"]
+```
 
-This is a short transient-retry budget. Longer outages, including primary
-failover and a synchronous wait while both standbys are down, are expected to
-park messages in a DLQ. Pending-saga reconciliation then regenerates commands and
-stored results after recovery, subject to its durable five-attempt budget; after
-exhaustion, recovery requires a manual reconciliation reset. Old parked deliveries
-remain until an operator inspects and removes them. Retry exhaustion never cancels
-an order.
+The delay is `min(delayed-retry-min * delivery_count, delayed-retry-max)`. The
+counts 1–5 give delays of 1–5 seconds, approximately 15 seconds of delay plus the
+processing time. A measurement on the pinned broker confirmed five delayed
+redeliveries and the move to the parking queue at the sixth rejection: 15.176 seconds for commands and
+15.185 seconds for results, with the client and broker IO. The
+[changelog](../CHANGELOG.md#step-54) records each delay, and the
+[retry runbook](../shardshop-testing/RUNBOOK.md#retry-and-dlq-capacity-drills) gives
+the repeatable check. The application processing during an outage adds time to this
+budget.
+
+This budget is only for short transient failures. Longer outages park the messages,
+for example a primary failover or a synchronous wait while both standbys are down.
+After the recovery, the pending-saga reconciliation creates the commands and the
+stored results again, within its durable budget of five attempts. After that budget,
+only a manual reconciliation reset continues. An operator inspects and removes the
+old parked deliveries. A retry exhaustion never cancels an order.
 
 ### Delivery rules
 
-- **Outbox and publisher.** Store outgoing messages in an outbox in the same
-  transaction as their business change. Use durable exchanges/queues, persistent
-  messages, publisher confirms, and mandatory routing; returned or unconfirmed
-  messages remain unpublished. The order CDC adapter must handle mandatory returns
-  before marking a source record processed: a confirm alone can acknowledge an
-  unroutable message. This is an explicit adapter requirement, not an assumed
-  guarantee of the Debezium Server sink's default settings.
-- **Acknowledgement.** Acknowledge consumed messages only after the local
-  transaction commits. A publisher confirm means broker acceptance, not completed
-  ledger processing. See [RabbitMQ acknowledgements and confirms](https://www.rabbitmq.com/docs/confirms).
-- **Duplicates.** Expect at-least-once delivery. Persist inbox deduplication by
-  `messageId` and business uniqueness by `orderId`. Serialize each ledger
-  operation. An identical duplicate must regenerate its stored result through the
-  outbox, even on an inbox hit; it never adds a ledger row or silently drops the
-  result. A crash after publish but before marking an outbox row or checkpointing
-  the CDC offset can produce another delivery.
+- **Outbox and publisher.** Store each outgoing message in an outbox, in the same
+  transaction as its business change. Use durable exchanges and queues, persistent
+  messages, publisher confirms and mandatory routing. A returned or unconfirmed
+  message stays unpublished. The order CDC adapter must handle a mandatory return
+  before it marks the source record as processed, because a confirm alone can
+  acknowledge an unroutable message. This is an explicit requirement of the adapter,
+  not a default of the Debezium Server sink.
+- **Acknowledgement.** Acknowledge a consumed message only after the local
+  transaction commits. A publisher confirm means that the broker accepted the
+  message, not that the ledger processed it. See
+  [RabbitMQ acknowledgements and confirms](https://www.rabbitmq.com/docs/confirms).
+- **Duplicates.** Expect at-least-once delivery. Persist the inbox deduplication by
+  `messageId` and the business uniqueness by `orderId`. Serialize each ledger
+  operation. An identical duplicate must send its stored result again through the
+  outbox, also on an inbox hit. It never adds a ledger row and never drops the result.
+  A crash after the publish, but before the outbox row or the CDC offset is saved, can
+  cause one more delivery.
 - **Transient failures.** For a transient processing failure, use
-  `basic.reject(requeue=true)` so the quorum queue increments its failure count and
-  delays redelivery in that same queue. RabbitMQ 4.3 `basic.nack` does not
-  increment that count. Do not cycle messages through TTL retry queues or
-  republish them to reset the delivery limit. A malformed message uses
-  `basic.reject(requeue=false)` for immediate dead-lettering.
-- **Dead letters.** On delivery-limit exhaustion, at-least-once dead-lettering
-  retains the source message until its DLQ accepts it. A missing/unavailable
-  destination causes retention; retained dead letters consume the source's
-  capacity. Once its finite limits are reached, negative publisher confirms make
-  relays retain their database outbox rows as unpublished and back off; order CDC
-  offsets must not advance past those failed publishes. Provision/bind the DLQs
-  first and monitor capacity; never downgrade to drop-head or classic
-  dead-lettering. See [quorum retry and dead-letter semantics](https://www.rabbitmq.com/docs/quorum-queues).
+  `basic.reject(requeue=true)`. Then the quorum queue increments the failure count and
+  delays the redelivery in the same queue. RabbitMQ 4.3 `basic.nack` does not
+  increment this count. Do not send messages through TTL retry queues, and do not
+  publish them again to reset the delivery limit. A malformed message uses
+  `basic.reject(requeue=false)` and goes to the parking queue immediately.
+- **Dead letters.** When the delivery limit ends, at-least-once dead-lettering keeps
+  the source message until its DLQ accepts it. A missing or unavailable destination
+  keeps the message in the source queue, and these dead letters use the capacity of
+  the source. At the finite limits, negative publisher confirms make the relays keep
+  their outbox rows unpublished and wait before they try again. The order CDC offsets
+  must not move past these failed publishes. Make and bind the DLQs first, and monitor
+  their capacity. Never change to drop-head or classic dead-lettering. See the
+  [quorum retry and dead-letter semantics](https://www.rabbitmq.com/docs/quorum-queues).
 - **Parked messages.** Never publish parked messages again. The
   [reconciliation contract](../shardshop-order/ARCHITECTURE.md#reconciliation-and-replayed-outcomes)
-  creates their commands and results again from saga state and permanent ledger
-  decisions. After the last automatic attempt, only a manual reconciliation reset
-  or a restore continues the saga.
+  creates their commands and results again from the saga state and the permanent
+  ledger decisions. After the last automatic attempt, only a manual reconciliation
+  reset or a restore continues the saga.
 
-### Monitoring and limits
+### Metrics, alerts and limits
 
-Order and ledger use the same pinned Micrometer Prometheus extension as product.
-Their custom application pools expose in-memory pressure gauges. The saga and
-ledger sample durable backlog and quarantine in bounded background database
-phases, with explicit freshness/failure gauges; metric scrapes perform no SQL.
-Only saga processes sample order business/CDC state. Internal saga and ledger
-Services expose port 8080 without adding pods. The read-only `kind-observability`
-deployment gate checks these gauges, native RabbitMQ queue capacity counters,
-CloudNativePG's port 9187 metrics and physical replication backlog. Endpoint and
-signal semantics belong to the [monitoring guide](README.md#saga-and-database-pressure).
+- **Metrics.** Order and ledger use the same pinned Micrometer Prometheus extension as
+  product. Their custom application pools give in-memory pressure gauges.
+- **Database samples.** The saga and the ledger sample the durable backlog and the
+  quarantine in bounded background database phases, with explicit freshness and
+  failure gauges. A metrics scrape runs no SQL. Only saga processes sample the order
+  business and CDC state.
+- **Endpoints.** Internal saga and ledger Services expose port 8080, without more
+  pods. The read-only `kind-observability` gate checks these gauges, the native
+  RabbitMQ queue capacity counters, the CloudNativePG metrics on port 9187 and the
+  physical replication backlog. The [monitoring guide](README.md#saga-and-database-pressure)
+  explains each endpoint and signal.
+- **Restart.** After a restart, resume the CDC readers of all order shards and the
+  ledger result relay.
+- **Alerts.** Monitor the CDC lag, the reader restarts, the offset checkpoints, the
+  WAL that a replication slot keeps, the outbox age, the queue depth, the dead letters,
+  the age of pending sagas and the result conflicts. A broker outage can keep WAL
+  as well as outbox rows, thus set disk and lag alerts and a finite WAL retention
+  budget. If this budget invalidates a slot, use the
+  [explicit CDC recovery procedure](../shardshop-order/ARCHITECTURE.md#cdc-from-shard-writes-to-the-ledger).
+  Never skip the missing changes.
+- **Bounds.** Use a bounded consumer prefetch and database timeouts. The queue
+  delivery limit bounds the attempts of one transport message. The persisted limit of
+  the coordinator bounds the automatic reconciliation of a logical command. Only a
+  manual reconciliation reset gives a saga a new budget.
+- **Queue limits.** The admission limits of a queue are not exact memory or disk
+  limits. In-flight publishes can go above the quorum limits, and the byte limits do
+  not include the broker overhead. Bound the consumer prefetch and the publisher
+  concurrency, monitor the broker resource alarms and the outbox growth, and size the
+  lab limits with a margin. Scenario 7 must show the queue-level rejection while the
+  broker-wide alarms stay clear. See the
+  [RabbitMQ queue length limits](https://www.rabbitmq.com/docs/maxlength).
 
-Resume the CDC readers for all order shards and the ledger result relay after
-restart. Monitor CDC lag, reader restarts, offset checkpoints, replication-slot
-retained WAL, outbox age, queue depth, dead letters, pending saga age, and
-conflicting results. Broker outages can retain WAL as well as outbox rows; set
-disk/lag alerts and a finite WAL retention budget. If that budget invalidates a
-slot, require the [explicit CDC recovery procedure](../shardshop-order/ARCHITECTURE.md#cdc-from-shard-writes-to-the-ledger)
-rather than skipping missing changes.
+## 7. Retained lifecycle safety
+<sub>[Back to Contents](#contents)</sub>
 
-Use bounded consumer prefetch and database timeouts. The queue delivery limit
-bounds one transport message's attempts; the coordinator's separate persisted
-limit bounds automatic logical-command reconciliation. Only a manual
-reconciliation reset gives a saga a new budget.
-
-Queue admission limits are not exact process-memory or disk ceilings: in-flight
-publishes can overshoot quorum limits, and byte limits exclude broker overhead.
-Bound consumer prefetch and publisher concurrency, monitor broker resource alarms
-and database outbox growth, and size the lab limits with headroom. Scenario 7
-must demonstrate queue-level rejection while broker-wide alarms remain clear.
-See [RabbitMQ queue length limits](https://www.rabbitmq.com/docs/maxlength).
-
-## Retained lifecycle safety
-
-- **Lock.** `cluster-create.sh`, `up.sh`, `down.sh` and `cluster-destroy.sh`
-  serialize local invocations with `${TMPDIR:-/tmp}/shardshop-up.lock`; a
-  concurrent invocation fails before mutation. Use the same `TMPDIR` for lifecycle
-  calls. Ordinary failure and INT/TERM release the lock after the active command
-  ends. Inspect retained Jobs and confirm no invocation remains active before
-  removing a stale lock after SIGKILL or host failure.
-- **Shutdown.** `down.sh` turns off kind's `on-failure:1` restart policy with
-  `docker update`, then stops all nodes with one `docker stop --timeout 10` call and
-  retains every node container, volume, Secret and allocator identity. Without the
-  policy change, the next Docker daemon start restarts nodes that a SIGKILL
-  stopped. Docker does not change a node that is already stopped. Resuming sets
-  `on-failure:1` again.
-- **Destruction.** The explicit destroy command runs `kind delete cluster`, which
-  deletes that retained state, including databases, Kubernetes/Helm configuration
-  and allocator history. Docker keeps a volume that another container uses.
-  Repository configuration and shared Docker networks/images are outside cluster
-  ownership.
+- **Lock.** The four lifecycle scripts share one local lock, thus only one of them
+  runs at a time, and a second call fails before it changes anything. See the
+  [lifecycle lock](RUNBOOK.md#9-lifecycle-lock).
+- **Shutdown.** `down.sh` keeps each node container, volume, Secret and allocator
+  identity. It first turns off the `on-failure:1` restart policy of kind, because the
+  next Docker daemon start would restart the nodes that a SIGKILL stopped. Docker does
+  not change a node that is already stopped, and the resumption sets the policy again.
+  See [stop and resume](RUNBOOK.md#5-stop-and-resume-the-cluster).
+- **Destruction.** Only the explicit `cluster-destroy.sh` deletes the retained state:
+  the databases, the Kubernetes and Helm configuration and the allocator history.
+  Docker keeps a volume that another container uses. The repository configuration and
+  the shared Docker networks and images are outside the cluster. See
+  [destroy the cluster](RUNBOOK.md#6-permanently-destroy-the-cluster).

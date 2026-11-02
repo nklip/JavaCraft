@@ -164,24 +164,24 @@ class KindRabbitMqTest {
         JsonNode pvc = KindLab.parse("""
                 {"metadata":{"name":"data-shardshop-rabbitmq-0"},"spec":{"volumeName":"persistent-volume"},"status":{"phase":"Bound"}}
                 """);
-        assertDoesNotThrow(() -> KindRabbitMq.validateStorageAndReadiness(statefulSet, pod, pvc));
-        assertThrows(IOException.class, () -> KindRabbitMq.validateStorageAndReadiness(KindLab.parse("{}"), pod, pvc));
-        assertThrows(IOException.class, () -> KindRabbitMq.validateStorageAndReadiness(statefulSet, KindLab.parse("{}"), pvc));
-        assertThrows(IOException.class, () -> KindRabbitMq.validateStorageAndReadiness(statefulSet, pod, KindLab.parse("{}")));
+        assertDoesNotThrow(() -> KindRabbitMq.validateStorageAndReadiness(1, statefulSet, pod, pvc));
+        assertThrows(IOException.class, () -> KindRabbitMq.validateStorageAndReadiness(1, KindLab.parse("{}"), pod, pvc));
+        assertThrows(IOException.class, () -> KindRabbitMq.validateStorageAndReadiness(1, statefulSet, KindLab.parse("{}"), pvc));
+        assertThrows(IOException.class, () -> KindRabbitMq.validateStorageAndReadiness(1, statefulSet, pod, KindLab.parse("{}")));
         for (Consumer<ObjectNode> mutation : List.<Consumer<ObjectNode>>of(
                 node -> ((ObjectNode) node.path("status")).put("observedGeneration", 1),
                 node -> ((ObjectNode) node.path("status")).put("readyReplicas", 0),
                 node -> ((ObjectNode) node.path("status")).put("currentRevision", "old-revision"))) {
             ObjectNode changed = statefulSet.deepCopy();
             mutation.accept(changed);
-            assertThrows(IOException.class, () -> KindRabbitMq.validateStorageAndReadiness(changed, pod, pvc));
+            assertThrows(IOException.class, () -> KindRabbitMq.validateStorageAndReadiness(1, changed, pod, pvc));
         }
         ObjectNode unbound = pvc.deepCopy();
         ((ObjectNode) unbound.path("status")).put("phase", "Pending");
-        assertThrows(IOException.class, () -> KindRabbitMq.validateStorageAndReadiness(statefulSet, pod, unbound));
+        assertThrows(IOException.class, () -> KindRabbitMq.validateStorageAndReadiness(1, statefulSet, pod, unbound));
         ObjectNode wrongMount = pod.deepCopy();
         ((ObjectNode) wrongMount.path("spec").path("volumes").get(0).path("persistentVolumeClaim")).put("claimName", "other-claim");
-        assertThrows(IOException.class, () -> KindRabbitMq.validateStorageAndReadiness(statefulSet, wrongMount, pvc));
+        assertThrows(IOException.class, () -> KindRabbitMq.validateStorageAndReadiness(1, statefulSet, wrongMount, pvc));
     }
 
     private void validate() throws IOException {

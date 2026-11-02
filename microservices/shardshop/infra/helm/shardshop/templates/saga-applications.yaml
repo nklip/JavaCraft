@@ -267,7 +267,7 @@ kind: Deployment
 metadata:
   name: shardshop-order-producer
   namespace: {{ .Release.Namespace | quote }}
-  {{- if eq .Values.render "application-release" }}
+  {{- if and (eq .Values.render "application-release") (ne (.Values.delivery | default "helm") "argocd") }}
   annotations:
     shardshop.javacraft/seeder-job: {{ include "shardshop.seederJobName" . | quote }}
   {{- end }}

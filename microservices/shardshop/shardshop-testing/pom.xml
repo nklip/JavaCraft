@@ -284,6 +284,14 @@
             <properties>
                 <shardshop.kind.tags>kind-deployment</shardshop.kind.tags>
             </properties>
+            <dependencies>
+                <!-- The gates image of the AWS deployment runs KindIT with the JUnit console launcher. -->
+                <dependency>
+                    <groupId>org.junit.platform</groupId>
+                    <artifactId>junit-platform-console</artifactId>
+                    <scope>test</scope>
+                </dependency>
+            </dependencies>
             <build>
                 <plugins>
                     <plugin>

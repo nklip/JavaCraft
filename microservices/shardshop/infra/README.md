@@ -1,11 +1,34 @@
 # ShardShop infrastructure
 
-[ShardShop](../README.md) › **Infrastructure** · [Runbook](RUNBOOK.md) · [Architecture](ARCHITECTURE.md)
+[ShardShop](../README.md) › **Infrastructure** · [Runbook](RUNBOOK.md) · [Architecture](ARCHITECTURE.md) · [Container images](images/README.md) · [AWS foundation](terraform/README.md)
 
-The infrastructure is the local kind cluster: four nodes, CloudNativePG, the
-PostgreSQL clusters, RabbitMQ and the generator registry.
+This folder has the infrastructure of both deployments. The local deployment is a
+kind cluster with four nodes, CloudNativePG, the PostgreSQL clusters, RabbitMQ and
+the generator registry. The [AWS foundation](terraform/README.md) runs the same system
+on EKS.
 
-## Start
+## Contents
+1. [Folder layout](#1-folder-layout)
+2. [Start](#2-start)
+3. [Monitoring](#3-monitoring)
+
+## 1. Folder layout
+<sub>[Back to Contents](#contents)</sub>
+
+| Path | Contents | Details |
+|---|---|---|
+| [`kind.yaml`](kind.yaml) | The kind cluster: one control plane and three workers | [Kind topology](RUNBOOK.md#1-kind-topology) |
+| [`shards.yaml`](shards.yaml) | The shard inventory of both deployments | [Runtime topology](ARCHITECTURE.md#5-runtime-topology) |
+| [`helmfile.yaml.gotmpl`](helmfile.yaml.gotmpl) | The releases and the Maven gates of the local deployment | [Deploy with up.sh](RUNBOOK.md#3-deploy-with-upsh) |
+| [`helm/shardshop/`](helm/shardshop) | The shared chart, with `kind-values.yaml` and `eks-values.yaml` | [Shared and different parts](../ARCHITECTURE.md#5-local-deployment-and-aws-deployment) |
+| [`helm/cnpg/`](helm/cnpg) | The vendored CloudNativePG chart and its values, for both deployments | [CloudNativePG operator](RUNBOOK.md#11-cloudnativepg-operator) |
+| [`helm/barman-cloud/`](helm/barman-cloud), [`helm/argocd/`](helm/argocd) | The vendored charts of the backup plugin and Argo CD, only for AWS | [AWS design](terraform/README.md#design) |
+| [`helm/delivery/`](helm/delivery) | The Argo CD Applications of the AWS deployment | [AWS delivery](terraform/README.md#deliver-shardshop-with-argo-cd) |
+| [`images/`](images) | The recipes of the application, migration and gates images | [Container images](images/README.md) |
+| [`terraform/`](terraform) | The Terraform modules of the AWS foundation | [AWS foundation](terraform/README.md) |
+
+## 2. Start
+<sub>[Back to Contents](#contents)</sub>
 
 The [lab start](../README.md#start-the-lab) creates the infrastructure once and then
 deploys the applications on it:
@@ -20,7 +43,8 @@ readiness, the two streaming standbys of each shard and the effective broker
 topology. The [runbook](RUNBOOK.md) describes each phase, the stop and the
 recovery.
 
-## Monitoring
+## 3. Monitoring
+<sub>[Back to Contents](#contents)</sub>
 
 ### Cluster status
 

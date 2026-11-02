@@ -31,9 +31,9 @@ locals {
   # Built from the cluster name, because the IAM roles of the add-ons must exist before the cluster.
   cluster_arn = "arn:${local.partition}:eks:${var.region}:${local.account_id}:cluster/${local.name}"
 
-  # One ECR repository for each Skaffold image, and one backup role for each CNPG cluster
-  # (the shards of infra/shards.yaml and the ledger).
-  images            = [for artifact in yamldecode(file("${path.module}/../../../skaffold.yaml")).build.artifacts : basename(artifact.image)]
+  # One ECR repository for each Skaffold image and for the gates image of the AWS deployment,
+  # and one backup role for each CNPG cluster (the shards of infra/shards.yaml and the ledger).
+  images            = concat([for artifact in yamldecode(file("${path.module}/../../../skaffold.yaml")).build.artifacts : basename(artifact.image)], ["shardshop-gates"])
   database_clusters = concat([for shard in yamldecode(file("${path.module}/../../shards.yaml")).shards : shard.name], ["ledger-db"])
 
   # The EKS values of the shared chart name the runtime secrets that the cluster syncs.
@@ -115,13 +115,30 @@ module "eks" {
   }
 
   # The cert-manager add-on serves its admission webhook on 10260, which is not one of the
-  # webhook ports of the recommended node rules.
+  # webhook ports of the recommended node rules. The gates read the metrics of the pods
+  # through the API server proxy: the applications serve them on 8080, CloudNativePG on 9187.
   node_security_group_additional_rules = {
     ingress_cluster_10260_webhook = {
       description                   = "Cluster API to the cert-manager webhook"
       protocol                      = "tcp"
       from_port                     = 10260
       to_port                       = 10260
+      type                          = "ingress"
+      source_cluster_security_group = true
+    }
+    ingress_cluster_8080_metrics = {
+      description                   = "Cluster API proxy to the application metrics"
+      protocol                      = "tcp"
+      from_port                     = 8080
+      to_port                       = 8080
+      type                          = "ingress"
+      source_cluster_security_group = true
+    }
+    ingress_cluster_9187_metrics = {
+      description                   = "Cluster API proxy to the CloudNativePG metrics"
+      protocol                      = "tcp"
+      from_port                     = 9187
+      to_port                       = 9187
       type                          = "ingress"
       source_cluster_security_group = true
     }

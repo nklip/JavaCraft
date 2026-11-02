@@ -163,3 +163,16 @@ rabbitmq:
     limits:
       cpu: "1"
       memory: 1Gi
+# With delivery: argocd, the lifecycle gates of the Helmfile workflow run as Argo CD hook
+# Jobs. The runbook in infra/terraform/README.md builds the gates image with the tests and
+# the invocation snapshot of the run.
+gates:
+  image: ""
+  activeDeadlineSeconds: 1200
+  resources:
+    requests:
+      cpu: 250m
+      memory: 768Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi

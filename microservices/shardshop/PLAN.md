@@ -12,10 +12,11 @@ step, is in the Git tag `shardshop-docs-full-2026-10-31`.
   2026-10-31 ([record](CHANGELOG.md#step-69)).
 - **Step 6.8 ended as research.** HTTP/2 gave no performance gain, thus ShardShop
   keeps HTTP/1.1 ([decision](DECISIONS.md#keep-http11)).
-- **Milestone 7 (AWS deployment):** steps 7.1 to 7.5 are **Done**
+- **Milestone 7 (AWS deployment):** steps 7.1 to 7.6 are **Done**
   ([7.1](CHANGELOG.md#step-71), [7.2](CHANGELOG.md#step-72),
   [7.3](CHANGELOG.md#step-73), [7.4](CHANGELOG.md#step-74),
-  [7.5](CHANGELOG.md#step-75)). The other steps are **Planned**.
+  [7.5](CHANGELOG.md#step-75), [7.6](CHANGELOG.md#step-76)). The other steps are
+  **Planned**.
 - **Version deadlines:** the local risk acceptance ends and the CNPG upgrade is
   due on 2026-11-30 ([open findings](VERSIONS.md#open-findings-and-risk-acceptance)).
 
@@ -53,7 +54,7 @@ step, is in the Git tag `shardshop-docs-full-2026-10-31`.
    Java behavior. A change of prose only needs a link check and a content check,
    not a build or a lab run.
 8. Use the retained lab for checks that do not disrupt it. For a fresh lab, obey
-   the [disposable test cluster rules](infra/RUNBOOK.md#disposable-test-clusters).
+   the [disposable test cluster rules](infra/RUNBOOK.md#7-disposable-test-clusters).
    Never run two four-node labs at the same time. Name the kube context in every
    command, and use bounded waits for Kubernetes checks.
 9. Take Maven, Node.js, kind, kubectl, Helm, Helmfile, Skaffold and Docker from
@@ -256,10 +257,11 @@ Depends on 7.4. Status: **Done** ([record](CHANGELOG.md#step-75)).
 
 ### 7.6 Applications and gates through Argo CD
 
-Depends on 7.5. Status: **Planned**.
+Depends on 7.5. Status: **Done** ([record](CHANGELOG.md#step-76)).
 
 - Argo CD deploys the six application artifacts, with both order processes, from
-  ECR with digest pins.
+  ECR with digest pins. The applications layer uses the immutable chart version, as
+  the migrations do, because it has generated hook Jobs.
 - The current Maven safety and acceptance checks run in pre-sync and post-sync
   verification Jobs with a gates image. Checks that read kind nodes get an EKS
   variant.

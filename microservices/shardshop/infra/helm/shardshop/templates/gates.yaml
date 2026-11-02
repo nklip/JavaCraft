@@ -1,0 +1,200 @@
+{{- /*
+The lifecycle gates of the Helmfile workflow, as Argo CD hook Jobs on the AWS deployment.
+The gates image contains the tests and the invocation snapshot of the run. A failed PreSync
+gate stops the sync before Argo CD applies a resource. The tags are the same as in
+infra/helmfile.yaml.gotmpl, except eks-release: kind-release reads the images on the kind nodes.
+*/ -}}
+{{- if eq (.Values.delivery | default "helm") "argocd" }}
+{{- if eq .Values.render "infrastructure" }}
+# The infrastructure creates the identity of the gates before the first PreSync gate.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: shardshop-gates
+  namespace: {{ .Release.Namespace | quote }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: shardshop-gates
+  namespace: {{ .Release.Namespace | quote }}
+rules:
+  # The checks read the workloads, the databases and the broker, and only one Secret.
+  - apiGroups: [""]
+    resources: [pods, pods/log, services, configmaps, persistentvolumeclaims, events]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, replicasets, statefulsets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get, list, watch]
+  - apiGroups: [discovery.k8s.io]
+    resources: [endpointslices]
+    verbs: [get, list, watch]
+  - apiGroups: [postgresql.cnpg.io, barmancloud.cnpg.io]
+    resources: ["*"]
+    verbs: [get, list, watch]
+  # SQL and broker checks run in the database and broker pods. Workload checks read the
+  # metrics through the API server and send their own orders through a port forward.
+  - apiGroups: [""]
+    resources: [pods/exec, pods/portforward]
+    verbs: [get, create]
+  - apiGroups: [""]
+    resources: [pods/proxy]
+    verbs: [get]
+  # The observability check reads the broker queues with the management credential.
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [shardshop-rabbitmq]
+    verbs: [get]
+  # Server-side dry runs that the generator retention policy must deny.
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [shardshop-snowflake-generators, shardshop-generator-identity]
+    verbs: [patch, delete]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [deletecollection]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: shardshop-gates
+  namespace: {{ .Release.Namespace | quote }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: shardshop-gates
+subjects:
+  - kind: ServiceAccount
+    name: shardshop-gates
+    namespace: {{ .Release.Namespace | quote }}
+---
+# The infrastructure check compares the operator image.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: shardshop-gates
+  namespace: cnpg-system
+rules:
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: shardshop-gates
+  namespace: cnpg-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: shardshop-gates
+subjects:
+  - kind: ServiceAccount
+    name: shardshop-gates
+    namespace: {{ .Release.Namespace | quote }}
+---
+# The release checks read the sync result of the Application.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: shardshop-gates
+  namespace: argocd
+rules:
+  - apiGroups: [argoproj.io]
+    resources: [applications]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: shardshop-gates
+  namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: shardshop-gates
+subjects:
+  - kind: ServiceAccount
+    name: shardshop-gates
+    namespace: {{ .Release.Namespace | quote }}
+---
+# The topology checks read the zone of each node.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: shardshop-gates
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: shardshop-gates
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: shardshop-gates
+subjects:
+  - kind: ServiceAccount
+    name: shardshop-gates
+    namespace: {{ .Release.Namespace | quote }}
+{{- end }}
+{{- $gates := list }}
+{{- if eq .Values.render "migrations" }}
+{{- $gates = list (dict "phase" "PreSync" "wave" 0 "tags" "kind-allocator | kind-infrastructure | kind-migration-reservation | kind-migrations-idle") }}
+{{- else if eq .Values.render "application-release" }}
+{{- $gates = list
+      (dict "phase" "PreSync" "wave" 0 "tags" "kind-publications | kind-migration-reservation | kind-drills-idle")
+      (dict "phase" "PostSync" "wave" 1 "tags" "eks-release | kind-deployment") }}
+{{- end }}
+{{- range $gates }}
+---
+# Argo CD adds the revision, the phase and the start time of the sync to the prefix. Failed
+# gates stay until their TTL ends. The PostSync gate runs after the seeder (wave 0).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: {{ printf "%s-gates-" ($.Release.Name | trunc 26 | trimSuffix "-") }}
+  namespace: {{ $.Release.Namespace | quote }}
+  annotations:
+    argocd.argoproj.io/hook: {{ .phase }}
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: {{ .wave | quote }}
+  labels:
+    app.kubernetes.io/name: shardshop-gates
+    app.kubernetes.io/part-of: shardshop
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: {{ $.Values.gates.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: shardshop-gates
+        app.kubernetes.io/part-of: shardshop
+    spec:
+      restartPolicy: Never
+      serviceAccountName: shardshop-gates
+      enableServiceLinks: false
+      {{- include "shardshop.podSecurity" $ | nindent 6 }}
+      containers:
+        - name: gates
+          image: {{ required "delivery=argocd requires gates.image" $.Values.gates.image | quote }}
+          args: [{{ printf "--include-tag=%s" .tags | quote }}]
+          resources:
+            {{- toYaml $.Values.gates.resources | nindent 12 }}
+          {{- include "shardshop.containerSecurity" $ | nindent 10 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+{{- end }}
+{{- end }}

@@ -10,6 +10,6 @@ charts:
   shardshop: ""
   # The immutable ECR tag of the same shared chart, for the migrations.
   shardshopVersion: ""
-# Values of the shared chart that contain the account ID: migration.image and
-# backup.destinationPath.
+# Values of the shared chart that contain the account ID: migration.image, images,
+# gates.image and backup.destinationPath.
 account: {}

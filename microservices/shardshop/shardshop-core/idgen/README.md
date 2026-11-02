@@ -257,7 +257,7 @@ runs the packaged product against a real Kubernetes API with the RBAC and the re
 checks concurrent starts, restarts, the IDs of the created sellers, the permissions of each service account, the
 policy and the failures. It uses no lab slots. The
 [live deployment check](../../shardshop-testing/RUNBOOK.md#live-deployment-check) shows a new generator ID after
-a product pod replacement. The [product and order images and Deployments](../../infra/RUNBOOK.md#deploy-with-upsh)
+a product pod replacement. The [product and order images and Deployments](../../infra/RUNBOOK.md#3-deploy-with-upsh)
 start `quarkus-run.jar` directly, use the ServiceAccount of the owning service and set
 `SHARDSHOP_ID_REGISTRY_UID` from the identity ConfigMap. The images contain no kubectl, and the repository
 stores no downloaded tool binaries.

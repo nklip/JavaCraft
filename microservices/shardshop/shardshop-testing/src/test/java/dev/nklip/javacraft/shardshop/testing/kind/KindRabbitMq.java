@@ -31,7 +31,8 @@ public final class KindRabbitMq {
         lab.await("RabbitMQ readiness and durable topology", Duration.ofSeconds(300), () -> {
             JsonNode statefulSet = KindLab.parse(lab.kubectl("get", "statefulset", "shardshop-rabbitmq", "-o", "json"));
             JsonNode pod = KindLab.parse(lab.kubectl("get", "pod", POD, "-o", "json"));
-            validateStorageAndReadiness(statefulSet, pod, KindLab.parse(lab.kubectl("get", "pvc", "data-" + POD, "-o", "json")));
+            validateStorageAndReadiness(desired.statefulSet().path("spec").path("replicas").asInt(), statefulSet, pod,
+                    KindLab.parse(lab.kubectl("get", "pvc", "data-" + POD, "-o", "json")));
             validateDesiredDeployment(desired.statefulSet(), statefulSet, pod);
             diagnostics("check_running");
             diagnostics("check_local_alarms");
@@ -110,14 +111,15 @@ public final class KindRabbitMq {
         return podTemplate.path("metadata").path("annotations").path("shardshop.javacraft/configuration").asText();
     }
 
-    static void validateStorageAndReadiness(JsonNode statefulSet, JsonNode pod, JsonNode pvc) throws IOException {
-        require(statefulSet.path("spec").path("replicas").asInt() == 1
+    /** The local deployment has one broker, and the AWS deployment has three. The checks use the first broker. */
+    static void validateStorageAndReadiness(int replicas, JsonNode statefulSet, JsonNode pod, JsonNode pvc) throws IOException {
+        require(replicas > 0 && statefulSet.path("spec").path("replicas").asInt() == replicas
                         && statefulSet.path("status").path("observedGeneration").asLong(-1) == statefulSet.path("metadata").path("generation").asLong(-2)
-                        && statefulSet.path("status").path("readyReplicas").asInt() == 1
-                        && statefulSet.path("status").path("updatedReplicas").asInt() == 1
+                        && statefulSet.path("status").path("readyReplicas").asInt() == replicas
+                        && statefulSet.path("status").path("updatedReplicas").asInt() == replicas
                         && !statefulSet.path("status").path("currentRevision").asText().isEmpty()
                         && statefulSet.path("status").path("currentRevision").equals(statefulSet.path("status").path("updateRevision")),
-                "RabbitMQ StatefulSet has not reconciled its single ready replica");
+                "RabbitMQ StatefulSet has not reconciled its ready replicas");
         require(!pod.path("metadata").hasNonNull("deletionTimestamp") && pod.path("status").path("phase").asText().equals("Running")
                         && KindLab.items(pod.path("status").path("conditions")).stream()
                         .anyMatch(condition -> condition.path("type").asText().equals("Ready") && condition.path("status").asText().equals("True")),

@@ -26,7 +26,7 @@ management listener: it answers `404` for `/api/v1/*` and `/orders/*`. Thus the
 HTTP process runs no background saga loop, and its write latency does not compete
 with that work. Every JVM reserves its own generator slot. The saga process has one
 replica, because each shard's replication slot has one active reader. The
-[runtime topology](../infra/ARCHITECTURE.md#runtime-topology) owns the deployment
+[runtime topology](../infra/ARCHITECTURE.md#5-runtime-topology) owns the deployment
 details.
 
 ## Order creation and ledger saga
@@ -493,7 +493,7 @@ cleanup.
   payload fingerprint without hiding different conflicting payloads. Unresolved
   records survive transport cleanup and backups.
 - If quarantine persistence fails, do not acknowledge: use the bounded retry/DLQ
-  path in the [delivery policy](../infra/ARCHITECTURE.md#rabbitmq-and-delivery-reliability).
+  path in the [delivery policy](../infra/ARCHITECTURE.md#6-rabbitmq-and-delivery-reliability).
   Malformed unrouteable envelopes use the source queue's DLQ instead.
 
 ### Seller-profit posting
@@ -528,7 +528,7 @@ which the result's buyer ID selects, then acknowledge and alert. The quarantine
 has no foreign key to `orders` and blocks new HTTP creation with that order ID.
 
 If the shard is unavailable, use bounded broker retries, then DLQ parking and saga
-reconciliation as specified in the [delivery policy](../infra/ARCHITECTURE.md#rabbitmq-and-delivery-reliability),
+reconciliation as specified in the [delivery policy](../infra/ARCHITECTURE.md#6-rabbitmq-and-delivery-reliability),
 instead of declaring the order missing. A long failover can exceed the transport
 retry window, especially if both standbys are lost and synchronous writes block
 until one returns. For a surviving pending saga with attempts remaining,

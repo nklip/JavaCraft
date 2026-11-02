@@ -1,6 +1,7 @@
 {{- if has .Values.render (list "applications" "seeding" "application-release") }}
 {{- $run := .Values.run -}}
 {{- $hook := eq .Values.render "application-release" -}}
+{{- $argocd := and $hook (eq (.Values.delivery | default "helm") "argocd") -}}
 {{- $productUrl := printf "http://shardshop-product.%s.svc:8080" .Release.Namespace -}}
 {{- if or (eq .Values.render "applications") $hook }}
 {{- $product := required "render=applications requires images.product" .Values.images.product }}
@@ -148,7 +149,11 @@ kind: Deployment
 metadata:
   name: shardshop-product-reader
   namespace: {{ .Release.Namespace | quote }}
-  {{- if $hook }}
+  {{- if $argocd }}
+  # The seeder attempt has a generated name in the sync result of this Application.
+  annotations:
+    shardshop.javacraft/seeder-application: {{ .Release.Name | quote }}
+  {{- else if $hook }}
   annotations:
     shardshop.javacraft/seeder-job: {{ include "shardshop.seederJobName" . | quote }}
   {{- end }}
@@ -295,9 +300,21 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
+  {{- if $argocd }}
+  # Argo CD adds the revision, the phase and the start time of the sync to this prefix.
+  # Thus each sync has its own attempt, and the PostSync gate finds it in the sync result.
+  generateName: {{ printf "%s-seeder-" (.Release.Name | trunc 26 | trimSuffix "-") }}
+  {{- else }}
   name: {{ include "shardshop.seederJobName" . }}
+  {{- end }}
   namespace: {{ .Release.Namespace | quote }}
-  {{- if $hook }}
+  {{- if $argocd }}
+  # Earlier attempts stay until their TTL ends, for the gates and for an audit.
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "0"
+  {{- else if $hook }}
   annotations:
     helm.sh/hook: post-install,post-upgrade
     helm.sh/hook-weight: "0"

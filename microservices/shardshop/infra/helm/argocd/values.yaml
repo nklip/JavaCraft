@@ -16,8 +16,9 @@ applicationSet:
   replicas: 0
 configs:
   params:
-    # A sync that waits for a degraded wave fails after 30 minutes instead of waiting forever.
-    controller.sync.timeout.seconds: "1800"
+    # A sync that waits for a degraded wave fails after 60 minutes instead of waiting forever. The
+    # first root sync creates the databases and runs the migrations, the gates and the seeder.
+    controller.sync.timeout.seconds: "3600"
   cm:
     # The root Application applies the next sync wave only after the child Applications of
     # the current wave are healthy. Argo CD has no health for an Application, thus this

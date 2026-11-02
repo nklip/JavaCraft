@@ -9,20 +9,26 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** The Argo CD delivery contract of the database layer on the AWS deployment; Helm on kind stays unchanged. */
+/** The Argo CD delivery contract of ShardShop on the AWS deployment; Helm on kind stays unchanged. */
 class ArgoCdDeliveryChartTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Path SOURCE = Path.of(System.getProperty("shardshop.directory", "..")).toAbsolutePath().normalize();
     private static final String REGISTRY = "123456789012.dkr.ecr.eu-west-2.amazonaws.com";
     private static final String DIGEST = "sha256:" + "0".repeat(64);
     private static final String VERSION = "0.3.0-run20261101190000";
+    private static final List<String> APPLICATIONS = List.of("product", "product-seeder", "product-reader", "order", "ledger",
+            "order-producer");
     @TempDir Path temporary;
     private Path shared;
     private Path delivery;
@@ -42,7 +48,8 @@ class ArgoCdDeliveryChartTest {
 
     @Test
     void argoCdGivesEachMigrationAttemptANewJobAndKeepsFailedAttempts() throws Exception {
-        List<JsonNode> jobs = ofKind(shared("shardshop-migrations", "migrations", "argocd"), "Job");
+        List<JsonNode> jobs = ofKind(shared("shardshop-migrations", "migrations", "argocd"), "Job").stream()
+                .filter(job -> job.path("metadata").path("labels").path("app.kubernetes.io/name").asText().equals("schema-migration")).toList();
         assertEquals(7, jobs.size());
         for (int index = 0; index < jobs.size(); index++) {
             JsonNode metadata = jobs.get(index).path("metadata");
@@ -77,17 +84,75 @@ class ArgoCdDeliveryChartTest {
     }
 
     @Test
+    void argoCdRunsTheHelmfileGatesAsHooksAroundEachApplicationSync() throws Exception {
+        List<JsonNode> release = shared("shardshop-applications", "application-release", "argocd");
+        Map<String, String> helmfile = helmfileGates();
+        List<JsonNode> gates = gates(release);
+        assertEquals(List.of("PreSync", "PostSync"), gates.stream().map(gate -> annotation(gate, "argocd.argoproj.io/hook")).toList());
+        assertEquals(helmfile.get("application/presync"), tags(gates.get(0)));
+        assertEquals(helmfile.get("application/postsync").replace("kind-release", "eks-release"), tags(gates.get(1)),
+                "Only the image check reads the kind nodes and has an EKS variant");
+        List<JsonNode> migrationGates = gates(shared("shardshop-migrations", "migrations", "argocd"));
+        assertEquals(1, migrationGates.size());
+        assertEquals("PreSync", annotation(migrationGates.getFirst(), "argocd.argoproj.io/hook"));
+        assertEquals(helmfile.get("migrations/presync"), tags(migrationGates.getFirst()));
+        for (JsonNode gate : List.of(gates.get(0), gates.get(1), migrationGates.getFirst())) {
+            assertFalse(gate.path("metadata").has("name"), "Each sync needs its own gate Job");
+            assertEquals("BeforeHookCreation", annotation(gate, "argocd.argoproj.io/hook-delete-policy"), "A failed gate stays");
+            assertEquals(0, gate.path("spec").path("backoffLimit").asInt(-1), "A failed gate stops the sync at once");
+            JsonNode pod = gate.path("spec").path("template").path("spec");
+            assertEquals("shardshop-gates", pod.path("serviceAccountName").asText());
+            assertEquals(REGISTRY + "/shardshop-gates@" + DIGEST, pod.path("containers").path(0).path("image").asText());
+        }
+        assertEquals("1", annotation(gates.get(1), "argocd.argoproj.io/sync-wave"), "The PostSync gate checks the seeder attempt");
+
+        JsonNode seeder = ofKind(release, "Job").stream().filter(job -> job.path("metadata").path("labels")
+                .path("app.kubernetes.io/name").asText().equals("shardshop-product-seeder")).findFirst().orElseThrow();
+        assertFalse(seeder.path("metadata").has("name"));
+        assertEquals("shardshop-applications-seeder-", seeder.path("metadata").path("generateName").asText());
+        assertEquals("PostSync", annotation(seeder, "argocd.argoproj.io/hook"));
+        assertEquals("0", annotation(seeder, "argocd.argoproj.io/sync-wave"));
+        assertEquals("BeforeHookCreation", annotation(seeder, "argocd.argoproj.io/hook-delete-policy"),
+                "The gate and an audit need the earlier attempts until their TTL ends");
+        for (JsonNode deployment : ofKind(release, "Deployment")) {
+            assertFalse(deployment.path("metadata").path("annotations").has("shardshop.javacraft/seeder-job"),
+                    "A fixed seeder name cannot identify an Argo CD sync");
+            String name = deployment.path("metadata").path("name").asText();
+            if (name.equals("shardshop-product-reader")) {
+                assertEquals("shardshop-applications", annotation(deployment, EksApplications.SEEDER_APPLICATION));
+            }
+        }
+        assertTrue(ofKind(release, "ConfigMap").stream().noneMatch(configMap -> configMap.path("metadata").path("name").asText()
+                .equals("shardshop-routing")), "Only the routing Application publishes the routing, after the migrations");
+
+        List<JsonNode> infrastructure = shared("shardshop-infrastructure", "infrastructure", "argocd");
+        assertEquals(1, ofKind(infrastructure, "ServiceAccount").stream()
+                .filter(account -> account.path("metadata").path("name").asText().equals("shardshop-gates")).count());
+        for (JsonNode role : ofKind(infrastructure, "Role")) {
+            for (JsonNode rule : role.path("rules")) {
+                if (rule.path("resources").toString().contains("secrets")) {
+                    assertEquals("[\"shardshop-rabbitmq\"]", rule.path("resourceNames").toString(),
+                            "The gates read only the broker management credential");
+                }
+            }
+        }
+        assertTrue(ofKind(shared("shardshop-infrastructure", "infrastructure", "helm"), "ServiceAccount").stream()
+                .noneMatch(account -> account.path("metadata").path("name").asText().equals("shardshop-gates")));
+    }
+
+    @Test
     void childApplicationsDeliverTheLayersInOrderFromPinnedChartsAndNeverDeleteData() throws Exception {
-        List<JsonNode> applications = delivery("children");
+        List<JsonNode> applications = ofKind(delivery("children"), "Application");
         assertEquals(List.of("cnpg", "barman-cloud", "shardshop-namespace", "shardshop-infrastructure", "shardshop-migrations",
-                "shardshop-routing"), applications.stream().map(application -> application.path("metadata").path("name").asText()).toList());
+                "shardshop-routing", "shardshop-applications"),
+                applications.stream().map(application -> application.path("metadata").path("name").asText()).toList());
         for (int index = 0; index < applications.size(); index++) {
             JsonNode application = applications.get(index);
             String name = application.path("metadata").path("name").asText();
             assertEquals(String.valueOf(index), application.path("metadata").path("annotations").path("argocd.argoproj.io/sync-wave").asText(),
                     "The routing publication must come after the migrations");
             JsonNode source = application.path("spec").path("source");
-            if (name.equals("shardshop-migrations")) {
+            if (name.equals("shardshop-migrations") || name.equals("shardshop-applications")) {
                 // A digest revision makes invalid names for the generated hook Jobs; ECR keeps the version immutable.
                 assertEquals(REGISTRY + "/shardshop-charts", source.path("repoURL").asText());
                 assertEquals("shardshop", source.path("chart").asText());
@@ -98,6 +163,8 @@ class ArgoCdDeliveryChartTest {
             }
             assertFalse(application.path("spec").path("syncPolicy").path("automated").path("prune").asBoolean(true), name);
             assertFalse(application.path("metadata").has("finalizers"), name + " must not delete its resources with the Application");
+            assertEquals("shardshop", application.path("metadata").path("labels").path("app.kubernetes.io/part-of").asText(),
+                    "The admission policy protects only the labeled Applications");
         }
         assertEquals(Files.readString(SOURCE.resolve("infra/helm/cnpg/values.yaml")),
                 applications.getFirst().path("spec").path("source").path("helm").path("values").asText(),
@@ -111,6 +178,26 @@ class ArgoCdDeliveryChartTest {
         assertEquals("argocd", migrations.path("valuesObject").path("delivery").asText());
         assertEquals("s3://shardshop-backups-123456789012-eu-west-2/",
                 migrations.path("valuesObject").path("backup").path("destinationPath").asText());
+        assertEquals("application-release", applications.get(6).path("spec").path("source").path("helm").path("valuesObject")
+                .path("render").asText());
+    }
+
+    @Test
+    void anAdmissionPolicyDeniesEachSyncThatSkipsTheHooks() throws Exception {
+        List<JsonNode> children = delivery("children");
+        JsonNode policy = ofKind(children, "ValidatingAdmissionPolicy").getFirst();
+        assertEquals("-1", annotation(policy, "argocd.argoproj.io/sync-wave"), "The policy exists before the first child sync");
+        assertEquals("Fail", policy.path("spec").path("failurePolicy").asText());
+        JsonNode rule = policy.path("spec").path("matchConstraints").path("resourceRules").get(0);
+        assertEquals("applications", rule.path("resources").get(0).asText());
+        assertTrue(rule.path("operations").toString().contains("UPDATE"), "Argo CD starts a sync with an update of the Application");
+        String validations = policy.path("spec").path("validations").toString();
+        assertTrue(validations.contains("object.operation.sync.resources"), "A selective sync runs no hook");
+        assertTrue(validations.contains("object.operation.sync.syncStrategy.apply"), "The apply strategy runs no hook");
+        JsonNode binding = ofKind(children, "ValidatingAdmissionPolicyBinding").getFirst();
+        assertEquals("shardshop-full-sync", binding.path("spec").path("policyName").asText());
+        assertEquals("[\"Deny\"]", binding.path("spec").path("validationActions").toString());
+        assertEquals("shardshop", delivery("root").getFirst().path("metadata").path("labels").path("app.kubernetes.io/part-of").asText());
     }
 
     @Test
@@ -128,8 +215,11 @@ class ArgoCdDeliveryChartTest {
     }
 
     private List<JsonNode> shared(String release, String mode, String deliveryMode) throws Exception {
+        Map<String, String> images = new LinkedHashMap<>();
+        APPLICATIONS.forEach(image -> images.put(image, REGISTRY + "/shardshop-" + image + "@" + DIGEST));
         Path account = values("account.json", Map.of("delivery", deliveryMode,
-                "backup", Map.of("destinationPath", "s3://shardshop-backups-123456789012-eu-west-2/")));
+                "backup", Map.of("destinationPath", "s3://shardshop-backups-123456789012-eu-west-2/"),
+                "images", images, "gates", Map.of("image", REGISTRY + "/shardshop-gates@" + DIGEST)));
         Render result = helm(shared, release, null, "--namespace", "shardshop", "--values", SOURCE.resolve("infra/shards.yaml").toString(),
                 "--values", shared.resolve("eks-values.yaml").toString(), "--values", account.toString(), "--set-string", "render=" + mode);
         assertEquals(0, result.exit(), result.output());
@@ -168,6 +258,36 @@ class ArgoCdDeliveryChartTest {
         Path file = temporary.resolve(name);
         Files.writeString(file, JSON.writeValueAsString(content));
         return file;
+    }
+
+    private static List<JsonNode> gates(List<JsonNode> resources) {
+        return ofKind(resources, "Job").stream().filter(job -> job.path("metadata").path("labels").path("app.kubernetes.io/name")
+                .asText().equals("shardshop-gates")).toList();
+    }
+
+    private static String tags(JsonNode gate) {
+        String argument = gate.path("spec").path("template").path("spec").path("containers").path(0).path("args").path(0).asText();
+        assertTrue(argument.startsWith("--include-tag="), argument);
+        return argument.substring("--include-tag=".length());
+    }
+
+    /** The tag expressions of the Helmfile hooks, by release and event. */
+    private static Map<String, String> helmfileGates() throws Exception {
+        String helmfile = Files.readString(SOURCE.resolve("infra/helmfile.yaml.gotmpl"));
+        Map<String, String> gates = new HashMap<>();
+        Matcher release = Pattern.compile("- name: shardshop-(migrations|application)\\n").matcher(helmfile);
+        while (release.find()) {
+            int end = helmfile.indexOf("\n  - name:", release.end());
+            Matcher gate = Pattern.compile("\"event\" \"(presync|postsync)\" \"tags\" \"([^\"]+)\"")
+                    .matcher(helmfile.substring(release.end(), end < 0 ? helmfile.length() : end));
+            while (gate.find()) gates.put(release.group(1) + "/" + gate.group(1), gate.group(2));
+        }
+        assertEquals(3, gates.size(), "The Helmfile has three gates: " + gates);
+        return gates;
+    }
+
+    private static String annotation(JsonNode resource, String key) {
+        return resource.path("metadata").path("annotations").path(key).asText();
     }
 
     private static List<JsonNode> ofKind(List<JsonNode> resources, String kind) {

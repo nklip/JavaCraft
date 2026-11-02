@@ -543,6 +543,21 @@ images:
     verification: Digests calculated from the raw registry bytes on 2026-11-01. The chart 10.11.6 selects this tag.
     advisories: 'Docker Scout 1.27.0 on 2026-11-01 (linux/arm64): 2 critical, 14 high, 2 medium in openssl,
       util-linux and zlib.'
+  shardshop_gates:
+    version: run-specific
+    purpose: Argo CD PreSync and PostSync gate Jobs on EKS. The runbook builds the image for each run, because it
+      contains the tests and the invocation snapshot of the run
+    checked_on: '2026-11-02'
+    security_review_by: '2026-11-30'
+    recipe: infra/images/gates/Dockerfile
+    base_ref: canonical_openjdk_25_26_04, the pinned JRE of the application images
+    contents: kubectl 1.37.2 linux/arm64 (tools.kubectl.artifacts.linux_arm64), the JUnit console launcher 6.1.3
+      and the test classpath of shardshop-testing (maven.step_3_10_integration_test_dependencies)
+    advisories: 'Docker Scout 1.27.0 on 2026-11-02 (linux/arm64): 1 critical and 4 high in golang.org/x/net 0.57.0
+      (fixed in 0.60.0) and 1 high in golang.org/x/text 0.40.0 (fixed in 0.41.0) of kubectl 1.37.2, the newest 1.37
+      release; 1 high each in httpcore5 and httpcore5-h2 5.3.6 (fixed in 5.4.3) of Testcontainers on the test
+      classpath, which the gates do not use in the cluster. The user accepted them for disposable EKS runs until
+      2026-11-30.'
   postgresql_cnpg:
     version: '18.6'
     purpose: three three-instance CNPG shard clusters and the single-instance ledger database
@@ -995,6 +1010,13 @@ tools:
         verification: Published SHA-256 read on 2026-10-31; the official executable was not
           downloaded. kubectl comes from the user's PATH.
         purpose: Host administration
+      linux_arm64:
+        url: https://dl.k8s.io/release/v1.37.2/bin/linux/arm64/kubectl
+        sha256: fcc16f63186659d9722014b7e02d5fdd2d4e669cb8c0ab66365d7d3b8ba03509
+        checksum_url: https://dl.k8s.io/release/v1.37.2/bin/linux/arm64/kubectl.sha256
+        verification: Published SHA-256 read on 2026-11-02. The ADD --checksum of
+          infra/images/gates/Dockerfile verifies each download.
+        purpose: The gates image of the AWS deployment. The user selected 1.37.2 instead of 1.36.6 on 2026-11-02.
     checked_on: "2026-10-31"
     review_by: "2026-11-25"
     observed_version: "v1.37.2 go1.26.10 darwin/arm64"
@@ -1164,6 +1186,15 @@ terraform:
       seven characters of the revision + "-postsync-" + time, thus a digest revision ("sha256:") is invalid there;
       the CNPG webhook removes "login false" from DatabaseRole; prune false keeps an earlier migration ConfigMap as
       an extraneous resource; a failed sync is not repeated for unchanged manifests.
+  qualification_7_6:
+    run: 2026-11-02T05:09:37Z to 2026-11-02T07:04:59Z, eu-west-2, three t4g.xlarge workers, apply 129 and 2 node
+      rules, destroy 131 resources.
+    observed: the PreSync gates of the migrations and the applications and the PostSync gate (eks-release and
+      kind-deployment with saga, observability and topology) passed in the cluster; the application drill and the
+      delivery drill passed. An automated sync retries a failed hook with the same generated name, thus the delete
+      policy replaces the failed gate Job of the earlier try. The root sync ends after it applied the last wave,
+      without its health. The API server proxy to pod ports 8080 and 9187 needs node rules from the cluster
+      security group. The generator retention policy blocks the namespace deletion until it is deleted.
 vendor_bundles:
   rabbitmq:
     image_ref: rabbitmq
@@ -1925,6 +1956,9 @@ maven:
         lists no advisory for the 23 Cucumber artifacts on 2026-10-12
       picocontainer: 2.16 (2026-08-15) is the newest release. OSV lists no advisory on 2026-10-12
       junit_platform_suite: 6.1.3, the JUnit family of the platform. OSV lists no advisory on 2026-10-12
+      junit_platform_console: 6.1.3 with junit-platform-reporting 6.1.3 and open-test-reporting-tooling-spi 0.2.5,
+        only in the kind profile, for the gates image of the AWS deployment (step 7.6). The SHA-1 files matched
+        Maven Central on 2026-11-02
       duct_tape_and_annotations: duct-tape 1.0.8 and JetBrains annotations 26.1.0 come with Testcontainers. OSV
         lists no advisory on 2026-10-12
     sources:
@@ -1966,6 +2000,9 @@ maven:
       org.junit.platform:junit-platform-suite-api: {"version":"6.1.3","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-suite-api/6.1.3/junit-platform-suite-api-6.1.3.jar","sha256":"55ee464c0846fa4a695e5c2fc8d8ea8f16fb3d92b04746831b7a428519436c11","published_checksum":{"algorithm":"sha1","value":"6b6577612ce5f0c11ca66db60552552fb1ea6971","url":"https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-suite-api/6.1.3/junit-platform-suite-api-6.1.3.jar.sha1"}}
       org.junit.platform:junit-platform-suite-engine: {"version":"6.1.3","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-suite-engine/6.1.3/junit-platform-suite-engine-6.1.3.jar","sha256":"6334e2ca2ac26febda4f72b1ae739661124a6cc3396448a43e72334841843e2d","published_checksum":{"algorithm":"sha1","value":"720da7199a4e5766daf6e6fb4e4f2a8fdfb6e098","url":"https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-suite-engine/6.1.3/junit-platform-suite-engine-6.1.3.jar.sha1"}}
       org.junit.platform:junit-platform-suite: {"version":"6.1.3","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-suite/6.1.3/junit-platform-suite-6.1.3.jar","sha256":"cf282810206f63c6382eb3d2ff98bbfcfc31412db55397ac642849aae31e5be6","published_checksum":{"algorithm":"sha1","value":"26278be7c21f6f64ca35e601267b68ac1f6959f2","url":"https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-suite/6.1.3/junit-platform-suite-6.1.3.jar.sha1"}}
+      org.junit.platform:junit-platform-console: {"version":"6.1.3","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console/6.1.3/junit-platform-console-6.1.3.jar","sha256":"913554ad65b9420936822889a7268a6793a942e5f77ad8b653b8ec05068fa3be","published_checksum":{"algorithm":"sha1","value":"67ef9e0588e20534617c5b1f353c69d7e23f8399","url":"https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console/6.1.3/junit-platform-console-6.1.3.jar.sha1"}}
+      org.junit.platform:junit-platform-reporting: {"version":"6.1.3","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-reporting/6.1.3/junit-platform-reporting-6.1.3.jar","sha256":"d584a16cd87da5609af5e35428ed4f40b192681a2487dc59d02ecb62f6c417c2","published_checksum":{"algorithm":"sha1","value":"77becd11e2d117fa8e7729ecd51f8ee3accfee5a","url":"https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-reporting/6.1.3/junit-platform-reporting-6.1.3.jar.sha1"}}
+      org.opentest4j.reporting:open-test-reporting-tooling-spi: {"version":"0.2.5","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/opentest4j/reporting/open-test-reporting-tooling-spi/0.2.5/open-test-reporting-tooling-spi-0.2.5.jar","sha256":"df237b68847637747f0bfdb88fa9cdd9c72cc85550fad0c41ddb33869a5ca516","published_checksum":{"algorithm":"sha1","value":"92a64a32e3fbdfc094d05a714d88c619c0d12f38","url":"https://repo.maven.apache.org/maven2/org/opentest4j/reporting/open-test-reporting-tooling-spi/0.2.5/open-test-reporting-tooling-spi-0.2.5.jar.sha1"}}
       org.picocontainer:picocontainer: {"version":"2.16","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/picocontainer/picocontainer/2.16/picocontainer-2.16.jar","sha256":"bc66571fe98568b3f73b53cf3cf1a43c35f7256986f4ddc58c8334c052815137","published_checksum":{"algorithm":"sha1","value":"ca5c22be2ca8f18c0c5bbeb5b6ceed2961ce7c83","url":"https://repo.maven.apache.org/maven2/org/picocontainer/picocontainer/2.16/picocontainer-2.16.jar.sha1"}}
       org.rnorth.duct-tape:duct-tape: {"version":"1.0.8","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/rnorth/duct-tape/duct-tape/1.0.8/duct-tape-1.0.8.jar","sha256":"31cef12ddec979d1f86d7cf708c41a17da523d05c685fd6642e9d0b2addb7240","published_checksum":{"algorithm":"sha1","value":"92edc22a9ab2f3e17c9bf700aaee377d50e8b530","url":"https://repo.maven.apache.org/maven2/org/rnorth/duct-tape/duct-tape/1.0.8/duct-tape-1.0.8.jar.sha1"}}
       org.testcontainers:testcontainers-database-commons: {"version":"2.0.5","extension":"jar","artifact_url":"https://repo.maven.apache.org/maven2/org/testcontainers/testcontainers-database-commons/2.0.5/testcontainers-database-commons-2.0.5.jar","sha256":"0ebbc62bdcfb315cb840a63fbaa148b455927666d9034b5e5c00009d84c755b0","published_checksum":{"algorithm":"sha1","value":"bc1eeea337c461c108507f596122b3e6fdb62122","url":"https://repo.maven.apache.org/maven2/org/testcontainers/testcontainers-database-commons/2.0.5/testcontainers-database-commons-2.0.5.jar.sha1"}}

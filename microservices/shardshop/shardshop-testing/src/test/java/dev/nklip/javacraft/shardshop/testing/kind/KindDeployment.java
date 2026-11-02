@@ -65,7 +65,11 @@ public final class KindDeployment {
         require(seederControls.size() == 1 && ready(seederControls.getFirst()),
                 "The interactive product seeder must already have one ready pod");
         httpOnly(seederControls.getFirst().path("spec"));
-        String jobName = seederJobName(readerDeployment, reader);
+        // With Argo CD, the seeder attempt has a generated name in the sync result of the Application.
+        JsonNode seederApplication = readerDeployment == null ? null
+                : readerDeployment.path("metadata").path("annotations").path(EksApplications.SEEDER_APPLICATION);
+        String jobName = seederApplication != null && seederApplication.isTextual()
+                ? EksApplications.seederJob(lab, seederApplication.textValue()) : seederJobName(readerDeployment, reader);
         JsonNode job = resource("job", jobName);
         require(completed(job), "The deployed release needs a successful seeder Job before workload checks");
         httpOnly(job.path("spec").path("template").path("spec"));

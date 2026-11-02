@@ -1,8 +1,8 @@
 {{- /*
-The delivery contract of the database layer on the AWS deployment. Each layer is one
-child Application in a sync wave. The root Application applies a wave only after the
-child Applications of the earlier waves are healthy. A failed migration thus stops the
-routing publication. The sources are OCI charts in ECR with digest pins.
+The delivery contract of ShardShop on the AWS deployment. Each layer is one child
+Application in a sync wave. The root Application applies a wave only after the child
+Applications of the earlier waves are healthy. A failed migration thus stops the routing
+publication and the applications. The sources are OCI charts in ECR with digest pins.
 */ -}}
 {{- $base := printf "oci://%s/shardshop-charts" .Values.registry -}}
 {{- if eq .Values.mode "root" }}
@@ -11,6 +11,8 @@ kind: Application
 metadata:
   name: shardshop
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: shardshop
 spec:
   project: default
   source:
@@ -34,7 +36,45 @@ spec:
       (dict "wave" 2 "name" "shardshop-namespace" "render" "namespace")
       (dict "wave" 3 "name" "shardshop-infrastructure" "render" "infrastructure")
       (dict "wave" 4 "name" "shardshop-migrations" "render" "migrations")
-      (dict "wave" 5 "name" "shardshop-routing" "render" "routing") }}
+      (dict "wave" 5 "name" "shardshop-routing" "render" "routing")
+      (dict "wave" 6 "name" "shardshop-applications" "render" "application-release") }}
+# Argo CD skips all hooks in a selective sync and with the apply strategy. Thus this policy
+# denies both for the ShardShop Applications, also when they come through kubectl.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: shardshop-full-sync
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: argocd
+    resourceRules:
+      - apiGroups: [argoproj.io]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE]
+        resources: [applications]
+  matchConditions:
+    - name: shardshop
+      expression: "has(object.metadata.labels) && 'app.kubernetes.io/part-of' in object.metadata.labels && object.metadata.labels['app.kubernetes.io/part-of'] == 'shardshop'"
+  validations:
+    - expression: "!has(object.operation) || !has(object.operation.sync) || !has(object.operation.sync.resources) || size(object.operation.sync.resources) == 0"
+      message: "A selective sync skips the hooks and the gates of ShardShop. Sync all the resources."
+    - expression: "!has(object.operation) || !has(object.operation.sync) || !has(object.operation.sync.syncStrategy) || !has(object.operation.sync.syncStrategy.apply)"
+      message: "The apply strategy skips the hooks and the gates of ShardShop. Use the hook strategy."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: shardshop-full-sync
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  policyName: shardshop-full-sync
+  validationActions: [Deny]
 {{- range $layers }}
 ---
 apiVersion: argoproj.io/v1alpha1
@@ -42,15 +82,17 @@ kind: Application
 metadata:
   name: {{ .name }}
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: shardshop
   annotations:
     argocd.argoproj.io/sync-wave: {{ .wave | quote }}
 spec:
   project: default
   source:
-    {{- if eq (.render | default "") "migrations" }}
+    {{- if has (.render | default "") (list "migrations" "application-release") }}
     # Argo CD 3.5 puts the first seven characters of the revision into the name of each
     # generated hook Job. A digest starts with "sha256:", which a name cannot contain.
-    # Thus the migrations use the Helm OCI source with the version, which ECR keeps
+    # Thus the layers with hooks use the Helm OCI source with the version, which ECR keeps
     # immutable.
     repoURL: {{ printf "%s/shardshop-charts" $.Values.registry | quote }}
     chart: shardshop
