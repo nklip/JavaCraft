@@ -247,12 +247,12 @@ CDC is enabled by default in the saga process. HTTP processes never start it.
 `--check-startup` starts no workers, but it checks the CDC credentials. Tests can set
 `shardshop.order.cdc.enabled=false` to isolate HTTP or stock behavior. The application
 release gives order these passwords as `secretKeyRef` environment variables. The
-[crash suite](../shardshop-testing/RUNBOOK.md#crash-recovery-and-observability)
+[crash suite](../shardshop-testing/RUNBOOK.md#12-crash-recovery-and-observability)
 covers abrupt process crashes at the publication, checkpoint and consumer boundaries.
 A process restart is safe with intact compatible durable state. It cannot repair a
 missing slot, offset or WAL. For those incidents, preserve the state and examine the
 recovery log and metrics before any resnapshot. The
-[explicit recovery workflow](../shardshop-testing/RUNBOOK.md#older-backup-audit-and-selected-repair)
+[explicit recovery workflow](../shardshop-testing/RUNBOOK.md#9-older-backup-audit-and-selected-repair)
 uses verified ordering and ledger bundles, the independent latest allocator history
 and the original records in a fresh frozen owned target. Missing history or costs,
 conflicts and unproved catalog effects stay unresolved. No destructive reset shortcut

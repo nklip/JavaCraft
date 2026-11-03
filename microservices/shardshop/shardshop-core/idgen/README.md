@@ -252,11 +252,11 @@ mvn -B -ntp -f microservices/shardshop/pom.xml \
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
 ```
 
-`GeneratorAllocation.feature` of [`shardshop-testing`](../../shardshop-testing/RUNBOOK.md#integration-tests-with-testcontainers)
+`GeneratorAllocation.feature` of [`shardshop-testing`](../../shardshop-testing/RUNBOOK.md#2-integration-tests-with-testcontainers)
 runs the packaged product against a real Kubernetes API with the RBAC and the retention policy of the chart. It
 checks concurrent starts, restarts, the IDs of the created sellers, the permissions of each service account, the
 policy and the failures. It uses no lab slots. The
-[live deployment check](../../shardshop-testing/RUNBOOK.md#live-deployment-check) shows a new generator ID after
+[live deployment check](../../shardshop-testing/RUNBOOK.md#5-live-deployment-check) shows a new generator ID after
 a product pod replacement. The [product and order images and Deployments](../../infra/RUNBOOK.md#3-deploy-with-upsh)
 start `quarkus-run.jar` directly, use the ServiceAccount of the owning service and set
 `SHARDSHOP_ID_REGISTRY_UID` from the identity ConfigMap. The images contain no kubectl, and the repository

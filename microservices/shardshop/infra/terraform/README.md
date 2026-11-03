@@ -1,6 +1,6 @@
 # AWS foundation
 
-[ShardShop](../../README.md) › [Infrastructure](../README.md) › **AWS foundation** · [Container images](../images/README.md) · [Plan milestone 7](../../PLAN.md#milestone-7-aws-deployment)
+[ShardShop](../../README.md) › [Infrastructure](../README.md) › **AWS foundation** · [Container images](../images/README.md) · [Plan milestone 7](../../PLAN.md#4-milestone-7-aws-deployment)
 
 Terraform creates the AWS foundation of milestone 7: a VPC, an EKS
 cluster, ECR repositories, a backup bucket, the runtime secrets and the IAM roles of
@@ -168,8 +168,8 @@ export TF_VAR_api_allowed_cidrs='["0.0.0.0/0"]'
 
 ### Check the foundation
 
-The `kind` Maven profile of the drills uses the context `kind-<cluster>` and a
-private kubeconfig outside `~/.kube`. Thus write the cluster credentials to a new
+The `kind` Maven profile of the checks on this computer uses the context
+`kind-<cluster>` and a private kubeconfig outside `~/.kube`. Thus write the cluster credentials to a new
 private directory, with the context `kind-shardshop-test-eks`. The kind contexts
 stay unchanged. Use the same shell until the destroy, because `$run` keeps the
 credentials of the run:
@@ -272,7 +272,9 @@ Always sync all the resources of an Application.
 
 3. Write the values that contain the account ID: the ECR images and the backup
    bucket. Then write the invocation snapshot of the gates and the drills. The `kind`
-   profile requires `kind.json`, but these scenarios do not read it:
+   profile requires `kind.json`, but the checks on EKS do not read it. The workload
+   drill renders its temporary seeder Jobs from `chart/`, `environment.yaml` and
+   `inventory.yaml`:
 
    ```bash
    bucket=$(terraform -chdir=microservices/shardshop/infra/terraform/aws output -raw backup_bucket)
@@ -284,6 +286,9 @@ Always sync all the resources of an Application.
    render infrastructure >"$run/snapshot/infrastructure.yaml"
    printf '{}\n' >"$run/snapshot/kind.json"
    jq '{images}' "$run/aws-values.json" >"$run/snapshot/images.json"
+   cp -R "$chart" "$run/snapshot/chart"
+   cp "$chart/eks-values.yaml" "$run/snapshot/environment.yaml"
+   cp microservices/shardshop/infra/shards.yaml "$run/snapshot/inventory.yaml"
    ```
 
 4. Build the gates image from the tests of step 1, the snapshot and the golden routing
@@ -389,11 +394,36 @@ kubectl --context kind-shardshop-test-eks -n argocd patch application <applicati
 
 ### Run the drills
 
-The build of step 1 compiled the observers, and step 3 wrote their snapshot.
+Jobs in the cluster run the acceptance checks of the
+[eleven scenarios](../../shardshop-testing/ARCHITECTURE.md#3-aws-deployment-acceptance).
+The API server is near these Jobs, thus a slow internet connection cannot stop a
+drill. Each Job runs the gates image of step 4 with the ServiceAccount
+`shardshop-drills` ([template](../helm/shardshop/templates/drills.yaml)). This identity
+can change the cluster, thus it exists only during the drills.
 
-Run the [topology check](../../shardshop-testing/RUNBOOK.md#topology-check-and-database-drill),
-the delivery checks and the EKS durability scenarios of
-[`EksDurability.feature`](../../shardshop-testing/src/test/resources/kind-features/EksDurability.feature):
+| Command | Where the check runs | Used for |
+|---|---|---|
+| `drill <tags> [<property>...]` | A Job in the cluster. A property is a system property without `-D`, for example `shardshop.kind.drillShard=shard-b` | The drills and the lifecycle checks |
+| `kindit <tags> [<option>...]` | This computer, with Maven and the private kubeconfig | The backup, the restore, the recovery and the allocator checks, because they need the local Docker and the private files in `$run`. Also the delivery drills |
+
+Create the identity and the two commands. `drill` shows the log of its Job until the
+end. If the connection fails, only the log stream stops, and `drill` reads the log
+again:
+
+```bash
+render drill-identity | kubectl --context kind-shardshop-test-eks create -f -
+drill() {
+  local tags=$1 job; shift
+  job=$(render drill --set-string "drill.tags=$tags" --set-json "drill.properties=$(jq -cn '$ARGS.positional' --args "$@")" | kubectl --context kind-shardshop-test-eks create -f - -o name) || return
+  until kubectl --context kind-shardshop-test-eks -n shardshop logs -f --pod-running-timeout=10m "$job" && sleep 10 && [[ -n $(kubectl --context kind-shardshop-test-eks -n shardshop get "$job" -o jsonpath='{.status.completionTime}{.status.failed}') ]]; do sleep 30; done
+  [[ $(kubectl --context kind-shardshop-test-eks -n shardshop get "$job" -o jsonpath='{.status.succeeded}') == 1 ]]
+}
+kindit() { local tags=$1; shift; mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags="$tags" "$@"; }
+```
+
+These scenarios of
+[`EksDurability.feature`](../../shardshop-testing/src/test/resources/kind-features/EksDurability.feature)
+and the delivery features run only on EKS:
 
 - `eks-delivery`: each layer comes from a pinned OCI chart, is synced and healthy,
   and cannot prune or delete its resources.
@@ -409,21 +439,53 @@ the delivery checks and the EKS durability scenarios of
 - `eks-pitr-drill`: for each cluster, a probe row before and after a target time,
   then a restore of that time into the new cluster `<cluster>-pitr`. Only the row
   before the target time must be there. The drill deletes the new cluster and its
-  volume. `-Dshardshop.kind.drillCluster=<cluster>` restores only one cluster.
+  volume. The property `shardshop.kind.drillCluster=<cluster>` restores only one
+  cluster.
+
+Run the checks in the order of the
+[local acceptance run](../../shardshop-testing/RUNBOOK.md#13-acceptance-run-on-a-disposable-lab).
+The backup and the restore use a logical bundle from EKS, with the
+[backup rules](../../shardshop-testing/RUNBOOK.md#8-coordinated-backup-and-isolated-restore).
+Render the broker fixture of the restore first. `$run` is private, thus it can hold
+the bundle and the allocator history. At the end, delete the identity of the drills:
 
 ```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags='kind-topology | eks-delivery | eks-release | kind-deployment | eks-runtime-secrets | eks-backup | eks-broker-quorum'
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags=eks-pitr-drill
+drill 'kind-topology | eks-delivery | eks-release | kind-deployment | eks-runtime-secrets | eks-backup | eks-broker-quorum | kind-allocator | kind-infrastructure | kind-migration-reservation | kind-migrations-idle | kind-publications | kind-drills-idle'
+backup=(-Dshardshop.backup.directory="$run/backup" -Dshardshop.backup.allocator="$run/allocator.json")
+kindit kind-backup "${backup[@]}"
+kindit kind-restore "${backup[@]}" -Dshardshop.restore.directory="$run/restore" -Dshardshop.restore.target=shardshop-restore-eks-a
+kindit kind-recovery-schema "${backup[@]}" -Dshardshop.restore.target=shardshop-restore-eks-b -Dshardshop.recovery.directory="$run/recovery-schema"
+kindit kind-recovery-drill "${backup[@]}" -Dshardshop.restore.target=shardshop-restore-eks-c -Dshardshop.recovery.directory="$run/recovery-drill"
+drill kind-database-drill shardshop.kind.drillShard=shard-b
+drill kind-workload-drill
+drill kind-saga-drill
+drill kind-retry-drill
+drill kind-replica-read-drill shardshop.kind.drillShard=shard-b
+drill kind-failover-drill shardshop.kind.drillShard=shard-b
+drill eks-pitr-drill
+drill 'eks-release | kind-deployment | kind-allocator | kind-infrastructure | kind-drills-idle'
+kindit kind-backup-allocator -Dshardshop.backup.allocator="$run/allocator.json"
+[[ $(kubectl --context kind-shardshop-test-eks -n shardshop get configmap shardshop-snowflake-generators -o jsonpath='{.metadata.uid}') == "$registry_uid" ]] && echo 'same generator registry'
+render drill-identity | kubectl --context kind-shardshop-test-eks delete -f -
 ```
 
-The reversible database drill of each shard disrupts the reads and writes of its
-shard:
+A drill Job stays one day after its end, and its log has the drill output and the
+failures. A failed drill restores its changes and releases its lock. If a drill keeps
+its lock, examine the data, and recover the drill as the
+[testing runbook](../../shardshop-testing/RUNBOOK.md#3-kind-verification-snapshot)
+tells before the next attempt:
 
 ```bash
-for shard in shard-a shard-b shard-c; do
-    mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags=kind-database-drill -Dshardshop.kind.drillShard="$shard" || break
-done
+kubectl --context kind-shardshop-test-eks -n shardshop get jobs -l app.kubernetes.io/name=shardshop-drills
+kubectl --context kind-shardshop-test-eks -n shardshop logs job/<drill-job>
 ```
+
+The `kindit` checks send many API requests through the internet. If the connection
+is slow for some minutes, a command or a wait of these checks can fail.
+
+#### Delivery drills
+
+These two drills check the delivery contract. They are not acceptance scenarios.
 
 The application drill does these steps:
 
@@ -436,7 +498,7 @@ The application drill does these steps:
    policy must deny both.
 
 ```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags=eks-application-drill
+kindit eks-application-drill
 ```
 
 The delivery drill uses two drill charts. The changed chart adds a catalog migration
@@ -461,7 +523,7 @@ helm package "$run/changed" --version "0.3.0-changed${version#0.3.0-run}" --dest
 helm package "$run/failing" --version "0.3.0-failing${version#0.3.0-run}" --destination "$run/packages"
 changed_digest=$(push "$run/packages/shardshop-0.3.0-changed${version#0.3.0-run}.tgz")
 failing_digest=$(push "$run/packages/shardshop-0.3.0-failing${version#0.3.0-run}.tgz")
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify -Dit.test=KindIT -Dshardshop.kind.snapshot="$run/snapshot" -Dshardshop.kind.cluster=shardshop-test-eks -Dshardshop.kind.kubeconfig="$KUBECONFIG" -Dshardshop.kind.tags=eks-delivery-drill -Dshardshop.eks.changedChart="$changed_digest" -Dshardshop.eks.changedVersion="0.3.0-changed${version#0.3.0-run}" -Dshardshop.eks.failingChart="$failing_digest" -Dshardshop.eks.failingVersion="0.3.0-failing${version#0.3.0-run}"
+kindit eks-delivery-drill -Dshardshop.eks.changedChart="$changed_digest" -Dshardshop.eks.changedVersion="0.3.0-changed${version#0.3.0-run}" -Dshardshop.eks.failingChart="$failing_digest" -Dshardshop.eks.failingVersion="0.3.0-failing${version#0.3.0-run}"
 ```
 
 The drill migrations stay in the databases. Thus a second drill on the same

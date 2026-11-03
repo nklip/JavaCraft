@@ -167,6 +167,16 @@ public final class RabbitMqBroker implements Disposable {
         }
     }
 
+    /** Reads an effective rabbit application setting that the management API does not show. */
+    public String setting(String key) throws IOException, InterruptedException {
+        var result = container.execInContainer("rabbitmqctl", "-q", "-t", "10", "eval",
+                "application:get_env(rabbit, " + key + ").");
+        if (result.getExitCode() != 0) {
+            throw new AssertionError("RabbitMQ did not return the setting " + key + ": " + result.getStderr());
+        }
+        return result.getStdout().strip();
+    }
+
     public static void await(String requirement, Duration timeout, Check check) throws IOException, InterruptedException {
         long deadline = System.nanoTime() + timeout.toNanos();
         while (!check.satisfied()) {

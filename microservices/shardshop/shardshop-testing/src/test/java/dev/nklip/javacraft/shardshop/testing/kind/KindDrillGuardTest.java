@@ -30,7 +30,7 @@ class KindDrillGuardTest {
     @BeforeEach
     void api() throws Exception {
         lab = mock(KindLab.class);
-        when(lab.snapshot()).thenReturn(snapshot);
+        when(lab.workDirectory()).thenReturn(snapshot);
         when(lab.kubectl(any(String[].class))).thenAnswer(invocation -> {
             String[] args = (String[]) invocation.getRawArguments()[0];
             if (args[0].equals("get")) {

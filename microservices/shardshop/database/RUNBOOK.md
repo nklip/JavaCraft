@@ -67,7 +67,7 @@ standby requirement or CDC setup; its implemented outbox relay polls its own tab
 It has **no database failover target**: ledger access stops during pod restarts
 or worker outages. Its PVC preserves data across ordinary pod replacement, but
 local-path storage cannot survive loss of its worker or volume and is not a
-backup. The [verification workflow](../shardshop-testing/RUNBOOK.md#coordinated-backup-and-isolated-restore)
+backup. The [verification workflow](../shardshop-testing/RUNBOOK.md#8-coordinated-backup-and-isolated-restore)
 describes the coordinated backup and isolated restore.
 
 `cluster-destroy.sh` removes the whole lab, including its storage and kind kubeconfig; kind storage is disposable and is not a backup.

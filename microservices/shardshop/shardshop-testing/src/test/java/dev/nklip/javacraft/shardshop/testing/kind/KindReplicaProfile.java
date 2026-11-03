@@ -10,7 +10,6 @@ import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
@@ -114,7 +113,7 @@ final class KindReplicaProfile {
         operation(patch, "test", saved.path(), expected);
         operation(patch, "replace", saved.path(), wanted);
         // A file avoids placing a possibly secret-bearing pod template in process arguments.
-        Path file = privateFile("replica-profile-patch-", ".json");
+        Path file = KindLab.privateFile(lab.workDirectory(), "replica-profile-patch-", ".json");
         try {
             Files.writeString(file, patch.toString());
             lab.kubectl("patch", saved.type(), saved.name(), "--type=json", "--patch-file", file.toString());
@@ -247,13 +246,8 @@ final class KindReplicaProfile {
         for (Saved resource : saved) resources.addObject().put("type", resource.type()).put("name", resource.name())
                 .put("uid", resource.uid()).put("field", resource.path()).put("originalSha256", sha256(resource.original()))
                 .put("replicaSha256", sha256(resource.replica()));
-        Path file = privateFile("replica-profile-evidence-", ".json");
+        Path file = KindLab.privateFile(lab.workDirectory(), "replica-profile-evidence-", ".json");
         Files.writeString(file, resources.toPrettyString());
-    }
-
-    private Path privateFile(String prefix, String suffix) throws IOException {
-        return Files.createTempFile(lab.snapshot(), prefix, suffix, PosixFilePermissions.asFileAttribute(
-                PosixFilePermissions.fromString("rw-------")));
     }
 
     private static String sha256(JsonNode value) {

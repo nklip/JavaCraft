@@ -504,7 +504,7 @@ class KindFailoverClusterTest {
                         .putArray("finalizers").add("foreign/finalizer");
                 pods.put(name, object);
             }
-            when(lab.snapshot()).thenReturn(temporary);
+            when(lab.workDirectory()).thenReturn(temporary);
             when(topology.cluster("shard-a")).thenAnswer(invocation -> cluster.deepCopy());
             when(topology.primary("shard-a")).thenAnswer(invocation -> primary());
             when(topology.volumes("shard-a")).thenReturn(state.volumes());

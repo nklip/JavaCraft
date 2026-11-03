@@ -187,7 +187,7 @@ class KindDatabaseDrillTest {
         final AtomicInteger persistedSlotQueries = new AtomicInteger();
 
         Fixture(boolean failSyncRep) throws Exception {
-            when(lab.snapshot()).thenReturn(snapshot);
+            when(lab.workDirectory()).thenReturn(snapshot);
             when(lab.shards()).thenReturn(List.of("shard-a"));
             when(lab.inventory()).thenReturn(KindLab.parse("{\"instances\":\"3\"}"));
             when(lab.kubectl(any(String[].class))).thenAnswer(invocation -> {

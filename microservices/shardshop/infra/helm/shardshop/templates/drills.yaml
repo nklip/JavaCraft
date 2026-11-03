@@ -1,0 +1,240 @@
+{{- /*
+The drills of the AWS deployment, as Jobs in the cluster. The API server is then near the
+drill, thus a slow internet connection cannot stop a drill. Argo CD does not deliver these
+resources. The runbook in infra/terraform/README.md creates the identity before the drills
+(render=drill-identity), one Job for each drill (render=drill), and deletes the identity
+after the drills. The Job runs the gates image, which holds the tests and the invocation
+snapshot of the run.
+*/ -}}
+{{- if eq .Values.render "drill-identity" }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: shardshop-drills
+  namespace: {{ .Release.Namespace | quote }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: shardshop-drills
+  namespace: {{ .Release.Namespace | quote }}
+rules:
+  # The checks read the workloads, the databases, the broker and the runtime secrets.
+  - apiGroups: [""]
+    resources: [pods, pods/log, services, configmaps, persistentvolumeclaims, events]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, replicasets, statefulsets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  - apiGroups: [discovery.k8s.io]
+    resources: [endpointslices]
+    verbs: [get, list, watch]
+  - apiGroups: [postgresql.cnpg.io, barmancloud.cnpg.io]
+    resources: ["*"]
+    verbs: [get, list, watch]
+  - apiGroups: [secrets-store.csi.x-k8s.io]
+    resources: [secretproviderclasses]
+    verbs: [get]
+  # SQL and broker commands run in the database and broker pods. HTTP calls and metrics go
+  # through port forwards and the proxy of the API server. The API server authorizes a POST
+  # through the proxy as create and a PUT as update.
+  - apiGroups: [""]
+    resources: [pods/exec, pods/portforward]
+    verbs: [get, create]
+  - apiGroups: [""]
+    resources: [pods/proxy]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [services/proxy]
+    verbs: [get, create, update]
+  # The broker management credential, and the synced runtime Secrets that the secrets check
+  # compares without their values.
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames:
+      - shardshop-rabbitmq
+      {{- with .Values.runtimeSecrets }}
+      {{- range .databaseRoles }}
+      - {{ replace "_" "-" . }}
+      {{- end }}
+      {{- end }}
+    verbs: [get]
+  # The drills stop and replace pods, and fence, switch over and restore the database
+  # clusters. The restore drill creates and deletes its own cluster.
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [patch, delete]
+  - apiGroups: [postgresql.cnpg.io]
+    resources: [clusters]
+    verbs: [create, patch, delete]
+  - apiGroups: [postgresql.cnpg.io]
+    resources: [clusters/status]
+    verbs: [patch]
+  # The drills change the replicas and the environment of the applications, and the
+  # workload drill starts temporary seeder Jobs.
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [patch]
+  - apiGroups: [apps]
+    resources: [deployments/scale]
+    verbs: [get, patch, update]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [create, delete]
+  # The drill lock, the product and routing configuration of the replica-read drill, and the
+  # server-side dry runs that the generator retention policy must deny.
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [create, deletecollection]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [shardshop-kind-drill, shardshop-product-config, shardshop-routing, shardshop-snowflake-generators, shardshop-generator-identity]
+    verbs: [patch]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [shardshop-kind-drill, shardshop-snowflake-generators, shardshop-generator-identity]
+    verbs: [delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: shardshop-drills
+  namespace: {{ .Release.Namespace | quote }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: shardshop-drills
+subjects:
+  - kind: ServiceAccount
+    name: shardshop-drills
+    namespace: {{ .Release.Namespace | quote }}
+---
+# The failover drill and the infrastructure check compare the operator image.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: shardshop-drills
+  namespace: cnpg-system
+rules:
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: shardshop-drills
+  namespace: cnpg-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: shardshop-drills
+subjects:
+  - kind: ServiceAccount
+    name: shardshop-drills
+    namespace: {{ .Release.Namespace | quote }}
+{{- if eq (.Values.delivery | default "helm") "argocd" }}
+---
+# The delivery and release checks read the sync result of each Application.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: shardshop-drills
+  namespace: argocd
+rules:
+  - apiGroups: [argoproj.io]
+    resources: [applications]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: shardshop-drills
+  namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: shardshop-drills
+subjects:
+  - kind: ServiceAccount
+    name: shardshop-drills
+    namespace: {{ .Release.Namespace | quote }}
+{{- end }}
+---
+# The topology checks read the zone of each node.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: shardshop-drills
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: shardshop-drills
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: shardshop-drills
+subjects:
+  - kind: ServiceAccount
+    name: shardshop-drills
+    namespace: {{ .Release.Namespace | quote }}
+{{- end }}
+{{- if eq .Values.render "drill" }}
+{{- /* The values schema checks the tag expression and the properties. */ -}}
+{{- $tags := required "render=drill requires drill.tags" .Values.drill.tags }}
+{{- $options := list }}
+{{- range .Values.drill.properties }}
+{{- $options = append $options (printf "-D%s" .) }}
+{{- end }}
+# One run of one drill. A failed drill stays until its TTL ends, and its log has the result.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: shardshop-drill-
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/name: shardshop-drills
+    app.kubernetes.io/part-of: shardshop
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: {{ .Values.drill.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: shardshop-drills
+        app.kubernetes.io/part-of: shardshop
+    spec:
+      restartPolicy: Never
+      serviceAccountName: shardshop-drills
+      enableServiceLinks: false
+      {{- include "shardshop.podSecurity" . | nindent 6 }}
+      containers:
+        - name: drill
+          image: {{ required "render=drill requires gates.image" .Values.gates.image | quote }}
+          args: [{{ printf "--include-tag=%s" $tags | quote }}]
+          {{- with $options }}
+          env:
+            # The gates image reads the other system properties of the drill from here.
+            - name: JDK_JAVA_OPTIONS
+              value: {{ join " " . | quote }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.drill.resources | nindent 12 }}
+          {{- include "shardshop.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+{{- end }}

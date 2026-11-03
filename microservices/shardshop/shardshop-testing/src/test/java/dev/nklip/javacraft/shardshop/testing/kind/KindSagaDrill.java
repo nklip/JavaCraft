@@ -11,6 +11,7 @@ import dev.nklip.javacraft.shardshop.testing.kind.KindSaga.Tunnel;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -180,8 +181,6 @@ public final class KindSagaDrill {
                 KindHttpWriter writer = new KindHttpWriter(lab, buyer, run + "-rollout", request("USD", rolloutProduct(), 1));
                 try (writer) {
                     lab.await("scoped HTTP writer is committing before rollout", Duration.ofSeconds(30), () -> writer.count() >= 2);
-                    int[] replacementStartWrites = {-1};
-                    boolean[] wroteDuringReplacement = {false};
                     ObjectNode changed = annotations.isObject() ? annotations.deepCopy() : Json.newObject();
                     changed.put("shardshop.javacraft/drill", run);
                     patchHttpAnnotations(changed);
@@ -190,17 +189,15 @@ public final class KindSagaDrill {
                                 "HTTP rollout replaced the saga owner");
                         for (String shard : lab.shards())
                             require(activeReader(shard) == slots.get(shard), "HTTP rollout reconnected the CDC reader on " + shard);
-                        int committed = writer.count();
-                        boolean current = httpCurrent();
-                        if (!current && httpPodUids().stream().anyMatch(uid -> !originalHttp.contains(uid))) {
-                            if (replacementStartWrites[0] < 0) replacementStartWrites[0] = writer.count();
-                            else if (committed > replacementStartWrites[0]) wroteDuringReplacement[0] = true;
-                        }
-                        return current;
+                        writer.count();
+                        return httpCurrent();
                     });
-                    require(wroteDuringReplacement[0], "No scoped HTTP order committed while replacement was in progress");
                     lab.await("both original HTTP pods terminate after replacement", Duration.ofSeconds(60), () ->
                             httpCurrent() && httpPodUids().stream().noneMatch(originalHttp::contains));
+                    // A fast rollout can end between two observations, thus server times bound the replacement.
+                    Instant[] replacement = replacementWindow();
+                    require(committedBetween(writer.accepted(), replacement[0], replacement[1]) > 0,
+                            "No scoped HTTP order committed while replacement was in progress");
                     int afterRollout = writer.count();
                     lab.await("HTTP writer keeps committing after rollout", Duration.ofSeconds(20), () -> writer.count() > afterRollout);
                 }
@@ -215,6 +212,35 @@ public final class KindSagaDrill {
         long pid = saga.number(shard, "SELECT coalesce(active_pid,0) FROM pg_replication_slots WHERE slot_name=" + KindSaga.literal(slot));
         require(pid > 0, "No active saga CDC slot on " + shard);
         return pid;
+    }
+
+    /** The creation of the new HTTP ReplicaSet and the end of its rollout, in API server time. */
+    private Instant[] replacementWindow() throws IOException, InterruptedException {
+        Instant[] window = new Instant[2];
+        lab.await("HTTP rollout records its completion", Duration.ofSeconds(30), () -> {
+            JsonNode resource = deployment.resource("deployment", "shardshop-order");
+            String revision = resource.at("/metadata/annotations/deployment.kubernetes.io~1revision").asText();
+            for (JsonNode set : KindLab.items(KindLab.parse(lab.kubectl("get", "replicasets", "-l",
+                    "app.kubernetes.io/name=shardshop-order", "-o", "json"))))
+                if (!revision.isEmpty() && set.at("/metadata/annotations/deployment.kubernetes.io~1revision").asText().equals(revision))
+                    window[0] = Instant.parse(set.at("/metadata/creationTimestamp").asText());
+            for (JsonNode condition : resource.at("/status/conditions"))
+                if (condition.path("type").asText().equals("Progressing")
+                        && condition.path("reason").asText().equals("NewReplicaSetAvailable"))
+                    window[1] = Instant.parse(condition.path("lastUpdateTime").asText());
+            return window[0] != null && window[1] != null && window[1].isAfter(window[0]);
+        });
+        return window;
+    }
+
+    private long committedBetween(List<String> orders, Instant start, Instant end) throws IOException, InterruptedException {
+        require(!orders.isEmpty(), "The HTTP writer has no accepted order");
+        List<String> ids = new ArrayList<>();
+        for (String order : orders) ids.add(KindSaga.id(order));
+        // Kubernetes times have whole seconds, thus the window starts one second later.
+        return saga.number(home, "SELECT count(*) FROM ordering.orders WHERE order_id IN (" + String.join(",", ids)
+                + ") AND created_at >= " + KindSaga.literal(start.plusSeconds(1).toString()) + "::timestamptz AND created_at < "
+                + KindSaga.literal(end.toString()) + "::timestamptz");
     }
 
     private void patchHttpAnnotations(JsonNode annotations) throws IOException, InterruptedException {

@@ -1,11 +1,20 @@
 # ShardShop decisions
 
+[ShardShop](README.md) › **Decisions** · [Implementation plan](PLAN.md) · [Changelog](CHANGELOG.md) · [Architecture](ARCHITECTURE.md)
+
 This file records the main decisions of ShardShop and the reason for each one.
 Each record gives the decision, the reason and the result for the system. The
 linked [CHANGELOG](CHANGELOG.md) entry has the evidence. The Git tag
 `shardshop-docs-full-2026-10-31` has the full history.
 
-## Scope and platform
+## Contents
+1. [Scope and platform](#1-scope-and-platform)
+2. [Data and consistency](#2-data-and-consistency)
+3. [Build, test and delivery](#3-build-test-and-delivery)
+4. [Operations and security](#4-operations-and-security)
+
+## 1. Scope and platform
+<sub>[Back to Contents](#contents)</sub>
 
 ### Local deployment first
 
@@ -17,7 +26,7 @@ deployment.
 deployment.
 
 **Result.** A local step never depends on a cloud service, and step 6.9 must
-still pass locally after the AWS work ([plan](PLAN.md#milestone-7-aws-deployment)).
+still pass locally after the AWS work ([plan](PLAN.md#4-milestone-7-aws-deployment)).
 
 ### Community releases with regular upgrades
 
@@ -30,7 +39,7 @@ plugin-only XML prereleases of the Quarkus plugin.
 **Reason.** Commercial extended support is outside the scope of the lab.
 
 **Result.** Each component has a review date, and the user approves each update
-([update rules](VERSIONS.md#update-rules)).
+([update rules](VERSIONS.md#2-update-rules)).
 
 ### AWS foundation with community modules
 
@@ -116,6 +125,26 @@ operator can on kind. They read no other Secret. The runbook builds
 the gates image for each run, because the image contains the snapshot of the run.
 Only the routing Application publishes the routing.
 
+### Drills as Jobs in the cluster
+
+**Decision.** On EKS, the drills and the lifecycle checks run as Jobs in the cluster,
+from the gates image with the ServiceAccount `shardshop-drills`. The runbook creates
+this identity before the drills and deletes it after them, and Argo CD does not
+deliver it. The backup, restore, recovery and allocator checks stay on the computer
+that runs the runbook. The user selected this on 2026-11-02, after the first
+acceptance run on EKS.
+
+**Reason.** A drill sends many kubectl commands. Through a VPN and the internet, TLS
+handshakes took up to 13 seconds, and the failover drill failed two times on failed
+commands, while the cluster and the data were correct. In the VPC, the API server is
+near the drill. The backup checks need the local Docker and private files.
+
+**Result.** The drill identity can change the database clusters, the pods, the
+Deployments, the Jobs and named ConfigMaps. It reads only the broker credential and
+the synced runtime Secrets. The gates image contains Helm 4.3.1, because the workload
+drill renders its temporary seeder Job. The drills write their temporary files to a
+work directory, because the snapshot of the image is read-only.
+
 ### EKS durability with managed add-ons
 
 **Decision.** On EKS, the Barman Cloud Plugin archives the WAL and writes the base
@@ -166,9 +195,10 @@ never use a Temurin runtime. The runtime image has no shell.
 **Result.** A Java patch reaches the images only when Canonical publishes it for
 Ubuntu 26.04. On 2026-10-31 the October 2026 Java fixes were not published, and
 the user accepted that risk until 2026-11-30
-([open findings](VERSIONS.md#open-findings-and-risk-acceptance)).
+([open findings](VERSIONS.md#3-open-findings-and-risk-acceptance)).
 
-## Data and consistency
+## 2. Data and consistency
+<sub>[Back to Contents](#contents)</sub>
 
 ### Regional shards with quorum replication
 
@@ -241,7 +271,7 @@ When no standby answers, it returns 503 within the four-second server budget. It
 never falls back to a primary.
 
 **Reason.** Acceptance scenarios 3 and 8 require explicit stale reads and no
-primary fallback ([scenarios](shardshop-testing/ARCHITECTURE.md#acceptance-scenarios)).
+primary fallback ([scenarios](shardshop-testing/ARCHITECTURE.md#1-acceptance-scenarios)).
 
 **Result.** Product reads use the primaries (`-rw`) by default. The replica
 profile is an optional load-test profile that permits stale or temporarily
@@ -264,7 +294,8 @@ high-water mark.
 [backup policy](database/ARCHITECTURE.md#replication-and-backup-policy) and
 [step 6.4](CHANGELOG.md#step-64).
 
-## Build, test and delivery
+## 3. Build, test and delivery
+<sub>[Back to Contents](#contents)</sub>
 
 ### Tool ownership
 
@@ -330,7 +361,8 @@ of a region ([step 4.9](CHANGELOG.md#step-49)).
 
 **Result.** A gate passes or fails on its own data, also after a long producer run.
 
-## Operations and security
+## 4. Operations and security
+<sub>[Back to Contents](#contents)</sub>
 
 ### Image scan gate and explicit risk acceptance
 
@@ -342,7 +374,7 @@ date.
 **Reason.** No image reaches the cluster before its scan.
 
 **Result.** The open findings and the current risk acceptance are in
-[VERSIONS.md](VERSIONS.md#open-findings-and-risk-acceptance).
+[VERSIONS.md](VERSIONS.md#3-open-findings-and-risk-acceptance).
 
 ### Manual reconciliation reset as SQL
 

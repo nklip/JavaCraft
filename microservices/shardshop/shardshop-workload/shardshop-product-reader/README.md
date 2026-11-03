@@ -242,7 +242,7 @@ product saturates, the reader does not send the missed requests later, so the re
 
 ### Tests
 
-`ProductReader.feature` of the [integration tests](../../shardshop-testing/RUNBOOK.md#integration-tests-with-testcontainers)
+`ProductReader.feature` of the [integration tests](../../shardshop-testing/RUNBOOK.md#2-integration-tests-with-testcontainers)
 runs the packaged reader with its default policy and 5-second reports against the packaged product, and seeds
 the catalog with the packaged seeder. It does not connect to the kind lab. It checks:
 

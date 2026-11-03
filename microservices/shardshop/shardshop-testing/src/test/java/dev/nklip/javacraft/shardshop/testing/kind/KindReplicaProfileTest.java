@@ -34,7 +34,7 @@ final class KindReplicaProfileTest {
     @BeforeEach
     void api() throws Exception {
         lab = mock(KindLab.class);
-        when(lab.snapshot()).thenReturn(snapshot);
+        when(lab.workDirectory()).thenReturn(snapshot);
         resources.put("shardshop-product-config", config("shardshop-product-config", "# exact comment\nshardshop.catalog.read-profile=primary\nsecret=never-print-me\n"));
         resources.put("shardshop-routing", config("shardshop-routing", "%prod.shardshop.catalog.read-profile=primary\nshards=a,b\n"));
         resources.put("shardshop-product", (ObjectNode) KindLab.parse("""

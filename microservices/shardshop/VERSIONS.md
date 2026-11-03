@@ -1,5 +1,7 @@
 # ShardShop versions
 
+[ShardShop](README.md) › **Version policy** · [Architecture](ARCHITECTURE.md) · [Runbook](RUNBOOK.md) · [Decisions](DECISIONS.md)
+
 This file gives the current versions of the ShardShop components, their support windows and the rules for an
 update. [versions.lock.yaml](versions.lock.yaml) is the machine record. It has the exact identities: image
 digests, artifact checksums, sources, support dates and review dates. If this file and the lock do not agree, the
@@ -15,7 +17,15 @@ The policy for this local project is community support with regular updates:
 
 The lock has `deployment_ready: false`, because backup/restore and the final capacity acceptance are not qualified.
 
-## Current versions
+## Contents
+1. [Current versions](#1-current-versions)
+2. [Update rules](#2-update-rules)
+3. [Open findings and risk acceptance](#3-open-findings-and-risk-acceptance)
+4. [Component notes](#4-component-notes)
+5. [Review log](#5-review-log)
+
+## 1. Current versions
+<sub>[Back to Contents](#contents)</sub>
 
 The platform is darwin/arm64 for the host and linux/arm64 for the containers. Other CPU architectures need their
 own qualification. "Next review" is the `review_by` date of the lock entry.
@@ -154,9 +164,10 @@ platforms. Terraform verifies these checksums at each `terraform init`.
 | cert-manager | EKS community add-on, the newest version for EKS 1.36 at apply time (v1.21.3-eksbuild.1 on 2026-11-01) | cert-manager 1.21 supports Kubernetes 1.33–1.36 until the release of 1.23 | At each apply |
 | AWS Secrets Store CSI provider | EKS add-on `aws-secrets-store-csi-driver-provider`, the newest version at apply time (v3.1.4-eksbuild.3 on 2026-11-01) | AWS managed | At each apply |
 | Argo CD | v3.5.6 with Redis 8.6.4-alpine, vendored chart `argo-cd` 10.11.6 in `infra/helm/argocd/` | The three newest minor lines are supported. 3.5 supports Kubernetes 1.33–1.36 | 2026-11-25 |
-| Gates image | [`infra/images/gates/Dockerfile`](infra/images/gates/Dockerfile): the JRE base of the application images, kubectl 1.37.2 linux/arm64 with a SHA-256 pin, the JUnit console launcher 6.1.3 and the test classpath. The runbook builds it for each run | kubectl: the skew policy permits one minor version newer than EKS 1.36 | 2026-11-25 |
+| Gates image | [`infra/images/gates/Dockerfile`](infra/images/gates/Dockerfile): the JRE base of the application images, kubectl 1.37.2 linux/arm64 with a SHA-256 pin, Helm 4.3.1 linux/arm64 with a SHA-256 pin of its archive, the JUnit console launcher 6.1.3 and the test classpath. The runbook builds it for each run | kubectl: the skew policy permits one minor version newer than EKS 1.36. Helm: the version of the host tool | 2026-11-25 |
 
-## Update rules
+## 2. Update rules
+<sub>[Back to Contents](#contents)</sub>
 
 ### Approval
 
@@ -232,12 +243,13 @@ The gate examines only the packages that Docker Scout indexes. Refer to
 - The lock default is `review_by: '2026-11-04'`. An entry with its own `review_by` overrides it.
 - A support review examines releases and compatibility. A security review examines images and advisories. The next
   security review is due by 2026-11-30 (`security_review_2026_10_31.next_review_by`).
-- [PLAN.md](PLAN.md#rules-for-a-step) requires the complete due review before a step starts, or a
+- [PLAN.md](PLAN.md#2-rules-for-a-step) requires the complete due review before a step starts, or a
   recorded user decision.
 - A query to a public advisory service uses package names only. Do not send the dependency inventory or the
   versions. An empty advisory response is not evidence that a package has no finding.
 
-## Open findings and risk acceptance
+## 3. Open findings and risk acceptance
+<sub>[Back to Contents](#contents)</sub>
 
 ### Local risk acceptance until 2026-11-30
 
@@ -270,7 +282,8 @@ No newer release exists for these images:
   tools. cosign verified the image signature.
 - Redis 8.6.4-alpine of the Argo CD chart: 2 critical and 14 high in openssl and util-linux.
 - The gates image: 1 critical and 5 high in `golang.org/x/net` 0.57.0 and `golang.org/x/text` 0.40.0 of kubectl
-  1.37.2, the newest 1.37 release. 1 high each in `httpcore5` and `httpcore5-h2` 5.3.6 of Testcontainers on the test
+  1.37.2, the newest 1.37 release. Helm 4.3.1 adds no critical or high finding. 1 high each in `httpcore5` and
+  `httpcore5-h2` 5.3.6 of Testcontainers on the test
   classpath, which the gates do not use in the cluster.
 
 The acceptance applies only to the pinned images on an EKS cluster that the runbook destroys after the run. The lock
@@ -350,7 +363,8 @@ classic queue files.
 - HttpClient 5.6.5, SnakeYAML 2.7, slf4j-jboss-logmanager 2.1.0 and Mockito 5.24.0 have no security reason. They
   wait for the next Quarkus platform.
 
-## Component notes
+## 4. Component notes
+<sub>[Back to Contents](#contents)</sub>
 
 ### Kubernetes, kind and kubectl
 
@@ -431,7 +445,7 @@ privileged. The Testcontainers `K3sContainer` module always sets privileged mode
 `shardshop-testing` needs Node.js from `PATH` during ordinary Maven `test` and `verify`. Its product, order and
 workload-control runners fail for a missing executable, a timeout or a nonzero script exit. The build downloads no
 Node binary, npm dependency or wrapper. Application-only Maven selections do not include these checks. Use the
-[verification-module command](shardshop-testing/RUNBOOK.md#javascript-page-checks).
+[verification-module command](shardshop-testing/RUNBOOK.md#1-javascript-page-checks).
 
 - Use the separate Homebrew keg: `PATH="/opt/homebrew/opt/node@24/bin:$PATH"`.
 - The global Homebrew `node` is 26.13.0. The project qualification uses `node@24` 24.22.2.
@@ -474,7 +488,8 @@ patch changes them, unless a security reason occurs:
 - Prometheus simpleclient 0.16.0 is the last 0.x release. The Quarkus 3.40 Micrometer extension needs it.
 - JNA 5.8.0 (test only), SmallRye Context Propagation 2.3.0 and SnakeYAML 2.6 (test only).
 
-## Review log
+## 5. Review log
+<sub>[Back to Contents](#contents)</sub>
 
 The full text of each review is in the Git tag `shardshop-docs-full-2026-10-31` and in [CHANGELOG.md](CHANGELOG.md).
 
@@ -511,3 +526,4 @@ The full text of each review is in the Git tag `shardshop-docs-full-2026-10-31` 
 | 2026-11-01 | Step 7.5 Argo CD delivery | Argo CD 3.5.6 (chart 10.11.6, image signature verified) selected, self-managed. The EKS managed capability needs IAM Identity Center. |
 | 2026-11-01 | Step 7.3 cloud durability | Barman Cloud Plugin 0.15.1 (chart 0.8.1, chart signature verified, images unsigned), the cert-manager and Secrets Store CSI add-ons selected. External Secrets Operator not selected, because no supported release lists Kubernetes 1.36. |
 | 2026-11-02 | Step 7.6 gates image | kubectl 1.37.2 linux/arm64 and the JUnit console launcher 6.1.3 selected for the gates image. Its findings accepted for EKS runs until 2026-11-30. |
+| 2026-11-02 | Step 7.7 drill Jobs | Helm 4.3.1 linux/arm64 added to the gates image, because the drills run in the cluster. |

@@ -176,3 +176,17 @@ gates:
     limits:
       cpu: "2"
       memory: 1Gi
+# A drill of the AWS deployment runs as a Job with the gates image (render=drill). The tags
+# select the drill, and the properties are its other system properties without -D, for
+# example shardshop.kind.drillShard=shard-b.
+drill:
+  tags: ""
+  properties: []
+  activeDeadlineSeconds: 5400
+  resources:
+    requests:
+      cpu: 250m
+      memory: 768Mi
+    limits:
+      cpu: "2"
+      memory: 1536Mi

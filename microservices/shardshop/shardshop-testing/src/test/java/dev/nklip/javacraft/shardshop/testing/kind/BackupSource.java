@@ -45,6 +45,9 @@ final class BackupSource {
     private static final Set<String> APPLICATIONS = Set.of("shardshop-product", "shardshop-order", "shardshop-order-saga",
             "shardshop-ledger", "shardshop-order-producer", "shardshop-product-reader", "shardshop-product-seeder-control");
     private static final Set<String> DRAINERS = Set.of("shardshop-order-saga", "shardshop-ledger");
+    // On EKS, this holder mounts the Secrets Manager values for the Secret sync. It has no data
+    // and no database or broker connection, thus it stays running during the backup.
+    private static final String RUNTIME_SECRETS = "shardshop-runtime-secrets";
 
     private BackupSource() { }
 
@@ -181,6 +184,7 @@ final class BackupSource {
         Map<String, JsonNode> saved = new LinkedHashMap<>();
         for (JsonNode item : KindLab.items(KindLab.parse(lab.kubectl("get", "deployments", "-o", "json")))) {
             String name = item.path("metadata").path("name").asText();
+            if (name.equals(RUNTIME_SECRETS)) continue;
             require(APPLICATIONS.contains(name), "Unexpected source application deployment");
             require(item.path("spec").path("replicas").isIntegralNumber(), "Missing source deployment replica count");
             saved.put(name, item.deepCopy());

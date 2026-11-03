@@ -329,7 +329,7 @@ reconciliation with a Java controller.
 | `kind-database-drill` | Explicit `kind-drill` | Standby replacement, quorum availability, blocked commits and WAL retention on the first inventory shard, or on `shardshop.kind.drillShard` |
 | `kind-workload-drill` | Explicit `kind-drill` | Repeated temporary seeder Jobs, identical saved IDs and the replacement of one product pod |
 | `kind-saga-drill` | Explicit `kind-drill` | Duplicate delivery, replay after a policy change, two orders for the same stock, saga replacement between workers, and continuous writes while the HTTP pods change, with unchanged saga and CDC ownership |
-| `kind-retry-drill` | Explicit `kind-drill` | A shard outage longer than the broker retries, reconciliation, and pressure from an unbound or full DLQ on both application publishers. See the [retry runbook](../shardshop-testing/RUNBOOK.md#retry-and-dlq-capacity-drills) |
+| `kind-retry-drill` | Explicit `kind-drill` | A shard outage longer than the broker retries, reconciliation, and pressure from an unbound or full DLQ on both application publishers. See the [retry runbook](../shardshop-testing/RUNBOOK.md#4-retry-and-dlq-capacity-drills) |
 
 **Default profile.** `kind-workload` checks these items:
 
@@ -667,7 +667,7 @@ processing time. A measurement on the pinned broker confirmed five delayed
 redeliveries and the move to the parking queue at the sixth rejection: 15.176 seconds for commands and
 15.185 seconds for results, with the client and broker IO. The
 [changelog](../CHANGELOG.md#step-54) records each delay, and the
-[retry runbook](../shardshop-testing/RUNBOOK.md#retry-and-dlq-capacity-drills) gives
+[retry runbook](../shardshop-testing/RUNBOOK.md#4-retry-and-dlq-capacity-drills) gives
 the repeatable check. The application processing during an outage adds time to this
 budget.
 

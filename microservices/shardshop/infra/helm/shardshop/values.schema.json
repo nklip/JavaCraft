@@ -33,7 +33,9 @@
         "generator-identity",
         "migration-topology",
         "migrations",
-        "application-release"
+        "application-release",
+        "drill-identity",
+        "drill"
       ]
     },
     "migrationShard": {
@@ -556,6 +558,30 @@
         "image": {
           "type": "string",
           "pattern": "^$|^[0-9]{12}\\.dkr\\.ecr\\.[a-z0-9-]+\\.amazonaws\\.com/shardshop-gates(:[a-zA-Z0-9_.-]+)?@sha256:[0-9a-f]{64}$"
+        },
+        "activeDeadlineSeconds": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "resources": {
+          "type": "object"
+        }
+      }
+    },
+    "drill": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tags": {
+          "type": "string",
+          "pattern": "^$|^[a-z0-9-]+( [|&] [a-z0-9-]+)*$"
+        },
+        "properties": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^shardshop\\.[A-Za-z.]+=[A-Za-z0-9._-]+$"
+          }
         },
         "activeDeadlineSeconds": {
           "type": "integer",

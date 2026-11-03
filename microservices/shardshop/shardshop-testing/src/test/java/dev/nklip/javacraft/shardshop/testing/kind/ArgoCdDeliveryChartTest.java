@@ -141,6 +141,51 @@ class ArgoCdDeliveryChartTest {
     }
 
     @Test
+    void drillsRunAsSingleAttemptJobsWithAnIdentityThatArgoCdNeverDelivers() throws Exception {
+        for (String mode : List.of("namespace", "infrastructure", "migrations", "routing", "application-release")) {
+            assertTrue(shared("shardshop", mode, "argocd").stream().noneMatch(resource -> resource.path("metadata").path("name")
+                    .asText().equals("shardshop-drills")), "Only the runbook creates the write identity of the drills: " + mode);
+        }
+        List<JsonNode> identity = shared("shardshop", "drill-identity", "argocd");
+        assertEquals(1, ofKind(identity, "ServiceAccount").size());
+        String serviceProxyVerbs = "";
+        String patchedConfigMaps = "";
+        for (JsonNode role : ofKind(identity, "Role")) {
+            for (JsonNode rule : role.path("rules")) {
+                if (rule.path("resources").toString().contains("secrets")) {
+                    assertEquals("[\"shardshop-rabbitmq\",\"catalog-migrator\",\"ordering-migrator\",\"product-app\",\"order-app\","
+                            + "\"ordering-operator\",\"ordering-cdc\",\"ledger-migrator\",\"ledger-app\"]", rule.path("resourceNames").toString(),
+                            "The drills read only the broker credential and the synced runtime Secrets");
+                }
+                if (rule.path("resources").toString().contains("services/proxy")) serviceProxyVerbs = rule.path("verbs").toString();
+                if (rule.path("resources").toString().contains("configmaps") && rule.path("verbs").toString().contains("patch")) {
+                    patchedConfigMaps = rule.path("resourceNames").toString();
+                }
+            }
+        }
+        // The HTTP writer of the saga drill sends POST and PUT requests through the service proxy.
+        assertEquals("[\"get\",\"create\",\"update\"]", serviceProxyVerbs,
+                "The API server authorizes GET, POST and PUT through a proxy as get, create and update");
+        // The replica-read drill changes the product and the routing configuration to replica reads.
+        assertTrue(patchedConfigMaps.contains("\"shardshop-product-config\"") && patchedConfigMaps.contains("\"shardshop-routing\""),
+                "The replica profile patches both configurations: " + patchedConfigMaps);
+
+        JsonNode drill = ofKind(KindSafety.infrastructureManifest(drill("--set-json",
+                "drill.properties=[\"shardshop.kind.drillShard=shard-b\"]").output()), "Job").getFirst();
+        assertEquals("shardshop-drill-", drill.path("metadata").path("generateName").asText(), "Each drill run needs its own Job");
+        assertEquals(0, drill.path("spec").path("backoffLimit").asInt(-1), "A failed drill must not repeat its changes");
+        JsonNode pod = drill.path("spec").path("template").path("spec");
+        assertEquals("shardshop-drills", pod.path("serviceAccountName").asText());
+        JsonNode container = pod.path("containers").path(0);
+        assertEquals(REGISTRY + "/shardshop-gates@" + DIGEST, container.path("image").asText());
+        assertEquals("[\"--include-tag=kind-failover-drill\"]", container.path("args").toString());
+        assertEquals("[{\"name\":\"JDK_JAVA_OPTIONS\",\"value\":\"-Dshardshop.kind.drillShard=shard-b\"}]", container.path("env").toString(),
+                "The gates image passes the drill properties to the JVM");
+        assertNotEquals(0, drill("--set-json", "drill.properties=[\"shardshop.kind.drillShard=shard-b -Dother=1\"]").exit(),
+                "A property cannot add other JVM options");
+    }
+
+    @Test
     void childApplicationsDeliverTheLayersInOrderFromPinnedChartsAndNeverDeleteData() throws Exception {
         List<JsonNode> applications = ofKind(delivery("children"), "Application");
         assertEquals(List.of("cnpg", "barman-cloud", "shardshop-namespace", "shardshop-infrastructure", "shardshop-migrations",
@@ -224,6 +269,15 @@ class ArgoCdDeliveryChartTest {
                 "--values", shared.resolve("eks-values.yaml").toString(), "--values", account.toString(), "--set-string", "render=" + mode);
         assertEquals(0, result.exit(), result.output());
         return KindSafety.infrastructureManifest(result.output());
+    }
+
+    private Render drill(String... arguments) throws Exception {
+        Path account = values("drill.json", Map.of("gates", Map.of("image", REGISTRY + "/shardshop-gates@" + DIGEST)));
+        List<String> command = new ArrayList<>(List.of("--namespace", "shardshop", "--values", SOURCE.resolve("infra/shards.yaml").toString(),
+                "--values", shared.resolve("eks-values.yaml").toString(), "--values", account.toString(),
+                "--set-string", "render=drill", "--set-string", "drill.tags=kind-failover-drill"));
+        command.addAll(List.of(arguments));
+        return helm(shared, "shardshop", null, command.toArray(String[]::new));
     }
 
     private List<JsonNode> delivery(String mode) throws Exception {

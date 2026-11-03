@@ -34,8 +34,7 @@ public final class KindRabbitMq {
             validateStorageAndReadiness(desired.statefulSet().path("spec").path("replicas").asInt(), statefulSet, pod,
                     KindLab.parse(lab.kubectl("get", "pvc", "data-" + POD, "-o", "json")));
             validateDesiredDeployment(desired.statefulSet(), statefulSet, pod);
-            diagnostics("check_running");
-            diagnostics("check_local_alarms");
+            healthy();
             validateTopology(desired.topology(), list("list_feature_flags", false, "name", "state"),
                     list("list_queues", true, "name", "durable", "auto_delete", "arguments", "policy", "effective_policy_definition", "type"),
                     list("list_exchanges", true, "name", "type", "durable", "auto_delete", "internal", "arguments"),
@@ -69,8 +68,35 @@ public final class KindRabbitMq {
 
     private record Desired(JsonNode topology, JsonNode statefulSet) { }
 
-    private void diagnostics(String check) throws IOException, InterruptedException {
-        lab.kubectl(Duration.ofSeconds(20), "exec", POD, "-c", "rabbitmq", "--", "rabbitmq-diagnostics", "-q", "-t", "10", check);
+    /** The pod and container identity of each broker. A restart of any broker changes the result. */
+    Map<String, String> brokers() throws IOException, InterruptedException {
+        Map<String, String> brokers = new HashMap<>();
+        for (JsonNode pod : KindLab.items(KindLab.parse(lab.kubectl("get", "pods", "-l",
+                "app.kubernetes.io/name=shardshop-rabbitmq", "-o", "json")))) {
+            String name = pod.path("metadata").path("name").asText();
+            String uid = pod.path("metadata").path("uid").asText();
+            for (JsonNode container : pod.path("status").path("containerStatuses")) {
+                if (!container.path("name").asText().equals("rabbitmq")) continue;
+                String containerId = container.path("containerID").asText();
+                int restarts = container.path("restartCount").asInt(-1);
+                require(!uid.isBlank() && !containerId.isBlank() && restarts >= 0,
+                        name + " has no current container identity");
+                brokers.put(name, uid + "/" + containerId + "/" + restarts);
+            }
+            require(brokers.containsKey(name), name + " has no RabbitMQ container status");
+        }
+        require(brokers.containsKey(POD), "RabbitMQ broker pods are missing");
+        return Map.copyOf(brokers);
+    }
+
+    /** Each broker runs, and no broker of the cluster has an alarm. */
+    void healthy() throws IOException, InterruptedException {
+        for (String broker : brokers().keySet()) diagnostics(broker, "check_running");
+        diagnostics(POD, "check_alarms");
+    }
+
+    private void diagnostics(String pod, String check) throws IOException, InterruptedException {
+        lab.kubectl(Duration.ofSeconds(20), "exec", pod, "-c", "rabbitmq", "--", "rabbitmq-diagnostics", "-q", "-t", "10", check);
     }
 
     private JsonNode list(String command, boolean vhost, String... fields) throws IOException, InterruptedException {

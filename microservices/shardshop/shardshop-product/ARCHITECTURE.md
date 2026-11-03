@@ -171,7 +171,7 @@ Record these failures separately from stale/missing products and continue reques
 to unaffected shards. This keeps the measured primary and replica workloads
 distinct. See [CNPG Service roles](https://cloudnative-pg.io/docs/1.30/service_management/).
 
-The opt-in [`kind-replica-read-drill`](../shardshop-testing/RUNBOOK.md#strict-replica-read-drill),
+The opt-in [`kind-replica-read-drill`](../shardshop-testing/RUNBOOK.md#7-strict-replica-read-drill),
 also selected by `kind-drill`, checks immediate primary reads after acknowledged
 writes, controlled replica lag (`404` until replay resumes), clean 200/s reader
 traffic, reads/writes with one fenced standby, and per-product-pod `503` responses

@@ -41,7 +41,7 @@ public final class KindDrillGuard implements AutoCloseable {
 
     public synchronized KindDrillGuard acquire() throws IOException, InterruptedException {
         if (attempted || closed) throw new IllegalStateException("Drill guard cannot be reused");
-        Path manifest = Files.createTempFile(lab.snapshot(), "drill-lock-", ".json");
+        Path manifest = KindLab.privateFile(lab.workDirectory(), "drill-lock-", ".json");
         Files.writeString(manifest, """
                 {"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"%s",
                 "namespace":"shardshop","labels":{"shardshop.javacraft/drill-owner":"%s"}},

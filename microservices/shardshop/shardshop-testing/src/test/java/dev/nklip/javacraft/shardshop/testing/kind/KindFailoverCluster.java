@@ -539,7 +539,7 @@ final class KindFailoverCluster {
                 .put("gracePeriodSeconds", 30);
         options.putObject("preconditions").put("uid", uid)
                 .put("resourceVersion", beforeDelete.path("metadata").path("resourceVersion").asText());
-        Path request = Files.createTempFile(lab.snapshot(), "failover-delete-", ".json");
+        Path request = KindLab.privateFile(lab.workDirectory(), "failover-delete-", ".json");
         try {
             Files.writeString(request, options.toString());
             lab.kubectl(Duration.ofSeconds(45), "--request-timeout=35s", "delete", "--raw",

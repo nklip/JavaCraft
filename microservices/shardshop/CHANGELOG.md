@@ -1,11 +1,24 @@
 # ShardShop changelog
 
+[ShardShop](README.md) › **Changelog** · [Implementation plan](PLAN.md) · [Decisions](DECISIONS.md) · [Evidence](shardshop-testing/evidence/)
+
 This changelog has one entry for each step of [PLAN.md](PLAN.md): what changed, the key result and the lesson.
 [DECISIONS.md](DECISIONS.md) records the decisions and their reasons, and
 [`shardshop-testing/evidence/`](shardshop-testing/evidence/) keeps the measurement records.
 The Git tag `shardshop-docs-full-2026-10-31` keeps the full text of this file before this compression.
 
-## Milestone 0: Supported baseline and project skeleton
+## Contents
+1. [Milestone 0: Supported baseline and project skeleton](#1-milestone-0-supported-baseline-and-project-skeleton)
+2. [Milestone 1: Local cluster and one replicated shard](#2-milestone-1-local-cluster-and-one-replicated-shard)
+3. [Milestone 2: Storage, ownership, and migrations](#3-milestone-2-storage-ownership-and-migrations)
+4. [Milestone 3: Product contracts, IDs, and workloads](#4-milestone-3-product-contracts-ids-and-workloads)
+5. [Milestone 4: Complete order-to-ledger saga](#5-milestone-4-complete-order-to-ledger-saga)
+6. [Milestone 5: Recovery, retention, and backpressure](#6-milestone-5-recovery-retention-and-backpressure)
+7. [Milestone 6: Read profiles, failover, restore, and operation](#7-milestone-6-read-profiles-failover-restore-and-operation)
+8. [Milestone 7: AWS deployment](#8-milestone-7-aws-deployment)
+
+## 1. Milestone 0: Supported baseline and project skeleton
+<sub>[Back to Contents](#contents)</sub>
 
 <a id="step-01"></a>
 ### Step 0.1 — Version and artifact inventory
@@ -48,7 +61,8 @@ They pass `-Pintegration,audit clean verify` with 62 unit and startup tests, 10 
 All six packages start as a non-root user on the pinned JRE.
 Three plugin XML prereleases use the version-policy exception.
 
-## Milestone 1: Local cluster and one replicated shard
+## 2. Milestone 1: Local cluster and one replicated shard
+<sub>[Back to Contents](#contents)</sub>
 
 <a id="step-11"></a>
 ### Step 1.1 — Local Kubernetes bootstrap
@@ -75,7 +89,8 @@ An uninstall does not remove the 11 CRDs, and a rerun keeps the CRDs, the operat
 Logical slot synchronization is on, with a 512 MB slot-WAL budget.
 Commits continued with one standby fenced and waited with both standbys fenced.
 
-## Milestone 2: Storage, ownership, and migrations
+## 3. Milestone 2: Storage, ownership, and migrations
+<sub>[Back to Contents](#contents)</sub>
 
 <a id="step-21"></a>
 ### Step 2.1 — Remaining shard clusters
@@ -126,7 +141,8 @@ Ledger V1 creates seven tables that the non-login `ledger_schema_owner` owns.
 `ledger_app` passed 129 assertions, and 99 more after a review changed outbox and quarantine inserts to column grants.
 A failed ledger migration blocks the routing publication.
 
-## Milestone 3: Product contracts, IDs, and workloads
+## 4. Milestone 3: Product contracts, IDs, and workloads
+<sub>[Back to Contents](#contents)</sub>
 
 <a id="step-31"></a>
 ### Step 3.1 — HTTP and message contracts
@@ -313,7 +329,8 @@ The maintained entry points are `cluster-create.sh`, `cluster-destroy.sh`, `up.s
 A disposable lab passed creation, deployment, a source change, stop and resume, and destruction.
 Lesson: cold image pulls kept the DNS probe pods past the 150-second wait. Now `timeout` bounds the DNS command to 120 seconds, and the pod deadline adds 15 minutes for a cold start. The fresh DNS gate then passed in 431.3 seconds.
 
-## Milestone 4: Complete order-to-ledger saga
+## 5. Milestone 4: Complete order-to-ledger saga
+<sub>[Back to Contents](#contents)</sub>
 
 <a id="step-41"></a>
 ### Step 4.1 — Order validation and atomic acceptance
@@ -462,7 +479,8 @@ Each README tells only how to start the lab or the application and which monitor
 The read capacity probe passed 1,000 reads/s (963.16/s) and failed 1,500 and 2,000 reads/s. This is a verified lower bound, not a maximum.
 See the [read capacity evidence](shardshop-testing/evidence/2026-10-23-read-capacity.json).
 
-## Milestone 5: Recovery, retention, and backpressure
+## 6. Milestone 5: Recovery, retention, and backpressure
+<sub>[Back to Contents](#contents)</sub>
 
 <a id="step-51"></a>
 ### Step 5.1 — Durable saga reconciliation
@@ -513,7 +531,8 @@ Order and ledger expose Prometheus metrics through `/q/metrics`, with samples ev
 - Lesson: file times changed the manifest of a cold Flyway build, thus the Dockerfile sets epoch-zero times.
 - Lesson: Agroal reports `Long.MIN_VALUE` as the peak of an empty pool, and the adapter maps it to zero.
 
-## Milestone 6: Read profiles, failover, restore, and operation
+## 7. Milestone 6: Read profiles, failover, restore, and operation
+<sub>[Back to Contents](#contents)</sub>
 
 <a id="step-60"></a>
 ### Step 6.0 — Application maintenance and retained-upgrade evidence
@@ -640,7 +659,8 @@ The generator registry kept one UID, with high-water marks 0, 5, 26 and 31.
 Then `cluster-create.sh` and `up.sh` gave the updates to the retained lab.
 See the [acceptance run evidence](shardshop-testing/evidence/2026-10-31-acceptance-run.json).
 
-## Milestone 7: AWS deployment
+## 8. Milestone 7: AWS deployment
+<sub>[Back to Contents](#contents)</sub>
 
 <a id="step-71"></a>
 ### Step 7.1 — Terraform AWS foundation
@@ -704,3 +724,14 @@ The gates, the delivery checks, the application drill and the delivery drill pas
 The run found three gaps: the bootstrap of the generator registry, node rules for the metrics proxy, and the broker Secret of the observability check.
 The run lasted 1 h 55 min and cost approximately US$1.30 (limit US$4.00).
 Lesson: Argo CD does not wait for the health of the last wave.
+
+<a id="step-77"></a>
+### Step 7.7 — Cloud acceptance
+
+**Done 2026-11-03.**
+The drills and the lifecycle checks run as Jobs in the cluster from the gates image, with a temporary drill identity. This computer runs only the backup, restore, recovery and allocator checks.
+The first EKS run on 2026-11-02 failed only the failover drill, on slow API connections through the internet. It cost approximately US$4.50.
+The second EKS run passed all eleven scenarios at the first attempt. It lasted 2 h 10 min and cost approximately US$1.40 (limit US$3.00).
+The unchanged local Helmfile workflow passed step 6.9 again, also with each drill as a Job.
+The runs found four drill gaps and two gaps in the drill role.
+Lesson: run the drills near the API server.

@@ -142,7 +142,7 @@ kubectl --context kind-shardshop -n shardshop exec shardshop-rabbitmq-0 -c rabbi
 Compare ready counts/bytes with `max-length` / `max-length-bytes`; unacknowledged
 deliveries are separate. Quorum queues can also retain internal dead-letter work
 while a DLQ is unavailable. Ordinary ready/unacknowledged counters alone do not
-prove this backlog is empty: use the [capacity drill observations](../shardshop-testing/RUNBOOK.md#retry-and-dlq-capacity-drills)
+prove this backlog is empty: use the [capacity drill observations](../shardshop-testing/RUNBOOK.md#4-retry-and-dlq-capacity-drills)
 and broker alarms. Limits allow bounded in-flight overshoot and exclude overhead.
 
 CloudNativePG exposes native metrics on every database pod at port 9187, path

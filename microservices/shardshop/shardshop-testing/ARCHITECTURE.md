@@ -11,7 +11,19 @@ builds.
   kind suites that observe the deployed lab. The
   [infrastructure design](../infra/ARCHITECTURE.md#verification-gates-and-drills)
   describes the kind profiles and drills.
-## Acceptance scenarios
+## Contents
+1. [Acceptance scenarios](#1-acceptance-scenarios)
+2. [Acceptance commands and evidence](#2-acceptance-commands-and-evidence)
+3. [AWS deployment acceptance](#3-aws-deployment-acceptance)
+4. [Coordinated backup and isolated restore](#4-coordinated-backup-and-isolated-restore)
+5. [Older-backup audit and selected repair](#5-older-backup-audit-and-selected-repair)
+6. [Synchronous failover drill](#6-synchronous-failover-drill)
+7. [Strict replica-read drill](#7-strict-replica-read-drill)
+8. [Test levels](#8-test-levels)
+9. [Capacity measurement](#9-capacity-measurement)
+
+## 1. Acceptance scenarios
+<sub>[Back to Contents](#contents)</sub>
 
 These are the eleven acceptance requirements, with stable scenario IDs. The [consistency and failure boundaries](../database/ARCHITECTURE.md#consistency-and-failure-boundaries)
 explain the durability assumptions behind these scenarios.
@@ -24,13 +36,13 @@ explain the durability assumptions behind these scenarios.
 | [4](#scenario-4) | Confirmed order effects | Integration features and the `kind-saga` gate |
 | [5](#scenario-5) | Ledger rejection, compensation and replay | Integration features and the saga drill |
 | [6](#scenario-6) | Crash recovery and CDC | Integration features for relay and crash recovery, the observability gate, the saga drill and the synchronous failover drill |
-| [7](#scenario-7) | Broker retries, dead letters and reconciliation | Integration features for broker policies, reconciliation, manual reset and transport cleanup. The retry drill covers shard outage and DLQ pressure (see the [drill runbook](RUNBOOK.md#retry-and-dlq-capacity-drills)) |
+| [7](#scenario-7) | Broker retries, dead letters and reconciliation | Integration features for broker policies, reconciliation, manual reset and transport cleanup. The retry drill covers shard outage and DLQ pressure (see the [drill runbook](RUNBOOK.md#4-retry-and-dlq-capacity-drills)) |
 | [8](#scenario-8) | Standby loss, promotion, restore and audit | Database, replica-read and failover drills, coordinated backup and isolated restore, and older-backup audit and repair. The optional asynchronous-loss drill is not covered |
 | [9](#scenario-9) | HTTP validation and transaction boundaries | Integration features and unit tests |
 | [10](#scenario-10) | ID generation and service-issued identity | Unit tests, integration features, the allocator gates and the backup and restore drills |
 | [11](#scenario-11) | Concurrent stock reservation | Integration feature and the saga drill |
 
-The [commands and evidence](#acceptance-commands-and-evidence) section gives the
+The [commands and evidence](#2-acceptance-commands-and-evidence) section gives the
 tests of each scenario.
 
 Acceptance scenarios:
@@ -100,7 +112,7 @@ Acceptance scenarios:
    continuous HTTP traffic and checks unchanged saga ownership. Cached application
    metrics and native broker/database observations expose backlog, quarantine,
    checkpoint, queue and pool pressure; stale sampling is visible separately from
-   a healthy zero. [Commands and limits](RUNBOOK.md#crash-recovery-and-observability).
+   a healthy zero. [Commands and limits](RUNBOOK.md#12-crash-recovery-and-observability).
 7. <a id="scenario-7"></a>Measure same-queue rejection counts and redelivery timestamps on the pinned
    broker, assert its effective delayed-retry/delivery-limit behavior, and record
    total time to DLQ parking. Hold a shard unavailable beyond that window, for
@@ -175,15 +187,16 @@ Acceptance scenarios:
     every supported reserve/release run, each product's `stock` equals its
     `initial_stock` minus its active reserved quantities.
 
-## Acceptance commands and evidence
+## 2. Acceptance commands and evidence
+<sub>[Back to Contents](#contents)</sub>
 
 Two commands run every scenario. The [CHANGELOG](../CHANGELOG.md#step-69) gives the
 results of the last complete run.
 
-- **Integration suite:** the [Testcontainers suite](RUNBOOK.md#integration-tests-with-testcontainers)
+- **Integration suite:** the [Testcontainers suite](RUNBOOK.md#2-integration-tests-with-testcontainers)
   runs the unit and provider tests of all modules, the packaged startup tests and
   the Cucumber features in the table.
-- **Lab run:** the [acceptance run on a disposable lab](RUNBOOK.md#acceptance-run-on-a-disposable-lab)
+- **Lab run:** the [acceptance run on a disposable lab](RUNBOOK.md#13-acceptance-run-on-a-disposable-lab)
   runs the lifecycle scripts and the kind tags in the table.
 
 | Scenario | Integration suite | Lab run |
@@ -200,11 +213,52 @@ results of the last complete run.
 | [10](#scenario-10) | `shardshop-core/idgen` unit tests (lost CAS, exhaustion, `TimeSource`), `IdParserTest`, `JsonFieldsTest`, `CatalogInputTest` and `OrderInputTest`; `GeneratorAllocation` on k3s; `ProductApi` and `OrderProducer` features | `kind-admission-bootstrap` in `cluster-create.sh`, `kind-allocator`, the rollouts of both `up.sh` runs, `kind-workload-drill`, `kind-backup`, `kind-restore` and `kind-backup-allocator`. One registry UID stays the same in all steps |
 | [11](#scenario-11) | `StockReservation` feature | `kind-saga-drill`: two orders for the same stock never oversell |
 
-## Coordinated backup and isolated restore
+## 3. AWS deployment acceptance
+<sub>[Back to Contents](#contents)</sub>
+
+The [AWS runbook](../infra/terraform/README.md#run-the-drills) runs the same
+scenarios on EKS. Argo CD hook Jobs run the gates of each sync. Drill Jobs in the
+cluster run the drills and the lifecycle checks, because a slow internet connection
+can stop a drill ([decision](../DECISIONS.md#drills-as-jobs-in-the-cluster)). This
+computer runs the backup, restore, recovery and allocator checks with the context
+`kind-shardshop-test-eks`, because they need the local Docker and private files. The
+[CHANGELOG](../CHANGELOG.md#step-77) gives the results of the last run.
+
+| Scenario | Checks on EKS |
+|---:|---|
+| [1](#scenario-1) | `eks-release` and `kind-deployment` in the PostSync gate. `kind-workload-drill` |
+| [2](#scenario-2) | `kind-migration-reservation`, `kind-migrations-idle` and `kind-publications` in the PreSync gates. `kind-topology` |
+| [3](#scenario-3) | `kind-deployment`. `kind-replica-read-drill` on `shard-b` |
+| [4](#scenario-4) | `kind-saga` in the PostSync gate. `kind-saga-drill` |
+| [5](#scenario-5) | `kind-saga-drill` |
+| [6](#scenario-6) | `kind-saga-drill`, `kind-observability` in the PostSync gate and `kind-failover-drill` on `shard-b` |
+| [7](#scenario-7) | `kind-retry-drill` with three brokers. It checks each broker for restarts and the cluster for alarms |
+| [8](#scenario-8) | `kind-database-drill`, `kind-replica-read-drill` and `kind-failover-drill` on `shard-b`. `eks-backup` and `eks-pitr-drill` for the S3 backups. `kind-backup`, `kind-restore`, `kind-recovery-schema` and `kind-recovery-drill` with a logical bundle from EKS |
+| [9](#scenario-9) | None. The integration suite and the unit tests check the HTTP validation of the same code without a cluster |
+| [10](#scenario-10) | `kind-admission-bootstrap` before the registry creation, `kind-allocator` in the PreSync gate, the rollouts of each sync, `kind-workload-drill`, `kind-backup`, `kind-restore` and `kind-backup-allocator`. One registry UID stays the same in all steps |
+| [11](#scenario-11) | `kind-saga-drill` |
+
+The S3 backups are the restore path of the AWS deployment. The logical bundle
+checks the audit and recovery tools with the data of EKS, and its isolated restore
+runs in Docker on this computer. The integration suite needs no cluster, thus it
+runs only on this computer.
+
+These checks of the local deployment do not run on EKS:
+
+| Check | Reason | On EKS |
+|---|---|---|
+| `kind-config` and `kind-nodes` | They compare the kind node containers with `infra/kind.yaml`. | Terraform creates the nodes, and the [foundation check](../infra/terraform/README.md#check-the-foundation) reads them. |
+| `kind-dns` | It starts probe pods on the named kind nodes before the first release. | The gates and the applications on all nodes use the CoreDNS add-on. A DNS failure stops a gate. |
+| `kind-retention` | It compares the infrastructure with the Helm release of `cluster-create.sh`. | Argo CD applies the infrastructure without a Helm release, and `eks-delivery` checks each layer. |
+| `kind-release` | It reads the image store of the kind nodes. | `eks-release` |
+| Stop and resume | The AWS deployment has no stop and resume. Each run creates and destroys it. | — |
+
+## 4. Coordinated backup and isolated restore
+<sub>[Back to Contents](#contents)</sub>
 
 The opt-in `kind-backup` and `kind-restore` tags implement the coordinated baseline.
 Neither belongs to `kind-drill` or the default suite. The
-[runbook](RUNBOOK.md#coordinated-backup-and-isolated-restore) defines the explicit
+[runbook](RUNBOOK.md#8-coordinated-backup-and-isolated-restore) defines the explicit
 source, the external artifact, the independent allocator history and the fresh
 target parameters.
 
@@ -236,7 +290,8 @@ is removed after verification. Artifacts contain full seed data and broker
 credential hashes, thus they need private permissions and must stay out of commits.
 Point-in-time recovery and production cutover are outside this baseline.
 
-## Older-backup audit and selected repair
+## 5. Older-backup audit and selected repair
+<sub>[Back to Contents](#contents)</sub>
 
 Four operator and drill tags export original records, audit, repair one selected order,
 and run the causal older-dump drill. A fifth focused tag, `kind-recovery-schema`,
@@ -264,13 +319,14 @@ dumps before target removal. Bundles carry `purpose: recovery-review-only` and
 `trafficAuthorized: false`; they authorize no production cutover. The optional
 physical asynchronous-loss drill is outside qualification, and the default
 synchronous profile is unchanged. See the
-[operational workflow](RUNBOOK.md#older-backup-audit-and-selected-repair).
+[operational workflow](RUNBOOK.md#9-older-backup-audit-and-selected-repair).
 
-## Synchronous failover drill
+## 6. Synchronous failover drill
+<sub>[Back to Contents](#contents)</sub>
 
 The opt-in `kind-failover-drill`, also selected by `kind-drill`, implements the
 promotion portions of scenarios 6 and 8. The
-[runbook](RUNBOOK.md#synchronous-failover-drill) describes invocation and recovery.
+[runbook](RUNBOOK.md#10-synchronous-failover-drill) describes invocation and recovery.
 
 The shared guard saves, pauses and drains producer, reader and interactive-seeder
 controls. Real HTTP orders establish a confirmed anchor and original pending
@@ -340,11 +396,12 @@ lineage, streaming roles and the final deployment/invariant gates. No data volum
 are deleted; ordinary HTTP fixture business history remains. Recovery failure
 retains the shared lock.
 
-## Strict replica-read drill
+## 7. Strict replica-read drill
+<sub>[Back to Contents](#contents)</sub>
 
 The opt-in `kind-replica-read-drill` scenario, also selected by `kind-drill`,
 covers the deployed read portions of scenarios 3 and 8. The runbook documents
-[invocation and recovery](RUNBOOK.md#strict-replica-read-drill). The failover drill
+[invocation and recovery](RUNBOOK.md#7-strict-replica-read-drill). The failover drill
 above covers promotion.
 
 The shared guard registers exact restoration of product/routing ConfigMap data
@@ -364,7 +421,8 @@ configuration on the Deployment and every ready product pod, removes invocation-
 fixtures, restores workload controls and runs the primary deployment gate before
 unlocking. Failed restoration retains the shared lock.
 
-## Test levels
+## 8. Test levels
+<sub>[Back to Contents](#contents)</sub>
 
 | Level | Use it for |
 |---|---|
@@ -375,14 +433,15 @@ unlocking. Failed restoration retains the shared lock.
 The [verification runbook](RUNBOOK.md) and the [build runbook](../RUNBOOK.md#dependency-and-test-validation)
 contain the module-scoped build and drill commands.
 
-## Capacity measurement
+## 9. Capacity measurement
+<sub>[Back to Contents](#contents)</sub>
 
 Report capacity as a qualified observation of a specific deployment. A configured
 rate cap, an allocation-only HTTP burst and an accepted order are different
 quantities. The root [performance summary](../ARCHITECTURE.md#4-performance)
 contains current operating points; dated measurements belong in
 [CHANGELOG](../CHANGELOG.md#step-415), and executable commands belong in the
-[capacity runbook](RUNBOOK.md#capacity-measurement).
+[capacity runbook](RUNBOOK.md#14-capacity-measurement).
 
 ### Full-order writes
 

@@ -546,7 +546,7 @@ the re-check described in the validation sequence above.
 <a id="operator-audit"></a>
 ### Operator audit
 
-The [recovery runbook](../shardshop-testing/RUNBOOK.md#older-backup-audit-and-selected-repair)
+The [recovery runbook](../shardshop-testing/RUNBOOK.md#9-older-backup-audit-and-selected-repair)
 defines the explicit immutable inputs, the frozen owned targets and the private
 review-only outputs. The audit tooling makes no source connection or write and
 authorizes no production traffic.

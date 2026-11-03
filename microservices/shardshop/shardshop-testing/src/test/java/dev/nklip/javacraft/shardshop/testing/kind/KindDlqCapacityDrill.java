@@ -39,6 +39,7 @@ public final class KindDlqCapacityDrill {
     private final KindLab lab;
     private final KindSaga saga;
     private final KindDeployment deployment;
+    private final KindRabbitMq rabbitMq;
     private final String run = "kind-dlq-" + UUID.randomUUID();
     private final String marker = "shardshop-dlq-drill:" + run;
 
@@ -47,6 +48,7 @@ public final class KindDlqCapacityDrill {
         this.lab = lab;
         this.saga = new KindSaga(lab);
         this.deployment = new KindDeployment(lab);
+        this.rabbitMq = new KindRabbitMq(lab);
     }
 
     /** Run the selected unbound/full parking scenario against both application publisher paths. */
@@ -70,9 +72,9 @@ public final class KindDlqCapacityDrill {
 
     private void run(KindDrillGuard guard, String mode, Target target) throws Exception {
         saga.deployed();
-        new KindRabbitMq(lab).verify();
+        rabbitMq.verify();
         pauseProducer(guard);
-        BrokerInstance broker = brokerInstance();
+        Map<String, String> broker = rabbitMq.brokers();
         checkBroker(broker);
         require(depth(target.source()) == 0 && depth(target.dlq()) == 0,
                 "Selected source and DLQ must be empty; inspect parked messages before the drill");
@@ -157,9 +159,9 @@ public final class KindDlqCapacityDrill {
                     "Source retained-dead-letter pressure disappeared before the outbox observation");
             checkBroker(broker);
             System.out.printf("DLQ pressure mode=%s source=%s orderId=%s outboxId=%s sourceDepth=%d dlqDepth=%d "
-                            + "sourceAccepted=%d sourceNacks=%d parkingAccepted=%d parkingNacks=%d brokerUid=%s%n",
+                            + "sourceAccepted=%d sourceNacks=%d parkingAccepted=%d parkingNacks=%d brokerUids=%s%n",
                     mode, target.source(), order.id(), pending.messageId(), depth(target.source()), depth(target.dlq()),
-                    sourceFill.accepted(), sourceFill.nacks(), parkingAccepted, parkingNacks, broker.uid());
+                    sourceFill.accepted(), sourceFill.nacks(), parkingAccepted, parkingNacks, uids(broker));
 
             // Restore only the blocked DLQ condition; keep the low source limit while observing application progress.
             long recoveryStarted = System.nanoTime();
@@ -180,9 +182,9 @@ public final class KindDlqCapacityDrill {
             });
             checkBroker(broker);
             System.out.printf("DLQ recovered mode=%s source=%s orderId=%s outboxId=%s recoveryMs=%d sourceDepth=%d dlqDepth=%d "
-                            + "brokerUid=%s%n", mode, target.source(), order.id(), pending.messageId(),
+                            + "brokerUids=%s%n", mode, target.source(), order.id(), pending.messageId(),
                     TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - recoveryStarted),
-                    depth(target.source()), depth(target.dlq()), broker.uid());
+                    depth(target.source()), depth(target.dlq()), uids(broker));
         }
     }
 
@@ -199,7 +201,6 @@ public final class KindDlqCapacityDrill {
     private record Fill(int accepted, int nacks) { }
     private record Order(String id, String home) { }
     private record Outbox(boolean exists, boolean published, String messageId) { }
-    private record BrokerInstance(String uid, String containerId, int restartCount) { }
 
     private Fill fill(Channel channel, String exchange, String routingKey, String destination) throws Exception {
         int accepted = 0;
@@ -482,25 +483,13 @@ public final class KindDlqCapacityDrill {
         lab.kubectl(Duration.ofSeconds(25), args);
     }
 
-    private BrokerInstance brokerInstance() throws IOException, InterruptedException {
-        JsonNode pod = deployment.resource("pod", BROKER);
-        String uid = pod.path("metadata").path("uid").asText();
-        String containerId = "";
-        int restarts = -1;
-        for (JsonNode status : pod.path("status").path("containerStatuses"))
-            if (status.path("name").asText().equals("rabbitmq")) {
-                containerId = status.path("containerID").asText();
-                restarts = status.path("restartCount").asInt(-1);
-            }
-        require(!uid.isBlank() && !containerId.isBlank() && restarts >= 0,
-                "RabbitMQ pod has no current container identity");
-        return new BrokerInstance(uid, containerId, restarts);
+    private static List<String> uids(Map<String, String> brokers) {
+        return brokers.values().stream().map(identity -> identity.substring(0, identity.indexOf('/'))).sorted().toList();
     }
 
-    private void checkBroker(BrokerInstance expected) throws IOException, InterruptedException {
-        require(brokerInstance().equals(expected), "Broker pod or container restarted during DLQ pressure drill");
-        lab.kubectl(Duration.ofSeconds(20), "exec", BROKER, "-c", "rabbitmq", "--", "rabbitmq-diagnostics", "-q", "-t", "10", "check_running");
-        lab.kubectl(Duration.ofSeconds(20), "exec", BROKER, "-c", "rabbitmq", "--", "rabbitmq-diagnostics", "-q", "-t", "10", "check_local_alarms");
+    private void checkBroker(Map<String, String> expected) throws IOException, InterruptedException {
+        require(rabbitMq.brokers().equals(expected), "A broker pod or container restarted during DLQ pressure drill");
+        rabbitMq.healthy();
     }
 
     private Connection connect(Tunnel tunnel) throws Exception {

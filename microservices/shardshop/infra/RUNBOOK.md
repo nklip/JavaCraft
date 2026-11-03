@@ -338,7 +338,7 @@ These scenarios publish persistent mandatory messages and require publisher conf
 They verify that `basic.nack(requeue=true)` keeps the failure budget, that
 `basic.reject(requeue=true)` uses it, and that a rejected malformed message goes to the
 parking queue immediately. The test containers and their volumes are removed at the
-end. The [retry and DLQ capacity drills](../shardshop-testing/RUNBOOK.md#retry-and-dlq-capacity-drills)
+end. The [retry and DLQ capacity drills](../shardshop-testing/RUNBOOK.md#4-retry-and-dlq-capacity-drills)
 test the recovery after a shard outage and the real outbox backpressure under an
 unbound or full DLQ. The shared drill guard restores the temporary settings.
 
@@ -545,9 +545,9 @@ a recovery step when the data must survive.
 
 **Lost storage.** The lifecycle commands make no backups.
 
-- Use the [verification workflow](../shardshop-testing/RUNBOOK.md#coordinated-backup-and-isolated-restore)
+- Use the [verification workflow](../shardshop-testing/RUNBOOK.md#8-coordinated-backup-and-isolated-restore)
   for a coordinated backup, an isolated restore and an
-  [audit of older backups](../shardshop-testing/RUNBOOK.md#older-backup-audit-and-selected-repair).
+  [audit of older backups](../shardshop-testing/RUNBOOK.md#9-older-backup-audit-and-selected-repair).
 - If storage is lost, keep the remaining volumes and the independent recovery
   artifacts before you try a restore.
 - The [backup policy](../database/ARCHITECTURE.md#replication-and-backup-policy)

@@ -85,5 +85,5 @@ macOS or **Ctrl+Shift+R** on Windows/Linux.
 The mandatory `ProductBrowserScriptTest` in `shardshop-testing` runs
 `src/test/js/products.test.cjs` during Maven `test`. It requires Node.js on `PATH`
 and no browser, Docker or running lab. Run the
-[verification-module unit tests or focused page checks](../shardshop-testing/RUNBOOK.md#javascript-page-checks)
+[verification-module unit tests or focused page checks](../shardshop-testing/RUNBOOK.md#1-javascript-page-checks)
 when changing the product page; a product-only Maven build does not run this harness.

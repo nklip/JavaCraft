@@ -218,6 +218,10 @@ public final class RabbitMqStepDefinitions {
         String queue = "ledger.record-order";
         byte[] filler = payload("capacity");
         byte[] retained = payload("retained-dead-letter");
+        // RabbitMQ 4.3.7 defaults dead_letter_worker_publisher_confirm_timeout to 180000 ms.
+        // https://github.com/rabbitmq/rabbitmq-server/blob/v4.3.7/deps/rabbit/Makefile
+        assertEquals("{ok,180000}", broker.setting("dead_letter_worker_publisher_confirm_timeout"),
+                "The chart must keep the default dead-letter publisher confirm timeout");
         try (Connection connection = broker.connect("admin"); Channel channel = connection.createChannel()) {
             int sourceMessages = fillToRejection(channel, "ledger.commands", queue, filler);
             channel.queuePurge(queue);
@@ -226,6 +230,7 @@ public final class RabbitMqStepDefinitions {
                     + ", parking=" + parkingMessages);
             assertTrue(publish(channel, "ledger.commands", queue, retained));
             GetResponse delivery = delivery(channel, queue, DELIVERY);
+            long rejected = System.nanoTime();
             channel.basicReject(delivery.getEnvelope().getDeliveryTag(), false);
             RabbitMqBroker.await("the source retains the unconfirmed dead letter", Duration.ofSeconds(15),
                     () -> broker.queue(queue).path("messages").asInt() == 1
@@ -236,10 +241,16 @@ public final class RabbitMqStepDefinitions {
                 assertArrayEquals(filler, parked.getBody());
                 channel.basicAck(parked.getEnvelope().getDeliveryTag(), false);
             }
-            // RabbitMQ 4.3.7 defaults dead_letter_worker_publisher_confirm_timeout to 180000 ms.
-            // https://github.com/rabbitmq/rabbitmq-server/blob/v4.3.7/deps/rabbit/Makefile
-            System.out.println("RabbitMQ waiting for the default 180-second dead-letter retry after capacity returns");
-            GetResponse recovered = delivery(channel, queue + ".dlq", Duration.ofSeconds(210));
+            // The dead-letter worker starts its timer at the reject and checks once in each timeout period.
+            // A check retries only if os:system_time shows a full period since the publish. A wall clock that
+            // runs behind the timer clock thus moves the retry to the second check, 360 s after the reject.
+            // https://github.com/rabbitmq/rabbitmq-server/blob/v4.3.7/deps/rabbit/src/rabbit_fifo_dlx_worker.erl
+            System.out.println("RabbitMQ waiting for the first or second 180-second dead-letter retry check");
+            GetResponse recovered = delivery(channel, queue + ".dlq",
+                    Duration.ofSeconds(390).minusNanos(System.nanoTime() - rejected));
+            long retriedAfter = Duration.ofNanos(System.nanoTime() - rejected).toMillis();
+            System.out.println("RabbitMQ dead-letter retry elapsed after the reject (ms)=" + retriedAfter);
+            assertTrue(retriedAfter >= 175_000, "The dead letter returned before the confirm timeout: " + retriedAfter);
             assertArrayEquals(retained, recovered.getBody());
             assertDeath(recovered, queue, "rejected");
             channel.basicAck(recovered.getEnvelope().getDeliveryTag(), false);

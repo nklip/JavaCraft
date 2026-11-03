@@ -1,26 +1,36 @@
 # ShardShop implementation plan
 
+[ShardShop](README.md) › **Implementation plan** · [Changelog](CHANGELOG.md) · [Decisions](DECISIONS.md) · [Architecture](ARCHITECTURE.md)
+
 This plan lists the implementation steps of ShardShop and their status. The
 [CHANGELOG](CHANGELOG.md) has the result of each done step, and
 [DECISIONS.md](DECISIONS.md) has the reasons for the main choices. The full plan
 before the documentation compression, with the acceptance condition of each done
 step, is in the Git tag `shardshop-docs-full-2026-10-31`.
 
-## Status
+## Contents
+1. [Status](#1-status)
+2. [Rules for a step](#2-rules-for-a-step)
+3. [Milestones 0–6](#3-milestones-06)
+4. [Milestone 7: AWS deployment](#4-milestone-7-aws-deployment)
+
+## 1. Status
+<sub>[Back to Contents](#contents)</sub>
 
 - **Milestones 0–6 are done.** Step 6.9 passed the complete acceptance run on
   2026-10-31 ([record](CHANGELOG.md#step-69)).
 - **Step 6.8 ended as research.** HTTP/2 gave no performance gain, thus ShardShop
   keeps HTTP/1.1 ([decision](DECISIONS.md#keep-http11)).
-- **Milestone 7 (AWS deployment):** steps 7.1 to 7.6 are **Done**
+- **Milestone 7 (AWS deployment):** steps 7.1 to 7.7 are **Done**
   ([7.1](CHANGELOG.md#step-71), [7.2](CHANGELOG.md#step-72),
   [7.3](CHANGELOG.md#step-73), [7.4](CHANGELOG.md#step-74),
-  [7.5](CHANGELOG.md#step-75), [7.6](CHANGELOG.md#step-76)). The other steps are
-  **Planned**.
+  [7.5](CHANGELOG.md#step-75), [7.6](CHANGELOG.md#step-76),
+  [7.7](CHANGELOG.md#step-77)). The other steps are **Planned**.
 - **Version deadlines:** the local risk acceptance ends and the CNPG upgrade is
-  due on 2026-11-30 ([open findings](VERSIONS.md#open-findings-and-risk-acceptance)).
+  due on 2026-11-30 ([open findings](VERSIONS.md#3-open-findings-and-risk-acceptance)).
 
-## Rules for a step
+## 2. Rules for a step
+<sub>[Back to Contents](#contents)</sub>
 
 1. Before a step, read `AGENTS.md`, this plan, the root and module documents,
    [VERSIONS.md](VERSIONS.md) and [DECISIONS.md](DECISIONS.md).
@@ -63,7 +73,7 @@ step, is in the Git tag `shardshop-docs-full-2026-10-31`.
    lock.
 10. Keep each installed component inside its support window. Complete a due
     review before a step. The user approves each update
-    ([update rules](VERSIONS.md#update-rules)).
+    ([update rules](VERSIONS.md#2-update-rules)).
 11. Give each behavior to the tool that owns it. A script is the last choice
     ([decision](DECISIONS.md#tool-ownership)). Do not add lifecycle entry points,
     Python wrappers, custom JSON or YAML parsing in Bash, or reusable assertions
@@ -71,7 +81,8 @@ step, is in the Git tag `shardshop-docs-full-2026-10-31`.
 12. Milestones 0–6 run only on this machine: on the kind lab or in local
     containers. A local step never depends on milestone 7 or on a cloud service.
 
-## Milestones 0–6
+## 3. Milestones 0–6
+<sub>[Back to Contents](#contents)</sub>
 
 Each step name links to its CHANGELOG entry. Step 0.5 ran after step 2.4.
 
@@ -174,7 +185,8 @@ Each step name links to its CHANGELOG entry. Step 0.5 ran after step 2.4.
 | [6.8 HTTP/2 transport](CHANGELOG.md#step-68) | 6.4, 6.6, 6.7 | Research Done → Downgrade in performance → Decision to keep HTTP/1.1 |
 | [6.9 Complete demo and acceptance run](CHANGELOG.md#step-69) | 6.4, 6.8 | Done |
 
-## Milestone 7: AWS deployment
+## 4. Milestone 7: AWS deployment
+<sub>[Back to Contents](#contents)</sub>
 
 This milestone adds the AWS deployment without a change to the local deployment:
 every earlier step must still run and pass on kind. Qualify each new tool,
@@ -271,7 +283,7 @@ Depends on 7.5. Status: **Done** ([record](CHANGELOG.md#step-76)).
 
 ### 7.7 Cloud acceptance
 
-Depends on 7.6. Status: **Planned**.
+Depends on 7.6. Status: **Done** ([record](CHANGELOG.md#step-77)).
 
 - All eleven scenarios pass on EKS with evidence and costs. A check that cannot
   run on EKS has a documented reason.

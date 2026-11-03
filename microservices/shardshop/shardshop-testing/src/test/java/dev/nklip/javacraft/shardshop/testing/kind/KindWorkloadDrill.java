@@ -74,7 +74,7 @@ public final class KindWorkloadDrill {
     private String seed(KindDrillGuard guard, Map<String, String> images) throws IOException, InterruptedException {
         String run = "drill-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         String jobName = "shardshop-product-seeder-" + run;
-        Path rendered = lab.snapshot().resolve(run + "-seeding.yaml");
+        Path rendered = KindLab.privateFile(lab.workDirectory(), run + "-seeding-", ".yaml");
         guard.onClose("remove temporary workload render " + run, () -> {
             Files.deleteIfExists(rendered);
             return !Files.exists(rendered);

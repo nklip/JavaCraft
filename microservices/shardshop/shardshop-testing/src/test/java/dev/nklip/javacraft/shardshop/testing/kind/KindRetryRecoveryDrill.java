@@ -30,6 +30,7 @@ public final class KindRetryRecoveryDrill {
     private final KindSaga saga;
     private final KindTopology topology;
     private final KindDeployment deployment;
+    private final KindRabbitMq rabbitMq;
 
     public KindRetryRecoveryDrill() { this(new KindLab()); }
 
@@ -38,6 +39,7 @@ public final class KindRetryRecoveryDrill {
         saga = new KindSaga(lab);
         topology = new KindTopology(lab);
         deployment = new KindDeployment(lab);
+        rabbitMq = new KindRabbitMq(lab);
     }
 
     public void verify() throws IOException, InterruptedException {
@@ -45,11 +47,11 @@ public final class KindRetryRecoveryDrill {
             guard.run(() -> {
                 saga.deployed();
                 saga.normalPolicy();
-                new KindRabbitMq(lab).verify();
+                rabbitMq.verify();
                 topology.publishedTopology();
                 topology.observe();
                 PodState source = podState(saga.pod("order-saga"), "order");
-                PodState broker = brokerState();
+                Map<String, String> brokers = rabbitMq.brokers();
 
                 DeploymentState ledger = deploymentState(LEDGER);
                 require(ledger.replicas() == 1, "Retry drill requires one ledger replica");
@@ -68,6 +70,12 @@ public final class KindRetryRecoveryDrill {
 
                 Buyer buyer = buyer();
                 JsonNode product = product();
+                String home = buyer.shard();
+                // The first automatic reconciliation starts 60 seconds after the order. A full
+                // observation can take longer through a remote API, thus observe before the order.
+                KindTopology.Shard shard = topology.observe().get(home);
+                require(shard != null && shard.standbys().size() == 2,
+                        "Buyer shard must have a healthy three-instance quorum");
                 long parkedBefore = queueDepth(RESULT_DLQ);
                 require(parkedBefore == 0, "Existing parked results require inspection before the scoped retry drill");
                 String run = "kind-retry-recovery-" + UUID.randomUUID();
@@ -81,7 +89,6 @@ public final class KindRetryRecoveryDrill {
 
                 try (KindSaga.Tunnel http = new KindSaga.Tunnel(lab, "service/shardshop-order", 8080)) {
                     String orderId = submit(http, buyer.id(), product, run);
-                    String home = buyer.shard();
                     lab.await("scoped command is confirmed while ledger is stopped", Duration.ofSeconds(90), () ->
                             saga.number(home, "SELECT count(*) FROM ordering.order_outbox o JOIN ordering.order_sagas s USING(saga_id) "
                                     + "WHERE s.order_id=" + orderId + " AND o.published_at IS NOT NULL") == 1
@@ -92,10 +99,10 @@ public final class KindRetryRecoveryDrill {
                     require(saga.sql(home, "SELECT status FROM ordering.order_sagas WHERE order_id=" + orderId)
                                     .strip().equals("PENDING_LEDGER"), "Scoped saga must await its ledger result");
 
-                    KindTopology.Shard shard = topology.observe().get(home);
-                    require(shard != null && shard.standbys().size() == 2,
-                            "Buyer shard must have a healthy three-instance quorum");
                     JsonNode cluster = topology.cluster(home);
+                    Set<String> current = new java.util.HashSet<>();
+                    cluster.path("status").path("instanceNames").forEach(name -> current.add(name.asText()));
+                    require(current.equals(Set.copyOf(instances(shard))), "Buyer shard instances changed after observation");
                     KindDatabaseDrill.rejectPreexistingFence(cluster);
                     FenceState initialFence = fenceState(cluster);
                     FenceState outageFence = new FenceState(true, fenceValue(shard));
@@ -129,9 +136,9 @@ public final class KindRetryRecoveryDrill {
                     require(queueDepth("order.ledger-results") == 0,
                             "Result source queue still contains the scoped exhausted delivery");
                     require(podState(saga.pod("order-saga"), "order").equals(source)
-                                    && brokerState().equals(broker),
+                                    && rabbitMq.brokers().equals(brokers),
                             "Saga source or broker restarted during the scoped retry outage");
-                    brokerHealthy();
+                    rabbitMq.healthy();
                     try (ParkedDelivery parked = inspectParkedResult(firstResult, storedResult)) {
                         System.out.println("Scoped order " + orderId + " result " + firstResult
                                 + " parked with delivery_limit after " + parkedMillis
@@ -177,9 +184,9 @@ public final class KindRetryRecoveryDrill {
                                 "Original parked diagnostic was consumed before operator inspection");
                         saga.invariants();
                         require(podState(saga.pod("order-saga"), "order").equals(source)
-                                        && brokerState().equals(broker),
+                                        && rabbitMq.brokers().equals(brokers),
                                 "Saga source or broker restarted before recovery completed");
-                        brokerHealthy();
+                        rabbitMq.healthy();
                         parked.acknowledge();
                         lab.await("inspected scoped parked result is removed", Duration.ofSeconds(20), () ->
                                 queueDepth(RESULT_DLQ) == 0);
@@ -297,10 +304,6 @@ public final class KindRetryRecoveryDrill {
         throw new IOException("Broker queue is missing: " + name);
     }
 
-    private PodState brokerState() throws IOException, InterruptedException {
-        return podState(deployment.resource("pod", "shardshop-rabbitmq-0"), "rabbitmq");
-    }
-
     private static PodState podState(JsonNode pod, String containerName) throws IOException {
         String uid = pod.path("metadata").path("uid").asText();
         for (JsonNode container : pod.path("status").path("containerStatuses"))
@@ -312,12 +315,6 @@ public final class KindRetryRecoveryDrill {
                 return new PodState(uid, containerId, restarts);
             }
         throw new IOException(containerName + " container status is missing");
-    }
-
-    private void brokerHealthy() throws IOException, InterruptedException {
-        for (String check : List.of("check_running", "check_local_alarms"))
-            lab.kubectl(Duration.ofSeconds(20), "exec", "shardshop-rabbitmq-0", "-c", "rabbitmq", "--",
-                    "rabbitmq-diagnostics", "-q", "-t", "10", check);
     }
 
     private ParkedDelivery inspectParkedResult(String resultId, JsonNode storedResult)

@@ -106,7 +106,7 @@ also set these properties.
 
 ### Tests
 
-`ProductSeeder.feature` of the [integration tests](../../shardshop-testing/RUNBOOK.md#integration-tests-with-testcontainers)
+`ProductSeeder.feature` of the [integration tests](../../shardshop-testing/RUNBOOK.md#2-integration-tests-with-testcontainers)
 runs the packaged seeder against the packaged product and four shard databases (two US). It does not connect to
 the kind lab. A database session holds the advisory lock of `catalog-v2.EU.seller.10`, so the first seeder run
 fails with `503` after 59 sellers and 68 products. After a product restart with a new generator ID, a complete

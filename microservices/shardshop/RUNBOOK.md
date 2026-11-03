@@ -55,7 +55,7 @@ The verification module also requires `node` on `PATH`: its ordinary Maven
 Missing Node, a timeout or a failing script fails Maven. A product- or order-only
 build does not include these checks; select `shardshop-testing` as well when
 changing browser assets. See [Node qualification](VERSIONS.md#nodejs-browser-test-tool)
-and the [browser test command](shardshop-testing/RUNBOOK.md#javascript-page-checks).
+and the [browser test command](shardshop-testing/RUNBOOK.md#1-javascript-page-checks).
 
 | Maven module | Quarkus application class |
 |---|---|
@@ -132,7 +132,7 @@ tests its router against golden vectors whose expected shards were computed
 independently. The PostgreSQL and RabbitMQ test-image properties use the immutable
 digests of the lock. Only the `shardshop-testing`
 scenarios start a container, and only with `-Pintegration`
-([integration tests](shardshop-testing/RUNBOOK.md#integration-tests-with-testcontainers)).
+([integration tests](shardshop-testing/RUNBOOK.md#2-integration-tests-with-testcontainers)).
 
 Idgen and sharding keep the test JVM option
 `--add-opens=java.base/java.lang.invoke=ALL-UNNAMED` in their POM `argLine`

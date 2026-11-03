@@ -29,12 +29,14 @@ public final class KindLab {
     private final String clusterName;
     private final boolean fresh;
     private final Path kubeconfig;
+    private final Path workDirectory;
 
     public KindLab() {
         this(snapshotProperty(), System.getProperty("shardshop.kind.cluster",
                         System.getenv().getOrDefault("SHARDSHOP_TEST_CLUSTER", "shardshop")),
                 Boolean.parseBoolean(System.getProperty("shardshop.kind.fresh", "false")),
-                System.getProperty("shardshop.kind.kubeconfig", System.getenv("SHARDSHOP_TEST_KUBECONFIG")));
+                System.getProperty("shardshop.kind.kubeconfig", System.getenv("SHARDSHOP_TEST_KUBECONFIG")),
+                System.getProperty("shardshop.kind.workDirectory"));
     }
 
     KindLab(Path snapshot, String clusterName, boolean fresh) {
@@ -42,7 +44,12 @@ public final class KindLab {
     }
 
     KindLab(Path snapshot, String clusterName, boolean fresh, String kubeconfig) {
+        this(snapshot, clusterName, fresh, kubeconfig, null);
+    }
+
+    KindLab(Path snapshot, String clusterName, boolean fresh, String kubeconfig, String workDirectory) {
         this.snapshot = snapshot.toAbsolutePath().normalize();
+        this.workDirectory = workDirectory == null || workDirectory.isBlank() ? this.snapshot : privateDirectory(Path.of(workDirectory));
         boolean isolated = !"shardshop".equals(clusterName);
         if (isolated && (clusterName.length() > 63
                 || !clusterName.matches("shardshop-test-[a-z0-9]([a-z0-9-]*[a-z0-9])?"))) {
@@ -106,6 +113,30 @@ public final class KindLab {
 
     public Path snapshot() {
         return snapshot;
+    }
+
+    /** Temporary drill files. The default is the snapshot, but the snapshot of the gates image is read-only. */
+    public Path workDirectory() {
+        return workDirectory;
+    }
+
+    /** A new file that only the owner can read, for drill input that can contain credentials. */
+    static Path privateFile(Path directory, String prefix, String suffix) throws IOException {
+        return Files.createTempFile(directory, prefix, suffix,
+                PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+    }
+
+    private static Path privateDirectory(Path value) {
+        Path directory = value.toAbsolutePath().normalize();
+        try {
+            Files.createDirectories(directory, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+            if (!Files.getPosixFilePermissions(directory, LinkOption.NOFOLLOW_LINKS).equals(PosixFilePermissions.fromString("rwx------"))) {
+                throw new IllegalArgumentException("The kind work directory must be a private mode-700 directory");
+            }
+        } catch (IOException failure) {
+            throw new IllegalArgumentException("Cannot create the private kind work directory", failure);
+        }
+        return directory;
     }
 
     public String clusterName() {

@@ -5,7 +5,7 @@
 ShardShop is a system-design lab. Its local deployment runs a regional product
 catalog, sharded orders and an asynchronous ledger on one kind cluster. This overview
 describes the implemented architecture. The AWS deployment runs the same system on
-EKS with Argo CD ([section 5](#5-local-deployment-and-aws-deployment)). The [detailed documents](#detailed-design-documents) own each topic.
+EKS with Argo CD ([section 5](#5-local-deployment-and-aws-deployment)). The [detailed documents](#6-detailed-design-documents) own each topic.
 
 - **Shape:** six Quarkus applications, three regional PostgreSQL shards, one
   ledger database and one RabbitMQ broker.
@@ -15,7 +15,16 @@ EKS with Argo CD ([section 5](#5-local-deployment-and-aws-deployment)). The [det
 - **Qualified capacity on this lab:** 29.354 accepted orders/s and 995.111 product
   reads/s, measured separately ([section 4](#4-performance)).
 
+## Contents
+1. [System architecture](#1-system-architecture)
+2. [Runtime topology](#2-runtime-topology)
+3. [Sharding](#3-sharding)
+4. [Performance](#4-performance)
+5. [Local deployment and AWS deployment](#5-local-deployment-and-aws-deployment)
+6. [Detailed design documents](#6-detailed-design-documents)
+
 ## 1. System architecture
+<sub>[Back to Contents](#contents)</sub>
 
 ```mermaid
 flowchart LR
@@ -113,6 +122,7 @@ sequenceDiagram
 ```
 
 ## 2. Runtime topology
+<sub>[Back to Contents](#contents)</sub>
 
 The kind lab runs **36 steady pods** in all namespaces. The `shardshop` namespace
 contains 20 of them.
@@ -141,6 +151,7 @@ roles and the counting scope. Its [README](infra/README.md#pod-inventory) shows
 how to count the pods of a running lab.
 
 ## 3. Sharding
+<sub>[Back to Contents](#contents)</sub>
 
 | Region | Shard | Owns |
 |---|---|---|
@@ -224,6 +235,7 @@ quarantine and message delivery. The repository [AGENTS.md](../../AGENTS.md)
 defines the code layers.
 
 ## 4. Performance
+<sub>[Back to Contents](#contents)</sub>
 
 These figures are **local-deployment evidence, not a hardware-independent maximum**. One
 host ran the complete lab: 12 Docker CPUs, 12.65 GiB Docker memory and 16 GB
@@ -283,10 +295,11 @@ Different kinds of figures answer different questions:
 - **No sum.** Peak reads and peak writes were measured separately. Do not add them
   as one simultaneous capacity.
 
-The [measurement criteria](shardshop-testing/ARCHITECTURE.md#capacity-measurement)
+The [measurement criteria](shardshop-testing/ARCHITECTURE.md#9-capacity-measurement)
 define the protocol. The runtime defaults stay at 0.5 orders/s and 200 product reads/s.
 
 ## 5. Local deployment and AWS deployment
+<sub>[Back to Contents](#contents)</sub>
 
 ShardShop has two deployments. The local deployment on kind runs the complete
 system, and each contract, drill and acceptance scenario must pass there. The AWS
@@ -331,7 +344,7 @@ flowchart LR
 | Backups | | Coordinated logical dumps outside kind | WAL archive and base backups in S3, point-in-time restore |
 | Applications | The same sources and image recipe | Six applications and three workloads, loaded into kind | The same, copied to ECR with digest pins |
 | Delivery | The shared Helm chart | Helmfile with Maven gates | Argo CD from pinned OCI charts in ECR, with the Maven gates as hook Jobs ([runbook](infra/terraform/README.md#deliver-shardshop-with-argo-cd)) |
-| Checks | The Maven `kind` profile | All gates, drills and acceptance scenarios | The gates, the topology drills and the `eks-*` scenarios |
+| Checks | The Maven `kind` profile | All gates, drills and acceptance scenarios | The gates, the drills of the eleven acceptance scenarios and the `eks-*` scenarios, as Jobs in the cluster. The backup checks run on the developer computer. EKS variants replace the checks of kind nodes ([list](shardshop-testing/ARCHITECTURE.md#3-aws-deployment-acceptance)) |
 
 The local deployment runs the complete system on one computer:
 
@@ -363,13 +376,13 @@ flowchart TB
         subgraph EKS["EKS cluster · three workers in three zones"]
             Ops["Argo CD, CloudNativePG, Barman Cloud Plugin<br/>cert-manager, Secrets Store CSI driver"]
             Apps2["Six applications<br/>three workloads"]
-            Gates["Gate Jobs"]
+            Gates["Gate and drill Jobs"]
             DB2[("Three shards × three instances<br/>ledger · one instance")]
             MQ2["RabbitMQ · three brokers"]
         end
     end
     Dev -->|"terraform apply, then destroy"| Account
-    Dev -->|"Root Application, Maven drills"| EKS
+    Dev -->|"Root Application, drill Jobs, backup checks"| EKS
     ECR -->|"Images and charts"| EKS
     SM -->|"Credentials"| EKS
     DB2 -->|"WAL and base backups"| S3
@@ -397,7 +410,7 @@ flowchart TB
         A2 --> A3["Helm<br/>install Argo CD"]
         A3 --> A4["Apply the root Application"]
         A4 --> A5["Argo CD sync waves<br/>with gate Jobs"]
-        A5 --> A6["Maven drills"]
+        A5 --> A6["Drill Jobs<br/>and backup checks"]
         A6 --> A7["Remove ShardShop<br/>terraform destroy"]
     end
 ```
@@ -531,7 +544,8 @@ flowchart LR
     end
 ```
 ---
-## Detailed design documents
+## 6. Detailed design documents
+<sub>[Back to Contents](#contents)</sub>
 
 Each topic has one owning document. Runbooks keep the commands, and the
 [changelog](CHANGELOG.md) keeps the dated evidence.

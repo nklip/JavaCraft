@@ -197,10 +197,10 @@ Each module that owns a contract checks it in a Maven unit test, without infrast
 
 `Contracts.feature` of `shardshop-testing` checks what connects the contracts of different modules, and the
 creation payloads of the workload datasets
-([integration tests](../shardshop-testing/RUNBOOK.md#integration-tests-with-testcontainers)). Both use
+([integration tests](../shardshop-testing/RUNBOOK.md#2-integration-tests-with-testcontainers)). Both use
 `ContractDocument` and `ExampleIds` from the test JAR of `shardshop-common`, and validate with the
 platform-managed Vert.x JSON Schema library.
-[VERSIONS.md](../VERSIONS.md#review-log) records its qualification and the gaps that
+[VERSIONS.md](../VERSIONS.md#5-review-log) records its qualification and the gaps that
 the helper corrects.
 
 ```bash

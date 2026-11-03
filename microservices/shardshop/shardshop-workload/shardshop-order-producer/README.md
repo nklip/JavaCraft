@@ -215,7 +215,7 @@ The packaged `OrderProducer.feature` uses real product and order APIs and Postgr
 allocation and PUT responses behind a test proxy, then checks identical retries, restart recovery, all buyer
 regions, home-currency preference, all seven currencies and terminal polling. The test controls the terminal
 database transitions to isolate the HTTP behavior of the producer. The
-[kind saga gate](../../shardshop-testing/RUNBOOK.md#saga-gate-and-drill) verifies the complete deployed saga.
+[kind saga gate](../../shardshop-testing/RUNBOOK.md#11-saga-gate-and-drill) verifies the complete deployed saga.
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration verify \

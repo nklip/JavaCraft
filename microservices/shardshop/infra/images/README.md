@@ -96,25 +96,30 @@ ConfigMap of the chart.
 <sub>[Back to Contents](#contents)</sub>
 
 The gates image runs the Maven gates of the local deployment as Argo CD hook Jobs on
-EKS. It runs `KindIT` with the JUnit console launcher, not with Maven. The Job gives
-the tag expression of its gate, for example `--include-tag=kind-deployment`. The
+EKS, and the [drills](../terraform/README.md#run-the-drills) as Jobs that the runbook
+creates. It runs `KindIT` with the JUnit console launcher, not with Maven. The Job
+gives the tag expression of its gate or drill, for example
+`--include-tag=kind-deployment`. A drill Job gives its other system properties in
+`JDK_JAVA_OPTIONS`. The
 [AWS runbook](../terraform/README.md#deliver-shardshop-with-argo-cd) builds the image
 for each run, because the image contains the snapshot of the run.
 
 | Path | Contents | Source |
 |---|---|---|
 | `/usr/local/bin/kubectl` | kubectl 1.37.2 for linux/arm64 | dl.k8s.io. The recipe checks its SHA-256 |
+| `/usr/local/bin/helm` | Helm 4.3.1 for linux/arm64. The workload drill renders its temporary seeder Job with it | get.helm.sh. The recipe checks the SHA-256 of the archive. A build stage from the pinned Flyway image unpacks it |
 | `/gates/lib` | The test classpath with the JUnit console launcher | Maven `dependency:copy-dependencies` with the `kind` profile |
 | `/gates/classes` | The compiled tests and the feature files | `shardshop-testing/target/test-classes` |
 | `/gates/snapshot` | The invocation snapshot: inventory, infrastructure render and image references | The AWS runbook |
 | `/gates/source` | The source files that the checks read, for example the golden routing vectors | The repository |
-| `/gates/kube/config` | The kubeconfig for the API server of the cluster, with the token of the ServiceAccount `shardshop-gates` | [`gates/kubeconfig`](gates/kubeconfig) |
+| `/gates/kube/config` | The kubeconfig for the API server of the cluster, with the token of the ServiceAccount of the Job: `shardshop-gates` or `shardshop-drills` | [`gates/kubeconfig`](gates/kubeconfig) |
 
 - Only the user `10001` can read the files below `/gates`. The kubeconfig directory
   has the mode 700 and the file has the mode 600, because the `kind` profile requires
   a private kubeconfig.
 - The tests write their reports below `/tmp`, which the Job mounts as a writable
-  volume.
+  volume. The drills write their temporary files to `/tmp/work`, because the snapshot
+  is read-only.
 - The local deployment does not use this image. There, Helmfile runs the same gates
   with Maven.
 
@@ -129,4 +134,4 @@ finding has no statement, thus the gate stops the build.
 [VERSIONS.md](../../VERSIONS.md#docker-scout-gate) has the review rules.
 
 The gates image has no statements. Its findings have a time-limited
-[risk acceptance](../../VERSIONS.md#open-findings-and-risk-acceptance).
+[risk acceptance](../../VERSIONS.md#3-open-findings-and-risk-acceptance).
