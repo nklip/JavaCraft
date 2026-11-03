@@ -409,3 +409,53 @@ h2c and standalone Envoy implementation of step 6.8 is in a local Git stash.
 
 **Result.** The applications and the workloads keep HTTP/1.1
 ([step 6.8](CHANGELOG.md#step-68)).
+
+### CloudFront default hostname
+
+**Decision.** On 2026-11-03 the user selected the default `*.cloudfront.net`
+hostname of a CloudFront distribution for the AWS webpages. ShardShop buys no
+domain and uses no Route 53 zone or ACM certificate.
+
+**Reason.**
+
+- A domain costs approximately US$14–16 for a minimum of one year (Route 53
+  prices of July 2026), without a refund. An AWS run uses it for less than one day.
+- A free eu.org subdomain needs a manual approval that can take months. is-a.dev
+  gives NS delegation only in rare cases.
+- The load balancer name and IP-based names, for example nip.io, cannot get a
+  valid public certificate.
+- CloudFront supplies a valid certificate and has no fee for each hour.
+
+**Result.**
+
+- The hostname stays during an AWS deployment. A new AWS deployment can get a new
+  hostname.
+- The load balancer is internal, and only the CloudFront VPC origin can reach it.
+- The ALB login is not available behind CloudFront
+  ([Envoy Gateway behind CloudFront](#envoy-gateway-behind-cloudfront)).
+
+### Envoy Gateway behind CloudFront
+
+**Decision.** On 2026-11-03 the user selected Envoy Gateway as the Gateway API
+controller of the AWS webpages. The AWS Load Balancer Controller only makes the
+internal NLB for the Envoy Service.
+
+**Reason.**
+
+- ALB login actions need an HTTPS listener on the ALB. Behind CloudFront, the
+  load balancer gets HTTP, because no trusted certificate matches its name.
+- A `SecurityPolicy` of Envoy Gateway keeps the login and the role rules for each
+  route and method in one place. The ALB option needs two oauth2-proxy instances
+  and ALB method rules.
+- The Gateway API resources of Envoy Gateway can be tested without AWS, before a
+  paid run.
+
+**Result.**
+
+- The Envoy pods carry all the page traffic. They need replicas in each zone, a
+  disruption budget and a drain at shutdown.
+- The AWS deployment has two controllers: Envoy Gateway and the AWS Load Balancer
+  Controller.
+- If the qualification cannot limit the writes to the Cognito operator group, the
+  AWS Load Balancer Controller with oauth2-proxy replaces Envoy Gateway
+  ([plan](PLAN.md#78-stable-aws-webpage-urls-and-access-control)).

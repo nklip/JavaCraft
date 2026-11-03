@@ -56,6 +56,21 @@ modules to the IAM user that runs Terraform:
 - This policy is not a full privilege boundary. The user can write an inline
   policy for a `shardshop-*` role and give that role to a pod.
 
+[`operator-policy-webpages.json`](operator-policy-webpages.json) gives the
+permissions for the public webpages of the AWS deployment
+([plan](../../PLAN.md#78-stable-aws-webpage-urls-and-access-control)). It is a
+second policy, because one managed policy can have a maximum of 6,144 characters:
+
+- The user can create CloudFront distributions, CloudFront VPC origins and Cognito
+  user pools only with the tag `Project=shardshop`. Then the user can manage only
+  the resources with this tag. The user pools must be in `eu-west-2`.
+- The user can let CloudFront create its service-linked role for VPC origins.
+- The user can read the load balancers. The user can delete only load balancers,
+  listeners and target groups with the tag `Project=shardshop`. Thus the AWS Load
+  Balancer Controller must add this tag to its resources.
+- The user can add the tag `Project=shardshop` to a different CloudFront
+  distribution and then manage it. Tag-based permissions cannot prevent this.
+
 ### Costs
 
 These are the on-demand prices in `eu-west-2`, without tax, from the AWS public
@@ -106,8 +121,12 @@ user if an IAM administrator is available.
    and select its check box.
 10. Select **Next**, then **Add permissions**.
 
-An administrator with the AWS CLI can do the same with two commands. Replace
-`<admin-profile>` with the AWS CLI profile of the administrator:
+Then do steps 2–10 again for the webpage permissions. In step 3, paste the text of
+`operator-policy-webpages.json`. In steps 5 and 9, use the policy name
+`ShardShopTerraformWebpages`.
+
+An administrator with the AWS CLI can do the same with two commands for each
+policy. Replace `<admin-profile>` with the AWS CLI profile of the administrator:
 
 ```bash
 aws iam create-policy --profile <admin-profile> --policy-name ShardShopTerraformOperator --policy-document file://microservices/shardshop/infra/terraform/operator-policy.json
@@ -117,19 +136,35 @@ aws iam create-policy --profile <admin-profile> --policy-name ShardShopTerraform
 aws iam attach-user-policy --profile <admin-profile> --user-name NikitaDev --policy-arn arn:aws:iam::<account-id>:policy/ShardShopTerraformOperator
 ```
 
-Then, as the operator user, make sure that the permissions work. The command must
-show `"clusters": []`:
+```bash
+aws iam create-policy --profile <admin-profile> --policy-name ShardShopTerraformWebpages --policy-document file://microservices/shardshop/infra/terraform/operator-policy-webpages.json
+```
+
+```bash
+aws iam attach-user-policy --profile <admin-profile> --user-name NikitaDev --policy-arn arn:aws:iam::<account-id>:policy/ShardShopTerraformWebpages
+```
+
+Then, as the operator user, make sure that the permissions work. The first command
+must show `"clusters": []`, and the second command must show `"UserPools": []`:
 
 ```bash
 aws eks list-clusters --region eu-west-2
 ```
 
-If `operator-policy.json` changes, the administrator replaces the policy text. In
+```bash
+aws cognito-idp list-user-pools --max-results 10 --region eu-west-2
+```
+
+If a policy file changes, the administrator replaces the text of its policy. In
 the console, open the policy, select **Edit**, paste the new JSON and select
 **Save changes**. With the AWS CLI:
 
 ```bash
 aws iam create-policy-version --profile <admin-profile> --policy-arn arn:aws:iam::<account-id>:policy/ShardShopTerraformOperator --policy-document file://microservices/shardshop/infra/terraform/operator-policy.json --set-as-default
+```
+
+```bash
+aws iam create-policy-version --profile <admin-profile> --policy-arn arn:aws:iam::<account-id>:policy/ShardShopTerraformWebpages --policy-document file://microservices/shardshop/infra/terraform/operator-policy-webpages.json --set-as-default
 ```
 
 ### Create the state bucket

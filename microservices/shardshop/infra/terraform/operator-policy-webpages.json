@@ -1,0 +1,103 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:ListDistributions",
+        "cloudfront:ListVpcOrigins",
+        "cloudfront:ListCachePolicies",
+        "cloudfront:GetCachePolicy",
+        "cloudfront:ListOriginRequestPolicies",
+        "cloudfront:GetOriginRequestPolicy",
+        "cognito-idp:ListUserPools",
+        "cognito-idp:DescribeUserPoolDomain",
+        "ec2:GetManagedPrefixListEntries",
+        "elasticloadbalancing:Describe*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudFrontCreateWithProjectTag",
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:CreateDistribution",
+        "cloudfront:CreateVpcOrigin",
+        "cloudfront:TagResource"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Project": "shardshop"
+        }
+      }
+    },
+    {
+      "Sid": "CloudFrontProjectResources",
+      "Effect": "Allow",
+      "Action": "cloudfront:*",
+      "Resource": [
+        "arn:aws:cloudfront::*:distribution/*",
+        "arn:aws:cloudfront::*:vpcorigin/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/Project": "shardshop"
+        }
+      }
+    },
+    {
+      "Sid": "CloudFrontVpcOriginRole",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "arn:aws:iam::*:role/aws-service-role/vpcorigin.cloudfront.amazonaws.com/*",
+      "Condition": {
+        "StringEquals": {
+          "iam:AWSServiceName": "vpcorigin.cloudfront.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "CognitoCreateWithProjectTag",
+      "Effect": "Allow",
+      "Action": [
+        "cognito-idp:CreateUserPool",
+        "cognito-idp:TagResource"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Project": "shardshop",
+          "aws:RequestedRegion": "eu-west-2"
+        }
+      }
+    },
+    {
+      "Sid": "CognitoProjectUserPools",
+      "Effect": "Allow",
+      "Action": "cognito-idp:*",
+      "Resource": "arn:aws:cognito-idp:eu-west-2:*:userpool/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/Project": "shardshop"
+        }
+      }
+    },
+    {
+      "Sid": "LoadBalancerCleanup",
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:DeleteLoadBalancer",
+        "elasticloadbalancing:DeleteListener",
+        "elasticloadbalancing:DeleteTargetGroup"
+      ],
+      "Resource": "arn:aws:elasticloadbalancing:eu-west-2:*:*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/Project": "shardshop"
+        }
+      }
+    }
+  ]
+}

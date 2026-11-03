@@ -293,22 +293,49 @@ Depends on 7.6. Status: **Done** ([record](CHANGELOG.md#step-77)).
 
 Depends on 4.10 and 7.7. Status: **Planned**.
 
-- Qualify an EKS-compatible Gateway API controller with its TLS and
-  authentication integrations. Deliver the `GatewayClass`, `Gateway` and
-  `HTTPRoute` resources through GitOps in the EKS overlay.
-- The webpages and the APIs that they need, first `/products/`, use stable
-  hostnames with Route 53 DNS, and HTTPS with ACM-managed certificates and an
-  HTTP-to-HTTPS redirect. Terraform owns the DNS records and the certificates.
-- Document the access model: public, or private through a VPN. Enforce
-  authentication and role-based authorization on the webpages and the APIs
-  through a supported controller integration or an identity-aware proxy.
-- Expose only the intended routes and methods. Other APIs, the databases and the
-  brokers stay internal.
-- The acceptance proves valid HTTPS, the rejection of unauthenticated and
-  unauthorized requests, and that no direct backend access bypasses these
-  controls.
+- Qualify Envoy Gateway as the Gateway API controller
+  ([decision](DECISIONS.md#envoy-gateway-behind-cloudfront)). The qualification
+  must prove that a `SecurityPolicy` rule lets only the Cognito operator group
+  change a workload. If it cannot, use the AWS Load Balancer Controller with
+  oauth2-proxy.
+- Deliver the `GatewayClass`, `Gateway`, `HTTPRoute` and `SecurityPolicy`
+  resources through GitOps in the EKS overlay. The AWS Load Balancer Controller
+  makes an internal NLB for the Envoy Service. Run the Envoy pods in each zone,
+  with a disruption budget and a drain at shutdown.
+- Before the AWS run, test the routes and the role rules in Maven on a local
+  Kubernetes API where possible.
+- Five webpages and the APIs that they need use the default `*.cloudfront.net`
+  hostname of one CloudFront distribution. The webpages are the product and order
+  pages and the three
+  [workload-control pages](shardshop-core/workload-control/README.md#pages-and-api).
+  CloudFront supplies the certificate and the HTTP-to-HTTPS redirect. There is no
+  domain, Route 53 zone or ACM certificate
+  ([decision](DECISIONS.md#cloudfront-default-hostname)).
+- A CloudFront VPC origin connects the distribution to the internal load
+  balancer. If no trusted certificate can match the load balancer name, the origin
+  connection uses HTTP on this private path. Document the result.
+- Terraform owns the distribution, the VPC origin and a Cognito user pool with a
+  group for each role. The AWS Load Balancer Controller creates the NLB, thus
+  Terraform applies the origin after Argo CD creates the `Gateway`. The user attaches the IAM
+  permissions for these services in
+  [`operator-policy-webpages.json`](infra/terraform/operator-policy-webpages.json).
+- The access is public through CloudFront, with a login. Enforce authentication
+  and role-based authorization on the webpages and the APIs. A viewer role can
+  read all five pages. Only an operator role can change a workload: set the rate,
+  pause, resume and start a seeder run. A cross-site request cannot change a
+  workload.
+- Expose only the intended routes and methods: `GET` on the product and order
+  pages and APIs, and the methods of the
+  [control contract](shardshop-core/workload-control/src/main/resources/contracts/openapi.yaml)
+  on the workload pages and APIs. Only CloudFront can reach the load balancer.
+  Other APIs, the databases and the brokers stay internal.
+- The acceptance proves valid HTTPS, the redirect, and the rejection of
+  unauthenticated and unauthorized requests. A viewer cannot change a workload.
+  No direct backend access bypasses these controls.
 - A copied URL such as `/products/?region=EU&page=3` shows the same view on a
   different authorized device, also after a login. The hostname stays after a pod
-  replacement and an application redeployment, without port forwarding.
-- Document the URLs, the access configuration, the certificate renewal, the costs
-  and the teardown. Step 6.9 still passes locally without changes.
+  replacement and an application redeployment, without port forwarding. A new
+  AWS deployment can get a new hostname.
+- Document the URLs, the access configuration, the costs and the teardown order:
+  delete the `Gateway` before `terraform destroy`. Step 6.9 still passes locally
+  without changes.
