@@ -1,0 +1,277 @@
+{{- /*
+The public webpages of the AWS deployment (render=webpages). Argo CD applies this layer after the
+applications, the AWS Load Balancer Controller and Envoy Gateway.
+
+- Envoy Gateway runs three Envoy pods, one in each zone. The AWS Load Balancer Controller makes an
+  internal NLB for their Service. Only the CloudFront VPC origin can reach that NLB.
+- The routes and the SecurityPolicy exist only after the runbook sets webpages.access from the
+  Terraform webpages module. Before that, the Gateway has no route, thus nothing is open.
+- One SecurityPolicy on the Gateway applies the login, the role rules and the CSRF check to all the
+  routes. Two policies with OIDC on one host break the login (envoyproxy/gateway#8649).
+*/ -}}
+{{- if eq .Values.render "webpages" }}
+{{- $webpages := .Values.webpages }}
+{{- $securityGroup := required "render=webpages requires webpages.securityGroup" $webpages.securityGroup }}
+{{- $namespace := .Release.Namespace }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: shardshop
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: shardshop-webpages
+  namespace: {{ $namespace }}
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        replicas: 3
+        # A new pod must be ready (also in the target group, through the readiness gate) before
+        # an old pod stops.
+        strategy:
+          type: RollingUpdate
+          rollingUpdate:
+            maxSurge: 1
+            maxUnavailable: 0
+        container:
+          # The proxy image of Envoy Gateway v1.9.3, with the same digest pin.
+          image: docker.io/envoyproxy/envoy:distroless-v1.39.5@sha256:9d84a586119a27b50437dbb01eccd4722832741539b1ed53c8e9d6da6067a6e0
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+        pod:
+          # One pod in each zone. A pod stays pending if its zone has no free worker.
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: DoNotSchedule
+              matchLabelKeys:
+                - pod-template-hash
+              labelSelector:
+                matchLabels:
+                  gateway.envoyproxy.io/owning-gateway-name: shardshop-webpages
+                  gateway.envoyproxy.io/owning-gateway-namespace: {{ $namespace }}
+      envoyPDB:
+        maxUnavailable: 1
+      envoyService:
+        type: LoadBalancer
+        loadBalancerClass: service.k8s.aws/nlb
+        # The NLB sends the traffic directly to the pod IPs. No node port is open.
+        allocateLoadBalancerNodePorts: false
+        annotations:
+          service.beta.kubernetes.io/aws-load-balancer-name: shardshop-webpages
+          service.beta.kubernetes.io/aws-load-balancer-scheme: internal
+          service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+          # Terraform creates this group. It accepts only the CloudFront origin-facing prefix list.
+          service.beta.kubernetes.io/aws-load-balancer-security-groups: {{ $securityGroup | quote }}
+          service.beta.kubernetes.io/aws-load-balancer-manage-backend-security-group-rules: "true"
+          # A draining Envoy pod fails its readiness check, thus the NLB stops new connections to it.
+          service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: http
+          service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "19003"
+          service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: /ready
+          service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval: "10"
+          service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: deregistration_delay.timeout_seconds=30
+  # At a pod stop, Envoy keeps its listeners for 35 seconds, longer than the deregistration of
+  # 30 seconds. Then it waits up to 60 seconds for the open connections.
+  shutdown:
+    minDrainDuration: 35s
+    drainTimeout: 60s
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: shardshop-webpages
+  namespace: {{ $namespace }}
+spec:
+  gatewayClassName: shardshop
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: shardshop-webpages
+  listeners:
+    # CloudFront ends TLS. The private path from the VPC origin to the NLB uses HTTP, because no
+    # trusted certificate can match the name of an internal NLB.
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+{{- with $webpages.access }}
+{{- $access := . }}
+{{- $control := list (dict "method" "GET" "path" "/control") (dict "method" "PUT" "path" "/control/rate")
+      (dict "method" "POST" "path" "/control/pause") (dict "method" "POST" "path" "/control/resume") }}
+{{- /* The routes of the five pages and their APIs. Each match has a method, thus each other method gets 404. */}}
+{{- $routes := list
+      (dict "name" "product" "service" "shardshop-product" "matches" (list
+        (dict "method" "GET" "type" "PathPrefix" "path" "/products")
+        (dict "method" "GET" "type" "Exact" "path" "/api/v1/products")))
+      (dict "name" "order" "service" "shardshop-order" "matches" (list
+        (dict "method" "GET" "type" "PathPrefix" "path" "/orders")
+        (dict "method" "GET" "type" "Exact" "path" "/api/v1/orders"))) }}
+{{- range $workload := list
+      (dict "name" "order-producer" "service" "shardshop-order-producer" "page" "/workload-order-producer" "api" "/api/v1/order-producer" "assets" true)
+      (dict "name" "product-reader" "service" "shardshop-product-reader" "page" "/workload-product-reader" "api" "/api/v1/product-reader")
+      (dict "name" "product-seeder" "service" "shardshop-product-seeder-control" "page" "/workload-product-seeder" "api" "/api/v1/product-seeder" "runs" true) }}
+  {{- $matches := list (dict "method" "GET" "type" "PathPrefix" "path" $workload.page) }}
+  {{- if $workload.assets }}
+  {{- /* The three workload pages load the same script and stylesheet of shardshop-workload-control. */}}
+  {{- $matches = append $matches (dict "method" "GET" "type" "PathPrefix" "path" "/workload-control") }}
+  {{- end }}
+  {{- range $control }}
+  {{- $matches = append $matches (dict "method" .method "type" "Exact" "path" (printf "%s%s" $workload.api .path)) }}
+  {{- end }}
+  {{- if $workload.runs }}
+  {{- $matches = append $matches (dict "method" "POST" "type" "Exact" "path" (printf "%s/control/runs" $workload.api)) }}
+  {{- end }}
+  {{- $routes = append $routes (dict "name" $workload.name "service" $workload.service "matches" $matches) }}
+{{- end }}
+{{- range $routes }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: shardshop-webpage-{{ .name }}
+  namespace: {{ $namespace }}
+  annotations:
+    # The SecurityPolicy comes first, thus no route is open before the login and the role rules apply.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  parentRefs:
+    - name: shardshop-webpages
+      sectionName: http
+  hostnames:
+    - {{ $access.hostname | quote }}
+  rules:
+    - matches:
+        {{- range .matches }}
+        - method: {{ .method }}
+          path:
+            type: {{ .type }}
+            value: {{ .path }}
+        {{- end }}
+      backendRefs:
+        - name: {{ .service }}
+          port: 8080
+{{- end }}
+---
+# The start address goes to the product page. The OIDC filter answers the callback and the
+# logout before this redirect, but each of these paths needs a route.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: shardshop-webpage-start
+  namespace: {{ $namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  parentRefs:
+    - name: shardshop-webpages
+      sectionName: http
+  hostnames:
+    - {{ $access.hostname | quote }}
+  rules:
+    - matches:
+        {{- range list "/" "/oauth2/callback" "/logout" }}
+        - method: GET
+          path:
+            type: Exact
+            value: {{ . }}
+        {{- end }}
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: /products/
+            statusCode: 302
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: shardshop-webpages
+  namespace: {{ $namespace }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: shardshop-webpages
+  # A PUT or POST must have the Origin of this host. A cross-site write gets 403.
+  csrf: {}
+  # The login with the Cognito user pool. The browser keeps the encrypted tokens in cookies.
+  oidc:
+    provider:
+      issuer: {{ $access.issuer | quote }}
+    clientID: {{ $access.clientId | quote }}
+    # The runbook creates this Secret from the Terraform output. Argo CD does not deliver it.
+    clientSecret:
+      name: shardshop-webpages-oidc
+    redirectURL: {{ printf "https://%s/oauth2/callback" $access.hostname | quote }}
+    logoutPath: /logout
+    scopes:
+      - openid
+    # The browser sends no token cookie with a cross-site request. Lax still sends the cookie of
+    # the login state with the redirect back from Cognito.
+    cookieConfig:
+      sameSite: Lax
+    # Envoy gives the validated ID token to the JWT filter. The inbound Authorization header is
+    # removed, thus a client cannot give its own token.
+    forwardIDToken:
+      header: Authorization
+    # A script request without a login gets 401, not a redirect to the login page.
+    denyRedirect:
+      headers:
+        - name: Sec-Fetch-Mode
+          type: Exact
+          value: cors
+  jwt:
+    providers:
+      - name: cognito
+        issuer: {{ $access.issuer | quote }}
+        audiences:
+          - {{ $access.clientId | quote }}
+        remoteJWKS:
+          uri: {{ printf "%s/.well-known/jwks.json" $access.issuer | quote }}
+  # The groups claim of the Cognito ID token is a list.
+  authorization:
+    defaultAction: Deny
+    rules:
+      - name: read
+        action: Allow
+        operation:
+          methods:
+            - GET
+        principal:
+          jwt:
+            provider: cognito
+            claims:
+              - name: cognito:groups
+                valueType: StringArray
+                values:
+                  {{- toYaml $webpages.readGroups | nindent 18 }}
+      - name: change-workload
+        action: Allow
+        operation:
+          methods:
+            - PUT
+            - POST
+        principal:
+          jwt:
+            provider: cognito
+            claims:
+              - name: cognito:groups
+                valueType: StringArray
+                values:
+                  {{- toYaml $webpages.writeGroups | nindent 18 }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,9 @@
+# Values for the vendored chart gateway-helm v1.9.3 (Envoy Gateway v1.9.3), verified in
+# versions.lock.yaml. Only the AWS deployment uses it. The webpages layer of the shared chart
+# (render=webpages) gives the GatewayClass, the EnvoyProxy, the Gateway, the routes and the
+# SecurityPolicy. The chart also installs the Gateway API CRDs.
+global:
+  images:
+    # The controller, the certgen Job and the shutdown manager of each Envoy pod use this image.
+    envoyGateway:
+      image: "docker.io/envoyproxy/gateway:v1.9.3@sha256:192fc9bdadb6d2462e8cf7bd702ce3dd9648f3310c6038787448a1f509b7cd9f"

@@ -42,3 +42,26 @@ configs:
         end
       end
       return hs
+    # Argo CD has no health for a SecurityPolicy of Envoy Gateway. A policy that Envoy Gateway
+    # does not accept, for example without its client Secret, is Degraded. The webpages layer
+    # then stops before Argo CD applies the routes.
+    resource.customizations.health.gateway.envoyproxy.io_SecurityPolicy: |
+      hs = {status = "Progressing", message = "Waiting for Envoy Gateway"}
+      if obj.status == nil or obj.status.ancestors == nil or #obj.status.ancestors == 0 then
+        return hs
+      end
+      for _, ancestor in ipairs(obj.status.ancestors) do
+        local accepted = false
+        for _, condition in ipairs(ancestor.conditions or {}) do
+          if condition.type == "Accepted" and condition.status == "False" then
+            return {status = "Degraded", message = condition.message or condition.reason}
+          end
+          if condition.type == "Accepted" and condition.status == "True" then
+            accepted = true
+          end
+        end
+        if not accepted then
+          return hs
+        end
+      end
+      return {status = "Healthy", message = ""}

@@ -216,9 +216,9 @@ primary. Open connections and transactions can still fail. See
 See [routing](shardshop-core/sharding/README.md),
 [ID generation](shardshop-core/idgen/README.md) and
 [database consistency](database/ARCHITECTURE.md#consistency-and-failure-boundaries)
-for the contracts. The [failover evidence](CHANGELOG.md#step-62), the
-[backup and restore evidence](CHANGELOG.md#step-63) and the
-[audit and repair evidence](CHANGELOG.md#step-64) are in the changelog.
+for the contracts. The [failover evidence](CHANGELOG.md#step-62--synchronous-failover-drills), the
+[backup and restore evidence](CHANGELOG.md#step-63--coordinated-backup-and-isolated-restore) and the
+[audit and repair evidence](CHANGELOG.md#step-64--restore-audit-and-recovery) are in the changelog.
 
 ### Implementation boundaries
 
@@ -247,7 +247,7 @@ physical memory.
 reads held near 200/s. There were no new errors, cancellations or recoveries, no
 backpressure and no stock exhaustion, and bounded backlogs drained. Host paging
 was a diagnostic only. See the
-[load-test evidence](CHANGELOG.md#step-65).
+[load-test evidence](CHANGELOG.md#step-65--order-write-p95-below-100-ms).
 
 **Reads.** The primary read profile delivered **994.565 / 991.000 / 999.769 reads/s**
 in three eligible 30-second windows, all OK, with p95 **3 / 3 / 2 ms**. The
@@ -255,7 +255,7 @@ aggregate was **995.111 reads/s** over 89.999985248 s, with writes paused and
 drained. The setup was two product pods, 16 reader workers and at most 16 HTTP
 connections. Mean connection acquisition was 0.0078 ms, no sampled pool waiter
 appeared and the product and reader pods had no additional CPU throttling. See the
-[read evidence](CHANGELOG.md#step-67).
+[read evidence](CHANGELOG.md#step-67--qualify-1000-product-readss).
 HTTP/2 through Envoy gave no gain, thus the lab keeps HTTP/1.1
 ([decision](DECISIONS.md#keep-http11)).
 
@@ -285,12 +285,12 @@ Different kinds of figures answer different questions:
 - **Stock lanes.** A separate disposable PostgreSQL comparison observed
   40.60 -> 57.99 orders/s with one versus three stock lanes (+42.8% throughput,
   30.0% shorter drain). It excludes CDC, ledger, profit and replication. See the
-  [evidence](CHANGELOG.md#step-65).
+  [evidence](CHANGELOG.md#step-65--order-write-p95-below-100-ms).
 - **Profit lanes.** A separate prepared-intent comparison observed
   182.29 -> 299.16 intents/s with one versus three profit lanes (+64.1%
   throughput, 39.1% shorter drain). It uses independent sellers and the lab polling
   profile of 100 ms and 32 intents. See the
-  [evidence](CHANGELOG.md#step-65). The gains of the
+  [evidence](CHANGELOG.md#step-65--order-write-p95-below-100-ms). The gains of the
   two stages cannot be added.
 - **No sum.** Peak reads and peak writes were measured separately. Do not add them
   as one simultaneous capacity.
@@ -344,6 +344,7 @@ flowchart LR
 | Backups | | Coordinated logical dumps outside kind | WAL archive and base backups in S3, point-in-time restore |
 | Applications | The same sources and image recipe | Six applications and three workloads, loaded into kind | The same, copied to ECR with digest pins |
 | Delivery | The shared Helm chart | Helmfile with Maven gates | Argo CD from pinned OCI charts in ECR, with the Maven gates as hook Jobs ([runbook](infra/terraform/README.md#deliver-shardshop-with-argo-cd)) |
+| Webpages | The five pages and their APIs | `webpages.sh` forwards local ports, without a login | One CloudFront address with a Cognito login and role rules, through Envoy Gateway and an internal NLB ([runbook](infra/terraform/README.md#open-the-webpages)) |
 | Checks | The Maven `kind` profile | All gates, drills and acceptance scenarios | The gates, the drills of the eleven acceptance scenarios and the `eks-*` scenarios, as Jobs in the cluster. The backup checks run on the developer computer. EKS variants replace the checks of kind nodes ([list](shardshop-testing/ARCHITECTURE.md#3-aws-deployment-acceptance)) |
 
 The local deployment runs the complete system on one computer:
@@ -369,12 +370,15 @@ The AWS deployment runs the same system with cloud services:
 ```mermaid
 flowchart TB
     Dev["Developer computer<br/>Terraform, Helm, Maven"]
+    Browser["Browser"]
     subgraph Account["AWS account · eu-west-2"]
+        CF["CloudFront and Cognito<br/>login, HTTPS"]
         ECR["ECR<br/>images and charts"]
         S3[("S3 bucket<br/>WAL and base backups")]
         SM["Secrets Manager<br/>runtime secrets"]
         subgraph EKS["EKS cluster · three workers in three zones"]
             Ops["Argo CD, CloudNativePG, Barman Cloud Plugin<br/>cert-manager, Secrets Store CSI driver"]
+            Envoy["Envoy Gateway · internal NLB<br/>one Envoy pod in each zone"]
             Apps2["Six applications<br/>three workloads"]
             Gates["Gate and drill Jobs"]
             DB2[("Three shards × three instances<br/>ledger · one instance")]
@@ -386,6 +390,9 @@ flowchart TB
     ECR -->|"Images and charts"| EKS
     SM -->|"Credentials"| EKS
     DB2 -->|"WAL and base backups"| S3
+    Browser -->|"HTTPS"| CF
+    CF -->|"VPC origin"| Envoy
+    Envoy -->|"Five pages and their APIs"| Apps2
 ```
 
 ### Low-level design

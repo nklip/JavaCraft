@@ -12,7 +12,8 @@ selected workload.
 - **Contains:** the pacer, the control state, the REST resource, the error mappers and one page script and
   stylesheet.
 - **Used by:** the order producer, the product reader and the product seeder. Each workload has its own page markup.
-- **Access:** inside the cluster and through `webpages.sh`, without authentication.
+- **Access:** in the local deployment, inside the cluster and through `webpages.sh`, without authentication. In
+  the AWS deployment, also through CloudFront with a login ([security](#security)).
 
 ### Pages and API
 
@@ -67,7 +68,7 @@ credentials or Kubernetes API token.
 
 ### Producer limits
 
-The cap of 30 starts per second follows the lab measurements in the [changelog](../../CHANGELOG.md#step-414).
+The cap of 30 starts per second follows the lab measurements in the [changelog](../../CHANGELOG.md#step-414--concurrent-order-writes-and-a-separate-saga-process).
 At that rate the producer reached 29.45 new orders per second with bounded order, outbox and profit backlogs and
 a final rolling write p95 of 93.73 ms. At target 10/s the write p95 was 91.42 ms. Four submission slots were
 sufficient. The maximum of 12 matches the aggregate pool budget of one HTTP JVM (four connections per shard).
@@ -91,8 +92,11 @@ after the restart.
 
 ### Security
 
-The control API has no authentication. It is reachable only inside the cluster and through `webpages.sh`.
-Milestone 7 plans authenticated routes for the AWS deployment.
+The control API has no authentication of its own. In the local deployment, it is reachable only inside the cluster
+and through `webpages.sh`. In the AWS deployment, Envoy Gateway also exposes the pages and the operations of the
+[control contract](src/main/resources/contracts/openapi.yaml) through CloudFront. There, each request needs a
+Cognito login, only the `operator` group can send a PUT or POST, and a PUT or POST from a different site gets 403
+([runbook](../../infra/terraform/README.md#open-the-webpages)).
 
 The [workload lifecycle](../../shardshop-workload/README.md#workload-lifecycle) describes the catalog gates.
 

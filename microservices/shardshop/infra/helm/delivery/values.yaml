@@ -1,15 +1,24 @@
 # The runbook sets the registry, the digests and the account values, because they contain
-# the AWS account ID. The packaged chart also contains files/cnpg-values.yaml and
-# files/barman-cloud-values.yaml, copied from the vendored chart values.
+# the AWS account ID. The packaged chart also contains the values of the vendored charts:
+# files/cnpg-values.yaml, files/barman-cloud-values.yaml,
+# files/aws-load-balancer-controller-values.yaml and files/envoy-gateway-values.yaml.
 mode: children
 registry: ""
 charts:
   delivery: ""
   cnpg: ""
   barmanCloud: ""
+  loadBalancerController: ""
+  envoyGateway: ""
   shardshop: ""
   # The immutable ECR tag of the same shared chart, for the migrations.
   shardshopVersion: ""
 # Values of the shared chart that contain the account ID: migration.image, images,
 # gates.image and backup.destinationPath.
 account: {}
+# The VPC of the Terraform foundation, for the AWS Load Balancer Controller.
+network:
+  vpcId: ""
+# Values of the shared chart for the webpages layer only: the security group of the load
+# balancer, and after the Terraform webpages module the access values.
+webpages: {}

@@ -308,7 +308,7 @@ Helm can report `deployed` when this gate fails, and Helmfile then returns nonze
 `down.sh` takes the lifecycle lock of `up.sh` and stops all ShardShop nodes.
 At the user's request, `cluster-destroy.sh` permanently removes the lab, its volumes and its kubeconfig entries.
 After a stop and `up.sh`, all identities stayed the same, and the reader reported 6,000 all-OK requests in 30 seconds (200/s).
-On 2026-10-18 both scripts became the lock and one native command (see [step 4.3](#step-43)).
+On 2026-10-18 both scripts became the lock and one native command (see [step 4.3](#step-43--rabbitmq-topology-and-policies)).
 
 <a id="step-319"></a>
 ### Step 3.19 — Replace the offline dataset generator with Java tooling
@@ -735,3 +735,13 @@ The second EKS run passed all eleven scenarios at the first attempt. It lasted 2
 The unchanged local Helmfile workflow passed step 6.9 again, also with each drill as a Job.
 The runs found four drill gaps and two gaps in the drill role.
 Lesson: run the drills near the API server.
+
+<a id="step-78"></a>
+### Step 7.8 — Stable AWS webpage URLs and access control
+
+**Done 2026-11-04.** The user started the step without the due version review.
+Envoy Gateway v1.9.3 and the AWS Load Balancer Controller v3.6.2 serve the five webpages through one CloudFront address and an internal NLB, with a Cognito login and one SecurityPolicy.
+A local test cluster proved that only the `operator` group can change a workload.
+On EKS, `eks-webpages`, `eks-webpages-replacement` and the user's browser check of both roles passed. The run took 1 h 58 min and cost approximately US$1.30.
+The local deployment did not change: all its renders are identical.
+Lesson: Argo CD ignores `values` when `valuesObject` exists.

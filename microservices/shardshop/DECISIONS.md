@@ -213,7 +213,7 @@ commits and without blocked writes.
 
 **Result.** Each write waits for a standby flush. When the operator cannot confirm
 a current standby, the shard waits for an operator decision
-([failover drills](CHANGELOG.md#step-62)).
+([failover drills](CHANGELOG.md#step-62--synchronous-failover-drills)).
 
 ### Local transactions and a saga
 
@@ -232,10 +232,10 @@ connects the shards and the ledger through CDC, RabbitMQ and compensation:
 **Reason.** ShardShop has no distributed transaction.
 
 **Result.** The order outcome is eventual: its p95 was 1.5–2.2 s at 10–30 orders/s
-([step 6.6](CHANGELOG.md#step-66)). Delivery is at least once, thus each handler is
+([step 6.6](CHANGELOG.md#step-66--sustained-30-new-orderss)). Delivery is at least once, thus each handler is
 idempotent, and reconciliation recovers lost results. Each CDC reader sends a
 heartbeat every 10 seconds: without it, an idle outbox never confirmed WAL, and
-the slot could pass `max_slot_wal_keep_size` (512 MB) ([step 4.4](CHANGELOG.md#step-44)).
+the slot could pass `max_slot_wal_keep_size` (512 MB) ([step 4.4](CHANGELOG.md#step-44--order-outbox-cdc-relay)).
 
 ### Shard-concurrent stock and profit workers
 
@@ -247,7 +247,7 @@ the serial scan.
 orders/s (+42.8%), and the profit stage from 182.29 to 299.16 intents/s (+64.1%).
 
 **Result.** Each shard batch and the operations of each order stay sequential
-([step 6.5](CHANGELOG.md#step-65)).
+([step 6.5](CHANGELOG.md#step-65--order-write-p95-below-100-ms)).
 
 ### Snowflake IDs from product and order only
 
@@ -262,7 +262,7 @@ the kubectl stage of the images and its advisories.
 
 **Result.** Each new product or order JVM uses a new generator slot. IDs are
 decimal strings on the wire and positive `BIGINT` values in PostgreSQL
-([step 3.11](CHANGELOG.md#step-311)).
+([step 3.11](CHANGELOG.md#step-311--generator-ids-in-the-application-jvm)).
 
 ### Strict replica reads without primary fallback
 
@@ -275,7 +275,7 @@ primary fallback ([scenarios](shardshop-testing/ARCHITECTURE.md#1-acceptance-sce
 
 **Result.** Product reads use the primaries (`-rw`) by default. The replica
 profile is an optional load-test profile that permits stale or temporarily
-missing products ([step 6.1](CHANGELOG.md#step-61)).
+missing products ([step 6.1](CHANGELOG.md#step-61--strict-replica-read-drill)).
 
 ### Coordinated logical backups and isolated restores
 
@@ -292,7 +292,7 @@ high-water mark.
 **Result.** A restore bundle authorizes no production cutover
 (`trafficAuthorized: false`). See the
 [backup policy](database/ARCHITECTURE.md#replication-and-backup-policy) and
-[step 6.4](CHANGELOG.md#step-64).
+[step 6.4](CHANGELOG.md#step-64--restore-audit-and-recovery).
 
 ## 3. Build, test and delivery
 <sub>[Back to Contents](#contents)</sub>
@@ -315,12 +315,12 @@ high-water mark.
 **Reason.** Native tools give the same guarantees with less custom code. When
 `down.sh` and `cluster-destroy.sh` changed to `docker stop` and
 `kind delete cluster`, 21 of the 30 tests of the old scripts failed: they checked
-only the removed logic ([step 4.3](CHANGELOG.md#step-43)).
+only the removed logic ([step 4.3](CHANGELOG.md#step-43--rabbitmq-topology-and-policies)).
 
 **Result.** `cluster-create.sh` owns the infrastructure, and `up.sh` owns the
 applications, as the user requested. Each `up.sh` restarts the application pods.
 The final acceptance gate is a Helmfile `postsync` hook, because Helm reports
-`deployed` also when the acceptance fails ([step 3.17](CHANGELOG.md#step-317)).
+`deployed` also when the acceptance fails ([step 3.17](CHANGELOG.md#step-317--complete-upsh-with-a-deployment-success-gate)).
 
 ### Reproducible images with digest tags
 
@@ -330,7 +330,7 @@ each image that it loads into kind as `sha256-<digest>` on each node.
 **Reason.** Two clean builds of the same sources gave different JAR files, thus
 each `up.sh` loaded new images. After `up.sh` moved the `:local` tags, the CRI did
 not find the earlier images and failed with `CreateContainerError`
-([step 3.13](CHANGELOG.md#step-313)).
+([step 3.13](CHANGELOG.md#step-313--build-current-sources-and-qualify-images-through-upsh)).
 
 **Result.** An unchanged build uses the cached image layers again, and a pod of an
 earlier image can still start.
@@ -346,7 +346,7 @@ runs without Ryuk, and a JVM shutdown hook removes each container.
 **Reason.** The user selected a Cucumber test module, as in the other projects of
 the repository. The k3s scenarios use no lab slots. Ryuk publishes its port on all
 host interfaces, runs privileged with the Docker socket, and had 4 critical and 29
-high advisories ([step 3.10](CHANGELOG.md#step-310)).
+high advisories ([step 3.10](CHANGELOG.md#step-310--maven-integration-tests-with-testcontainers)).
 
 **Result.** There is no Bash or Python check of Java behavior.
 
@@ -357,7 +357,7 @@ never depend on the orders of the workload producer.
 
 **Reason.** The user decided it. Confirmed producer orders use the seeded stock
 permanently: approximately 16 h of producer run time empties the 50,000 USD units
-of a region ([step 4.9](CHANGELOG.md#step-49)).
+of a region ([step 4.9](CHANGELOG.md#step-49--saga-deployment-and-first-end-to-end-run)).
 
 **Result.** A gate passes or fails on its own data, also after a long producer run.
 
@@ -388,7 +388,7 @@ updates of the two retry columns. It cannot read payloads or change terminal
 decisions.
 
 **Result.** The checked-in operation keeps the pending-state protection; the
-column grants alone cannot prevent ad hoc changes ([step 5.3](CHANGELOG.md#step-53)).
+column grants alone cannot prevent ad hoc changes ([step 5.3](CHANGELOG.md#step-53--manual-reconciliation-reset)).
 
 ### Keep HTTP/1.1
 
@@ -408,7 +408,7 @@ h2c and standalone Envoy implementation of step 6.8 is in a local Git stash.
   give nothing.
 
 **Result.** The applications and the workloads keep HTTP/1.1
-([step 6.8](CHANGELOG.md#step-68)).
+([step 6.8](CHANGELOG.md#step-68--http2-transport)).
 
 ### CloudFront default hostname
 
@@ -456,6 +456,35 @@ internal NLB for the Envoy Service.
   disruption budget and a drain at shutdown.
 - The AWS deployment has two controllers: Envoy Gateway and the AWS Load Balancer
   Controller.
-- If the qualification cannot limit the writes to the Cognito operator group, the
-  AWS Load Balancer Controller with oauth2-proxy replaces Envoy Gateway
-  ([plan](PLAN.md#78-stable-aws-webpage-urls-and-access-control)).
+- The qualification passed on 2026-11-04, thus Envoy Gateway v1.9.3 stays. On a local
+  test cluster, the rendered role rules let a token with the group `operator` change a
+  workload, and gave 403 to `viewer`, to no group and to a group claim that is not a
+  list. A write without the own `Origin` got 403, and each other path and method got
+  404 ([changelog](CHANGELOG.md#step-78--stable-aws-webpage-urls-and-access-control)).
+
+### One login policy on the Gateway
+
+**Decision.** One SecurityPolicy on the Gateway gives the Cognito login, the role rules
+and the CSRF check to all the webpage routes. The policy gives the validated ID token to
+the JWT filter, and the role rules read its `cognito:groups` list. The routes and the
+policy exist only after the Terraform webpages module, because the login needs the
+CloudFront name.
+
+**Reason.**
+
+- Two policies with a login on one host break the login, because each policy has its own
+  cookies ([envoyproxy/gateway#8649](https://github.com/envoyproxy/gateway/issues/8649)).
+- The tokens in the cookies are encrypted. Envoy gives the ID token to the JWT filter
+  after it validates the cookies, and it removes the `Authorization` header of the
+  client. A client thus cannot give its own token.
+- `SameSite=Lax` keeps the token cookies from cross-site requests. `Strict` would drop
+  the login state on the redirect from Cognito. The CSRF filter also rejects a PUT or
+  POST without the own `Origin`.
+
+**Result.**
+
+- Before the webpages module, the Gateway has no route, thus nothing is open.
+- Cognito makes the client secret, thus it is in the Terraform state of the webpages
+  module. The runbook copies it to a Kubernetes Secret that Argo CD does not deliver.
+- The users have no known password after the apply. The operator sets each password.
+- The automated checks have no password. The operator checks the two roles in a browser.

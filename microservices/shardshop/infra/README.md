@@ -23,6 +23,7 @@ on EKS.
 | [`helm/shardshop/`](helm/shardshop) | The shared chart, with `kind-values.yaml` and `eks-values.yaml` | [Shared and different parts](../ARCHITECTURE.md#5-local-deployment-and-aws-deployment) |
 | [`helm/cnpg/`](helm/cnpg) | The vendored CloudNativePG chart and its values, for both deployments | [CloudNativePG operator](RUNBOOK.md#11-cloudnativepg-operator) |
 | [`helm/barman-cloud/`](helm/barman-cloud), [`helm/argocd/`](helm/argocd) | The vendored charts of the backup plugin and Argo CD, only for AWS | [AWS design](terraform/README.md#design) |
+| [`helm/aws-load-balancer-controller/`](helm/aws-load-balancer-controller), [`helm/envoy-gateway/`](helm/envoy-gateway) | The vendored charts of the webpage controllers, only for AWS | [AWS webpages](terraform/README.md#open-the-webpages) |
 | [`helm/delivery/`](helm/delivery) | The Argo CD Applications of the AWS deployment | [AWS delivery](terraform/README.md#deliver-shardshop-with-argo-cd) |
 | [`images/`](images) | The recipes of the application, migration and gates images | [Container images](images/README.md) |
 | [`terraform/`](terraform) | The Terraform modules of the AWS foundation | [AWS foundation](terraform/README.md) |

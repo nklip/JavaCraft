@@ -5,18 +5,22 @@
 Terraform creates the AWS foundation of milestone 7: a VPC, an EKS
 cluster, ECR repositories, a backup bucket, the runtime secrets and the IAM roles of
 the workloads. The [runbook](#deliver-shardshop-with-argo-cd) then delivers ShardShop
-on EKS with Argo CD and runs the drills. The local deployment does not use
+on EKS with Argo CD, [opens the webpages](#open-the-webpages) and runs the drills. The local deployment does not use
 these resources. The versions are in [VERSIONS.md](../../VERSIONS.md#aws-foundation).
 
 ## Design
 
-There are two Terraform root modules:
+There are three Terraform root modules:
 
 - [`state/`](state) creates the S3 bucket for the Terraform state, with versioning,
   encryption and blocked public access. This bucket must exist before the other
   module, thus `state/` keeps its own state in a local file.
 - [`aws/`](aws) creates the foundation. Its state is in the S3 bucket, and the S3
   lock file (`use_lockfile`) prevents two runs at the same time.
+- [`webpages/`](webpages) creates the CloudFront distribution, its VPC origin and the
+  Cognito user pool of the [webpages](#open-the-webpages). Its state is in the same
+  bucket. It needs the NLB that the AWS Load Balancer Controller creates, thus it comes
+  after the delivery.
 
 | Part | Design |
 |---|---|
@@ -30,6 +34,7 @@ There are two Terraform root modules:
 | Backups | Bucket `shardshop-backups-<account>-<region>` with SSE-S3 encryption, blocked public access and a TLS-only policy. The [Barman Cloud Plugin](../helm/barman-cloud/values.yaml) archives the WAL of each database cluster continuously below the prefix of the cluster, for example `shard-a/`. A base backup starts with the cluster and then runs each day. The plugin keeps 7 days. |
 | Secrets | One AWS Secrets Manager secret for each login role of `runtimeSecrets` in `eks-values.yaml`, and `shardshop/rabbitmq` with the broker passwords, the Erlang cookie and the `users.json` of [`users.jq`](../helm/shardshop/files/rabbitmq/users.jq). The passwords are ephemeral and the values write-only, thus no password is in the Terraform state. A destroy deletes the secrets without a recovery window. The shared chart syncs them to the Kubernetes Secrets that kind creates with `cluster-create.sh`, through a holder pod that mounts them. |
 | Broker | Three RabbitMQ brokers, one in each zone. Each quorum queue has a member on each broker. |
+| Webpages | CloudFront serves the five webpages on its default `*.cloudfront.net` name, with its certificate and an HTTP-to-HTTPS redirect. A VPC origin connects CloudFront to an internal NLB, and the security group `shardshop-webpages` of the NLB accepts only the CloudFront origin-facing prefix list. The NLB sends the traffic to three Envoy pods of [Envoy Gateway](../helm/envoy-gateway/values.yaml), one in each zone. The [AWS Load Balancer Controller](../helm/aws-load-balancer-controller/values.yaml) creates the NLB with its EKS Pod Identity role. The private path from CloudFront to the NLB uses HTTP, because no trusted certificate can match the name of an internal NLB. Cognito gives the login, with the groups `viewer` and `operator` |
 | IAM | The worker role has only the node, CNI and ECR pull policies. EKS Pod Identity gives roles to the EBS CSI driver and to each CloudNativePG cluster of [`shards.yaml`](../shards.yaml) and `ledger-db`. Only this cluster can use these roles. A backup role can write only below its own prefix, for example `shard-a/`. A restore role lets the cluster `<cluster>-pitr` read only the prefix of its source. The holder pod can read only the runtime secrets. |
 
 `terraform destroy` removes everything that the modules create:
@@ -64,6 +69,10 @@ second policy, because one managed policy can have a maximum of 6,144 characters
 - The user can create CloudFront distributions, CloudFront VPC origins and Cognito
   user pools only with the tag `Project=shardshop`. Then the user can manage only
   the resources with this tag. The user pools must be in `eu-west-2`.
+- The user can read each CloudFront distribution and VPC origin without the tag.
+  After a deletion the tag is gone, and Terraform then reads the resource until AWS
+  reports that it does not exist. With only the tag-based permission, AWS gives
+  AccessDenied, and `terraform destroy` stops with an error.
 - The user can let CloudFront create its service-linked role for VPC origins.
 - The user can read the load balancers. The user can delete only load balancers,
   listeners and target groups with the tag `Project=shardshop`. Thus the AWS Load
@@ -85,7 +94,10 @@ price list of 2026-10-29:
 | Three 20 GB gp3 root volumes | US$0.0076 for each hour (US$0.0928 for each GB-month) |
 | Thirteen 2 GiB gp3 database and broker volumes of the database tier | US$0.0033 for each hour |
 | Nine Secrets Manager secrets | US$0.40 for each secret-month (US$0.005 for each hour), and US$0.05 for each 10,000 API calls |
-| Total while the foundation and ShardShop run | Approximately US$0.62 for each hour, or US$455 for each month |
+| Internal NLB of the webpages | US$0.02646 for each hour, and US$0.006 for each used NLB capacity unit-hour (price list of 2026-11-02) |
+| Cognito Lite user pool | Free for the first 10,000 monthly active users, then US$0.0055 for each user (price list of 2026-10-20) |
+| CloudFront | US$0.085 for each GB to viewers in Europe (price list of 2026-10-19) and approximately US$0.012 for each 10,000 HTTPS requests. No fee for each hour, and no fee for the VPC origin |
+| Total while the foundation, ShardShop and the webpages run | Approximately US$0.66 for each hour, or US$480 for each month |
 | EKS audit and authenticator logs | US$0.5985 for each GB |
 
 S3, ECR and the S3 gateway endpoint cost almost nothing with the small backups of a
@@ -237,6 +249,9 @@ in this sync-wave order:
 | 4 | `shardshop-migrations` | A PreSync gate, then the Flyway Jobs as PostSync hooks |
 | 5 | `shardshop-routing` | The routing ConfigMap, only after successful migrations |
 | 6 | `shardshop-applications` | A PreSync gate, the six applications with both order processes, then the seeder and a PostSync gate |
+| 7 | `aws-load-balancer-controller` | The vendored controller chart, in `kube-system`. It creates only the NLB of the webpages |
+| 8 | `envoy-gateway` | The vendored Envoy Gateway chart with the Gateway API CRDs |
+| 9 | `shardshop-webpages` | The Gateway and its Envoy pods. After the [webpages module](#open-the-webpages), also the routes and the SecurityPolicy |
 
 The root Application `shardshop` applies a wave only after the Applications of the
 earlier waves have synced successfully and are healthy. Each Application has a digest
@@ -361,11 +376,15 @@ Always sync all the resources of an Application.
    cp -R microservices/shardshop/infra/helm/delivery "$run/delivery" && mkdir "$run/delivery/files"
    cp microservices/shardshop/infra/helm/cnpg/values.yaml "$run/delivery/files/cnpg-values.yaml"
    cp microservices/shardshop/infra/helm/barman-cloud/values.yaml "$run/delivery/files/barman-cloud-values.yaml"
+   cp microservices/shardshop/infra/helm/aws-load-balancer-controller/values.yaml "$run/delivery/files/aws-load-balancer-controller-values.yaml"
+   cp microservices/shardshop/infra/helm/envoy-gateway/values.yaml "$run/delivery/files/envoy-gateway-values.yaml"
    mkdir "$run/packages"
    helm package "$run/shardshop" --version "$version" --destination "$run/packages"
    helm package "$run/delivery" --version "0.1.0-run${version#0.3.0-run}" --destination "$run/packages"
    cnpg_digest=$(push microservices/shardshop/infra/helm/cnpg/cloudnative-pg-0.29.1.tgz)
    barman_digest=$(push microservices/shardshop/infra/helm/barman-cloud/plugin-barman-cloud-0.8.1.tgz)
+   balancer_digest=$(push microservices/shardshop/infra/helm/aws-load-balancer-controller/aws-load-balancer-controller-3.6.2.tgz)
+   gateway_digest=$(push microservices/shardshop/infra/helm/envoy-gateway/gateway-helm-v1.9.3.tgz)
    shardshop_digest=$(push "$run/packages/shardshop-$version.tgz")
    delivery_digest=$(push "$run/packages/shardshop-delivery-0.1.0-run${version#0.3.0-run}.tgz")
    ```
@@ -381,10 +400,11 @@ Always sync all the resources of an Application.
    kubectl --context kind-shardshop-test-eks -n argocd label secret shardshop-helm-charts argocd.argoproj.io/secret-type=repository
    ```
 
-8. Write the delivery values and apply the root Application:
+8. Write the delivery values and apply the root Application. The webpages layer gets
+   the VPC and the security group of the NLB:
 
    ```bash
-   jq -n --arg registry "$registry" --arg delivery "$delivery_digest" --arg cnpg "$cnpg_digest" --arg barman "$barman_digest" --arg shardshop "$shardshop_digest" --arg version "$version" --slurpfile account "$run/aws-values.json" '{registry: $registry, charts: {delivery: $delivery, cnpg: $cnpg, barmanCloud: $barman, shardshop: $shardshop, shardshopVersion: $version}, account: $account[0]}' >"$run/delivery-values.json"
+   jq -n --arg registry "$registry" --arg delivery "$delivery_digest" --arg cnpg "$cnpg_digest" --arg barman "$barman_digest" --arg balancer "$balancer_digest" --arg gateway "$gateway_digest" --arg shardshop "$shardshop_digest" --arg version "$version" --arg vpc "$(terraform -chdir=microservices/shardshop/infra/terraform/aws output -raw vpc_id)" --arg group "$(terraform -chdir=microservices/shardshop/infra/terraform/aws output -raw webpages_security_group_id)" --slurpfile account "$run/aws-values.json" '{registry: $registry, charts: {delivery: $delivery, cnpg: $cnpg, barmanCloud: $barman, loadBalancerController: $balancer, envoyGateway: $gateway, shardshop: $shardshop, shardshopVersion: $version}, account: $account[0], network: {vpcId: $vpc}, webpages: {securityGroup: $group}}' >"$run/delivery-values.json"
    helm template shardshop microservices/shardshop/infra/helm/delivery --values "$run/delivery-values.json" --set-string mode=root | kubectl --context kind-shardshop-test-eks apply -f -
    ```
 
@@ -426,6 +446,95 @@ kubectl --context kind-shardshop-test-eks -n shardshop get jobs -l app.kubernete
 kubectl --context kind-shardshop-test-eks -n shardshop logs job/<gate-job>
 kubectl --context kind-shardshop-test-eks -n argocd patch application <application> --type merge -p "{\"operation\":{\"initiatedBy\":{\"username\":\"runbook\"},\"sync\":{\"revision\":\"$version\"}}}"
 ```
+
+### Open the webpages
+
+The five webpages and the APIs that they call get one public address on CloudFront, with
+a Cognito login:
+
+```mermaid
+flowchart LR
+  browser[Browser] -->|HTTPS| cloudfront[CloudFront<br/>*.cloudfront.net]
+  cloudfront -->|HTTP, VPC origin| nlb[Internal NLB<br/>CloudFront only]
+  nlb --> envoy[Envoy pods<br/>one in each zone]
+  envoy -->|login| cognito[Cognito]
+  envoy --> pages[Product, order and<br/>workload Services]
+```
+
+The [webpages layer](../helm/shardshop/templates/webpages.yaml) has two phases:
+
+1. In the delivery, the Gateway gets its Envoy pods and its NLB. It has no route, thus
+   nothing is open.
+2. After the Terraform webpages module, the layer also gets the routes and one
+   SecurityPolicy. The policy requires a login for each route. A member of `viewer` or
+   `operator` can read all five pages. Only a member of `operator` can change a
+   workload: set the rate, pause, resume and start a seeder run. A PUT or POST from a
+   different site gets 403, and the login cookies are `SameSite=Lax`. Each other API and
+   method gets 404.
+
+Apply the webpages module after the delivery, then give the access values to the layer:
+
+1. Wait for the NLB, then create CloudFront, the VPC origin and the Cognito user pool.
+   CloudFront and the VPC origin take approximately 15 minutes:
+
+   ```bash
+   kubectl --context kind-shardshop-test-eks -n shardshop wait --for=condition=Programmed gateway/shardshop-webpages --timeout=10m
+   web=microservices/shardshop/infra/terraform/webpages
+   terraform -chdir=$web init -backend-config="bucket=$(terraform -chdir=microservices/shardshop/infra/terraform/state output -raw bucket)"
+   terraform -chdir=$web plan -out="$run/webpages.tfplan"
+   terraform -chdir=$web apply "$run/webpages.tfplan"
+   ```
+
+2. Copy the client secret of Cognito to the Secret of the SecurityPolicy. Argo CD does
+   not deliver this Secret. Then add the access values to the delivery values, and apply
+   the root Application again. Only the webpages layer gets these values, thus no other
+   layer syncs again:
+
+   ```bash
+   terraform -chdir=$web output -raw client_secret | kubectl --context kind-shardshop-test-eks -n shardshop create secret generic shardshop-webpages-oidc --from-file=client-secret=/dev/stdin
+   jq --argjson access "$(terraform -chdir=$web output -json access)" '.webpages.access = $access' "$run/delivery-values.json" >"$run/delivery-values.next" && mv "$run/delivery-values.next" "$run/delivery-values.json"
+   helm template shardshop microservices/shardshop/infra/helm/delivery --values "$run/delivery-values.json" --set-string mode=root | kubectl --context kind-shardshop-test-eks apply -f -
+   kubectl --context kind-shardshop-test-eks -n shardshop wait --for=create securitypolicy/shardshop-webpages --timeout=10m
+   kubectl --context kind-shardshop-test-eks -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy application/shardshop-webpages --timeout=10m
+   terraform -chdir=$web output -raw hostname
+   ```
+
+3. Terraform creates the users `viewer` and `operator`, with a random temporary password
+   that nobody knows. Set a password for each user. A password has at least 12
+   characters, with an uppercase letter, a lowercase letter and a number:
+
+   ```bash
+   aws cognito-idp admin-set-user-password --region eu-west-2 --user-pool-id "$(terraform -chdir=$web output -raw user_pool_id)" --username viewer --password '<password>' --permanent
+   ```
+
+   ```bash
+   aws cognito-idp admin-set-user-password --region eu-west-2 --user-pool-id "$(terraform -chdir=$web output -raw user_pool_id)" --username operator --password '<password>' --permanent
+   ```
+
+4. Run the checks of [`EksWebpages.feature`](../../shardshop-testing/src/test/resources/kind-features/EksWebpages.feature)
+   on this computer with `kindit` of [Run the drills](#run-the-drills). They send the
+   requests through CloudFront, as a browser does. `eks-webpages` checks HTTPS, the
+   redirects to HTTPS and to the login, the rejection of requests without a login and of
+   cross-site writes, the 404 of the other APIs, and that a pod in the VPC cannot reach
+   the NLB. `eks-webpages-replacement` replaces each Envoy pod and each product pod and
+   requires an answer to each request during the replacements:
+
+   ```bash
+   kindit eks-webpages
+   kindit eks-webpages-replacement
+   ```
+
+5. The checks have no Cognito password. Thus check the roles in a browser:
+
+   - Open `https://<hostname>/products/?region=EU&page=3`. After the login as `viewer`,
+     the page shows page 3 of the EU products.
+   - On `https://<hostname>/workload-order-producer/`, **Apply** a rate as `viewer`. The
+     page shows an error, and the rate stays.
+   - Sign out with the `sign_out_url` output, then sign in as `operator`. **Apply**,
+     **Pause** and **Resume** change the workload.
+
+The address stays for the life of the distribution. A new AWS deployment gets a new
+address.
 
 ### Run the drills
 
@@ -584,8 +693,11 @@ Set `charts.shardshop` and `charts.shardshopVersion` of the root Application bac
 CAUTION: Make a copy of the data that you want to keep before you do this step.
 This step deletes all the databases, the broker data and their EBS volumes.
 
-First stop the delivery: delete the root Application before its children, and
-uninstall Argo CD. The Applications have no resources finalizer, thus the resources
+First destroy the webpages module: the CloudFront distribution, its VPC origin and the
+Cognito user pool. CloudFront must disable the distribution before it deletes it, thus the
+destroy takes approximately 15 minutes. Then stop the delivery: delete the root
+Application before its children. Then delete the Gateway, thus the AWS Load Balancer
+Controller deletes the NLB while it still runs. Then uninstall Argo CD. The Applications have no resources finalizer, thus the resources
 stay. The retention policy of the generator registry denies each deletion of the
 registry while the data stays. This step deletes the data, thus delete the policy
 too. The namespace deletion then removes the applications and the clusters, and the
@@ -593,8 +705,11 @@ EBS CSI driver deletes each volume. There must be no persistent volume after the
 wait. The backups stay in the bucket until the destroy:
 
 ```bash
+terraform -chdir=microservices/shardshop/infra/terraform/webpages destroy
 kubectl --context kind-shardshop-test-eks -n argocd delete application shardshop
 kubectl --context kind-shardshop-test-eks -n argocd delete application --all
+kubectl --context kind-shardshop-test-eks -n shardshop delete gateway shardshop-webpages --timeout=10m
+until ! aws elbv2 describe-load-balancers --region eu-west-2 --names shardshop-webpages >/dev/null 2>&1; do sleep 10; done
 kubectl --context kind-shardshop-test-eks delete validatingadmissionpolicybinding,validatingadmissionpolicy shardshop-full-sync
 helm uninstall argocd --kube-context kind-shardshop-test-eks --namespace argocd --wait
 kubectl --context kind-shardshop-test-eks delete validatingadmissionpolicybinding,validatingadmissionpolicy shardshop-generator-retention
@@ -628,6 +743,9 @@ aws ec2 describe-volumes --region eu-west-2 --filters Name=tag:Project,Values=sh
 aws secretsmanager list-secrets --region eu-west-2 --filters Key=name,Values=shardshop/ --query 'SecretList[].Name'
 aws iam list-roles --query "Roles[?starts_with(RoleName, 'shardshop-')].RoleName"
 aws logs describe-log-groups --region eu-west-2 --log-group-name-prefix /aws/eks/shardshop --query 'logGroups[].logGroupName'
+aws elbv2 describe-load-balancers --region eu-west-2 --query "LoadBalancers[?starts_with(LoadBalancerName, 'shardshop')].LoadBalancerName"
+aws cloudfront list-distributions --query "DistributionList.Items[?Comment=='ShardShop webpages'].Id"
+aws cognito-idp list-user-pools --region eu-west-2 --max-results 10 --query "UserPools[?starts_with(Name, 'shardshop')].Id"
 ```
 
 If a volume of a claim stays, delete it with `aws ec2 delete-volume --region eu-west-2 --volume-id <volume-id>`.

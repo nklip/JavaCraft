@@ -11,10 +11,10 @@ resource "aws_ecr_repository" "images" {
   }
 }
 
-# The OCI Helm charts that Argo CD applies: the vendored operator and plugin charts, the
-# shared chart and the delivery chart. The runbook pushes each chart with a new version.
+# The OCI Helm charts that Argo CD applies: the vendored operator, plugin and controller charts,
+# the shared chart and the delivery chart. The runbook pushes each chart with a new version.
 resource "aws_ecr_repository" "charts" {
-  for_each = toset(["cloudnative-pg", "plugin-barman-cloud", "shardshop", "shardshop-delivery"])
+  for_each = toset(["cloudnative-pg", "plugin-barman-cloud", "aws-load-balancer-controller", "gateway-helm", "shardshop", "shardshop-delivery"])
 
   name                 = "${local.name}-charts/${each.key}"
   image_tag_mutability = "IMMUTABLE"

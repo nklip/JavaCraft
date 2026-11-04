@@ -164,6 +164,9 @@ platforms. Terraform verifies these checksums at each `terraform init`.
 | cert-manager | EKS community add-on, the newest version for EKS 1.36 at apply time (v1.21.3-eksbuild.1 on 2026-11-01) | cert-manager 1.21 supports Kubernetes 1.33–1.36 until the release of 1.23 | At each apply |
 | AWS Secrets Store CSI provider | EKS add-on `aws-secrets-store-csi-driver-provider`, the newest version at apply time (v3.1.4-eksbuild.3 on 2026-11-01) | AWS managed | At each apply |
 | Argo CD | v3.5.6 with Redis 8.6.4-alpine, vendored chart `argo-cd` 10.11.6 in `infra/helm/argocd/` | The three newest minor lines are supported. 3.5 supports Kubernetes 1.33–1.36 | 2026-11-25 |
+| Envoy Gateway | v1.9.3 with the Envoy proxy `distroless-v1.39.5`, vendored chart `gateway-helm` v1.9.3 with the Gateway API 1.6.1 CRDs in `infra/helm/envoy-gateway/` | 1.9 supports Kubernetes 1.33–1.36 until 2027-02-14 | 2026-11-25 |
+| AWS Load Balancer Controller | v3.6.2, vendored chart `aws-load-balancer-controller` 3.6.2 in `infra/helm/aws-load-balancer-controller/`, and the IAM policy of the release | Maintained stable, no published fixed EOL | 2026-11-25 |
+| CloudFront and Cognito | The default `*.cloudfront.net` certificate, a VPC origin and a Cognito Lite user pool | AWS managed | At each apply |
 | Gates image | [`infra/images/gates/Dockerfile`](infra/images/gates/Dockerfile): the JRE base of the application images, kubectl 1.37.2 linux/arm64 with a SHA-256 pin, Helm 4.3.1 linux/arm64 with a SHA-256 pin of its archive, the JUnit console launcher 6.1.3 and the test classpath. The runbook builds it for each run | kubectl: the skew policy permits one minor version newer than EKS 1.36. Helm: the version of the host tool | 2026-11-25 |
 
 ## 2. Update rules
@@ -244,7 +247,8 @@ The gate examines only the packages that Docker Scout indexes. Refer to
 - A support review examines releases and compatibility. A security review examines images and advisories. The next
   security review is due by 2026-11-30 (`security_review_2026_10_31.next_review_by`).
 - [PLAN.md](PLAN.md#2-rules-for-a-step) requires the complete due review before a step starts, or a
-  recorded user decision.
+  recorded user decision. On 2026-11-04 the user started step 7.8 without the review that was due that day
+  ("implement 7.8 ... without review"). The review stays due.
 - A query to a public advisory service uses package names only. Do not send the dependency inventory or the
   versions. An empty advisory response is not evidence that a package has no finding.
 
@@ -281,6 +285,10 @@ No newer release exists for these images:
 - Argo CD v3.5.6: 28 critical and 133 high, mostly in the Go stdlib and `golang.org/x` modules of the bundled
   tools. cosign verified the image signature.
 - Redis 8.6.4-alpine of the Argo CD chart: 2 critical and 14 high in openssl and util-linux.
+- Envoy Gateway v1.9.3, accepted on 2026-11-04: 3 high in the controller image, CVE-2026-73500 in
+  `go.etcd.io/etcd/client/pkg/v3` 3.7.0 (fixed in 3.7.1), CVE-2026-116587 in `go-jose/v4` 4.1.5 (fixed in 4.1.6)
+  and CVE-2025-15558 in `docker/cli` 29.9.1 (no fix). v1.9.3 is the newest stable release. The Envoy proxy image
+  and the AWS Load Balancer Controller v3.6.2 have no critical or high finding.
 - The gates image: 1 critical and 5 high in `golang.org/x/net` 0.57.0 and `golang.org/x/text` 0.40.0 of kubectl
   1.37.2, the newest 1.37 release. Helm 4.3.1 adds no critical or high finding. 1 high each in `httpcore5` and
   `httpcore5-h2` 5.3.6 of Testcontainers on the test
@@ -288,7 +296,7 @@ No newer release exists for these images:
 
 The acceptance applies only to the pinned images on an EKS cluster that the runbook destroys after the run. The lock
 records the findings in `images.barman_cloud_plugin`, `images.barman_cloud_sidecar`, `images.argocd`,
-`images.argocd_redis` and `images.shardshop_gates`.
+`images.argocd_redis`, `images.envoy_gateway` and `images.shardshop_gates`.
 
 ### Canonical OpenJDK 25.0.5
 

@@ -25,3 +25,11 @@ output "backup_bucket" {
 output "backup_role_arns" {
   value = { for name, role in aws_iam_role.backup : name => role.arn }
 }
+
+output "vpc_id" {
+  value = module.vpc.vpc_id
+}
+
+output "webpages_security_group_id" {
+  value = aws_security_group.webpages.id
+}

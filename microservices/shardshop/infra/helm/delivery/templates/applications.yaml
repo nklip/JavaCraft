@@ -37,7 +37,10 @@ spec:
       (dict "wave" 3 "name" "shardshop-infrastructure" "render" "infrastructure")
       (dict "wave" 4 "name" "shardshop-migrations" "render" "migrations")
       (dict "wave" 5 "name" "shardshop-routing" "render" "routing")
-      (dict "wave" 6 "name" "shardshop-applications" "render" "application-release") }}
+      (dict "wave" 6 "name" "shardshop-applications" "render" "application-release")
+      (dict "wave" 7 "name" "aws-load-balancer-controller" "namespace" "kube-system" "chart" "aws-load-balancer-controller" "digest" .Values.charts.loadBalancerController "values" "files/aws-load-balancer-controller-values.yaml" "valuesObject" (dict "vpcId" .Values.network.vpcId))
+      (dict "wave" 8 "name" "envoy-gateway" "namespace" "envoy-gateway-system" "chart" "gateway-helm" "digest" .Values.charts.envoyGateway "values" "files/envoy-gateway-values.yaml" "namespaceLabels" (dict "elbv2.k8s.aws/pod-readiness-gate-inject" "enabled"))
+      (dict "wave" 9 "name" "shardshop-webpages" "render" "webpages") }}
 # Argo CD skips all hooks in a selective sync and with the apply strategy. Thus this policy
 # denies both for the ShardShop Applications, also when they come through kubectl.
 apiVersion: admissionregistration.k8s.io/v1
@@ -110,10 +113,23 @@ spec:
         - shards.yaml
         - eks-values.yaml
       valuesObject:
+        {{- if eq .render "webpages" }}
+        {{- /* Only this layer gets the webpage values. A change of them thus syncs no other layer. */}}
+        {{- toYaml (dict "render" .render "delivery" "argocd" "webpages" $.Values.webpages) | nindent 8 }}
+        {{- else }}
         {{- toYaml (merge (dict "render" .render "delivery" "argocd") (deepCopy $.Values.account)) | nindent 8 }}
+        {{- end }}
+      {{- else }}
+      {{- $values := required (printf "The packaged delivery chart must contain %s" .values) ($.Files.Get .values) }}
+      {{- if .valuesObject }}
+      # Argo CD uses valuesObject instead of values when both exist, thus one object has the
+      # vendored values and the values of this run.
+      valuesObject:
+        {{- toYaml (mergeOverwrite (fromYaml $values) .valuesObject) | nindent 8 }}
       {{- else }}
       values: |
-        {{- required (printf "The packaged delivery chart must contain %s" .values) ($.Files.Get .values) | nindent 8 }}
+        {{- $values | nindent 8 }}
+      {{- end }}
       {{- end }}
   destination:
     server: https://kubernetes.default.svc
@@ -127,6 +143,19 @@ spec:
       jsonPointers:
         - /spec/login
   {{- end }}
+  {{- if has .name (list "aws-load-balancer-controller" "envoy-gateway") }}
+  # cert-manager and the certgen Job of Envoy Gateway write the CA of each webhook. A
+  # difference that never ends would stop the root Application.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jqPathExpressions:
+        - .webhooks[]?.clientConfig.caBundle
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jqPathExpressions:
+        - .webhooks[]?.clientConfig.caBundle
+  {{- end }}
   # No prune and no resources finalizer: neither a removed manifest nor a deleted
   # Application deletes a database, a volume or a broker.
   syncPolicy:
@@ -134,9 +163,17 @@ spec:
       prune: false
       selfHeal: false
     {{- if .chart }}
+    # Server-side apply also accepts the large Gateway API and Envoy Gateway CRDs.
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+    {{- with .namespaceLabels }}
+    # The AWS Load Balancer Controller adds a readiness gate to each Envoy pod. A new pod is
+    # ready only after the load balancer sends traffic to it.
+    managedNamespaceMetadata:
+      labels:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
     {{- end }}
 {{- end }}
 {{- end }}

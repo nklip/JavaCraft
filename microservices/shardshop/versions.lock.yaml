@@ -89,6 +89,12 @@ sources:
   argo_cd_tested_kubernetes: https://argo-cd.readthedocs.io/en/stable/operator-manual/tested-kubernetes-versions/
   argo_cd_oci: https://argo-cd.readthedocs.io/en/stable/user-guide/oci/
   argo_helm_index: https://argoproj.github.io/argo-helm/index.yaml
+  envoy_gateway_releases: https://github.com/envoyproxy/gateway/releases
+  envoy_gateway_matrix: https://gateway.envoyproxy.io/news/releases/matrix/
+  envoy_gateway_chart: oci://docker.io/envoyproxy/gateway-helm
+  aws_load_balancer_controller_releases: https://github.com/kubernetes-sigs/aws-load-balancer-controller/releases
+  eks_charts_index: https://aws.github.io/eks-charts/index.yaml
+  cloudfront_vpc_origins: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-vpc-origins.html
   helm: https://helm.sh/docs/topics/version_skew/
   helm_release: https://github.com/helm/helm/releases/tag/v4.3.1
   helmfile_release: https://github.com/helmfile/helmfile/releases/tag/v1.8.2
@@ -377,6 +383,22 @@ support_policies:
     note: Argo CD supports the three newest minor lines (3.5, 3.4, 3.3 on 2026-11-01). 3.5 lists Kubernetes 1.33 to
       1.36. The EKS managed Argo CD capability needs IAM Identity Center and was not selected.
       CNPG 1.30 supports Kubernetes 1.34-1.36.
+  envoy_gateway_1_9:
+    model: community_minor_lines
+    checked_on: '2026-11-04'
+    review_by: '2026-11-25'
+    source_refs: [envoy_gateway_releases, envoy_gateway_matrix]
+    eol: '2027-02-14'
+    note: Envoy Gateway 1.9 supports Kubernetes 1.33 to 1.36 and ships Envoy Proxy 1.39 and Gateway API 1.6.1.
+      1.10.0-rc.1 (2026-10-30) is a prerelease and was not used.
+  aws_load_balancer_controller_3:
+    model: vendor_maintained_stable
+    checked_on: '2026-11-04'
+    review_by: '2026-11-25'
+    source_refs: [aws_load_balancer_controller_releases, eks_charts_index]
+    eol: null
+    note: No published fixed EOL. v3.6.2 (2026-10-25) is the newest release. The Gateway API feature gates of the
+      controller are off, because Envoy Gateway owns the Gateway API resources.
 compatibility:
   java:
     version: '25'
@@ -543,6 +565,52 @@ images:
     verification: Digests calculated from the raw registry bytes on 2026-11-01. The chart 10.11.6 selects this tag.
     advisories: 'Docker Scout 1.27.0 on 2026-11-01 (linux/arm64): 2 critical, 14 high, 2 medium in openssl,
       util-linux and zlib.'
+  envoy_gateway:
+    version: v1.9.3
+    purpose: Envoy Gateway controller, certgen Job and the shutdown manager of the Envoy pods on EKS
+    checked_on: '2026-11-04'
+    review_by: '2026-11-25'
+    security_review_by: '2026-11-30'
+    support_refs: [envoy_gateway_1_9]
+    tag_observed: docker.io/envoyproxy/gateway:v1.9.3
+    reference: docker.io/envoyproxy/gateway:v1.9.3@sha256:192fc9bdadb6d2462e8cf7bd702ce3dd9648f3310c6038787448a1f509b7cd9f
+    index_digest: sha256:192fc9bdadb6d2462e8cf7bd702ce3dd9648f3310c6038787448a1f509b7cd9f
+    linux_arm64_digest: sha256:d6fd7ef230dcdba48a2ed2c107e3be7d35077639fe8fe5603393caf6151ebefd
+    linux_arm64_config_digest: sha256:9ebc7261ad6c42a871f76e76204364c9c76045b83a6f2cca30f67f1e6e156289
+    verification: Digests calculated from the raw registry bytes on 2026-11-04. No signature check.
+    advisories: 'Docker Scout 1.27.0 on 2026-11-04 (linux/arm64): 3 high, CVE-2026-73500 in
+      go.etcd.io/etcd/client/pkg/v3 3.7.0 (fixed in 3.7.1), CVE-2026-116587 in github.com/go-jose/go-jose/v4 4.1.5
+      (fixed in 4.1.6), CVE-2025-15558 in github.com/docker/cli 29.9.1 (no fix). v1.9.3 is the newest stable
+      release. The user accepted them for disposable EKS runs until 2026-11-30.'
+  envoy_proxy:
+    version: distroless-v1.39.5
+    purpose: The Envoy pods of the webpages on EKS; the default proxy image of Envoy Gateway v1.9.3, with the same pin
+    checked_on: '2026-11-04'
+    review_by: '2026-11-25'
+    security_review_by: '2026-11-30'
+    support_refs: [envoy_gateway_1_9]
+    tag_observed: docker.io/envoyproxy/envoy:distroless-v1.39.5
+    reference: docker.io/envoyproxy/envoy:distroless-v1.39.5@sha256:9d84a586119a27b50437dbb01eccd4722832741539b1ed53c8e9d6da6067a6e0
+    index_digest: sha256:9d84a586119a27b50437dbb01eccd4722832741539b1ed53c8e9d6da6067a6e0
+    linux_arm64_digest: sha256:3a84aef7dce7f4b0b686bcc329bbc964d5a72bea45d9f5a7a4b508ce631b7dc6
+    linux_arm64_config_digest: sha256:fec9a118fd8d75d23fd868865224f9c9fe444054912cd86d3a2dadc3875c65ba
+    verification: Digests calculated from the raw registry bytes on 2026-11-04. The index digest is the
+      DefaultEnvoyProxyImage of api/v1alpha1/shared_types.go at v1.9.3.
+    advisories: 'Docker Scout 1.27.0 on 2026-11-04 (linux/arm64): no critical or high finding.'
+  aws_load_balancer_controller:
+    version: v3.6.2
+    purpose: Creates the internal NLB of the Envoy Service on EKS
+    checked_on: '2026-11-04'
+    review_by: '2026-11-25'
+    security_review_by: '2026-11-30'
+    support_refs: [aws_load_balancer_controller_3]
+    tag_observed: public.ecr.aws/eks/aws-load-balancer-controller:v3.6.2
+    reference: public.ecr.aws/eks/aws-load-balancer-controller:v3.6.2@sha256:fd51f0ec82f8d357837aa57fdfaa4fca7137b75f25a09b421d95c425c9dc2d94
+    index_digest: sha256:fd51f0ec82f8d357837aa57fdfaa4fca7137b75f25a09b421d95c425c9dc2d94
+    linux_arm64_digest: sha256:59987bb427afc01d9371b10311cd49327b795cac99f441ed860689af583cb9f6
+    linux_arm64_config_digest: sha256:3f424cedab56ede996d35c871458f5b7d6c533098f87a0cfb5cb032dc51a150c
+    verification: Digests calculated from the raw registry bytes on 2026-11-04. No signature check.
+    advisories: 'Docker Scout 1.27.0 on 2026-11-04 (linux/arm64): no critical or high finding.'
   shardshop_gates:
     version: run-specific
     purpose: Argo CD PreSync and PostSync gate Jobs on EKS. The runbook builds the image for each run, because it
@@ -971,6 +1039,44 @@ installation_artifacts:
     - argo_cd_3_5
     source_refs:
     - argo_helm_index
+  envoy_gateway_chart:
+    chart: gateway-helm
+    version: v1.9.3
+    app_version: v1.9.3
+    oci_reference: docker.io/envoyproxy/gateway-helm:v1.9.3@sha256:be1b8f163a338f94e7d6532336c08d6856fc70a0b790ac14a2826a54d23e0dd3
+    sha256: 1a152513adbcdb0527d7bbe3ea9b090abeb87e4ec9f34b2c18ac8c37f3177541
+    review_by: '2026-11-25'
+    vendored_path: infra/helm/envoy-gateway/gateway-helm-v1.9.3.tgz
+    values_path: infra/helm/envoy-gateway/values.yaml
+    verification: The SHA-256 of the archive is the chart layer digest of the OCI manifest, calculated from the raw
+      manifest bytes on 2026-11-04. No signature check. The chart contains the Gateway API 1.6.1 CRDs. values.yaml
+      pins images.envoy_gateway; the webpages layer pins images.envoy_proxy.
+    support_refs:
+    - envoy_gateway_1_9
+    source_refs:
+    - envoy_gateway_chart
+  aws_load_balancer_controller_chart:
+    chart: aws-load-balancer-controller
+    version: 3.6.2
+    app_version: v3.6.2
+    url: https://aws.github.io/eks-charts/aws-load-balancer-controller-3.6.2.tgz
+    sha256: 9255bf39873b6cb31106dbe61dc87c3617bff4197783b5b94381811a13f99c3c
+    review_by: '2026-11-25'
+    vendored_path: infra/helm/aws-load-balancer-controller/aws-load-balancer-controller-3.6.2.tgz
+    values_path: infra/helm/aws-load-balancer-controller/values.yaml
+    verification: The archive matched the digest of the official eks-charts index on 2026-11-04. values.yaml pins
+      images.aws_load_balancer_controller.
+    support_refs:
+    - aws_load_balancer_controller_3
+    source_refs:
+    - eks_charts_index
+  aws_load_balancer_controller_policy:
+    version: v3.6.2
+    url: https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v3.6.2/docs/install/iam_policy.json
+    sha256: 16f232c9d9f79366fe949c4550ad517a202380058a9e48d45a4e215044a20a6a
+    vendored_path: infra/terraform/aws/load-balancer-controller-policy.json
+    verification: Downloaded from the release tag on 2026-11-04. Terraform puts it as the inline policy of the role
+      shardshop-load-balancer-controller.
 tools:
   nodejs:
     version: "24.22.2"
@@ -1148,7 +1254,7 @@ tools:
 terraform:
   checked_on: '2026-10-31'
   review_by: '2026-11-25'
-  roots: [infra/terraform/state, infra/terraform/aws]
+  roots: [infra/terraform/state, infra/terraform/aws, infra/terraform/webpages]
   checksums: Each root has a .terraform.lock.hcl with the h1 hash for darwin/arm64 and
     the zh hashes of all platforms from the signed registry checksums.
   providers:
@@ -1195,6 +1301,20 @@ terraform:
       policy replaces the failed gate Job of the earlier try. The root sync ends after it applied the last wave,
       without its health. The API server proxy to pod ports 8080 and 9187 needs node rules from the cluster
       security group. The generator retention policy blocks the namespace deletion until it is deleted.
+  qualification_7_8:
+    local: 2026-11-04, a one-node kind cluster with the vendored Envoy Gateway chart and the rendered webpages
+      layer, with a local JWKS instead of Cognito. 33 of 34 requests as expected; a token for a different client
+      got 403 instead of the expected 401 (also a rejection). On EKS the user checked the viewer and operator logins
+      and a copied page address in a browser on 2026-11-04 and found no issue.
+    run: 2026-11-04T04:29:32Z to the end of the automated checks at 2026-11-04T05:26:22Z, eu-west-2, foundation 139
+      and webpages module 11 resources. The deployment stayed up after the checks for the browser checks of the user.
+    observed: Argo CD uses valuesObject instead of values when both exist; the CRDs of Envoy Gateway are OutOfSync
+      for some minutes after the first sync; the NLB name of an internal NLB has no "internal-" prefix; the first
+      Envoy pods have no readiness gate, because the TargetGroupBinding comes after them; the CloudFront VPC origin
+      took 10 min 12 s and the distribution 2 min 43 s. At the destroy, the tag-based GetDistribution and
+      GetVpcOrigin got AccessDenied after the deletion, thus operator-policy-webpages.json now allows both actions
+      without the tag; the deleted resources were removed from the state after a list check. AWS deleted the
+      CloudFront-VPCOrigins-Service-SG and the controller deleted its k8s-traffic group without help.
 vendor_bundles:
   rabbitmq:
     image_ref: rabbitmq

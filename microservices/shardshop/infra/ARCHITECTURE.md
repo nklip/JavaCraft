@@ -21,7 +21,7 @@ policy. The [runbook](RUNBOOK.md) has the procedures, and the
 
 | Topic | Rule |
 |---|---|
-| Deployments | The local deployment runs on a kind cluster on one computer. Each contract, drill and acceptance scenario of this document must pass there. The [AWS deployment](terraform/README.md) uses the same chart and the same vendored operator charts on EKS. It adds S3 backups with WAL archiving, three brokers and runtime secrets from AWS Secrets Manager, and Argo CD delivers it with the Maven gates as hook Jobs. No local behavior or check depends on a cloud service. |
+| Deployments | The local deployment runs on a kind cluster on one computer. Each contract, drill and acceptance scenario of this document must pass there. The [AWS deployment](terraform/README.md) uses the same chart and the same vendored operator charts on EKS. It adds S3 backups with WAL archiving, three brokers, runtime secrets from AWS Secrets Manager and the webpages on CloudFront with a login, and Argo CD delivers it with the Maven gates as hook Jobs. No local behavior or check depends on a cloud service. |
 | Versions | [VERSIONS.md](../VERSIONS.md) sets the rules: an LTS release when one exists, else a maintained stable GA release with an upgrade deadline. The named exceptions are the `de.mkammerer.snowflake-id:snowflake-id` library and three exact Quarkus plugin XML dependencies. The version gate also checks the dependency overrides that ShardShop inherits from the repository. |
 | Java | Build and test with JDK 25 or newer, with bytecode release 25. The applications run on OpenJDK 25. The Maven toolchain uses the JDK of `JAVA_HOME`, from any vendor and patch. Preview features stay off. |
 | Images | The [container images](images/README.md) use the verified Canonical OpenJDK 25 images on Ubuntu 26.04 from the version lock. The JRE has no shell, and each image declares a non-root user. Product and order reserve their generator IDs with Java code in their own JVM. The images pass the qualification gates of the version policy. |
@@ -666,7 +666,7 @@ counts 1–5 give delays of 1–5 seconds, approximately 15 seconds of delay plu
 processing time. A measurement on the pinned broker confirmed five delayed
 redeliveries and the move to the parking queue at the sixth rejection: 15.176 seconds for commands and
 15.185 seconds for results, with the client and broker IO. The
-[changelog](../CHANGELOG.md#step-54) records each delay, and the
+[changelog](../CHANGELOG.md#step-54--retry-and-capacity-drills) records each delay, and the
 [retry runbook](../shardshop-testing/RUNBOOK.md#4-retry-and-dlq-capacity-drills) gives
 the repeatable check. The application processing during an outage adds time to this
 budget.

@@ -180,7 +180,7 @@ All durations must be positive.
 
 ### Rate limit
 
-The operating cap of 30 starts/s follows the [lab measurements](../../CHANGELOG.md#step-414). Target 10 achieved
+The operating cap of 30 starts/s follows the [lab measurements](../../CHANGELOG.md#step-414--concurrent-order-writes-and-a-separate-saga-process). Target 10 achieved
 9.78 new orders/s with a final rolling write p95 of 91.42 ms. Target 30 achieved 29.45/s with a write p95 of
 93.73 ms and bounded order, outbox and profit backlogs. These short retained-stock runs include stock
 cancellations. They are not a guarantee for every host or an indefinitely stocked catalog. The default stays

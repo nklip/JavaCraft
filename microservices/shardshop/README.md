@@ -92,6 +92,10 @@ To stop the lab and keep its data, run `down.sh`; the
 [infrastructure runbook](infra/RUNBOOK.md#5-stop-and-resume-the-cluster) describes
 stop, destruction and recovery.
 
+The AWS deployment serves the same five pages on one CloudFront address with a login.
+The [AWS runbook](infra/terraform/README.md#open-the-webpages) creates it and gives the
+address.
+
 ### Start one application outside Kubernetes
 
 Each module guide tells how to start that application by itself:

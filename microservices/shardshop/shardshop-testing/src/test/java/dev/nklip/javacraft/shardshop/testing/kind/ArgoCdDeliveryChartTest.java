@@ -44,6 +44,9 @@ class ArgoCdDeliveryChartTest {
         Files.createDirectories(delivery.resolve("files"));
         Files.copy(SOURCE.resolve("infra/helm/cnpg/values.yaml"), delivery.resolve("files/cnpg-values.yaml"));
         Files.copy(SOURCE.resolve("infra/helm/barman-cloud/values.yaml"), delivery.resolve("files/barman-cloud-values.yaml"));
+        Files.copy(SOURCE.resolve("infra/helm/aws-load-balancer-controller/values.yaml"),
+                delivery.resolve("files/aws-load-balancer-controller-values.yaml"));
+        Files.copy(SOURCE.resolve("infra/helm/envoy-gateway/values.yaml"), delivery.resolve("files/envoy-gateway-values.yaml"));
     }
 
     @Test
@@ -189,7 +192,7 @@ class ArgoCdDeliveryChartTest {
     void childApplicationsDeliverTheLayersInOrderFromPinnedChartsAndNeverDeleteData() throws Exception {
         List<JsonNode> applications = ofKind(delivery("children"), "Application");
         assertEquals(List.of("cnpg", "barman-cloud", "shardshop-namespace", "shardshop-infrastructure", "shardshop-migrations",
-                "shardshop-routing", "shardshop-applications"),
+                "shardshop-routing", "shardshop-applications", "aws-load-balancer-controller", "envoy-gateway", "shardshop-webpages"),
                 applications.stream().map(application -> application.path("metadata").path("name").asText()).toList());
         for (int index = 0; index < applications.size(); index++) {
             JsonNode application = applications.get(index);
@@ -225,6 +228,43 @@ class ArgoCdDeliveryChartTest {
                 migrations.path("valuesObject").path("backup").path("destinationPath").asText());
         assertEquals("application-release", applications.get(6).path("spec").path("source").path("helm").path("valuesObject")
                 .path("render").asText());
+        assertEquals(EksDelivery.LAYERS, applications.stream().map(application -> application.path("metadata").path("name").asText()).toList(),
+                "The EKS delivery check examines each layer");
+    }
+
+    @Test
+    void theWebpageControllersComeFromTheirVendoredChartsAfterTheApplications() throws Exception {
+        List<JsonNode> applications = ofKind(delivery("children"), "Application");
+        JsonNode controller = applications.get(7);
+        JsonNode source = controller.path("spec").path("source");
+        assertEquals("oci://" + REGISTRY + "/shardshop-charts/aws-load-balancer-controller", source.path("repoURL").asText());
+        assertEquals("kube-system", controller.path("spec").path("destination").path("namespace").asText(),
+                "The EKS Pod Identity association names the service account in kube-system");
+        // Argo CD ignores values when valuesObject exists, thus valuesObject must have the vendored values too.
+        assertFalse(source.path("helm").has("values"));
+        JsonNode vendored = JSON.valueToTree(new org.yaml.snakeyaml.Yaml().load(
+                Files.readString(SOURCE.resolve("infra/helm/aws-load-balancer-controller/values.yaml"))));
+        JsonNode expected = ((com.fasterxml.jackson.databind.node.ObjectNode) vendored.deepCopy()).put("vpcId", "vpc-0123456789abcdef0");
+        assertEquals(expected, source.path("helm").path("valuesObject"), "The workers cannot read the VPC from the instance metadata");
+        JsonNode gateway = applications.get(8);
+        assertEquals("oci://" + REGISTRY + "/shardshop-charts/gateway-helm", gateway.path("spec").path("source").path("repoURL").asText());
+        assertEquals("enabled", gateway.path("spec").path("syncPolicy").path("managedNamespaceMetadata").path("labels")
+                .path("elbv2.k8s.aws/pod-readiness-gate-inject").asText(), "A new Envoy pod is ready only after the NLB uses it");
+        for (JsonNode application : List.of(controller, gateway)) {
+            assertTrue(application.path("spec").path("syncPolicy").path("syncOptions").toString().contains("ServerSideApply=true"),
+                    "The Gateway API and Envoy Gateway CRDs are too large for a client-side apply");
+            assertTrue(application.path("spec").path("ignoreDifferences").toString().contains(".webhooks[]?.clientConfig.caBundle"),
+                    "An injected webhook CA must not keep the layer out of sync");
+        }
+        JsonNode webpages = applications.get(9).path("spec").path("source").path("helm").path("valuesObject");
+        assertEquals("webpages", webpages.path("render").asText());
+        assertEquals("sg-0123456789abcdef0", webpages.path("webpages").path("securityGroup").asText());
+        assertFalse(webpages.has("images") || webpages.has("backup"),
+                "Only the webpages layer gets the webpage values, thus a new login configuration syncs no other layer");
+        for (JsonNode application : applications.subList(0, 7)) {
+            assertFalse(application.path("spec").path("source").path("helm").path("valuesObject").has("webpages"),
+                    application.path("metadata").path("name").asText() + " must not sync again when the webpage values change");
+        }
     }
 
     @Test
@@ -255,7 +295,8 @@ class ArgoCdDeliveryChartTest {
         assertFalse(spec.path("source").path("helm").path("valuesObject").has("mode"), "The root renders the children");
         assertTrue(spec.path("syncPolicy").path("automated").path("selfHeal").asBoolean());
 
-        Path tag = values("tag.json", Map.of("charts", Map.of("delivery", DIGEST, "cnpg", DIGEST, "barmanCloud", DIGEST, "shardshop", "0.3.0")));
+        Path tag = values("tag.json", Map.of("charts", Map.of("delivery", DIGEST, "cnpg", DIGEST, "barmanCloud", DIGEST,
+                "loadBalancerController", DIGEST, "envoyGateway", DIGEST, "shardshop", "0.3.0")));
         assertNotEquals(0, helm(delivery, "shardshop", tag, "--set-string", "mode=children").exit(), "A movable tag is not a pin");
     }
 
@@ -288,8 +329,11 @@ class ArgoCdDeliveryChartTest {
 
     private Path deliveryValues() throws Exception {
         return values("delivery.json", Map.of("registry", REGISTRY,
-                "charts", Map.of("delivery", DIGEST, "cnpg", DIGEST, "barmanCloud", DIGEST, "shardshop", DIGEST, "shardshopVersion", VERSION),
-                "account", Map.of("backup", Map.of("destinationPath", "s3://shardshop-backups-123456789012-eu-west-2/"))));
+                "charts", Map.of("delivery", DIGEST, "cnpg", DIGEST, "barmanCloud", DIGEST, "loadBalancerController", DIGEST,
+                        "envoyGateway", DIGEST, "shardshop", DIGEST, "shardshopVersion", VERSION),
+                "account", Map.of("backup", Map.of("destinationPath", "s3://shardshop-backups-123456789012-eu-west-2/")),
+                "network", Map.of("vpcId", "vpc-0123456789abcdef0"),
+                "webpages", Map.of("securityGroup", "sg-0123456789abcdef0")));
     }
 
     private Render helm(Path chart, String release, Path extra, String... arguments) throws Exception {

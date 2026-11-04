@@ -12,7 +12,9 @@
     "mode",
     "registry",
     "charts",
-    "account"
+    "account",
+    "network",
+    "webpages"
   ],
   "properties": {
     "mode": {
@@ -32,6 +34,8 @@
       "required": [
         "cnpg",
         "barmanCloud",
+        "loadBalancerController",
+        "envoyGateway",
         "shardshop"
       ],
       "properties": {
@@ -51,6 +55,12 @@
         "barmanCloud": {
           "$ref": "#/definitions/digest"
         },
+        "loadBalancerController": {
+          "$ref": "#/definitions/digest"
+        },
+        "envoyGateway": {
+          "$ref": "#/definitions/digest"
+        },
         "shardshop": {
           "$ref": "#/definitions/digest"
         },
@@ -68,6 +78,22 @@
       }
     },
     "account": {
+      "type": "object"
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "vpcId"
+      ],
+      "properties": {
+        "vpcId": {
+          "type": "string",
+          "pattern": "^vpc-[0-9a-f]{8,17}$"
+        }
+      }
+    },
+    "webpages": {
       "type": "object"
     }
   }

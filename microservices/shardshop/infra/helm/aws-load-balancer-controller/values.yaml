@@ -1,0 +1,31 @@
+# Values for the vendored chart aws-load-balancer-controller 3.6.2 (controller v3.6.2), verified in
+# versions.lock.yaml. Only the AWS deployment uses it. The controller makes the internal NLB of the
+# Envoy Service of the webpages. The delivery chart adds vpcId, because the VPC ID comes from
+# Terraform.
+clusterName: shardshop
+# The workers have an IMDS hop limit of 1, thus the controller cannot read the region and the VPC
+# from the instance metadata.
+region: eu-west-2
+image:
+  repository: public.ecr.aws/eks/aws-load-balancer-controller
+  tag: "v3.6.2@sha256:fd51f0ec82f8d357837aa57fdfaa4fca7137b75f25a09b421d95c425c9dc2d94"
+# EKS Pod Identity gives the role shardshop-load-balancer-controller to this service account.
+serviceAccount:
+  name: aws-load-balancer-controller
+# The cleanup permission of the operator user needs this tag on each load balancer, listener and
+# target group.
+defaultTags:
+  Project: shardshop
+# cert-manager (an EKS add-on) makes the webhook certificate. A certificate from helm template
+# would change at each Argo CD render.
+enableCertManager: true
+# Only Services with the loadBalancerClass service.k8s.aws/nlb. No Ingress and no Gateway API,
+# because Envoy Gateway owns the Gateway API resources.
+enableServiceMutatorWebhook: false
+createIngressClassResource: false
+ingressClassParams:
+  create: false
+controllerConfig:
+  featureGates:
+    ALBGatewayAPI: false
+    NLBGatewayAPI: false

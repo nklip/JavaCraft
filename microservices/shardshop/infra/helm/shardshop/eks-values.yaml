@@ -56,3 +56,13 @@ rabbitmq:
             matchLabels:
               app.kubernetes.io/name: shardshop-rabbitmq
           topologyKey: topology.kubernetes.io/zone
+
+# The public webpages of the AWS deployment (render=webpages). Terraform creates one Cognito group
+# for each name. A member of a read group can open all five pages. Only a member of a write group
+# can change a workload. The runbook adds securityGroup and access.
+webpages:
+  readGroups:
+    - viewer
+    - operator
+  writeGroups:
+    - operator

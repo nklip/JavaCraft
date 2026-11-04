@@ -20,7 +20,8 @@ import static dev.nklip.javacraft.shardshop.testing.kind.KindTopology.require;
 /** EKS-only checks and drills of the Argo CD delivery contract of the database layer. */
 public final class EksDelivery {
     static final List<String> LAYERS = List.of("cnpg", "barman-cloud", "shardshop-namespace",
-            "shardshop-infrastructure", "shardshop-migrations", "shardshop-routing", EksApplications.APPLICATIONS);
+            "shardshop-infrastructure", "shardshop-migrations", "shardshop-routing", EksApplications.APPLICATIONS,
+            "aws-load-balancer-controller", "envoy-gateway", EksWebpages.LAYER);
     static final String ROOT = "shardshop";
     private static final String MIGRATIONS = "shardshop-migrations";
     private static final String ROUTING = "shardshop-routing";
