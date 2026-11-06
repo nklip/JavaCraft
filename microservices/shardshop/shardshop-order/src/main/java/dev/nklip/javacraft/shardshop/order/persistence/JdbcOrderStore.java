@@ -44,6 +44,7 @@ import java.util.function.LongSupplier;
 /** Bounded per-endpoint pools and a hard deadline for the entire database phase. */
 public final class JdbcOrderStore implements OrderStore, OrderListingStore, StockStore, ResultStore, ProfitStore,
         ReconciliationStore, AutoCloseable {
+    public static final int MAX_POOL_SIZE = 32;
     private final Map<String, AgroalDataSource> pools;
     private final DatabasePhases phases;
     private final LongSupplier nanoTime;
@@ -72,8 +73,8 @@ public final class JdbcOrderStore implements OrderStore, OrderListingStore, Stoc
     }
 
     private static Map<String, AgroalDataSource> pools(Map<String, Endpoint> primary, int size) {
-        if (size < 1 || size > 32) {
-            throw new IllegalArgumentException("Order pool size must be between 1 and 32");
+        if (size < 1 || size > MAX_POOL_SIZE) {
+            throw new IllegalArgumentException("Order pool size must be between 1 and " + MAX_POOL_SIZE);
         }
         LinkedHashMap<String, AgroalDataSource> result = new LinkedHashMap<>();
         try {

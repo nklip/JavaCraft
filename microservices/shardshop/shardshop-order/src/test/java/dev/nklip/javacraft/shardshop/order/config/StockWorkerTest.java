@@ -57,6 +57,32 @@ class StockWorkerTest {
         verify(coordinator).processNext(topology.shards().getLast());
     }
 
+    /** Step 7.9: a wait after each full batch capped a remote buyer-shard lane at 9.7 orders/s on EKS. */
+    @Test
+    void laneStartsTheNextBatchAtOnceWhileItsBatchesAreFull() {
+        when(coordinator.processNext(topology.shards().getFirst()))
+                .thenReturn(ADVANCED, ADVANCED, ADVANCED, ADVANCED, ADVANCED, IDLE);
+        try (var worker = new StockWorker(coordinator, topology, concurrentSettings(3))) {
+            worker.drainShard(topology.shards().getFirst());
+        }
+        // Batches of two: full, full, then one saga and an idle queue end the drain.
+        verify(coordinator, times(6)).processNext(topology.shards().getFirst());
+        verifyNoMoreInteractions(coordinator);
+    }
+
+    @Test
+    void laneStopsDrainingAfterADeferredSagaOrAFailure() {
+        when(coordinator.processNext(topology.shards().getFirst())).thenReturn(ADVANCED, ADVANCED, ADVANCED, DEFERRED);
+        when(coordinator.processNext(topology.shards().getLast())).thenReturn(ADVANCED, ADVANCED)
+                .thenThrow(new StockFailure(StockFailure.Reason.UNAVAILABLE));
+        try (var worker = new StockWorker(coordinator, topology, concurrentSettings(3))) {
+            worker.drainShard(topology.shards().getFirst());
+            worker.drainShard(topology.shards().getLast());
+        }
+        verify(coordinator, times(4)).processNext(topology.shards().getFirst());
+        verify(coordinator, times(3)).processNext(topology.shards().getLast());
+    }
+
     @Test
     void disabledWorkerNeverStartsDatabasePolling() {
         try (var worker = new StockWorker(coordinator, topology, new StockWorker.Settings(false,

@@ -180,6 +180,11 @@ class ShardRoutingStartupIT {
             "shardshop.order.profit.batch-size=0|Profit batch size must be between 1 and 100",
             "shardshop.order.profit.shard-concurrency=0|Profit shard concurrency must be between 1 and 32",
             "shardshop.order.profit.shard-concurrency=33|Profit shard concurrency must be between 1 and 32",
+            "shardshop.order.profit.item-concurrency=0|Profit item concurrency must be between 1 and 16",
+            "shardshop.order.profit.item-concurrency=17|Profit item concurrency must be between 1 and 16",
+            "shardshop.order.results.concurrency=0|shardshop.order.results.concurrency must be between 1 and 16",
+            "shardshop.order.results.concurrency=17|shardshop.order.results.concurrency must be between 1 and 16",
+            "shardshop.order.max-pool-size=30|The saga process needs shardshop.order.max-pool-size plus shardshop.order.results.concurrency connections for each shard, at most 32",
             "shardshop.order.reconciliation.poll-interval=1ms|Reconciliation poll interval must be between 100ms and 30s",
             "shardshop.order.reconciliation.batch-size=0|Reconciliation batch size must be between 1 and 1000"
     })

@@ -17,7 +17,9 @@ public final class OrderResultConsumer implements AutoCloseable {
 
     public OrderResultConsumer(Settings settings, Function<byte[], ResultOutcome> handler) {
         Objects.requireNonNull(handler, "handler");
-        consumer = new QueueConsumer(settings.broker(), settings.enabled(), SOURCE, body -> settle(handler, body));
+        // Results of different orders are independent; the order lock serializes the results of one order.
+        consumer = new QueueConsumer(settings.broker(), settings.enabled(), SOURCE, settings.concurrency(),
+                body -> settle(handler, body));
     }
 
     /** A failed transaction propagates, thus the shared consumer requests the broker's delayed retry. */
@@ -45,7 +47,7 @@ public final class OrderResultConsumer implements AutoCloseable {
     }
 
     /** The consumer shares the CDC broker connection and credential, and it can run without CDC. */
-    public record Settings(boolean enabled, BrokerSettings broker) {
+    public record Settings(boolean enabled, BrokerSettings broker, int concurrency) {
         public Settings {
             Objects.requireNonNull(broker, "broker");
         }

@@ -5,6 +5,8 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.DeliverCallback;
+import com.rabbitmq.client.Delivery;
+import com.rabbitmq.client.Envelope;
 import com.rabbitmq.client.ShutdownListener;
 import com.rabbitmq.client.ShutdownSignalException;
 import org.junit.jupiter.api.AfterEach;
@@ -15,6 +17,8 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -236,6 +240,51 @@ class QueueConsumerTest {
         }
         verify(original, atLeastOnce()).abort(1000);
         verify(replacementChannel).basicQos(1);
+    }
+
+    /** Step 7.9: one serialized result handler capped the saga at 27.8 results/s on EKS. */
+    @Test
+    void concurrentConsumerOpensOneChannelWithOnePrefetchedDeliveryForEachHandler() throws Exception {
+        ConnectionFactory factory = mock(ConnectionFactory.class);
+        Connection connection = mock(Connection.class);
+        List<Channel> channels = List.of(mock(Channel.class), mock(Channel.class), mock(Channel.class));
+        when(factory.newConnection()).thenReturn(connection);
+        when(connection.createChannel()).thenReturn(channels.get(0), channels.get(1), channels.get(2));
+        when(connection.isOpen()).thenReturn(true);
+        Map<Channel, DeliverCallback> callbacks = new ConcurrentHashMap<>();
+        CountDownLatch consuming = new CountDownLatch(channels.size());
+        for (Channel channel : channels) {
+            doAnswer(invocation -> {
+                callbacks.put(channel, invocation.getArgument(2));
+                consuming.countDown();
+                return "consumer";
+            }).when(channel).basicConsume(eq("ledger.record-order"), eq(false), any(DeliverCallback.class),
+                    any(CancelCallback.class));
+        }
+        try (var consumer = new QueueConsumer(BROKER, true, SOURCE, 3, body -> QueueConsumer.Settlement.acknowledge(),
+                factory)) {
+            consumer.start();
+            assertTrue(consuming.await(5, TimeUnit.SECONDS), "Each handler consumes on its own channel");
+            callbacks.get(channels.get(1)).handle("consumer", new Delivery(new Envelope(31, false, "", ""), null,
+                    new byte[]{1}));
+        }
+        verify(factory).newConnection();
+        verify(connection, times(3)).createChannel();
+        for (Channel channel : channels) {
+            verify(channel).basicQos(1);
+        }
+        verify(channels.get(1)).basicAck(31, false);
+        verify(channels.get(0), never()).basicAck(anyLong(), anyBoolean());
+        verify(channels.get(2), never()).basicAck(anyLong(), anyBoolean());
+        assertEquals(List.of("Ledger command consumer connected with 3 channels"), messages(Level.INFO));
+    }
+
+    @Test
+    void concurrencyIsBounded() {
+        for (int concurrency : new int[]{0, QueueConsumer.MAX_CONCURRENCY + 1}) {
+            assertThrows(IllegalArgumentException.class, () -> new QueueConsumer(BROKER, true, SOURCE, concurrency,
+                    body -> QueueConsumer.Settlement.acknowledge(), mock(ConnectionFactory.class)));
+        }
     }
 
     @Test

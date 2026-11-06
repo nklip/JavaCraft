@@ -68,14 +68,14 @@ HTTP/2 is disabled. The service uses HTTP/1.1
 
 | Property | Default | Purpose |
 |---|---|---|
-| `shardshop.order.max-pool-size` | `4` | Primary connections per shard, 1–32 |
+| `shardshop.order.max-pool-size` | `4` | Primary connections per shard, 1–32. The saga process adds one connection for each result handler (`results.concurrency`); the total must stay at most 32 |
 | `shardshop.order.max-id-candidates` | `1024` | Buyer ID placement attempts, 1–65536 |
 | `shardshop.order.catalog-concurrency` | `4` | Concurrent catalog lookups per request, 1–64 |
 | `shardshop.order.catalog-deadline` | `3s` | Shared catalog deadline, 2–3 s; leaves room for the one-second pool acquisition bound |
 | `shardshop.order.stock.enabled` | `true` | Run the stock coordinator in the saga process; `false` isolates other saga components in tests |
 | `shardshop.order.stock.poll-interval` | `250ms` | Delay between scans, 100 ms–30 s |
 | `shardshop.order.stock.lease` | `30s` | Durable per-saga ownership, renewed before each catalog phase; 10 s–5 min |
-| `shardshop.order.stock.batch-size` | `8` | Maximum sagas processed per shard per scan, 1–100 |
+| `shardshop.order.stock.batch-size` | `8` | Maximum sagas processed per shard per batch, 1–100. In lane mode, a full batch starts the next batch at once; the poll interval applies after a batch that ended early |
 | `shardshop.order.stock.shard-concurrency` | `3` | Maximum concurrent buyer-shard scans, 1–32 and capped by shard count; `1` restores the original serial global scan |
 | `shardshop.order.connections.<shard>.primary-url` | `jdbc:postgresql://<shard>-rw:5432/shardshop` | Primary endpoint for both ordering and catalog IO |
 | `shardshop.order.connections.<shard>.username` | `order_app` | Runtime role with ordering and catalog grants |
@@ -270,8 +270,10 @@ refreshes leave the last sample visible with a failure gauge and increasing age.
 
 ## Order result consumer and seller profit
 
-Order consumes `order.ledger-results` with manual acknowledgements and prefetch
-one. It validates the ledger-owned result contract and routes by `buyerId`. Then
+Order consumes `order.ledger-results` with manual acknowledgements and
+`shardshop.order.results.concurrency` handlers (default 3, 1–16), each on its own
+channel with prefetch one. Results of different orders are independent, and the order
+lock below serializes the results of one order. It validates the ledger-owned result contract and routes by `buyerId`. Then
 it takes the transaction advisory lock that order creation takes for the same
 order ID (`OrderService.orderLock`). Thus an orphan quarantine cannot pass a
 creation in progress, and a creation cannot pass an orphan quarantine.
@@ -307,8 +309,9 @@ a failed transaction. `CONFIRMED` can be visible before seller balances catch up
 
 The profit worker reads bounded batches from each buyer shard, releases the
 connection, and posts each intent on its seller's shard. With `shard-concurrency`
-above one, a bounded pool runs independent non-overlapping scans for buyer shards;
-intents within each shard remain sequential. Each shard waits `poll-interval`
+above one, a bounded pool runs independent non-overlapping scans for buyer shards,
+and each scan posts its batch in `item-concurrency` groups at the same time (one
+group for each seller). Each shard waits `poll-interval`
 after its scan. Value `1` restores the original all-shards serial scan followed
 by one polling delay. The seller transaction
 inserts immutable `catalog.profit_credits` keyed by `(order_id, product_id)` and
@@ -330,10 +333,12 @@ without consuming or posting. Configure them independently:
 
 ```properties
 shardshop.order.results.enabled=true
+shardshop.order.results.concurrency=3
 shardshop.order.profit.enabled=true
 shardshop.order.profit.poll-interval=250ms
 shardshop.order.profit.batch-size=8
 shardshop.order.profit.shard-concurrency=3
+shardshop.order.profit.item-concurrency=2
 ```
 
 The lab chart overrides profit polling to `100ms` and the batch to `32` per buyer

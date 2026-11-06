@@ -14,18 +14,22 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * One quorum queue with manual acknowledgements and one prefetched delivery, for the ledger command consumer and the
- * order result consumer. The handler's local transaction commits before the broker settlement. A permanently invalid
+ * One quorum queue with manual acknowledgements, for the ledger command consumer and the order result consumer. Each
+ * of the {@code concurrency} channels has one prefetched delivery, and the client serializes the deliveries of a
+ * channel, thus at most {@code concurrency} handlers run at the same time. The client runs the channels on a pool of
+ * twice the available processors. The handler's local transaction commits before the broker settlement. A permanently invalid
  * message goes to the queue's dead-letter queue; a failed transaction uses {@code basic.reject} with requeue, thus the
  * broker's delayed retry and delivery limit apply. A supervisor reconnects with capped exponential backoff and jitter.
  * Log lines name causes and fixed rule texts, never a message body or a password.
  */
 public final class QueueConsumer implements AutoCloseable {
     private static final System.Logger LOG = System.getLogger(QueueConsumer.class.getName());
+    public static final int MAX_CONCURRENCY = 16;
 
     private final BrokerSettings broker;
     private final boolean enabled;
     private final Source source;
+    private final int concurrency;
     private final Handler handler;
     private final ConnectionFactory factory;
     private final CountDownLatch shutdown = new CountDownLatch(1);
@@ -33,18 +37,32 @@ public final class QueueConsumer implements AutoCloseable {
     private final AtomicBoolean started = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
 
+    /** One channel: the handlers run one at a time. */
     public QueueConsumer(BrokerSettings broker, boolean enabled, Source source, Handler handler) {
-        this(broker, enabled, source, handler, new ConnectionFactory());
+        this(broker, enabled, source, 1, handler);
+    }
+
+    public QueueConsumer(BrokerSettings broker, boolean enabled, Source source, int concurrency, Handler handler) {
+        this(broker, enabled, source, concurrency, handler, new ConnectionFactory());
     }
 
     QueueConsumer(BrokerSettings broker, boolean enabled, Source source, Handler handler, ConnectionFactory factory) {
+        this(broker, enabled, source, 1, handler, factory);
+    }
+
+    QueueConsumer(BrokerSettings broker, boolean enabled, Source source, int concurrency, Handler handler,
+                  ConnectionFactory factory) {
+        if (concurrency < 1 || concurrency > MAX_CONCURRENCY) {
+            throw new IllegalArgumentException("RabbitMQ consumer concurrency must be between 1 and " + MAX_CONCURRENCY);
+        }
         this.broker = Objects.requireNonNull(broker, "broker");
         this.enabled = enabled;
         this.source = Objects.requireNonNull(source, "source");
+        this.concurrency = concurrency;
         this.handler = Objects.requireNonNull(handler, "handler");
         this.factory = Objects.requireNonNull(factory, "factory");
         // The client owns its callback executor and drains shutdown callbacks before terminating it.
-        // Its per-channel dispatcher serializes deliveries, with one in flight because prefetch is one.
+        // Its per-channel dispatcher serializes deliveries, with one in flight on each channel because prefetch is one.
         broker.configure(factory, source.threadName() + "-amqp-");
         supervisor = Thread.ofPlatform().daemon().name(source.threadName()).unstarted(this::run);
     }
@@ -99,18 +117,22 @@ public final class QueueConsumer implements AutoCloseable {
                 return "the consumer is closed";
             }
             opened.addShutdownListener(signal -> stop(cause, stopped, Failures.describe(signal)));
-            Channel channel = opened.createChannel();
-            channel.addShutdownListener(signal -> stop(cause, stopped, Failures.describe(signal)));
-            channel.basicQos(1);
-            channel.basicConsume(source.queue(), false, (tag, delivery) -> {
-                try {
-                    settle(channel, delivery.getEnvelope().getDeliveryTag(), delivery.getBody());
-                } catch (IOException | RuntimeException failedSettlement) {
-                    // A commit or acknowledgement may already have succeeded. Closing lets idempotent replay decide.
-                    stop(cause, stopped, "delivery settlement failed: " + Failures.describe(failedSettlement));
-                }
-            }, tag -> stop(cause, stopped, "the broker cancelled the consumer"));
-            LOG.log(System.Logger.Level.INFO, () -> source.consumer() + " consumer connected");
+            // A failure of one channel stops all of them; the supervisor then opens a new connection.
+            for (int index = 0; index < concurrency; index++) {
+                Channel channel = opened.createChannel();
+                channel.addShutdownListener(signal -> stop(cause, stopped, Failures.describe(signal)));
+                channel.basicQos(1);
+                channel.basicConsume(source.queue(), false, (tag, delivery) -> {
+                    try {
+                        settle(channel, delivery.getEnvelope().getDeliveryTag(), delivery.getBody());
+                    } catch (IOException | RuntimeException failedSettlement) {
+                        // A commit or acknowledgement may already have succeeded. Closing lets idempotent replay decide.
+                        stop(cause, stopped, "delivery settlement failed: " + Failures.describe(failedSettlement));
+                    }
+                }, tag -> stop(cause, stopped, "the broker cancelled the consumer"));
+            }
+            LOG.log(System.Logger.Level.INFO, () -> source.consumer() + " consumer connected"
+                    + (concurrency == 1 ? "" : " with " + concurrency + " channels"));
             while (!closed.get() && opened.isOpen() && !stopped.await(1, TimeUnit.SECONDS)) {
                 // Shutdown/cancellation wakes this wait; no polling of business state is needed.
             }

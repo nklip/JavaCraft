@@ -745,3 +745,13 @@ A local test cluster proved that only the `operator` group can change a workload
 On EKS, `eks-webpages`, `eks-webpages-replacement` and the user's browser check of both roles passed. The run took 1 h 58 min and cost approximately US$1.30.
 The local deployment did not change: all its renders are identical.
 Lesson: Argo CD ignores `values` when `valuesObject` exists.
+
+<a id="step-79"></a>
+### Step 7.9 — Sustained 30 new orders/s on EKS
+
+**Done 2026-11-06.** The due version review was skipped.
+The new `kind-order-capacity` check holds 30 orders/s and splits the saga time at the database timestamps. On EKS it runs as a Job.
+Cross-zone round trips capped three sequential stages: one result handler (27.8/s), stock lanes that waited after each full batch (9.7/s each) and one profit credit at a time (26/s each).
+The fixes: 3 result handlers, drained stock batches and 2 profit groups.
+The fifth EKS run passed: 29.867/s, write p95 86.969 ms, no backlog growth ([evidence](shardshop-testing/evidence/2026-11-06-eks-order-capacity.json)). Kind passed at 30.011/s. The AWS time cost approximately US$1.45.
+Lesson: measure again after each fix, because the limit moves to the next stage.

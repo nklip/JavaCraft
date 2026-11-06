@@ -21,12 +21,12 @@ step, is in the Git tag `shardshop-docs-full-2026-10-31`.
   2026-10-31 ([record](CHANGELOG.md#step-69--complete-demo-and-acceptance-run)).
 - **Step 6.8 ended as research.** HTTP/2 gave no performance gain, thus ShardShop
   keeps HTTP/1.1 ([decision](DECISIONS.md#keep-http11)).
-- **Milestone 7 (AWS deployment):** steps 7.1 to 7.8 are **Done**
+- **Milestone 7 (AWS deployment):** steps 7.1 to 7.9 are **Done**
   ([7.1](CHANGELOG.md#step-71--terraform-aws-foundation), [7.2](CHANGELOG.md#step-72--eks-values-and-operators),
   [7.3](CHANGELOG.md#step-73--cloud-durability), [7.4](CHANGELOG.md#step-74--local-and-aws-architecture-overview),
   [7.5](CHANGELOG.md#step-75--argo-cd-delivery-of-the-database-layer), [7.6](CHANGELOG.md#step-76--applications-and-gates-through-argo-cd),
-  [7.7](CHANGELOG.md#step-77--cloud-acceptance), [7.8](CHANGELOG.md#step-78--stable-aws-webpage-urls-and-access-control)).
-  Step 7.9 is **Planned**.
+  [7.7](CHANGELOG.md#step-77--cloud-acceptance), [7.8](CHANGELOG.md#step-78--stable-aws-webpage-urls-and-access-control),
+  [7.9](CHANGELOG.md#step-79--sustained-30-new-orderss-on-eks)).
 - **Version deadlines:** the local risk acceptance ends and the CNPG upgrade is
   due on 2026-11-30 ([open findings](VERSIONS.md#3-open-findings-and-risk-acceptance)).
 
@@ -343,7 +343,7 @@ Depends on 4.10 and 7.7. Status: **Done** ([record](CHANGELOG.md#step-78--stable
 
 ### 7.9 Sustained 30 new orders/s on EKS
 
-Depends on 7.8. Status: **Planned**.
+Depends on 7.8. Status: **Done** ([record](CHANGELOG.md#step-79--sustained-30-new-orderss-on-eks)).
 
 On 2026-11-04, the order producer on EKS stayed at 24.9 new orders/s with the
 target rate 30/s. The kind lab reached 29.35/s at this target

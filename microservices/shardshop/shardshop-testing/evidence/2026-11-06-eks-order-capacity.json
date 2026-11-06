@@ -1,0 +1,895 @@
+{
+  "step": "7.9",
+  "date": "2026-11-06",
+  "check": "kind-order-capacity (shardshop-testing Capacity.feature): 20 s warmup, 90 s observation at target 30 orders/s; on EKS a drill Job in the cluster",
+  "awsDeployment": {
+    "region": "eu-west-2",
+    "workers": "3 x t4g.xlarge, one in each zone, CPU credits unlimited (no throttle)",
+    "kubernetes": "EKS 1.36",
+    "billable": {
+      "start": "2026-11-06T03:32:33Z",
+      "end": "see CHANGELOG"
+    }
+  },
+  "placement": {
+    "nodes": {
+      "ip-10-40-23-233.eu-west-2.compute.internal": {
+        "zone": "eu-west-2b",
+        "instanceType": "t4g.xlarge",
+        "cpu": "4"
+      },
+      "ip-10-40-44-239.eu-west-2.compute.internal": {
+        "zone": "eu-west-2c",
+        "instanceType": "t4g.xlarge",
+        "cpu": "4"
+      },
+      "ip-10-40-9-104.eu-west-2.compute.internal": {
+        "zone": "eu-west-2a",
+        "instanceType": "t4g.xlarge",
+        "cpu": "4"
+      }
+    },
+    "primaries": {
+      "shard-a": "shard-a-1",
+      "shard-b": "shard-b-1",
+      "shard-c": "shard-c-1",
+      "ledger-db": "ledger-db-1"
+    },
+    "pods": {
+      "eu-west-2a": [
+        "shard-a-3",
+        "shard-b-1",
+        "shard-c-2",
+        "shardshop-order-saga-799bb68458-tmq9s",
+        "shardshop-product-59ddbf67cb-nqdwd",
+        "shardshop-product-seeder-control-598bcff677-z9wbv",
+        "shardshop-rabbitmq-2"
+      ],
+      "eu-west-2b": [
+        "shard-a-1",
+        "shard-b-3",
+        "shard-c-1",
+        "shardshop-drill-b84s2-2rdlt",
+        "shardshop-order-6b97895f57-5cs52",
+        "shardshop-order-producer-579cd7fb78-dm52g",
+        "shardshop-product-59ddbf67cb-w6l5h",
+        "shardshop-product-reader-6bfbfbfd5-bnvvt",
+        "shardshop-rabbitmq-0",
+        "shardshop-runtime-secrets-58c6648458-9bm8m"
+      ],
+      "eu-west-2c": [
+        "ledger-db-1",
+        "shard-a-2",
+        "shard-b-2",
+        "shard-c-3",
+        "shardshop-ledger-69dc94bb4d-vcdns",
+        "shardshop-order-6b97895f57-6jhwt",
+        "shardshop-rabbitmq-1"
+      ]
+    },
+    "queueLeaders": {
+      "order.ledger-results.dlq": "rabbit@shardshop-rabbitmq-0.shardshop-rabbitmq-headless.shardshop.svc.cluster.local",
+      "ledger.record-order.dlq": "rabbit@shardshop-rabbitmq-0.shardshop-rabbitmq-headless.shardshop.svc.cluster.local",
+      "order.ledger-results": "rabbit@shardshop-rabbitmq-0.shardshop-rabbitmq-headless.shardshop.svc.cluster.local",
+      "ledger.record-order": "rabbit@shardshop-rabbitmq-0.shardshop-rabbitmq-headless.shardshop.svc.cluster.local"
+    }
+  },
+  "runs": [
+    {
+      "label": "kind run 1",
+      "valid": false,
+      "invalidReason": "host swap full (21.7 of 22.5 GB used) and Docker VM 67% busy; new JVMs",
+      "configuration": "main before 7.9 fixes",
+      "targetRate": 30,
+      "observationSeconds": 90,
+      "minimumRate": 29.35,
+      "smallestStock": 991,
+      "reader": {
+        "targetRate": 200.0,
+        "paused": false,
+        "achievedRate": 191.6
+      },
+      "result": {
+        "elapsedSeconds": 90.001246208,
+        "newWrites": 2285,
+        "acceptedRate": 25.38853734001843,
+        "confirmed": 2262,
+        "cancelled": 0,
+        "recovered": 0,
+        "errors": 0,
+        "finalWriteP95Millis": 265.222,
+        "finalSagaMeanMillis": 2852.206,
+        "finalSagaP95Millis": 4646.956
+      },
+      "polling": {
+        "perSecond": 193.53065356168096,
+        "perNewWrite": 7.622757111597374,
+        "retries": 0,
+        "errors": 0
+      },
+      "backlogs": {
+        "producerMax": 78,
+        "backpressureSamples": 0,
+        "pendingSagasMax": 66,
+        "unpublishedCommandsMax": 34,
+        "unappliedProfitFirst": 34,
+        "unappliedProfitLast": 5,
+        "unappliedProfitGrowth": -7.333333333333333,
+        "sagaPoolAwaitingMax": null
+      },
+      "drainSeconds": 3.768525083,
+      "saga": {
+        "orders": 2350,
+        "completeConfirmed": 2350,
+        "observationDelayMillis": 246.962,
+        "phases": {
+          "write": {
+            "meanMillis": 48.051,
+            "p50Millis": 24.64501953125,
+            "p95Millis": 168.684814453125
+          },
+          "stock": {
+            "meanMillis": 251.987,
+            "p50Millis": 216.211181640625,
+            "p95Millis": 625.666015625
+          },
+          "relay": {
+            "meanMillis": 1153.527,
+            "p50Millis": 1086.2900390625,
+            "p95Millis": 1974.7900390625
+          },
+          "delivery": {
+            "meanMillis": 40.42,
+            "p50Millis": 5.171142578125,
+            "p95Millis": 232.39111328125
+          },
+          "ledger": {
+            "meanMillis": 725.277,
+            "p50Millis": 680.572998046875,
+            "p95Millis": 1332.52392578125
+          },
+          "result": {
+            "meanMillis": 385.982,
+            "p50Millis": 250.52294921875,
+            "p95Millis": 1343.761962890625
+          },
+          "server": {
+            "meanMillis": 2605.244,
+            "p50Millis": 2535.088134765625,
+            "p95Millis": 4091.39404296875
+          }
+        }
+      },
+      "nodes": {
+        "shardshop-test-f6a268c7555e785f-worker2": {
+          "vcpus": 12,
+          "busy": 0.668,
+          "steal": 0.0
+        },
+        "shardshop-test-f6a268c7555e785f-worker3": {
+          "vcpus": 12,
+          "busy": 0.668,
+          "steal": 0.0
+        },
+        "shardshop-test-f6a268c7555e785f-worker": {
+          "vcpus": 12,
+          "busy": 0.668,
+          "steal": 0.0
+        }
+      },
+      "failures": [
+        "accepted rate 25.38853734001843/s is below 29.35/s",
+        "final write p95 265.222 ms is not below 100 ms"
+      ]
+    },
+    {
+      "label": "kind run 2",
+      "valid": false,
+      "invalidReason": "host swap full; Docker VM 71% busy; shard primaries CPU-throttled 6.5-22.3 s in 117 s",
+      "configuration": "main before 7.9 fixes",
+      "targetRate": 30,
+      "observationSeconds": 90,
+      "minimumRate": 29.35,
+      "smallestStock": 771,
+      "reader": {
+        "targetRate": 200.0,
+        "paused": false,
+        "achievedRate": 158.6
+      },
+      "result": {
+        "elapsedSeconds": 90.003265375,
+        "newWrites": 1867,
+        "acceptedRate": 20.743691822970153,
+        "confirmed": 1862,
+        "cancelled": 0,
+        "recovered": 0,
+        "errors": 0,
+        "finalWriteP95Millis": 374.695,
+        "finalSagaMeanMillis": 3723.518,
+        "finalSagaP95Millis": 6834.77,
+        "limit": {
+          "code": "CONCURRENCY",
+          "concurrency": 4,
+          "meanOperationSeconds": 0.258,
+          "achievableRate": 15.531
+        }
+      },
+      "polling": {
+        "perSecond": 177.21579248868449,
+        "perNewWrite": 8.543117300482058,
+        "retries": 0,
+        "errors": 0
+      },
+      "backlogs": {
+        "producerMax": 99,
+        "backpressureSamples": 3,
+        "pendingSagasMax": 99,
+        "unpublishedCommandsMax": 36,
+        "unappliedProfitFirst": 32,
+        "unappliedProfitLast": 11,
+        "unappliedProfitGrowth": -6,
+        "sagaPoolAwaitingMax": null
+      },
+      "drainSeconds": 5.222372958,
+      "saga": {
+        "orders": 1923,
+        "completeConfirmed": 1923,
+        "observationDelayMillis": -258.962,
+        "phases": {
+          "write": {
+            "meanMillis": 57.287,
+            "p50Millis": 26.383056640625,
+            "p95Millis": 204.6669921875
+          },
+          "stock": {
+            "meanMillis": 278.33,
+            "p50Millis": 222.805908203125,
+            "p95Millis": 738.152099609375
+          },
+          "relay": {
+            "meanMillis": 1550.193,
+            "p50Millis": 1138.181884765625,
+            "p95Millis": 4483.654052734375
+          },
+          "delivery": {
+            "meanMillis": 49.504,
+            "p50Millis": -1.97802734375,
+            "p95Millis": 415.8369140625
+          },
+          "ledger": {
+            "meanMillis": 793.066,
+            "p50Millis": 687.678955078125,
+            "p95Millis": 1700.85302734375
+          },
+          "result": {
+            "meanMillis": 1254.1,
+            "p50Millis": 626.10498046875,
+            "p95Millis": 4721.573974609375
+          },
+          "server": {
+            "meanMillis": 3982.48,
+            "p50Millis": 3198.772216796875,
+            "p95Millis": 10071.446044921875
+          }
+        }
+      },
+      "nodes": {
+        "shardshop-test-f6a268c7555e785f-worker2": {
+          "vcpus": 12,
+          "busy": 0.712,
+          "steal": 0.0
+        },
+        "shardshop-test-f6a268c7555e785f-worker3": {
+          "vcpus": 12,
+          "busy": 0.713,
+          "steal": 0.0
+        },
+        "shardshop-test-f6a268c7555e785f-worker": {
+          "vcpus": 12,
+          "busy": 0.714,
+          "steal": 0.0
+        }
+      },
+      "failures": [
+        "accepted rate 20.743691822970153/s is below 29.35/s",
+        "final write p95 374.695 ms is not below 100 ms",
+        "backpressure at 10.01 s",
+        "backpressure at 70.01 s",
+        "backpressure at 90.0 s"
+      ]
+    },
+    {
+      "label": "EKS run 1",
+      "valid": true,
+      "configuration": "main before 7.9 fixes: 1 result handler, saga pool 4",
+      "targetRate": 30,
+      "observationSeconds": 90,
+      "minimumRate": 29.35,
+      "smallestStock": 984,
+      "reader": {
+        "targetRate": 200.0,
+        "paused": false,
+        "achievedRate": 199.5
+      },
+      "result": {
+        "elapsedSeconds": 90.000105706,
+        "newWrites": 2498,
+        "acceptedRate": 27.755522956385448,
+        "confirmed": 2499,
+        "cancelled": 0,
+        "recovered": 0,
+        "errors": 0,
+        "finalWriteP95Millis": 76.626,
+        "finalSagaMeanMillis": 3520.984,
+        "finalSagaP95Millis": 3945.263
+      },
+      "polling": {
+        "perSecond": 328.8662804095663,
+        "perNewWrite": 11.848678943154523,
+        "retries": 0,
+        "errors": 0
+      },
+      "backlogs": {
+        "producerMax": 99,
+        "backpressureSamples": 3,
+        "pendingSagasMax": 99,
+        "unpublishedCommandsMax": 25,
+        "unappliedProfitFirst": 5,
+        "unappliedProfitLast": 20,
+        "unappliedProfitGrowth": -2,
+        "sagaPoolAwaitingMax": null
+      },
+      "drainSeconds": 4.3076647,
+      "saga": {
+        "orders": 2543,
+        "completeConfirmed": 2543,
+        "observationDelayMillis": 155.476,
+        "phases": {
+          "write": {
+            "meanMillis": 28.723,
+            "p50Millis": 29.17919921875,
+            "p95Millis": 45.68603515625
+          },
+          "stock": {
+            "meanMillis": 194.718,
+            "p50Millis": 195.47509765625,
+            "p95Millis": 311.946044921875
+          },
+          "relay": {
+            "meanMillis": 799.1,
+            "p50Millis": 804.89794921875,
+            "p95Millis": 1099.322998046875
+          },
+          "delivery": {
+            "meanMillis": -15.18,
+            "p50Millis": -18.932861328125,
+            "p95Millis": 11.72412109375
+          },
+          "ledger": {
+            "meanMillis": 466.221,
+            "p50Millis": 458.544921875,
+            "p95Millis": 708.801025390625
+          },
+          "result": {
+            "meanMillis": 1891.926,
+            "p50Millis": 1891.851806640625,
+            "p95Millis": 2197.56298828125
+          },
+          "server": {
+            "meanMillis": 3365.508,
+            "p50Millis": 3367.33203125,
+            "p95Millis": 3707.214111328125
+          }
+        }
+      },
+      "nodes": {
+        "ip-10-40-44-239.eu-west-2.compute.internal": {
+          "vcpus": 4,
+          "busy": 0.311,
+          "steal": 0.005
+        },
+        "ip-10-40-23-233.eu-west-2.compute.internal": {
+          "vcpus": 4,
+          "busy": 0.754,
+          "steal": 0.006
+        },
+        "ip-10-40-9-104.eu-west-2.compute.internal": {
+          "vcpus": 4,
+          "busy": 0.573,
+          "steal": 0.005
+        }
+      },
+      "failures": [
+        "accepted rate 27.755522956385448/s is below 29.35/s",
+        "backpressure at 20.0 s",
+        "backpressure at 50.0 s",
+        "backpressure at 60.0 s"
+      ]
+    },
+    {
+      "label": "EKS run 2",
+      "valid": true,
+      "configuration": "3 result handlers, saga pool 4",
+      "targetRate": 30,
+      "observationSeconds": 90,
+      "minimumRate": 29.35,
+      "smallestStock": 682,
+      "reader": {
+        "targetRate": 200.0,
+        "paused": false,
+        "achievedRate": 198.6
+      },
+      "result": {
+        "elapsedSeconds": 90.000101889,
+        "newWrites": 2541,
+        "acceptedRate": 28.23330137041285,
+        "confirmed": 2551,
+        "cancelled": 0,
+        "recovered": 0,
+        "errors": 0,
+        "finalWriteP95Millis": 72.953,
+        "finalSagaMeanMillis": 3330.888,
+        "finalSagaP95Millis": 4628.262
+      },
+      "polling": {
+        "perSecond": 324.86629888552966,
+        "perNewWrite": 11.506493506493506,
+        "retries": 0,
+        "errors": 0
+      },
+      "backlogs": {
+        "producerMax": 98,
+        "backpressureSamples": 1,
+        "pendingSagasMax": 92,
+        "unpublishedCommandsMax": 32,
+        "unappliedProfitFirst": 45,
+        "unappliedProfitLast": 38,
+        "unappliedProfitGrowth": -0.3333333333333333,
+        "sagaPoolAwaitingMax": null
+      },
+      "drainSeconds": 6.554001176,
+      "saga": {
+        "orders": 2644,
+        "completeConfirmed": 2644,
+        "observationDelayMillis": 160.592,
+        "phases": {
+          "write": {
+            "meanMillis": 28.506,
+            "p50Millis": 27.362060546875,
+            "p95Millis": 42.733154296875
+          },
+          "stock": {
+            "meanMillis": 1795.167,
+            "p50Millis": 2423.712890625,
+            "p95Millis": 2946.837158203125
+          },
+          "relay": {
+            "meanMillis": 839.973,
+            "p50Millis": 849.9951171875,
+            "p95Millis": 1135.5458984375
+          },
+          "delivery": {
+            "meanMillis": -21.468,
+            "p50Millis": -21.77197265625,
+            "p95Millis": -4.80810546875
+          },
+          "ledger": {
+            "meanMillis": 478.128,
+            "p50Millis": 467.416015625,
+            "p95Millis": 724.10595703125
+          },
+          "result": {
+            "meanMillis": 49.99,
+            "p50Millis": 42.60009765625,
+            "p95Millis": 121.89892578125
+          },
+          "server": {
+            "meanMillis": 3170.296,
+            "p50Millis": 3779.781982421875,
+            "p95Millis": 4471.028076171875
+          }
+        }
+      },
+      "nodes": {
+        "ip-10-40-44-239.eu-west-2.compute.internal": {
+          "vcpus": 4,
+          "busy": 0.27,
+          "steal": 0.004
+        },
+        "ip-10-40-23-233.eu-west-2.compute.internal": {
+          "vcpus": 4,
+          "busy": 0.742,
+          "steal": 0.004
+        },
+        "ip-10-40-9-104.eu-west-2.compute.internal": {
+          "vcpus": 4,
+          "busy": 0.695,
+          "steal": 0.004
+        }
+      },
+      "failures": [
+        "accepted rate 28.23330137041285/s is below 29.35/s",
+        "backpressure at 30.0 s"
+      ]
+    },
+    {
+      "label": "EKS run 3",
+      "valid": true,
+      "configuration": "3 result handlers, saga pool 4 + 3",
+      "targetRate": 30,
+      "observationSeconds": 90,
+      "minimumRate": 29.35,
+      "smallestStock": 419,
+      "reader": {
+        "targetRate": 200.0,
+        "paused": false,
+        "achievedRate": 199.5
+      },
+      "result": {
+        "elapsedSeconds": 90.000108808,
+        "newWrites": 2635,
+        "acceptedRate": 29.277742381637857,
+        "confirmed": 2648,
+        "cancelled": 0,
+        "recovered": 0,
+        "errors": 0,
+        "finalWriteP95Millis": 85.873,
+        "finalSagaMeanMillis": 3119.731,
+        "finalSagaP95Millis": 5060.765
+      },
+      "polling": {
+        "perSecond": 286.23298728401244,
+        "perNewWrite": 9.776470588235295,
+        "retries": 0,
+        "errors": 0
+      },
+      "backlogs": {
+        "producerMax": 94,
+        "backpressureSamples": 0,
+        "pendingSagasMax": 94,
+        "unpublishedCommandsMax": 31,
+        "unappliedProfitFirst": 13,
+        "unappliedProfitLast": 27,
+        "unappliedProfitGrowth": 8.666666666666666,
+        "sagaPoolAwaitingMax": 0
+      },
+      "drainSeconds": 7.610252088,
+      "saga": {
+        "orders": 2778,
+        "completeConfirmed": 2778,
+        "observationDelayMillis": 141.55,
+        "phases": {
+          "write": {
+            "meanMillis": 35.468,
+            "p50Millis": 35.444091796875,
+            "p95Millis": 52.886962890625
+          },
+          "stock": {
+            "meanMillis": 1536.543,
+            "p50Millis": 1539.75,
+            "p95Millis": 3311.592041015625
+          },
+          "relay": {
+            "meanMillis": 838.294,
+            "p50Millis": 847.64208984375,
+            "p95Millis": 1130.414794921875
+          },
+          "delivery": {
+            "meanMillis": -17.164,
+            "p50Millis": -20.4150390625,
+            "p95Millis": 9.863037109375
+          },
+          "ledger": {
+            "meanMillis": 546.319,
+            "p50Millis": 524.0078125,
+            "p95Millis": 812.580078125
+          },
+          "result": {
+            "meanMillis": 38.72,
+            "p50Millis": 34.43505859375,
+            "p95Millis": 96.664794921875
+          },
+          "server": {
+            "meanMillis": 2978.181,
+            "p50Millis": 2989.623046875,
+            "p95Millis": 4824.31201171875
+          }
+        }
+      },
+      "nodes": {
+        "ip-10-40-44-239.eu-west-2.compute.internal": {
+          "vcpus": 4,
+          "busy": 0.405,
+          "steal": 0.004
+        },
+        "ip-10-40-23-233.eu-west-2.compute.internal": {
+          "vcpus": 4,
+          "busy": 0.739,
+          "steal": 0.006
+        },
+        "ip-10-40-9-104.eu-west-2.compute.internal": {
+          "vcpus": 4,
+          "busy": 0.6,
+          "steal": 0.005
+        }
+      },
+      "failures": [
+        "accepted rate 29.277742381637857/s is below 29.35/s"
+      ]
+    },
+    {
+      "label": "EKS run 4",
+      "valid": true,
+      "configuration": "plus stock lanes drain full batches; new catalog after a redelivery",
+      "note": "the check had no growth rule yet; the profit intents grew 202 to 707",
+      "targetRate": 30,
+      "observationSeconds": 90,
+      "minimumRate": 29.35,
+      "smallestStock": 992,
+      "reader": {
+        "targetRate": 200.0,
+        "paused": false,
+        "achievedRate": 198.7
+      },
+      "result": {
+        "elapsedSeconds": 90.000122854,
+        "newWrites": 2675,
+        "acceptedRate": 29.722181650123286,
+        "confirmed": 2699,
+        "cancelled": 0,
+        "recovered": 0,
+        "errors": 0,
+        "finalWriteP95Millis": 91.762,
+        "finalSagaMeanMillis": 2671.812,
+        "finalSagaP95Millis": 3881.59
+      },
+      "polling": {
+        "perSecond": 254.59965246015886,
+        "perNewWrite": 8.565981308411216,
+        "retries": 0,
+        "errors": 0
+      },
+      "backlogs": {
+        "producerMax": 94,
+        "backpressureSamples": 0,
+        "pendingSagasMax": 89,
+        "unpublishedCommandsMax": 34,
+        "unappliedProfitFirst": 202,
+        "unappliedProfitLast": 707,
+        "unappliedProfitGrowth": 398.6666666666667,
+        "sagaPoolAwaitingMax": 0
+      },
+      "drainSeconds": 18.775734098,
+      "saga": {
+        "orders": 2787,
+        "completeConfirmed": 2787,
+        "observationDelayMillis": 58.093,
+        "phases": {
+          "write": {
+            "meanMillis": 38.502,
+            "p50Millis": 38.2021484375,
+            "p95Millis": 54.1181640625
+          },
+          "stock": {
+            "meanMillis": 679.23,
+            "p50Millis": 271.238037109375,
+            "p95Millis": 2113.5791015625
+          },
+          "relay": {
+            "meanMillis": 994.154,
+            "p50Millis": 985.14306640625,
+            "p95Millis": 1371.693115234375
+          },
+          "delivery": {
+            "meanMillis": 97.486,
+            "p50Millis": 75.0830078125,
+            "p95Millis": 305.921142578125
+          },
+          "ledger": {
+            "meanMillis": 719.35,
+            "p50Millis": 717.052978515625,
+            "p95Millis": 965.304931640625
+          },
+          "result": {
+            "meanMillis": 84.996,
+            "p50Millis": 73.694091796875,
+            "p95Millis": 214.2119140625
+          },
+          "server": {
+            "meanMillis": 2613.719,
+            "p50Millis": 2224.56396484375,
+            "p95Millis": 4313.169189453125
+          }
+        }
+      },
+      "nodes": {
+        "ip-10-40-23-233.eu-west-2.compute.internal": {
+          "vcpus": 4,
+          "busy": 0.506,
+          "steal": 0.007
+        },
+        "ip-10-40-44-239.eu-west-2.compute.internal": {
+          "vcpus": 4,
+          "busy": 0.753,
+          "steal": 0.004
+        },
+        "ip-10-40-9-104.eu-west-2.compute.internal": {
+          "vcpus": 4,
+          "busy": 0.513,
+          "steal": 0.006
+        }
+      },
+      "failures": []
+    },
+    {
+      "label": "EKS run 5 (acceptance)",
+      "valid": true,
+      "configuration": "plus 2 profit credit groups in each home lane; the check includes the growth rule",
+      "targetRate": 30,
+      "observationSeconds": 90,
+      "minimumRate": 29.35,
+      "smallestStock": 700,
+      "reader": {
+        "targetRate": 200.0,
+        "paused": false,
+        "achievedRate": 199.5
+      },
+      "result": {
+        "elapsedSeconds": 90.000114945,
+        "newWrites": 2688,
+        "acceptedRate": 29.86662852200427,
+        "confirmed": 2713,
+        "cancelled": 0,
+        "recovered": 0,
+        "errors": 0,
+        "finalWriteP95Millis": 86.969,
+        "finalSagaMeanMillis": 2582.083,
+        "finalSagaP95Millis": 3586.296
+      },
+      "polling": {
+        "perSecond": 261.93299880123834,
+        "perNewWrite": 8.770089285714286,
+        "retries": 0,
+        "errors": 0
+      },
+      "backlogs": {
+        "producerMax": 88,
+        "backpressureSamples": 0,
+        "pendingSagasMax": 82,
+        "unpublishedCommandsMax": 34,
+        "unappliedProfitFirst": 34,
+        "unappliedProfitLast": 16,
+        "unappliedProfitGrowth": 4,
+        "sagaPoolAwaitingMax": 0
+      },
+      "drainSeconds": 5.774146688,
+      "saga": {
+        "orders": 2822,
+        "completeConfirmed": 2822,
+        "observationDelayMillis": 44.823,
+        "phases": {
+          "write": {
+            "meanMillis": 36.448,
+            "p50Millis": 36.989990234375,
+            "p95Millis": 52.2939453125
+          },
+          "stock": {
+            "meanMillis": 557.307,
+            "p50Millis": 266.1669921875,
+            "p95Millis": 1596.125
+          },
+          "relay": {
+            "meanMillis": 1019.107,
+            "p50Millis": 1009.399169921875,
+            "p95Millis": 1425.25
+          },
+          "delivery": {
+            "meanMillis": 92.13,
+            "p50Millis": 64.123046875,
+            "p95Millis": 314.89501953125
+          },
+          "ledger": {
+            "meanMillis": 755.453,
+            "p50Millis": 747.50390625,
+            "p95Millis": 1019.4169921875
+          },
+          "result": {
+            "meanMillis": 76.815,
+            "p50Millis": 64.7548828125,
+            "p95Millis": 194.923828125
+          },
+          "server": {
+            "meanMillis": 2537.26,
+            "p50Millis": 2281.33984375,
+            "p95Millis": 3867.4189453125
+          }
+        }
+      },
+      "nodes": {
+        "ip-10-40-23-233.eu-west-2.compute.internal": {
+          "vcpus": 4,
+          "busy": 0.42,
+          "steal": 0.006
+        },
+        "ip-10-40-44-239.eu-west-2.compute.internal": {
+          "vcpus": 4,
+          "busy": 0.749,
+          "steal": 0.003
+        },
+        "ip-10-40-9-104.eu-west-2.compute.internal": {
+          "vcpus": 4,
+          "busy": 0.577,
+          "steal": 0.005
+        }
+      },
+      "failures": []
+    }
+  ],
+  "analysis": {
+    "resultConsumer": {
+      "run": "EKS run 1",
+      "method": "gaps between consecutive ordering.order_inbox.received_at while the result queue was full",
+      "gapAfterResultMillis": {
+        "shard-a (primary eu-west-2b)": 42.80,
+        "shard-b (primary eu-west-2a, same zone as the saga)": 22.27,
+        "shard-c (primary eu-west-2b)": 42.83
+      },
+      "meanCycleMillis": 35.9,
+      "capacityPerSecond": 27.8
+    },
+    "stockLanes": {
+      "run": "EKS run 3",
+      "method": "gaps between consecutive ordering.order_outbox.created_at per buyer shard",
+      "lanes": {
+        "shard-a": {
+          "perSecond": 9.65,
+          "sagaMillis": 71.9,
+          "gapAfterBatchMillis": 323.4,
+          "batches": 91
+        },
+        "shard-b": {
+          "perSecond": 9.72,
+          "sagaMillis": 36.1,
+          "gapAfterBatchMillis": 288.1,
+          "batches": 193
+        },
+        "shard-c": {
+          "perSecond": 9.92,
+          "sagaMillis": 69.2,
+          "gapAfterBatchMillis": 320.2,
+          "batches": 93
+        }
+      },
+      "capPerLane": "8 / (8 x 72 ms + 250 ms) = 9.7/s"
+    },
+    "profitLanes": {
+      "run": "EKS run 4",
+      "method": "gaps between consecutive ordering.profit_intents.applied_at per home shard",
+      "lanes": {
+        "shard-a": {
+          "createdPerSecond": 29.6,
+          "appliedPerSecond": 29.9,
+          "intentMillis": 19.3,
+          "batches": 224
+        },
+        "shard-b": {
+          "createdPerSecond": 30.1,
+          "appliedPerSecond": 26.8,
+          "intentMillis": 33.8,
+          "batches": 68
+        },
+        "shard-c": {
+          "createdPerSecond": 28.5,
+          "appliedPerSecond": 25.0,
+          "intentMillis": 36.4,
+          "batches": 64
+        }
+      }
+    },
+    "rejectedHypotheses": [
+      "producer status polling: observation delay 155 ms in run 1",
+      "saga connection pool: run 3 had no waiting request and at most 2 busy connections",
+      "T4g CPU credits: unlimited mode, steal at most 0.7%"
+    ]
+  }
+}

@@ -35,6 +35,9 @@ Feature: Order applies ledger results and credits confirmed seller profit
   Scenario: Orphan quarantine waits for the creation lock of its order ID
     Then an orphan result waits while order creation holds the lock of its order ID
 
+  Scenario: Results of different orders are applied at the same time
+    Then the results of three orders wait for their order locks at the same time
+
   Scenario: Invalid result IDs go to broker parking without touching order state
     Then a malformed result is parked without a database side effect
 

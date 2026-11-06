@@ -627,6 +627,16 @@ kubectl --context kind-shardshop-test-eks -n shardshop logs job/<drill-job>
 The `kindit` checks send many API requests through the internet. If the connection
 is slow for some minutes, a command or a wait of these checks can fail.
 
+Load tests and their measurements run only in the cluster. The
+[capacity check](../../shardshop-testing/RUNBOOK.md#14-capacity-measurement) holds 30
+orders/s and reports where the saga time goes. Run it as a Job, then copy its report
+line from the Job log:
+
+```bash
+drill kind-order-capacity
+kubectl --context kind-shardshop-test-eks -n shardshop logs job/<capacity-job> | sed -n 's/^Order capacity report: //p' >"$run/capacity.json"
+```
+
 #### Delivery drills
 
 These two drills check the delivery contract. They are not acceptance scenarios.

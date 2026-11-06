@@ -514,6 +514,31 @@ An integral-second schedule or the end of later diagnostic collection does not
 prove this duration. A short window or insufficient samples invalidates the
 measurement; do not extend it until latency happens to pass.
 
+The `kind-order-capacity` scenario does this protocol at 30 orders/s
+([runbook](RUNBOOK.md#14-capacity-measurement)). A restarted producer first replays
+the earlier ordinals of its run name, thus the warmup starts after the replay. The
+scenario fails when the producer backlog
+reaches its bound, when the pending sagas or the unpublished commands exceed that
+bound, when a backlog does not drain within 180 seconds after the pause, or when a
+database backlog grows: the mean of its last three samples is more than 100 above the
+mean of its first three samples. It also
+splits the saga of each order allocated in the window at the database timestamps:
+
+```mermaid
+flowchart LR
+  A[Allocation] -->|write| O[Order]
+  O -->|stock| C[Command outbox]
+  C -->|relay| P[CDC publication]
+  P -->|delivery| L[Ledger receipt]
+  L -->|ledger| R[Result publication]
+  R -->|result| S[Result application]
+  S -->|observation| Q[Producer sees the status]
+```
+
+Each database sets a time at the start of its transaction, thus a phase includes the
+wait before the next transaction. The observation is the producer saga mean minus the
+database saga mean.
+
 The standard producer rotates buyer regions equally, so dividing its accepted
 rate by three gives a **derived buyer-home rate**, not measured per-shard SQL
 load. Allocation and submission are two HTTP writes per new order. Reservation,

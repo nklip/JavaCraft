@@ -10,10 +10,15 @@ import dev.nklip.javacraft.shardshop.sharding.ShardRouter;
 import dev.nklip.javacraft.shardshop.sharding.ShardTopology;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -28,9 +33,15 @@ public final class ProfitWorker implements AutoCloseable {
     /** Shards with a logged failure; a later completed intent on such a shard logs that posting resumed. */
     private final Set<String> unavailable = ConcurrentHashMap.newKeySet();
     private ScheduledExecutorService executor;
+    /** Runs the credit groups of the lanes; absent in the serial mode and with one credit at a time. */
+    private ExecutorService items;
     private volatile boolean closed;
 
-    public record Settings(boolean enabled, Duration interval, int batchSize, int shardConcurrency) {
+    /**
+     * In lane mode, {@code itemConcurrency} groups of one batch post at the same time. The credits of one seller stay
+     * in one group, in their order, thus two groups never wait for the same balance row.
+     */
+    public record Settings(boolean enabled, Duration interval, int batchSize, int shardConcurrency, int itemConcurrency) {
         public Settings {
             if (interval == null || interval.compareTo(Duration.ofMillis(100)) < 0
                     || interval.compareTo(Duration.ofSeconds(30)) > 0) {
@@ -42,6 +53,14 @@ public final class ProfitWorker implements AutoCloseable {
             if (shardConcurrency < 1 || shardConcurrency > 32) {
                 throw new IllegalArgumentException("Profit shard concurrency must be between 1 and 32");
             }
+            if (itemConcurrency < 1 || itemConcurrency > 16) {
+                throw new IllegalArgumentException("Profit item concurrency must be between 1 and 16");
+            }
+        }
+
+        /** One credit at a time in each lane. */
+        public Settings(boolean enabled, Duration interval, int batchSize, int shardConcurrency) {
+            this(enabled, interval, batchSize, shardConcurrency, 1);
         }
     }
 
@@ -57,12 +76,17 @@ public final class ProfitWorker implements AutoCloseable {
         if (!settings.enabled() || executor != null || closed) {
             return;
         }
-        executor = Executors.newScheduledThreadPool(Math.min(settings.shardConcurrency(), topology.shards().size()),
+        int lanes = Math.min(settings.shardConcurrency(), topology.shards().size());
+        executor = Executors.newScheduledThreadPool(lanes,
                 Thread.ofPlatform().daemon().name("order-profit-worker-", 0).factory());
         if (settings.shardConcurrency() == 1) {
             // Preserve the original global scan and delay as an operational rollback baseline.
             executor.scheduleWithFixedDelay(this::poll, 0, settings.interval().toMillis(), TimeUnit.MILLISECONDS);
         } else {
+            if (settings.itemConcurrency() > 1) {
+                items = Executors.newFixedThreadPool(lanes * settings.itemConcurrency(),
+                        Thread.ofPlatform().daemon().name("order-profit-item-", 0).factory());
+            }
             for (var home : topology.shards()) {
                 // A periodic task never overlaps itself, even when other home lanes are still busy.
                 executor.scheduleWithFixedDelay(() -> pollShard(home), 0,
@@ -91,7 +115,33 @@ public final class ProfitWorker implements AutoCloseable {
             unavailable(home, "polling", failure);
             return;
         }
-        for (var credit : pending) {
+        ExecutorService parallel = items;
+        List<List<PendingCredit>> groups = groups(pending, parallel == null ? 1 : settings.itemConcurrency());
+        if (groups.size() < 2) {
+            post(home, pending);
+            return;
+        }
+        // Step 7.9: one credit at a time capped a home lane at approximately 26 credits/s on EKS (35 ms each).
+        List<Future<?>> running = new ArrayList<>();
+        try {
+            for (var group : groups) {
+                running.add(parallel.submit(() -> post(home, group)));
+            }
+            for (var group : running) {
+                group.get();
+            }
+        } catch (InterruptedException interrupted) {
+            running.forEach(group -> group.cancel(true));
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException | RejectedExecutionException failure) {
+            // post() reports its own failures; this is a stopped executor during close.
+            running.forEach(group -> group.cancel(true));
+            unavailable(home, "posting", failure);
+        }
+    }
+
+    private void post(Shard home, List<PendingCredit> credits) {
+        for (var credit : credits) {
             if (Thread.currentThread().isInterrupted()) {
                 return;
             }
@@ -103,6 +153,19 @@ public final class ProfitWorker implements AutoCloseable {
                 unavailable(home, "posting", failure);
             }
         }
+    }
+
+    /** The credits of one seller stay in one group, in their batch order; empty groups are left out. */
+    static List<List<PendingCredit>> groups(List<PendingCredit> pending, int count) {
+        List<List<PendingCredit>> groups = new ArrayList<>();
+        for (int index = 0; index < count; index++) {
+            groups.add(new ArrayList<>());
+        }
+        for (var credit : pending) {
+            groups.get(Math.floorMod(Long.hashCode(credit.sellerId()), count)).add(credit);
+        }
+        groups.removeIf(List::isEmpty);
+        return groups;
     }
 
     private void report(Shard home, PendingCredit credit, Progress progress) {
@@ -148,6 +211,17 @@ public final class ProfitWorker implements AutoCloseable {
             try {
                 if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
                     LOG.log(System.Logger.Level.WARNING, "Profit worker did not stop within five seconds");
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        if (items != null) {
+            // The lanes have cancelled their groups; this also interrupts a group that is still posting.
+            items.shutdownNow();
+            try {
+                if (!items.awaitTermination(5, TimeUnit.SECONDS)) {
+                    LOG.log(System.Logger.Level.WARNING, "Profit credit groups did not stop within five seconds");
                 }
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();

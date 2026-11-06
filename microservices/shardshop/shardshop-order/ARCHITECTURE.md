@@ -223,7 +223,9 @@ The implementation uses a database-clock lease with a monotonically increasing
 - Process restart resumes eligible durable work after lease expiry. The worker
   runs in the saga process, outside HTTP request threads. Each buyer shard has
   one non-overlapping scheduled scan; a bounded pool permits three concurrent
-  shard scans by default, with sequential sagas within each batch. The configured
+  shard scans by default, with sequential sagas within each batch. A lane starts
+  its next batch at once while its last batch was full, and waits the poll interval
+  only after a batch that ended early. The configured
   limit is capped by shard count. `shard-concurrency=1` retains the original serial
   all-shards scan and polling delay. Shared database pools still bound IO, and
   different buyer shards can contend on the same seller. See the
@@ -500,8 +502,10 @@ cleanup.
 
 Confirmation creates durable per-item margin intents on the buyer's home shard.
 ProfitWorker runs outside HTTP request threads, with one non-overlapping scan
-per buyer shard and a bounded pool of three concurrent scans by default. Intents
-within a shard remain sequential. `shardshop.order.profit.shard-concurrency=1`
+per buyer shard and a bounded pool of three concurrent scans by default. A scan
+posts its batch in `shardshop.order.profit.item-concurrency` groups (default 2) at
+the same time. The intents of one seller stay in one group, in their order, thus two
+groups never wait for the same balance row. `shardshop.order.profit.shard-concurrency=1`
 preserves the original serial all-shards scan and delay; larger values use a
 separate delay after each shard's scan. The configured limit is capped by shard
 count and is independent of StockWorker's limit.

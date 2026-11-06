@@ -32,8 +32,9 @@ classes are in common.
 
 - `ConfirmedPublisher` is one ordered stream with persistent mandatory messages, publisher confirms and finite
   timeouts. It replaces the publishers that order and ledger copied.
-- `QueueConsumer` uses manual acknowledgements after the local commit, one prefetched delivery and reconnects
-  with backoff and jitter. It replaces the copied queue consumers.
+- `QueueConsumer` uses manual acknowledgements after the local commit and reconnects with backoff and jitter. It
+  opens one channel for each handler (`concurrency`, default 1, maximum 16), each with one prefetched delivery.
+  The client runs the channels on a pool of twice the available processors. It replaces the copied queue consumers.
 - Both classes use `BrokerSettings`. Common declares the RabbitMQ client as an optional dependency, so only
   order and ledger, which declare the client themselves, contain it.
 

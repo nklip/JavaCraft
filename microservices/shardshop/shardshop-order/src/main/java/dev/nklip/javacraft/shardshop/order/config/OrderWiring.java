@@ -30,7 +30,26 @@ public class OrderWiring {
     @Singleton
     @Startup(ObserverMethod.DEFAULT_PRIORITY - 1)
     JdbcOrderStore store(OrderConfiguration config, ShardTopology topology) {
-        return new JdbcOrderStore(primaryEndpoints(config, topology), config.maxPoolSize());
+        return new JdbcOrderStore(primaryEndpoints(config, topology), poolSize(config));
+    }
+
+    /**
+     * The saga process adds one connection to each shard pool for each result handler. Thus concurrent results never
+     * take the connections of the stock, profit and CDC work. The HTTP process uses the configured size. The store
+     * reports an invalid configured size.
+     */
+    static int poolSize(OrderConfiguration config) {
+        int size = config.maxPoolSize();
+        if (size < 1 || config.process() != OrderConfiguration.Process.SAGA || !config.results().enabled()) {
+            return size;
+        }
+        int total = size + Math.max(0, config.results().concurrency());
+        if (size <= JdbcOrderStore.MAX_POOL_SIZE && total > JdbcOrderStore.MAX_POOL_SIZE) {
+            throw new IllegalArgumentException("The saga process needs shardshop.order.max-pool-size plus "
+                    + "shardshop.order.results.concurrency connections for each shard, at most "
+                    + JdbcOrderStore.MAX_POOL_SIZE);
+        }
+        return total;
     }
 
     static Map<String, Endpoint> primaryEndpoints(OrderConfiguration config, ShardTopology topology) {

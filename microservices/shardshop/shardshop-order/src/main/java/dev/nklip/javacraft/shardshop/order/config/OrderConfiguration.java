@@ -49,6 +49,8 @@ public interface OrderConfiguration {
 
     interface Results {
         @WithDefault("true") boolean enabled();
+        /** Handlers that apply ledger results at the same time; each one holds one buyer-shard connection. */
+        @WithDefault("3") int concurrency();
     }
 
     interface Profit {
@@ -56,6 +58,8 @@ public interface OrderConfiguration {
         @WithDefault("250ms") Duration pollInterval();
         @WithDefault("8") int batchSize();
         @WithDefault("3") int shardConcurrency();
+        /** Credit groups of one home lane that post at the same time; one group for each seller. */
+        @WithDefault("2") int itemConcurrency();
     }
 
     interface Stock {

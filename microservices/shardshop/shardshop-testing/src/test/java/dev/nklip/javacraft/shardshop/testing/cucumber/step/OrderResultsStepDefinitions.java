@@ -1025,6 +1025,28 @@ public final class OrderResultsStepDefinitions {
         assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.orders WHERE order_id=" + id));
     }
 
+    /** Step 7.9: one result handler capped the saga at 27.8 results/s on EKS; the default is three handlers. */
+    @Then("the results of three orders wait for their order locks at the same time")
+    public void concurrentResults() throws Exception {
+        List<String> ids = List.of(allocate(), allocate(), allocate());
+        startWorkers(false);
+        try (Connection creation = shards.superuser(home()); PreparedStatement lock = creation.prepareStatement(
+                "SELECT pg_advisory_xact_lock(?)")) {
+            creation.setAutoCommit(false);
+            for (String id : ids) {
+                lock.setLong(1, CatalogRouting.creationLock("order", "", id));
+                lock.execute();
+            }
+            for (String id : ids) publishResult(resultForMissingOrder(id));
+            await("three result transactions wait for their order locks at the same time", () ->
+                    scalar(home(), "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() "
+                            + "AND usename='order_app' AND wait_event_type='Lock' AND wait_event='advisory'") == ids.size());
+            for (String id : ids) assertEquals(0, orphans(id), "No result passes a held order lock");
+            creation.rollback();
+        }
+        for (String id : ids) await("orphan committed after its order lock was released", () -> orphans(id) == 1);
+    }
+
     @Then("a malformed result is parked without a database side effect")
     public void malformedParking() throws Exception {
         String id = accept(1, us);

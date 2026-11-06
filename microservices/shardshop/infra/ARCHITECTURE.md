@@ -470,12 +470,13 @@ outbox relay of the ledger polls its own database.
   split.
 - **Stock worker.** The saga runs one stock scan at a time for each buyer shard, and
   at most three shard scans at the same time by default. The sagas in the batch of one
-  shard stay sequential. `shardshop.order.stock.shard-concurrency=1` gives back the
-  original serial global scan.
+  shard stay sequential, and a full batch starts the next batch at once.
+  `shardshop.order.stock.shard-concurrency=1` gives back the original serial global scan.
 - **Profit worker.** In the lab, the profit worker polls each 100 ms with at most 32
   intents for each buyer shard. A separate bounded pool permits three buyer-shard
-  scans at the same time by default, with one scan at a time for each shard and
-  sequential intents in each scan. `shardshop.order.profit.shard-concurrency=1` gives
+  scans at the same time by default, with one scan at a time for each shard. A scan
+  posts its intents in two groups at the same time, one group for each seller.
+  `shardshop.order.profit.shard-concurrency=1` gives
   back the original serial global scan. Without the lab values, the worker polls each
   250 ms with eight intents. Stock and profit share the database pools of each shard.
 - **Capacity.** The capacity checks include the profit intents that are not applied,

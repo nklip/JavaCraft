@@ -58,7 +58,7 @@ public final class StockWorker implements AutoCloseable {
         } else {
             for (var shard : topology.shards()) {
                 // A periodic task never overlaps itself, even when other shard lanes are still busy.
-                executor.scheduleWithFixedDelay(() -> pollShard(shard), 0,
+                executor.scheduleWithFixedDelay(() -> drainShard(shard), 0,
                         settings.interval().toMillis(), TimeUnit.MILLISECONDS);
             }
         }
@@ -73,20 +73,35 @@ public final class StockWorker implements AutoCloseable {
         }
     }
 
-    void pollShard(Shard shard) {
+    /**
+     * Lane mode: the lane starts its next batch at once while its last batch was full, because more work is
+     * probably waiting. The poll interval applies only after a batch that ended early. Each shard has its own lane,
+     * thus a busy lane does not delay the other shards. A fixed wait after each full batch capped a lane at
+     * batch / (batch × saga time + interval): on EKS, 8 / (8 × 72 ms + 250 ms) = 9.7 orders/s for each buyer shard.
+     */
+    void drainShard(Shard shard) {
+        while (pollShard(shard)) {
+            // The batch was full: start the next one.
+        }
+    }
+
+    /** One bounded batch; true when every attempt advanced a saga. */
+    boolean pollShard(Shard shard) {
         try {
-            for (int attempt = 0; attempt < settings.batchSize(); attempt++) {
+            int advanced = 0;
+            while (advanced < settings.batchSize()) {
                 if (Thread.currentThread().isInterrupted()) {
-                    return;
+                    return false;
                 }
-                var progress = coordinator.processNext(shard);
-                if (progress != StockCoordinator.Progress.ADVANCED) {
+                if (coordinator.processNext(shard) != StockCoordinator.Progress.ADVANCED) {
                     break;
                 }
+                advanced++;
             }
             if (unavailable.remove(shard.clusterName())) {
                 LOG.log(System.Logger.Level.INFO, "Stock coordination resumed for {0}", shard.clusterName());
             }
+            return advanced == settings.batchSize();
         } catch (RuntimeException failure) {
             // Log the affected route once, without JDBC messages, credentials or buyer payloads.
             if (unavailable.add(shard.clusterName())) {
@@ -94,6 +109,7 @@ public final class StockWorker implements AutoCloseable {
                         "Stock coordination unavailable for {0}; pending work will retry after recovery",
                         shard.clusterName());
             }
+            return false;
         }
     }
 

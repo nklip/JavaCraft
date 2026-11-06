@@ -237,9 +237,9 @@ defines the code layers.
 ## 4. Performance
 <sub>[Back to Contents](#contents)</sub>
 
-These figures are **local-deployment evidence, not a hardware-independent maximum**. One
-host ran the complete lab: 12 Docker CPUs, 12.65 GiB Docker memory and 16 GB
-physical memory.
+These figures are **deployment evidence, not a hardware-independent maximum**. For the
+local deployment, one host ran the complete lab: 12 Docker CPUs, 12.65 GiB Docker
+memory and 16 GB physical memory.
 
 **Writes.** The fixed 10/20/30 orders/s sequence passed. Accepted rates were
 **10.006 / 19.949 / 29.354 orders/s**, with final rolling write p95
@@ -259,8 +259,16 @@ appeared and the product and reader pods had no additional CPU throttling. See t
 HTTP/2 through Envoy gave no gain, thus the lab keeps HTTP/1.1
 ([decision](DECISIONS.md#keep-http11)).
 
-These are local operating points. They are not maximum capacity, and they are not a
-simultaneous 1,000 reads/s and 30 orders/s. Write latency covers allocation through
+**Writes on the AWS deployment.** Three `t4g.xlarge` workers, one in each zone, passed
+30 orders/s with the `kind-order-capacity` check as a Job in the cluster:
+**29.867 orders/s**, final write p95 **86.969 ms**, saga mean **2.582 s**, reads near
+200/s, no errors, cancellations or backpressure, and no backlog growth. Cross-zone
+round trips set the limits of the sequential saga stages, thus the result and profit
+stages work in parallel and the stock lanes do not wait after a full batch
+([decision](DECISIONS.md#saga-stages-for-cross-zone-latency)).
+
+Each figure is an operating point of one deployment. They are not maximum capacity,
+and they are not a simultaneous 1,000 reads/s and 30 orders/s. Write latency covers allocation through
 PUT acceptance. Saga completion is separate.
 
 Different kinds of figures answer different questions:

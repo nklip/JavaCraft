@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -30,6 +31,8 @@ class OrderProcessWiringTest {
         when(stock.enabled()).thenReturn(true);
         when(profit.enabled()).thenReturn(true);
         when(results.enabled()).thenReturn(true);
+        when(results.concurrency()).thenReturn(3);
+        when(order.maxPoolSize()).thenReturn(4);
         when(reconciliation.enabled()).thenReturn(true);
         when(cleanup.enabled()).thenReturn(true);
         when(cleanup.retention()).thenReturn(Duration.ofHours(24));
@@ -44,6 +47,7 @@ class OrderProcessWiringTest {
         when(profit.pollInterval()).thenReturn(Duration.ofMillis(250));
         when(profit.batchSize()).thenReturn(8);
         when(profit.shardConcurrency()).thenReturn(3);
+        when(profit.itemConcurrency()).thenReturn(2);
         var cdc = mock(CdcConfiguration.class);
         var broker = mock(CdcConfiguration.Broker.class);
         when(cdc.broker()).thenReturn(broker);
@@ -58,7 +62,17 @@ class OrderProcessWiringTest {
         assertEquals(3, new OrderWiring().stockSettings(order).shardConcurrency());
         assertEquals(saga, new ResultWiring().profitSettings(order).enabled());
         assertEquals(3, new ResultWiring().profitSettings(order).shardConcurrency());
+        assertEquals(2, new ResultWiring().profitSettings(order).itemConcurrency());
         assertEquals(saga, new ResultWiring().resultSettings(order, cdc).enabled());
+        assertEquals(3, new ResultWiring().resultSettings(order, cdc).concurrency());
+        // Step 7.9: three result handlers on four saga connections slowed the stock work of remote shards on EKS.
+        assertEquals(saga ? 7 : 4, OrderWiring.poolSize(order));
+        when(results.enabled()).thenReturn(false);
+        assertEquals(4, OrderWiring.poolSize(order));
+        when(results.enabled()).thenReturn(true);
+        when(order.maxPoolSize()).thenReturn(30);
+        if (saga) assertThrows(IllegalArgumentException.class, () -> OrderWiring.poolSize(order));
+        else assertEquals(30, OrderWiring.poolSize(order));
         assertEquals(saga, new ReconciliationWiring().settings(order).enabled());
         assertEquals(saga, new CleanupWiring().settings(order).enabled());
     }

@@ -421,6 +421,51 @@ class ProfitWorkerTest {
         }
     }
 
+    @Test
+    void creditsOfOneSellerStayInOneGroupInTheirBatchOrder() {
+        var first = new PendingCredit(1, 0, 10, 61, "USD", BigDecimal.ONE, 0);
+        var other = new PendingCredit(2, 0, 11, 62, "USD", BigDecimal.ONE, 0);
+        var second = new PendingCredit(3, 1, 10, 63, "USD", BigDecimal.ONE, 0);
+        var groups = ProfitWorker.groups(List.of(first, other, second), 2);
+        assertEquals(2, groups.size());
+        assertTrue(groups.contains(List.of(first, second)), groups::toString);
+        assertTrue(groups.contains(List.of(other)), groups::toString);
+        assertEquals(List.of(List.of(first, other, second)), ProfitWorker.groups(List.of(first, other, second), 1));
+        assertEquals(List.of(List.of(first, second)), ProfitWorker.groups(List.of(first, second), 4),
+                "Empty groups are left out");
+    }
+
+    /** Step 7.9: one credit at a time capped a home lane at approximately 26 credits/s on EKS. */
+    @Test
+    void laneCreditsDifferentSellersAtTheSameTime() throws Exception {
+        var home = topology.shards().getFirst();
+        var even = new PendingCredit(41, 0, 50, 61, "USD", BigDecimal.ONE, 0);
+        var odd = new PendingCredit(42, 0, 51, 62, "USD", BigDecimal.ONE, 0);
+        when(store.pendingProfit(home, 2)).thenReturn(List.of(even, odd)).thenReturn(List.of());
+        when(store.pendingProfit(topology.shards().getLast(), 2)).thenReturn(List.of());
+        when(router.route(anyLong())).thenReturn(topology.shards().getLast());
+        CountDownLatch bothPosting = new CountDownLatch(2);
+        doAnswer(invocation -> {
+            bothPosting.countDown();
+            assertTrue(bothPosting.await(5, TimeUnit.SECONDS), "The other seller's credit did not start");
+            return null;
+        }).when(store).creditProfit(any(), any());
+        try (var worker = new ProfitWorker(store, router, topology,
+                new ProfitWorker.Settings(true, settings.interval(), 2, 3, 2))) {
+            worker.start();
+            await(bothPosting);
+            verify(store, timeout(5000)).markProfitApplied(home, even);
+            verify(store, timeout(5000)).markProfitApplied(home, odd);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 17})
+    void rejectsUnboundedItemConcurrency(int concurrency) {
+        assertThrows(IllegalArgumentException.class,
+                () -> new ProfitWorker.Settings(true, settings.interval(), settings.batchSize(), 3, concurrency));
+    }
+
     private PendingCredit credit(long orderId) {
         return new PendingCredit(orderId, 0, 51, 61, "USD", new BigDecimal("1.00"), 0);
     }

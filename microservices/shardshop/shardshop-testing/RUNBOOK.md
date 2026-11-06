@@ -800,17 +800,31 @@ kubectl --context kind-shardshop -n shardshop logs deployment/shardshop-product-
 Record the [pod inventory](../infra/README.md#pod-inventory), the hardware and the
 control status with each phase. The `Product reads, interval` lines of the reader give
 the requests, duration, outcomes, latency, regions and pool snapshots. Keep the raw
-reports. For write measurements, use the
-[order-capacity runbook](../shardshop-workload/shardshop-order-producer/README.md)
-and the stricter backlog criteria of the protocol.
+reports.
 
-For writes, save monotonic timestamps around each producer control request. Check
-both the elapsed observation time and the post-warmup latency-sample count as the
-protocol specifies. Capture `/internal/order/write-metrics` from **each** order HTTP
-pod together with `/q/metrics`. The former gives separate allocation and PUT p95
-windows. The request sums and counts of the latter give averages. Do not treat those
-per-pod windows as interval percentiles. Do not add their p95 values to reconstruct
-the allocation-through-PUT p95 of the producer.
+For writes, run the `kind-order-capacity` scenario with the
+[kind command form](#3-kind-verification-snapshot). It does the
+[full-order write protocol](ARCHITECTURE.md#full-order-writes) at 30 orders/s and
+restores the producer controls at the end. The catalog must have at least 400 units
+of each product, thus use a lab with a new catalog. On the AWS deployment, run it as
+a [drill Job](../infra/terraform/README.md#run-the-drills):
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true \
+    test-compile failsafe:integration-test failsafe:verify -Dit.test=KindIT \
+    -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-order-capacity
+```
+
+The line `Order capacity report:` in the output is one JSON document. Keep it as the
+raw report:
+
+| Field | Contents |
+|---|---|
+| `samples` | The producer status and the database backlogs at each 10-second sample |
+| `result` | The criteria values, and the requests, retries and errors of each traffic category |
+| `saga` | The time of each saga phase, from the database timestamps of the orders allocated in the window, and `observationDelayMillis`: the producer saga mean minus the database saga mean |
+| `placement` | The zone of each node and pod, the primaries and the leader of each quorum queue |
+| `resources` | The busy and steal share of each node, the cores and the CPU throttle time of each database pod, the cores of each JVM and the status GETs of each order pod |
 
 Always restore `targetRate` with the same `/control/rate` endpoint. Restore `paused`
 with `/control/pause` or `/control/resume` from **each saved control**, also after

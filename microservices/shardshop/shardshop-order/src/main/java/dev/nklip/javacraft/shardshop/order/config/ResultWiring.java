@@ -1,5 +1,6 @@
 package dev.nklip.javacraft.shardshop.order.config;
 
+import dev.nklip.javacraft.shardshop.common.amqp.QueueConsumer;
 import dev.nklip.javacraft.shardshop.order.messaging.OrderResultConsumer;
 import dev.nklip.javacraft.shardshop.order.persistence.JdbcOrderStore;
 import dev.nklip.javacraft.shardshop.order.result.ResultService;
@@ -25,7 +26,13 @@ public class ResultWiring {
             throw new IllegalArgumentException("Result consumption is enabled but "
                     + "shardshop.order.cdc.broker.password is not set");
         }
-        return new OrderResultConsumer.Settings(enabled, CdcWiring.brokerSettings(cdc));
+        int concurrency = order.results().concurrency();
+        // The saga pool adds one connection for each handler (OrderWiring.poolSize).
+        if (concurrency < 1 || concurrency > QueueConsumer.MAX_CONCURRENCY) {
+            throw new IllegalArgumentException("shardshop.order.results.concurrency must be between 1 and "
+                    + QueueConsumer.MAX_CONCURRENCY);
+        }
+        return new OrderResultConsumer.Settings(enabled, CdcWiring.brokerSettings(cdc), concurrency);
     }
 
     @Produces
@@ -41,7 +48,7 @@ public class ResultWiring {
     ProfitWorker.Settings profitSettings(OrderConfiguration order) {
         var profit = order.profit();
         return new ProfitWorker.Settings(order.process() == OrderConfiguration.Process.SAGA && profit.enabled(),
-                profit.pollInterval(), profit.batchSize(), profit.shardConcurrency());
+                profit.pollInterval(), profit.batchSize(), profit.shardConcurrency(), profit.itemConcurrency());
     }
 
     @Produces

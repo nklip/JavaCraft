@@ -247,7 +247,37 @@ the serial scan.
 orders/s (+42.8%), and the profit stage from 182.29 to 299.16 intents/s (+64.1%).
 
 **Result.** Each shard batch and the operations of each order stay sequential
-([step 6.5](CHANGELOG.md#step-65--order-write-p95-below-100-ms)).
+([step 6.5](CHANGELOG.md#step-65--order-write-p95-below-100-ms)). The
+[saga stages for cross-zone latency](#saga-stages-for-cross-zone-latency) added
+concurrency inside the result and profit stages.
+
+### Saga stages for cross-zone latency
+
+**Decision.** On 2026-11-06 the user selected three changes, one for each measured
+cap of the AWS deployment:
+
+- The saga applies ledger results with 3 handlers, each on its own channel with
+  prefetch 1. Its shard pools get one more connection for each handler.
+- A stock lane starts its next batch at once while its last batch was full.
+- A profit lane posts its batch in 2 groups at the same time. The credits of one
+  seller stay in one group.
+
+**Reason.** On EKS each SQL round trip and each synchronous commit crosses zones.
+The sequential stages then had these limits at 30 orders/s
+([evidence](shardshop-testing/evidence/2026-11-06-eks-order-capacity.json)):
+
+| Stage | Measured time | Limit |
+|---|---|---|
+| One result handler | 35.9 ms for each result | 27.8 results/s |
+| Stock lane: 8 sagas, then 250 ms | 72 ms for each saga of a remote shard | 9.7 orders/s for each buyer shard |
+| Profit lane, one credit at a time | 35 ms for each credit of a remote shard | 26 credits/s for each home shard |
+
+**Result.** The acceptance run on EKS passed at 29.87 orders/s with no backlog
+growth. Results of one order still wait for its order lock, and a profit credit
+still changes a balance only once. The extra pool connections did not change the
+stock time, because the stock lanes were the limit. They stay, because with 4
+connections each saga pool reached its maximum
+([changelog](CHANGELOG.md#step-79--sustained-30-new-orderss-on-eks)).
 
 ### Snowflake IDs from product and order only
 

@@ -248,7 +248,8 @@ The gate examines only the packages that Docker Scout indexes. Refer to
   security review is due by 2026-11-30 (`security_review_2026_10_31.next_review_by`).
 - [PLAN.md](PLAN.md#2-rules-for-a-step) requires the complete due review before a step starts, or a
   recorded user decision. On 2026-11-04 the user started step 7.8 without the review that was due that day
-  ("implement 7.8 ... without review"). The review stays due.
+  ("implement 7.8 ... without review"). On 2026-11-06 the user started step 7.9 without the same review and
+  without the entries due on 2026-11-05. The review stays due.
 - A query to a public advisory service uses package names only. Do not send the dependency inventory or the
   versions. An empty advisory response is not evidence that a package has no finding.
 
@@ -290,7 +291,9 @@ No newer release exists for these images:
   and CVE-2025-15558 in `docker/cli` 29.9.1 (no fix). v1.9.3 is the newest stable release. The Envoy proxy image
   and the AWS Load Balancer Controller v3.6.2 have no critical or high finding.
 - The gates image: 1 critical and 5 high in `golang.org/x/net` 0.57.0 and `golang.org/x/text` 0.40.0 of kubectl
-  1.37.2, the newest 1.37 release. Helm 4.3.1 adds no critical or high finding. 1 high each in `httpcore5` and
+  1.37.2, the newest 1.37 release. On 2026-11-06 Scout rated CVE-2026-78661 high in `golang.org/x/net` below
+  0.62.0, thus kubectl now has 6 high, and Helm 4.3.1 has 1 high (`golang.org/x/net` 0.60.0). The user accepted
+  it for the EKS runs of step 7.9 until 2026-11-30. 1 high each in `httpcore5` and
   `httpcore5-h2` 5.3.6 of Testcontainers on the test
   classpath, which the gates do not use in the cluster.
 
@@ -535,3 +538,4 @@ The full text of each review is in the Git tag `shardshop-docs-full-2026-10-31` 
 | 2026-11-01 | Step 7.3 cloud durability | Barman Cloud Plugin 0.15.1 (chart 0.8.1, chart signature verified, images unsigned), the cert-manager and Secrets Store CSI add-ons selected. External Secrets Operator not selected, because no supported release lists Kubernetes 1.36. |
 | 2026-11-02 | Step 7.6 gates image | kubectl 1.37.2 linux/arm64 and the JUnit console launcher 6.1.3 selected for the gates image. Its findings accepted for EKS runs until 2026-11-30. |
 | 2026-11-02 | Step 7.7 drill Jobs | Helm 4.3.1 linux/arm64 added to the gates image, because the drills run in the cluster. |
+| 2026-11-06 | Step 7.9 gates image | CVE-2026-78661 (high, `golang.org/x/net` below 0.62.0 in kubectl and Helm) accepted for the EKS runs until 2026-11-30. No version change. |
