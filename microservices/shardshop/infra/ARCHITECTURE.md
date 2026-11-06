@@ -248,16 +248,16 @@ The Helmfile hooks run these gates:
 
 | Release | Hook | Gate tags | Checks |
 |---|---|---|---|
-| `shardshop-migrations` | presync | `kind-allocator`, `kind-infrastructure`, `kind-migration-reservation`, `kind-migrations-idle` | The allocator, the databases and the broker, the topology reservation, no active migration |
-| `shardshop-application` | presync | `kind-publications`, `kind-migration-reservation`, `kind-drills-idle` | The CDC publications, the reservation, no drill lock |
-| `shardshop-application` | postsync | `kind-release`, `kind-deployment` | The release and the workload, as below |
+| `shardshop-migrations` | presync | `cluster-allocator`, `cluster-infrastructure`, `cluster-migration-reservation`, `cluster-migrations-idle` | The allocator, the databases and the broker, the topology reservation, no active migration |
+| `shardshop-application` | presync | `cluster-publications`, `cluster-migration-reservation`, `cluster-drills-idle` | The CDC publications, the reservation, no drill lock |
+| `shardshop-application` | postsync | `kind-release`, `cluster-deployment` | The release and the workload, as below |
 
 - `kind-release` checks the snapshot images, the rendered configuration, the deployed
   Helm revision, the Deployment generations, the pod owners and runtime digests, the
   current successful seeder, and the ready product and order EndpointSlices. When kind
   reports an archive-index digest, the check reads its single platform descriptor
   through containerd and requires the qualified manifest.
-- `kind-deployment` checks the product traffic, the reader load and the saga effects
+- `cluster-deployment` checks the product traffic, the reader load and the saga effects
   of the gate's own orders.
 - A retained drill lock stops the application release in its presync gate.
 
@@ -286,7 +286,7 @@ these effects:
 - The reader and the order producer continue to run, and the disruptive drills stay
   opt-in.
 - A new `kind-release` run needs `images.json` in the snapshot, with the `images` and
-  the deployed `restartToken`. A standalone `kind-deployment` run does not need it.
+  the deployed `restartToken`. A standalone `cluster-deployment` run does not need it.
 - The lifecycle uses no extra wrappers, embedded Python, downloaded tool binaries or
   Java lifecycle controller.
 
@@ -305,7 +305,7 @@ these effects:
   topology, allocator, readiness and current-generation Publication checks.
 - The client-side three-way merge of Helm keeps an environment variable or a node
   selector that a drill added out of band. Thus an unrecovered drill change would
-  stay in the new release. The `kind-drills-idle` gate prevents this.
+  stay in the new release. The `cluster-drills-idle` gate prevents this.
 
 ### Verification gates and drills
 
@@ -325,13 +325,13 @@ reconciliation with a Java controller.
 
 | Profile | Selection | Checks |
 |---|---|---|
-| `kind-deployment` | Default of the `kind` profile through `shardshop.kind.tags` | Deployed routing, independent replication and persistent-volume identity (`kind-topology`), product workload (`kind-workload`), saga effects (`kind-saga`) and recovery and pressure metrics (`kind-observability`) |
-| `kind-database-drill` | Explicit `kind-drill` | Standby replacement, quorum availability, blocked commits and WAL retention on the first inventory shard, or on `shardshop.kind.drillShard` |
-| `kind-workload-drill` | Explicit `kind-drill` | Repeated temporary seeder Jobs, identical saved IDs and the replacement of one product pod |
-| `kind-saga-drill` | Explicit `kind-drill` | Duplicate delivery, replay after a policy change, two orders for the same stock, saga replacement between workers, and continuous writes while the HTTP pods change, with unchanged saga and CDC ownership |
-| `kind-retry-drill` | Explicit `kind-drill` | A shard outage longer than the broker retries, reconciliation, and pressure from an unbound or full DLQ on both application publishers. See the [retry runbook](../shardshop-testing/RUNBOOK.md#4-retry-and-dlq-capacity-drills) |
+| `cluster-deployment` | Default of the `kind` profile through `shardshop.cluster.tags` | Deployed routing, independent replication and persistent-volume identity (`cluster-topology`), product workload (`cluster-workload`), saga effects (`cluster-saga`) and recovery and pressure metrics (`cluster-observability`) |
+| `cluster-database-drill` | Explicit `cluster-drill` | Standby replacement, quorum availability, blocked commits and WAL retention on the first inventory shard, or on `shardshop.cluster.drillShard` |
+| `cluster-workload-drill` | Explicit `cluster-drill` | Repeated temporary seeder Jobs, identical saved IDs and the replacement of one product pod |
+| `cluster-saga-drill` | Explicit `cluster-drill` | Duplicate delivery, replay after a policy change, two orders for the same stock, saga replacement between workers, and continuous writes while the HTTP pods change, with unchanged saga and CDC ownership |
+| `cluster-retry-drill` | Explicit `cluster-drill` | A shard outage longer than the broker retries, reconciliation, and pressure from an unbound or full DLQ on both application publishers. See the [retry runbook](../shardshop-testing/RUNBOOK.md#4-retry-and-dlq-capacity-drills) |
 
-**Default profile.** `kind-workload` checks these items:
+**Default profile.** `cluster-workload` checks these items:
 
 - The credential restrictions.
 - The saved 151 seller and 201 product IDs of `catalog-v2`. Only the retained 150/300
@@ -364,11 +364,11 @@ creation keys `kind-saga-gate-v2.*`, thus later runs recover the same IDs.
   each recovery before the change, and restore the temporary changes in reverse order
   at completion, after a failure or at an ordinary JVM end. A failed recovery keeps the
   lock and reports the necessary operator action. While the lock exists, the
-  `kind-drills-idle` gate stops the application release before Helm changes it.
+  `cluster-drills-idle` gate stops the application release before Helm changes it.
 - Fence changes test the Cluster identity and the resource version atomically, thus
   they keep concurrent operator changes. The allocator state never moves back.
 
-**Snapshots.** Each standalone suite reads an explicit `shardshop.kind.snapshot`
+**Snapshots.** Each standalone suite reads an explicit `shardshop.cluster.snapshot`
 directory with `chart/`, `environment.yaml`, `inventory.yaml`, `inventory.json`,
 `kind.json` and `infrastructure.yaml`. The DNS gates also use `dns-probes.yaml`. Each
 infrastructure safety gate stays selectable alone. The tests observe the native
@@ -727,7 +727,7 @@ old parked deliveries. A retry exhaustion never cancels an order.
   failure gauges. A metrics scrape runs no SQL. Only saga processes sample the order
   business and CDC state.
 - **Endpoints.** Internal saga and ledger Services expose port 8080, without more
-  pods. The read-only `kind-observability` gate checks these gauges, the native
+  pods. The read-only `cluster-observability` gate checks these gauges, the native
   RabbitMQ queue capacity counters, the CloudNativePG metrics on port 9187 and the
   physical replication backlog. The [monitoring guide](README.md#saga-and-database-pressure)
   explains each endpoint and signal.

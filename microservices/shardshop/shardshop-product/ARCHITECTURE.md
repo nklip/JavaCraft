@@ -171,8 +171,8 @@ Record these failures separately from stale/missing products and continue reques
 to unaffected shards. This keeps the measured primary and replica workloads
 distinct. See [CNPG Service roles](https://cloudnative-pg.io/docs/1.30/service_management/).
 
-The opt-in [`kind-replica-read-drill`](../shardshop-testing/RUNBOOK.md#7-strict-replica-read-drill),
-also selected by `kind-drill`, checks immediate primary reads after acknowledged
+The opt-in [`cluster-replica-read-drill`](../shardshop-testing/RUNBOOK.md#7-strict-replica-read-drill),
+also selected by `cluster-drill`, checks immediate primary reads after acknowledged
 writes, controlled replica lag (`404` until replay resumes), clean 200/s reader
 traffic, reads/writes with one fenced standby, and per-product-pod `503` responses
 in less than four seconds with both standbys fenced. A replayed `ACCESS EXCLUSIVE`
@@ -259,7 +259,7 @@ encoding, exact `NUMERIC` conversion, and modulo operator, with the `shardIndex`
 and `shardCount` placeholders. It preserves all 256 digest bits and matches Java's
 unsigned routing calculation. Incorrect seller placement is rejected on insertion.
 Schema migration V1 and the unchanged version-2 ID-routing algorithm are independent
-version numbers. The Maven `kind-topology` scenarios check PostgreSQL's calculation
+version numbers. The Maven `cluster-topology` scenarios check PostgreSQL's calculation
 and the deployed seller and buyer placement constraints on every primary against
 the same golden fixtures used by Java, using read-only queries without a failure drill.
 

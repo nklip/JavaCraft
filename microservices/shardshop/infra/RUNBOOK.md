@@ -147,7 +147,7 @@ flowchart TB
     Resume --> Load["Load the images into kind<br/>digest checks on each node"]
     Load --> Migrations["Helmfile: shardshop-migrations<br/>presync gate, Flyway Jobs"]
     Migrations --> Application["Helmfile: shardshop-application<br/>presync gate, new pods, seeder Job"]
-    Application --> Acceptance["postsync gate<br/>kind-release, kind-deployment"]
+    Application --> Acceptance["postsync gate<br/>kind-release, cluster-deployment"]
 ```
 
 The [deployment pipeline](ARCHITECTURE.md#deployment-pipeline) explains each phase
@@ -494,7 +494,7 @@ the normal lifecycle prerequisites:
   independent, also with separate clusters.
 
 **Standalone observers.** The standalone Maven observers accept
-`-Dshardshop.kind.cluster` and `-Dshardshop.kind.kubeconfig` (or the two test
+`-Dshardshop.cluster.name` and `-Dshardshop.cluster.kubeconfig` (or the two test
 environment variables), with the normal invocation snapshot. Its `kind.json` must
 contain the selected name. For an independent snapshot, use the snapshot inputs of the
 lifecycle and change the name in the copied `kind.yaml` before you render the

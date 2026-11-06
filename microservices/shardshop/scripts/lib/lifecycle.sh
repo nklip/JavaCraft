@@ -298,12 +298,12 @@ verify_kind() {
     echo "Verifying kind phase: $phase"
     # Both entry points compile these observers first. Direct Failsafe goals
     # reuse them; no application artifact is needed on the observer classpath.
-    mvn -B -ntp -f "$root/pom.xml" -pl shardshop-testing -Pkind \
+    mvn -B -ntp -f "$root/pom.xml" -pl shardshop-testing -Pcluster \
         -Dshardshop.infrastructureOnly=true failsafe:integration-test failsafe:verify \
-        -Dit.test=KindIT \
-        -Dshardshop.kind.tags="$phase" -Dshardshop.kind.snapshot="$work" \
-        -Dshardshop.kind.cluster="$cluster_name" -Dshardshop.kind.fresh="$created_cluster" \
-        -Dshardshop.kind.kubeconfig="${SHARDSHOP_TEST_KUBECONFIG:-}" "$@"
+        -Dit.test=ClusterIT \
+        -Dshardshop.cluster.tags="$phase" -Dshardshop.cluster.snapshot="$work" \
+        -Dshardshop.cluster.name="$cluster_name" -Dshardshop.cluster.fresh="$created_cluster" \
+        -Dshardshop.cluster.kubeconfig="${SHARDSHOP_TEST_KUBECONFIG:-}" "$@"
 }
 
 resume_cluster() {

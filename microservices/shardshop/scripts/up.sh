@@ -86,7 +86,7 @@ done <"$work/builds.tsv"
 # If the foundation is missing or needs an update, run cluster-create.sh first.
 resume_cluster
 verify_dns
-verify_kind kind-allocator
+verify_kind cluster-allocator
 export SHARDSHOP_FRESH=false
 # Skaffold's standalone build does not load kind images. This adapter keeps the
 # existing qualification-to-manifest check; Helmfile is the only deployment owner.

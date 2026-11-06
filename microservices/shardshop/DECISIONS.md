@@ -103,7 +103,7 @@ because the CNPG webhook removes `login: false`.
 ### Gates as Argo CD hook Jobs
 
 **Decision.** On EKS, the Maven gates of the Helmfile workflow run as Argo CD PreSync
-and PostSync hook Jobs. A gates image runs `KindIT` with the JUnit console launcher,
+and PostSync hook Jobs. A gates image runs `ClusterIT` with the JUnit console launcher,
 kubectl and the invocation snapshot of the run. A ValidatingAdmissionPolicy denies a
 selective sync and the `apply` sync strategy of the ShardShop Applications. The user
 selected the gate Jobs in the cluster on 2026-11-01, and the console launcher and

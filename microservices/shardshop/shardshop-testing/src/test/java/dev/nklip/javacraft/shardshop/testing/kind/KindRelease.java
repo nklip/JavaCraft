@@ -1,5 +1,8 @@
 package dev.nklip.javacraft.shardshop.testing.kind;
 
+import dev.nklip.javacraft.shardshop.testing.cluster.ClusterLab;
+import dev.nklip.javacraft.shardshop.testing.cluster.Deployment;
+import dev.nklip.javacraft.shardshop.testing.cluster.gate.Readiness;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -32,10 +35,10 @@ public final class KindRelease {
             "shardshop-order-saga", "shardshop-ledger");
     private static final String SEEDER_ANNOTATION = "shardshop.javacraft/seeder-job";
     private static final ObjectMapper JSON = new ObjectMapper();
-    private final KindLab lab;
+    private final ClusterLab lab;
 
-    public KindRelease() { this(new KindLab()); }
-    KindRelease(KindLab lab) { this.lab = lab; }
+    public KindRelease() { this(new ClusterLab()); }
+    KindRelease(ClusterLab lab) { this.lab = lab; }
 
     public void accepted() throws IOException, InterruptedException {
         qualifiedImages(lab.json("images.json"));
@@ -93,7 +96,7 @@ public final class KindRelease {
         }
         String jobName = RELEASE + "-seeder-" + revision;
         JsonNode desiredSeeder = named(desired, "Job", RELEASE + "-seeder-1");
-        List<JsonNode> seeders = KindLab.items(resourceList("pods", "job-name=" + jobName));
+        List<JsonNode> seeders = ClusterLab.items(resourceList("pods", "job-name=" + jobName));
         JsonNode job = resource("job", jobName);
         JsonNode reader = deployments.get(READER);
         JsonNode successful = currentSeederPod(reader, job, desiredSeeder, revision, seeders);
@@ -101,14 +104,14 @@ public final class KindRelease {
         seederReference(deployments.get(PRODUCER), revision);
         for (String name : SERVICES) {
             service(named(desired, "Service", name), resource("service", name),
-                    KindLab.items(resourceList("endpointslices", "kubernetes.io/service-name=" + name)), activePods.get(name));
+                    ClusterLab.items(resourceList("endpointslices", "kubernetes.io/service-name=" + name)), activePods.get(name));
         }
     }
 
     private List<JsonNode> deployment(JsonNode desired, JsonNode live) throws IOException, InterruptedException {
-        String name = KindDeployment.name(desired);
-        List<JsonNode> pods = KindLab.items(resourceList("pods", "app.kubernetes.io/name=" + name));
-        List<JsonNode> replicaSets = KindLab.items(resourceList("replicasets", "app.kubernetes.io/name=" + name));
+        String name = Deployment.name(desired);
+        List<JsonNode> pods = ClusterLab.items(resourceList("pods", "app.kubernetes.io/name=" + name));
+        List<JsonNode> replicaSets = ClusterLab.items(resourceList("replicasets", "app.kubernetes.io/name=" + name));
         List<JsonNode> active = currentPods(desired, live, replicaSets, pods);
         verifyDeployment(desired, live, replicaSets, pods, runtimeIndexes(active, desired));
         return active;
@@ -133,12 +136,12 @@ public final class KindRelease {
     static void verifyDeployment(JsonNode desired, JsonNode live, List<JsonNode> replicaSets, List<JsonNode> pods,
                                  Map<String, JsonNode> indexes) throws IOException {
         for (JsonNode pod : currentPods(desired, live, replicaSets, pods))
-            imageIdentity(pod, desired.path("spec").path("template").path("spec").path("containers").get(0), indexes.get(KindDeployment.name(pod)));
+            imageIdentity(pod, desired.path("spec").path("template").path("spec").path("containers").get(0), indexes.get(Deployment.name(pod)));
     }
 
     private static List<JsonNode> currentPods(JsonNode desired, JsonNode live, List<JsonNode> replicaSets, List<JsonNode> pods)
             throws IOException {
-        String name = KindDeployment.name(desired);
+        String name = Deployment.name(desired);
         JsonNode spec = live.path("spec");
         JsonNode status = live.path("status");
         int count = desired.path("spec").path("replicas").asInt();
@@ -165,10 +168,10 @@ public final class KindRelease {
         List<JsonNode> active = pods.stream().filter(pod -> !pod.path("metadata").hasNonNull("deletionTimestamp")).toList();
         require(active.size() == count, name + " has an unexpected active pod count: " + active.size());
         for (JsonNode pod : active) {
-            require(ownedBy(pod, "ReplicaSet", current.getFirst()) && KindDeployment.ready(pod)
+            require(ownedBy(pod, "ReplicaSet", current.getFirst()) && Deployment.ready(pod)
                     && pod.path("status").path("phase").asText().equals("Running")
                     && templateMatches(desired.path("spec").path("template"), pod),
-                    name + " has a stale, foreign or unready pod: " + KindDeployment.name(pod));
+                    name + " has a stale, foreign or unready pod: " + Deployment.name(pod));
         }
         return active;
     }
@@ -181,15 +184,15 @@ public final class KindRelease {
     static void currentSeeder(JsonNode reader, JsonNode job, JsonNode desired, long revision, List<JsonNode> pods,
                               Map<String, JsonNode> indexes) throws IOException {
         JsonNode pod = currentSeederPod(reader, job, desired, revision, pods);
-        imageIdentity(pod, desired.path("spec").path("template").path("spec").path("containers").get(0), indexes.get(KindDeployment.name(pod)));
+        imageIdentity(pod, desired.path("spec").path("template").path("spec").path("containers").get(0), indexes.get(Deployment.name(pod)));
     }
 
     private static JsonNode currentSeederPod(JsonNode reader, JsonNode job, JsonNode desired, long revision, List<JsonNode> pods)
             throws IOException {
         String name = RELEASE + "-seeder-" + revision;
         seederReference(reader, revision);
-        require(KindDeployment.name(job).equals(name), "Seeder does not identify the current Helm revision");
-        require(KindDeployment.completed(job) && templateMatches(desired.path("spec").path("template"), job.path("spec").path("template")),
+        require(Deployment.name(job).equals(name), "Seeder does not identify the current Helm revision");
+        require(Deployment.completed(job) && templateMatches(desired.path("spec").path("template"), job.path("spec").path("template")),
                 "Current revision seeder is incomplete or differs from the desired template: " + name);
         List<JsonNode> successful = pods.stream().filter(pod -> pod.path("status").path("phase").asText().equals("Succeeded")).toList();
         require(successful.size() == 1, "Current revision seeder needs one successful pod: " + name);
@@ -204,11 +207,11 @@ public final class KindRelease {
     private static void seederReference(JsonNode workload, long revision) throws IOException {
         require(workload.path("metadata").path("annotations").path(SEEDER_ANNOTATION).asText()
                         .equals(RELEASE + "-seeder-" + revision),
-                KindDeployment.name(workload) + " does not identify the current Helm revision seeder");
+                Deployment.name(workload) + " does not identify the current Helm revision seeder");
     }
 
     static void service(JsonNode desired, JsonNode live, List<JsonNode> slices, List<JsonNode> pods) throws IOException {
-        String name = KindDeployment.name(desired);
+        String name = Deployment.name(desired);
         JsonNode spec = live.path("spec");
         require(spec.path("selector").equals(desired.path("spec").path("selector"))
                 && spec.path("sessionAffinity").asText().equals("None") && !spec.path("publishNotReadyAddresses").asBoolean(false)
@@ -220,7 +223,7 @@ public final class KindRelease {
                 && port.path("protocol").asText("TCP").equals("TCP"), name + " Service HTTP port differs from the desired port");
         Set<String> expected = new HashSet<>();
         for (JsonNode pod : pods) {
-            require(KindDeployment.ready(pod), name + " Service has an unready intended pod");
+            require(Deployment.ready(pod), name + " Service has an unready intended pod");
             expected.add(pod.path("metadata").path("uid").asText());
         }
         require(!pods.isEmpty() && expected.size() == pods.size() && !expected.contains(""), name + " Service requires distinct intended pod identities");
@@ -239,7 +242,7 @@ public final class KindRelease {
                         && target.path("kind").asText().equals("Pod") && target.path("namespace").asText().equals("shardshop")
                         && expected.contains(uid), name + " Service has an unready, terminating or foreign endpoint");
                 JsonNode pod = pods.stream().filter(p -> p.path("metadata").path("uid").asText().equals(uid)).findFirst().orElseThrow();
-                require(target.path("name").asText().equals(KindDeployment.name(pod)) && !endpoint.path("addresses").isEmpty(),
+                require(target.path("name").asText().equals(Deployment.name(pod)) && !endpoint.path("addresses").isEmpty(),
                         name + " Service endpoint does not identify its intended pod");
                 Set<String> addresses = new HashSet<>();
                 for (JsonNode address : pod.path("status").path("podIPs")) addresses.add(address.path("ip").asText());
@@ -252,7 +255,7 @@ public final class KindRelease {
         require(actual.equals(expected), name + " Service does not expose all intended ready pod identities");
     }
 
-    static boolean templateMatches(JsonNode desired, JsonNode live) {
+    public static boolean templateMatches(JsonNode desired, JsonNode live) {
         for (String section : List.of("labels", "annotations")) {
             for (var field : desired.path("metadata").path(section).properties())
                 if (!live.path("metadata").path(section).path(field.getKey()).equals(field.getValue())) return false;
@@ -283,7 +286,7 @@ public final class KindRelease {
         ObjectNode container = defaults(normalized.path("containers").get(0), Map.of(
                 "imagePullPolicy", "IfNotPresent", "terminationMessagePath", "/dev/termination-log",
                 "terminationMessagePolicy", "File"));
-        container.set("resources", JSON.valueToTree(KindReadiness.resources(container.path("resources"))));
+        container.set("resources", JSON.valueToTree(Readiness.resources(container.path("resources"))));
         for (JsonNode port : container.path("ports")) defaults(port, Map.of("protocol", "TCP"));
         for (String name : List.of("readinessProbe", "livenessProbe", "startupProbe")) {
             if (container.has(name)) defaults(container.get(name), Map.of(
@@ -296,7 +299,7 @@ public final class KindRelease {
             }
             if (volume.path("emptyDir").has("sizeLimit")) {
                 ((ObjectNode) volume.get("emptyDir")).put("sizeLimit",
-                        KindReadiness.quantity(volume.path("emptyDir").path("sizeLimit").asText()));
+                        Readiness.quantity(volume.path("emptyDir").path("sizeLimit").asText()));
             }
         }
         if (pod) {
@@ -365,7 +368,7 @@ public final class KindRelease {
             String node = pod.path("spec").path("nodeName").asText();
             validateKindNode(lab.clusterName(), node);
             // CRI may identify Docker's import archive index instead of its single platform manifest.
-            indexes.put(KindDeployment.name(pod), parse(lab.command("docker", "exec", node, "ctr", "--namespace=k8s.io",
+            indexes.put(Deployment.name(pod), parse(lab.command("docker", "exec", node, "ctr", "--namespace=k8s.io",
                     "content", "get", actual)));
         }
         return Map.copyOf(indexes);
@@ -382,19 +385,19 @@ public final class KindRelease {
 
     private static String runtimeDigest(JsonNode pod, JsonNode intended) throws IOException {
         JsonNode statuses = pod.path("status").path("containerStatuses");
-        require(statuses.size() == 1, "Pod lacks one application image identity: " + KindDeployment.name(pod));
+        require(statuses.size() == 1, "Pod lacks one application image identity: " + Deployment.name(pod));
         JsonNode status = statuses.get(0);
         String identity = status.path("imageID").asText();
         require(status.path("name").equals(intended.path("name"))
                 && identity.matches("(?:[a-z]+://)?(?:[^@\\s]+@)?sha256:[0-9a-f]{64}"),
-                "Pod lacks a valid runtime image digest: " + KindDeployment.name(pod));
+                "Pod lacks a valid runtime image digest: " + Deployment.name(pod));
         return imageDigest(identity);
     }
 
     private static void imageIdentity(JsonNode pod, JsonNode intended, JsonNode index) throws IOException {
         String digest = imageDigest(intended.path("image").asText());
         require(runtimeDigest(pod, intended).equals(digest) || indexReferences(index, digest),
-                "Pod does not run its qualified image digest: " + KindDeployment.name(pod));
+                "Pod does not run its qualified image digest: " + Deployment.name(pod));
     }
 
     static boolean indexReferences(JsonNode index, String qualified) {
@@ -412,7 +415,7 @@ public final class KindRelease {
         if (uid.isBlank()) return false;
         for (JsonNode reference : child.path("metadata").path("ownerReferences"))
             if (reference.path("controller").asBoolean(false) && reference.path("kind").asText().equals(kind)
-                    && reference.path("name").asText().equals(KindDeployment.name(owner)) && reference.path("uid").asText().equals(uid)) return true;
+                    && reference.path("name").asText().equals(Deployment.name(owner)) && reference.path("uid").asText().equals(uid)) return true;
         return false;
     }
 
@@ -435,7 +438,7 @@ public final class KindRelease {
 
     private static JsonNode named(List<JsonNode> resources, String kind, String name) throws IOException {
         List<JsonNode> found = resources.stream().filter(resource -> resource.path("kind").asText().equals(kind)
-                && KindDeployment.name(resource).equals(name)).toList();
+                && Deployment.name(resource).equals(name)).toList();
         require(found.size() == 1, "Desired application rendering lacks one " + kind + "/" + name);
         return found.getFirst();
     }

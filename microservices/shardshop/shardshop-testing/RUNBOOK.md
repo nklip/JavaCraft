@@ -137,20 +137,20 @@ This is the one command form for all kind suites. Other sections give only the t
 and the properties:
 
 ```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pkind verify \
-    -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=<tag expression>
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pcluster verify \
+    -Dshardshop.cluster.snapshot="$snapshot" -Dshardshop.cluster.tags=<tag expression>
 ```
 
-Keep `-Dshardshop.kind.snapshot="$snapshot"` on every standalone invocation. The
-suite does not create or reconcile the lab. Omit `shardshop.kind.tags` for the
+Keep `-Dshardshop.cluster.snapshot="$snapshot"` on every standalone invocation. The
+suite does not create or reconcile the lab. Omit `shardshop.cluster.tags` for the
 default suite. The property uses JUnit tag expressions without Gherkin's leading
 `@`. A selection that matches no scenarios fails. Add
 `-Dshardshop.infrastructureOnly=true` when the sections below name it. Normal builds
 and `-Pintegration` do not access the kind lab. Cucumber reports are under
-`shardshop-testing/target/kind-reports/`.
+`shardshop-testing/target/cluster-reports/`.
 
-The `kind` profile defaults to `kind-deployment`. It combines `kind-topology`,
-`kind-workload`, `kind-saga` and `kind-observability`. It needs an already-migrated
+The `kind` profile defaults to `cluster-deployment`. It combines `cluster-topology`,
+`cluster-workload`, `cluster-saga` and `cluster-observability`. It needs an already-migrated
 and deployed lab with all nine running application pods. The saga scenario creates
 two scoped orders for the gate's own buyer. The other scenarios only observe.
 Run the default suite separately from the Testcontainers `integration` profile.
@@ -162,23 +162,23 @@ On EKS, the gates image runs the lifecycle gates in Argo CD hook Jobs with the J
 console launcher, without Maven. It also runs the drills, in Jobs that the AWS runbook
 creates.
 
-Disruptive scenarios require explicit selection. `kind-drill` combines
-`kind-database-drill`, `kind-workload-drill`, `kind-saga-drill`, `kind-retry-drill`,
-`kind-replica-read-drill` and `kind-failover-drill`. The lifecycle gates are also
+Disruptive scenarios require explicit selection. `cluster-drill` combines
+`cluster-database-drill`, `cluster-workload-drill`, `cluster-saga-drill`, `cluster-retry-drill`,
+`cluster-replica-read-drill` and `cluster-failover-drill`. The lifecycle gates are also
 selectable:
-`'kind-config | kind-nodes | kind-retention | kind-allocator | kind-infrastructure'`
+`'kind-config | kind-nodes | kind-retention | cluster-allocator | cluster-infrastructure'`
 selects those checks together.
 
 - `kind-dns` creates short-lived probe Pods from `dns-probes.yaml` of the snapshot,
   with cleanup on failure. Each probe has a 120-second DNS execution limit and a
   17-minute overall Pod deadline for cold image startup. Every node must resolve
   cluster DNS before provisioning continues.
-- `kind-admission-bootstrap` is for fresh initialization only. It requires
-  `-Dshardshop.kind.fresh=true`. Do not use it on a retained lab.
-- `kind-migration-reservation`, `kind-migrations-idle`, `kind-publications` and
-  `kind-drills-idle` are migration and release safety checks. Helmfile runs them
+- `cluster-admission-bootstrap` is for fresh initialization only. It requires
+  `-Dshardshop.cluster.fresh=true`. Do not use it on a retained lab.
+- `cluster-migration-reservation`, `cluster-migrations-idle`, `cluster-publications` and
+  `cluster-drills-idle` are migration and release safety checks. Helmfile runs them
   before migrations or routing/application publication.
-- `kind-drills-idle` stops the application release while the `shardshop-kind-drill`
+- `cluster-drills-idle` stops the application release while the `shardshop-kind-drill`
   lock exists. The idle guard rejects active, pending or terminating Flyway Jobs,
   including legacy Jobs.
 - Publication observation waits up to 180 seconds for every inventory Publication to
@@ -191,7 +191,7 @@ probes. Product URLs must contain no user information, query or fragment. Reader
 images built before periodic digest reporting need a rebuild and deployment for
 verification to survive startup-log rotation.
 
-The normal `kind-deployment` gate requires product primary reads. It checks the
+The normal `cluster-deployment` gate requires product primary reads. It checks the
 product and routing ConfigMaps, the Deployment template and the ready pods for
 replica-profile settings, including environment and JVM property overrides.
 Indirect profile/JVM settings and external configuration locations (including
@@ -223,7 +223,7 @@ After a saga drill, also restore two order HTTP replicas and one replica each of
 order saga and order producer Deployments. Remove the drill's
 `SHARDSHOP_LEDGER_ALLOWED_CURRENCIES` variable from the ledger Deployment and the
 drill's `nodeSelector` from the order saga Deployment. Helm does not remove these
-out-of-band additions, thus `up.sh` stops at `kind-drills-idle` until you release the
+out-of-band additions, thus `up.sh` stops at `cluster-drills-idle` until you release the
 lock. Never restore an older generator registry or lower `highWaterMark`.
 
 After the last check, remove the local snapshot:
@@ -246,10 +246,10 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
 ```
 
 The second runs the application recovery checks on the existing running lab. Prepare
-the [kind snapshot](#3-kind-verification-snapshot). Use the tag `kind-retry-drill` with
+the [kind snapshot](#3-kind-verification-snapshot). Use the tag `cluster-retry-drill` with
 `-Dshardshop.infrastructureOnly=true`.
 
-`kind-retry-recovery` selects the shard-outage case. The drill pauses the producer
+`cluster-retry-recovery` selects the shard-outage case. The drill pauses the producer
 through its control API and drains prior work. It stops ledger consumption long
 enough to prepare one published command, then fences all three instances of the
 shard of the buyer. After ledger resumes, the unavailable shard causes result
@@ -259,7 +259,7 @@ saga reconciliation to regenerate the saved result. It verifies one ledger entry
 one stock reservation and one profit credit. Then it acknowledges only the inspected
 parked diagnostic. It never republishes the parked result.
 
-`kind-dlq-capacity` selects four cases: an unbound or a full DLQ for each of
+`cluster-dlq-capacity` selects four cases: an unbound or a full DLQ for each of
 `ledger.record-order` and `order.ledger-results`. They keep the broker and source
 queues running, use temporary exact-queue policies with a small message-count limit,
 and inject only marked malformed filler. Retained dead letters fill the source.
@@ -268,7 +268,7 @@ After restoration, the same outbox publishes and the scoped order confirms. Thes
 queue-capacity checks, not a measurement of sustainable throughput. The normal
 1,000-message/16 MiB limits stay unchanged after recovery.
 
-- Use `kind-dlq-unbound` or `kind-dlq-full` to select only the two binding cases or
+- Use `cluster-dlq-unbound` or `cluster-dlq-full` to select only the two binding cases or
   the two capacity cases.
 - Full-DLQ recovery removes the owned parked filler and restores the original parking
   capacity. It keeps the small source limit until the outbox progresses.
@@ -277,7 +277,7 @@ queue-capacity checks, not a measurement of sustainable throughput. The normal
   Thus full-DLQ outbox recovery allows 450 seconds for two ticks and application
   recovery.
 
-The shared `KindDrillGuard` registers restoration before mutations. It restores
+The shared `DrillGuard` registers restoration before mutations. It restores
 producer rate and pause settings, shard fencing, ledger replicas, bindings and
 temporary policies. The producer JVM keeps running. A selected source or DLQ that
 contains unrelated work is a failed precondition. Cleanup acknowledges only the owned
@@ -303,10 +303,10 @@ retained lab, the complete `catalog-v1` (150 sellers, 300 products) and the firs
 saga gate seller with its two products can also exist. Any other catalog row fails
 the check. Within 120 seconds, the read counters of both Ready product pods must
 increase. A fresh reader report interval must contain only `OK` reads at 180/s or
-more. Use the tag `kind-workload` for the workload checks alone.
+more. Use the tag `cluster-workload` for the workload checks alone.
 
 Repeated seeding and product pod replacement are explicit disruptive drills. Use the
-tag `kind-workload-drill`. The drill runs repeated temporary seeder Jobs and compares
+tag `cluster-workload-drill`. The drill runs repeated temporary seeder Jobs and compares
 their digests and the saved seller and product IDs with the existing catalog. It
 replaces one product pod. It requires a distinct generator ID that is greater than
 the registry `highWaterMark` saved before the replacement and not greater than the
@@ -325,7 +325,7 @@ wait.
 
 After the catalog and ordering migrations, prepare the
 [kind verification snapshot](#3-kind-verification-snapshot). Run the nondisruptive
-topology and routing check on every inventory primary with the tag `kind-topology`.
+topology and routing check on every inventory primary with the tag `cluster-topology`.
 It verifies, for every shard:
 
 - the writable primary and the streaming quorum standbys;
@@ -338,8 +338,8 @@ placement constraints with the shared golden fixtures that Java uses. The counts
 from the inventory of the snapshot. This check creates no SQL objects.
 
 Run the reversible database drill explicitly in this disposable lab. Use the tag
-`kind-database-drill`. The drill selects the first inventory shard by default. Select
-another shard by inventory name, for example `-Dshardshop.kind.drillShard=shard-b`.
+`cluster-database-drill`. The drill selects the first inventory shard by default. Select
+another shard by inventory name, for example `-Dshardshop.cluster.drillShard=shard-b`.
 A probe row must reach both standbys, writes on standbys must fail, and the probe
 schema must stay absent from peer shards. The drill requires the three instances per
 shard of the lab. It checks failover-slot synchronization and WAL retention and
@@ -353,9 +353,9 @@ rules in the [snapshot section](#3-kind-verification-snapshot) apply.
 <sub>[Back to Contents](#contents)</sub>
 
 Prepare the [kind verification snapshot](#3-kind-verification-snapshot). Select the
-disruptive drill with the tag `kind-replica-read-drill` and, for example,
-`-Dshardshop.kind.drillShard=shard-b`. The tag is also part of `kind-drill`. Without
-`shardshop.kind.drillShard`, the drill selects the first inventory shard.
+disruptive drill with the tag `cluster-replica-read-drill` and, for example,
+`-Dshardshop.cluster.drillShard=shard-b`. The tag is also part of `cluster-drill`. Without
+`shardshop.cluster.drillShard`, the drill selects the first inventory shard.
 
 The drill requires the deployed primary-read gate, two ready product pods, the
 existing HTTP workloads and three instances per shard. It saves and pauses the
@@ -397,15 +397,15 @@ Recovery removes the query block, restores replay and fencing and the exact orig
 profile, and waits for the Deployment and for the primary configuration of every ready
 product pod. It removes only the product fixtures that the invocation owns, including
 creations with a lost response. Then it restores the saved workload controls. The
-final `kind-deployment` primary gate must pass before the shared lock is released.
+final `cluster-deployment` primary gate must pass before the shared lock is released.
 A failed recovery keeps the lock under the
 [shared recovery rules](#3-kind-verification-snapshot).
 
 ## 8. Coordinated backup and isolated restore
 <sub>[Back to Contents](#contents)</sub>
 
-The tags `kind-backup` and `kind-restore` are excluded from the default kind suite and
-from `kind-drill`. Prepare the [kind snapshot](#3-kind-verification-snapshot), a running
+The tags `cluster-backup` and `cluster-restore` are excluded from the default kind suite and
+from `cluster-drill`. Prepare the [kind snapshot](#3-kind-verification-snapshot), a running
 source lab, Docker, OpenSSL and the packaged order and ledger outputs that the
 target-only CDC verification needs. Generate the broker fixture of the integration
 profile before the restore. The preflight refuses its absence before the target
@@ -420,7 +420,7 @@ helm template shardshop microservices/shardshop/infra/helm/shardshop \
   --output-dir microservices/shardshop/shardshop-testing/target/chart
 ```
 
-Set `shardshop.kind.cluster` to the name of the source cluster that matches the
+Set `shardshop.cluster.name` to the name of the source cluster that matches the
 snapshot. Choose absolute normalized paths outside the repository and every Maven
 `target` directory:
 
@@ -439,12 +439,12 @@ contains the full business data and exported broker credential hashes. Protect i
 never commit it. Keep it outside kind and Maven cleanup. Assign `$backup`,
 `$allocator`, `$restore` and `$restoreTarget`, then run the
 [kind command form](#3-kind-verification-snapshot) with
-`-Dshardshop.infrastructureOnly=true` and `-Dshardshop.kind.cluster=shardshop`:
+`-Dshardshop.infrastructureOnly=true` and `-Dshardshop.cluster.name=shardshop`:
 
 | Tag | Additional properties |
 |---|---|
-| `kind-backup` | `-Dshardshop.backup.directory="$backup" -Dshardshop.backup.allocator="$allocator"` |
-| `kind-restore` | The two backup properties, `-Dshardshop.restore.directory="$restore" -Dshardshop.restore.target="$restoreTarget"` |
+| `cluster-backup` | `-Dshardshop.backup.directory="$backup" -Dshardshop.backup.allocator="$allocator"` |
+| `cluster-restore` | The two backup properties, `-Dshardshop.restore.directory="$restore" -Dshardshop.restore.target="$restoreTarget"` |
 
 The backup acquires the host lifecycle lock and the shared drill lock, pauses all
 three workload controls and saves the deployment replicas. It stops the writers,
@@ -468,27 +468,27 @@ removes the target, and the private evidence stays separate from the bundle. Thi
 workflow does not qualify point-in-time recovery or a production cutover.
 
 After the final source gates, refresh the independent allocator history before you
-stop the lab. Use the tag `kind-backup-allocator` with
-`-Dshardshop.infrastructureOnly=true`, `-Dshardshop.kind.cluster=shardshop` and
+stop the lab. Use the tag `cluster-backup-allocator` with
+`-Dshardshop.infrastructureOnly=true`, `-Dshardshop.cluster.name=shardshop` and
 `-Dshardshop.backup.allocator="$allocator"`. It needs no backup or restore directory.
 It holds the host lifecycle lock and verifies deployment and saga readiness first. Do
 not restart the source generators after this capture. If a restart occurs, refresh the
 history before any restore use that produces IDs. This export is opt-in and excluded
-from `kind-drill`.
+from `cluster-drill`.
 
 Focused implementation checks (no live lab, no qualification of a live restore):
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
   -Dshardshop.infrastructureOnly=true \
-  '-Dtest=Backup*Test,KindBackupRestoreTest,OwnedRestoreTargetTest,Restore*Test,KindDrillGuardTest,KindFailoverDrillTest' \
+  '-Dtest=Backup*Test,BackupRestoreTest,OwnedRestoreTargetTest,Restore*Test,DrillGuardTest,FailoverDrillTest' \
   -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false test
 ```
 
 ## 9. Older-backup audit and selected repair
 <sub>[Back to Contents](#contents)</sub>
 
-All five `kind-recovery-*` tags are opt-in and excluded from `kind-drill`. Use the
+All five `kind-recovery-*` tags are opt-in and excluded from `cluster-drill`. Use the
 [backup bundle and private-artifact rules](#8-coordinated-backup-and-isolated-restore),
 the latest independent allocator file and the invocation snapshot. The replay probes
 of the drill need the packaged applications and the generated broker fixture.
@@ -509,24 +509,24 @@ properties:
 -Dshardshop.restore.target="$restoreTarget" -Dshardshop.recovery.directory="$recovery"
 ```
 
-- `kind-recovery-schema`: the common properties suffice. This focused native
+- `cluster-recovery-schema`: the common properties suffice. This focused native
   regression restores one captured ordering schema twice. It checks the owner and
   grants, the publication membership and all four original database fingerprints. It
   runs no application or broker processes.
-- `kind-recovery-record`: also pass `-Dshardshop.recovery.order-id="$orderId"`. It
+- `cluster-recovery-record`: also pass `-Dshardshop.recovery.order-id="$orderId"`. It
   exports the verified original rows to `$recovery/original-record` before it
   disposes of the target.
-- `kind-recovery-audit`: also pass `-Dshardshop.recovery.ledger-backup="$ledgerBackup"`.
+- `cluster-recovery-audit`: also pass `-Dshardshop.recovery.ledger-backup="$ledgerBackup"`.
   This verified bundle must be the same age as the ordering bundle or later. Its
   ledger replaces the older ledger. Then the permanent outcomes are exported and
   audited against orders, fingerprints and stock reservations.
-- `kind-recovery-repair`: pass the ledger-backup option plus
+- `cluster-recovery-repair`: pass the ledger-backup option plus
   `-Dshardshop.recovery.record="$originalRecord"` and
   `-Dshardshop.recovery.order-id="$orderId"`. Select exactly one canonical positive ID
   and its verified original-record directory. Foreign or conflicting records, missing
   original history or costs and unproved catalog effects stay unresolved. Pending
   authentic outcomes apply only when the retained catalog effects agree.
-- `kind-recovery-drill`: the common properties suffice. It creates a causal older dump
+- `cluster-recovery-drill`: the common properties suffice. It creates a causal older dump
   from three acknowledged witnesses and proves that later state existed. Then it
   restores the older dump, which loses two orders and mismatches the third
   fingerprint. The audit precedes late delivery. The drill checks quarantine, orphan
@@ -545,18 +545,18 @@ explicit isolated replay probes run.
 ## 10. Synchronous failover drill
 <sub>[Back to Contents](#contents)</sub>
 
-This drill is disruptive and opt-in, including through `kind-drill`. Prepare the
+This drill is disruptive and opt-in, including through `cluster-drill`. Prepare the
 [kind verification snapshot](#3-kind-verification-snapshot) against the deployed
-retained lab. Use the tag `kind-failover-drill` with
+retained lab. Use the tag `cluster-failover-drill` with
 `-Dshardshop.infrastructureOnly=true` and, for example,
-`-Dshardshop.kind.drillShard=shard-b`. Without `shardshop.kind.drillShard`, the drill
+`-Dshardshop.cluster.drillShard=shard-b`. Without `shardshop.cluster.drillShard`, the drill
 selects the first inventory shard. It requires the pinned CNPG operator image, three
 instances on the selected shard, the failover quorum and the normal primary-profile
 deployment and ledger policy.
 
-`KindFailoverDrill` acquires the shared lock, saves and pauses the producer, reader
+`FailoverDrill` acquires the shared lock, saves and pauses the producer, reader
 and interactive-seeder controls, and drains the in-flight work and the nonterminal
-backlog. `KindFailoverWitness` creates a buyer on the selected shard and orders
+backlog. `FailoverWitness` creates a buyer on the selected shard and orders
 through the HTTP API against a seeded peer-shard product. It keeps a confirmed anchor
 and the original pending command through a planned switchover and a primary-failure
 promotion. With each standby absent in turn, a ten-second observation must show CDC
@@ -566,7 +566,7 @@ the outbox envelope must survive and complete exactly one business effect. The
 synchronized logical slot must cover the saved durable checkpoint, the reader history
 and offset partition must stay unchanged, and the streaming position must advance.
 
-`KindFailoverCluster` uses the switchover status contract of CNPG. A primary failure
+`FailoverCluster` uses the switchover status contract of CNPG. A primary failure
 uses a pod deletion guarded by UID and resource version, with a finalizer that the
 invocation owns. The drill checks for at most one writable primary and for the safe
 rejoin of the former primary. In the unsafe-survivor phase, it fences one standby
@@ -631,7 +631,7 @@ orders stay. A recovery failure keeps the lock under the
 <sub>[Back to Contents](#contents)</sub>
 
 The producer owns catalog gating and buyer creation in Java. The default
-`kind-deployment` selection includes `kind-saga`. This gate does not examine producer
+`cluster-deployment` selection includes `cluster-saga`. This gate does not examine producer
 orders. Through local port forwards to the product and order Services, it creates
 valid US/USD and EU/EUR seller and product fixtures and its own buyer. The order shard
 differs from each product shard. Each product starts with 1,000,000 units. The fixed
@@ -643,7 +643,7 @@ the stock and profit invariants. Each run uses one unit of each product and keep
 two orders as evidence. The gate does not stop the producer or change the ledger.
 
 Prepare the [verification snapshot](#3-kind-verification-snapshot). Run the saga drill
-with the tag `kind-saga-drill`. It covers duplicate delivery, permanent rejection
+with the tag `cluster-saga-drill`. It covers duplicate delivery, permanent rejection
 replay after transport cleanup with a temporary EUR allowlist, two orders for the same
 stock, CDC resumption after the saga moves to another worker, an HTTP rollout that
 preserves the saga pod and the CDC active PIDs, and a saga restart while writes
@@ -696,7 +696,7 @@ disposable databases. Promotion and synchronized-slot failover use the separate
 [synchronous failover drill](#10-synchronous-failover-drill).
 
 After deployment with `scripts/up.sh`, prepare the [kind snapshot](#3-kind-verification-snapshot).
-Run the tag expression `'kind-saga-drill | kind-observability'` with
+Run the tag expression `'cluster-saga-drill | cluster-observability'` with
 `-Dshardshop.infrastructureOnly=true`.
 
 The HTTP rollout drill submits scoped orders at up to one per second through the
@@ -704,7 +704,7 @@ Kubernetes Service proxy, with a five-minute bound. A pod-bound port forward can
 follow a replaced HTTP pod. The drill verifies commits before, during and after the
 replacement, the unchanged saga pod UID and active slot PIDs, and complete stock,
 ledger and profit effects for every accepted order. It restores the rollout annotation
-through the drill guard. No new workload pod is necessary. `kind-observability` is
+through the drill guard. No new workload pod is necessary. `cluster-observability` is
 also part of the normal deployment gate. The [monitoring guide](../infra/README.md#3-monitoring)
 names the endpoints and signals.
 
@@ -720,8 +720,8 @@ and `SHARDSHOP_TEST_KUBECONFIG` for every call.
 
 1. Run the [Testcontainers suite](#2-integration-tests-with-testcontainers) first, while
    no lab runs.
-2. Run `cluster-create.sh`. On a new cluster it also runs `kind-admission-bootstrap`
-   with `shardshop.kind.fresh=true`.
+2. Run `cluster-create.sh`. On a new cluster it also runs `cluster-admission-bootstrap`
+   with `shardshop.cluster.fresh=true`.
 3. Run `up.sh`. It runs the unit, provider and startup tests, the image scan gates,
    the migrations and the release gates.
 4. Run `webpages.sh`. Make sure that it prints the five URLs and that each page and
@@ -733,17 +733,17 @@ and `SHARDSHOP_TEST_KUBECONFIG` for every call.
    the [kind command form](#3-kind-verification-snapshot) without `-am`, with
    `-Dshardshop.infrastructureOnly=true`, with the goals
    `test-compile failsafe:integration-test failsafe:verify` in place of `verify`,
-   and with these properties for each tag: `-Dshardshop.kind.cluster="$SHARDSHOP_TEST_CLUSTER"`
-   and `-Dshardshop.kind.kubeconfig="$SHARDSHOP_TEST_KUBECONFIG"`.
+   and with these properties for each tag: `-Dshardshop.cluster.name="$SHARDSHOP_TEST_CLUSTER"`
+   and `-Dshardshop.cluster.kubeconfig="$SHARDSHOP_TEST_KUBECONFIG"`.
 
 | Row | Tags and properties |
 |---|---|
-| Lifecycle gates | `kind-config \| kind-nodes \| kind-retention \| kind-allocator \| kind-infrastructure \| kind-dns \| kind-migration-reservation \| kind-migrations-idle \| kind-publications \| kind-drills-idle` |
-| Backup and restore | Render the broker fixture, then run `kind-backup` and `kind-restore` with the [backup properties](#8-coordinated-backup-and-isolated-restore) |
-| Older-backup recovery | `kind-recovery-schema`, then `kind-recovery-drill`, each with a new restore target and a new output directory |
-| Drills | `kind-database-drill`, `kind-workload-drill`, `kind-saga-drill`, `kind-retry-drill`, `kind-replica-read-drill` and `kind-failover-drill`. Add `-Dshardshop.kind.drillShard=shard-b` to the database, replica-read and failover drills |
+| Lifecycle gates | `kind-config \| kind-nodes \| kind-retention \| cluster-allocator \| cluster-infrastructure \| kind-dns \| cluster-migration-reservation \| cluster-migrations-idle \| cluster-publications \| cluster-drills-idle` |
+| Backup and restore | Render the broker fixture, then run `cluster-backup` and `cluster-restore` with the [backup properties](#8-coordinated-backup-and-isolated-restore) |
+| Older-backup recovery | `cluster-recovery-schema`, then `cluster-recovery-drill`, each with a new restore target and a new output directory |
+| Drills | `cluster-database-drill`, `cluster-workload-drill`, `cluster-saga-drill`, `cluster-retry-drill`, `cluster-replica-read-drill` and `cluster-failover-drill`. Add `-Dshardshop.cluster.drillShard=shard-b` to the database, replica-read and failover drills |
 | Stop and resume | `down.sh`, then `up.sh`, which runs all release gates again |
-| Final gates | `kind-deployment \| kind-config \| kind-nodes \| kind-retention \| kind-allocator \| kind-infrastructure \| kind-drills-idle`, then `kind-backup-allocator` |
+| Final gates | `cluster-deployment \| kind-config \| kind-nodes \| kind-retention \| cluster-allocator \| cluster-infrastructure \| cluster-drills-idle`, then `cluster-backup-allocator` |
 
 7. Run `cluster-destroy.sh` for the cleanup. Make sure that no owned node, container or
    kubeconfig context remains. Then start the retained lab again with
@@ -802,7 +802,7 @@ control status with each phase. The `Product reads, interval` lines of the reade
 the requests, duration, outcomes, latency, regions and pool snapshots. Keep the raw
 reports.
 
-For writes, run the `kind-order-capacity` scenario with the
+For writes, run the `cluster-order-capacity` scenario with the
 [kind command form](#3-kind-verification-snapshot). It does the
 [full-order write protocol](ARCHITECTURE.md#full-order-writes) at 30 orders/s and
 restores the producer controls at the end. The catalog must have at least 400 units
@@ -810,9 +810,9 @@ of each product, thus use a lab with a new catalog. On the AWS deployment, run i
 a [drill Job](../infra/terraform/README.md#run-the-drills):
 
 ```bash
-mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pkind -Dshardshop.infrastructureOnly=true \
-    test-compile failsafe:integration-test failsafe:verify -Dit.test=KindIT \
-    -Dshardshop.kind.snapshot="$snapshot" -Dshardshop.kind.tags=kind-order-capacity
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -Pcluster -Dshardshop.infrastructureOnly=true \
+    test-compile failsafe:integration-test failsafe:verify -Dit.test=ClusterIT \
+    -Dshardshop.cluster.snapshot="$snapshot" -Dshardshop.cluster.tags=cluster-order-capacity
 ```
 
 The line `Order capacity report:` in the output is one JSON document. Keep it as the

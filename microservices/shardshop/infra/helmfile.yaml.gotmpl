@@ -16,15 +16,15 @@
     - {{ printf "%s/pom.xml" (requiredEnv "SHARDSHOP_ROOT") | quote }}
     - -pl
     - shardshop-testing
-    - -Pkind
+    - -Pcluster
     - failsafe:integration-test
     - failsafe:verify
-    - -Dit.test=KindIT
-    - {{ printf "-Dshardshop.kind.tags=%s" .tags | quote }}
-    - {{ printf "-Dshardshop.kind.snapshot=%s" (requiredEnv "SHARDSHOP_SNAPSHOT") | quote }}
-    - {{ printf "-Dshardshop.kind.cluster=%s" (env "SHARDSHOP_CLUSTER_NAME" | default "shardshop") | quote }}
-    - {{ printf "-Dshardshop.kind.kubeconfig=%s" (env "SHARDSHOP_TEST_KUBECONFIG") | quote }}
-    - {{ printf "-Dshardshop.kind.fresh=%s" (env "SHARDSHOP_FRESH" | default "false") | quote }}
+    - -Dit.test=ClusterIT
+    - {{ printf "-Dshardshop.cluster.tags=%s" .tags | quote }}
+    - {{ printf "-Dshardshop.cluster.snapshot=%s" (requiredEnv "SHARDSHOP_SNAPSHOT") | quote }}
+    - {{ printf "-Dshardshop.cluster.name=%s" (env "SHARDSHOP_CLUSTER_NAME" | default "shardshop") | quote }}
+    - {{ printf "-Dshardshop.cluster.kubeconfig=%s" (env "SHARDSHOP_TEST_KUBECONFIG") | quote }}
+    - {{ printf "-Dshardshop.cluster.fresh=%s" (env "SHARDSHOP_FRESH" | default "false") | quote }}
 {{- end }}
 
 # Use sync: Flyway validates actual database history and idempotent seeding reruns.
@@ -71,7 +71,7 @@ releases:
       - {{ printf "%s/inventory.yaml" $snapshot | quote }}
       - render: migrations
     hooks:
-      {{- include "verify" (dict "event" "presync" "tags" "kind-allocator | kind-infrastructure | kind-migration-reservation | kind-migrations-idle") | nindent 6 }}
+      {{- include "verify" (dict "event" "presync" "tags" "cluster-allocator | cluster-infrastructure | cluster-migration-reservation | cluster-migrations-idle") | nindent 6 }}
 
   - name: shardshop-application
     namespace: shardshop
@@ -86,5 +86,5 @@ releases:
     # A retained drill lock marks unrecovered out-of-band changes. Helm's three-way
     # merge keeps an added environment variable or node selector, thus stop first.
     hooks:
-      {{- include "verify" (dict "event" "presync" "tags" "kind-publications | kind-migration-reservation | kind-drills-idle") | nindent 6 }}
-      {{- include "verify" (dict "event" "postsync" "tags" "kind-release | kind-deployment") | nindent 6 }}
+      {{- include "verify" (dict "event" "presync" "tags" "cluster-publications | cluster-migration-reservation | cluster-drills-idle") | nindent 6 }}
+      {{- include "verify" (dict "event" "postsync" "tags" "kind-release | cluster-deployment") | nindent 6 }}

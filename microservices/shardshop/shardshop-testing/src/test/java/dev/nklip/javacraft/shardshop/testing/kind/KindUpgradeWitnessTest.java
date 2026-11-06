@@ -1,5 +1,6 @@
 package dev.nklip.javacraft.shardshop.testing.kind;
 
+import dev.nklip.javacraft.shardshop.testing.cluster.ClusterLab;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 
@@ -11,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 final class KindUpgradeWitnessTest {
     private static ObjectNode witness() {
-        ObjectNode result = (ObjectNode) KindLab.parse("""
+        ObjectNode result = (ObjectNode) ClusterLab.parse("""
                 {"cluster":"shardshop-test-upgrade", "routing":{"version":"inventory"},
                  "systems":{"shard-a":"system|oid"}, "identities":{"pvc/data":"volume-uid","credential/order-app":"credential-hash"},
                  "shardshop-generator-identity":{"registryUid":"registry-uid"},

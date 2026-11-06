@@ -21,12 +21,12 @@ step, is in the Git tag `shardshop-docs-full-2026-10-31`.
   2026-10-31 ([record](CHANGELOG.md#step-69--complete-demo-and-acceptance-run)).
 - **Step 6.8 ended as research.** HTTP/2 gave no performance gain, thus ShardShop
   keeps HTTP/1.1 ([decision](DECISIONS.md#keep-http11)).
-- **Milestone 7 (AWS deployment):** steps 7.1 to 7.9 are **Done**
+- **Milestone 7 (AWS deployment):** steps 7.1 to 7.10 are **Done**
   ([7.1](CHANGELOG.md#step-71--terraform-aws-foundation), [7.2](CHANGELOG.md#step-72--eks-values-and-operators),
   [7.3](CHANGELOG.md#step-73--cloud-durability), [7.4](CHANGELOG.md#step-74--local-and-aws-architecture-overview),
   [7.5](CHANGELOG.md#step-75--argo-cd-delivery-of-the-database-layer), [7.6](CHANGELOG.md#step-76--applications-and-gates-through-argo-cd),
   [7.7](CHANGELOG.md#step-77--cloud-acceptance), [7.8](CHANGELOG.md#step-78--stable-aws-webpage-urls-and-access-control),
-  [7.9](CHANGELOG.md#step-79--sustained-30-new-orderss-on-eks)).
+  [7.9](CHANGELOG.md#step-79--sustained-30-new-orderss-on-eks), [7.10](CHANGELOG.md#step-710--test-packages-by-deployment)).
 - **Version deadlines:** the local risk acceptance ends and the CNPG upgrade is
   due on 2026-11-30 ([open findings](VERSIONS.md#3-open-findings-and-risk-acceptance)).
 
@@ -379,3 +379,30 @@ rate below the target.
   bounds and drain. Step 6.6 still passes on kind.
 - Record the measurements, the cause, the fix and the costs. Before the AWS run,
   give the cost estimate and get the approval of the user.
+
+### 7.10 Test packages by deployment
+
+Depends on 7.9. Status: **Done** ([record](CHANGELOG.md#step-710--test-packages-by-deployment)).
+
+The package `testing.kind` holds the checks of both deployments, the offline chart
+tests and helpers of the Testcontainers suite. Its names say "kind", also for the
+checks that run on EKS.
+
+- Group the classes of `shardshop-testing` by where they run: `browser`, `infra`
+  (offline chart and script tests), `support` (helpers of more than one suite),
+  `integration` (Testcontainers), `cluster` with `gate`, `drill`, `recovery` and
+  `capacity` (both deployments), `kind` (local deployment only) and `aws` (AWS
+  deployment only).
+- Shared classes do not depend on `kind` or `aws`. `integration` and `cluster`
+  depend only on `support`.
+- Rename the contract of the cluster checks: `ClusterIT` to `ClusterIT`, the Maven
+  profile `kind` to `cluster`, the properties `shardshop.cluster.*` to
+  `shardshop.cluster.*`, the folder `cluster-features` to `cluster-features`, and the
+  `kind-*` tags of the checks that run on both deployments to `cluster-*`. The checks
+  that run only on kind keep `kind-*`, and the EKS checks keep `eks-*`.
+- No check changes its behavior. The scripts, the Helmfile, the charts, the gates
+  image and the runbooks use the new names. The CHANGELOG history keeps the old names.
+- The acceptance: the module compiles; the browser, infra and unit tests and the
+  complete Testcontainers suite pass; on a disposable lab `cluster-create.sh`,
+  `up.sh`, the default cluster suite and one drill pass; the launcher of the gates
+  image finds `ClusterIT`. No AWS run.

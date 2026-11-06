@@ -755,3 +755,12 @@ Cross-zone round trips capped three sequential stages: one result handler (27.8/
 The fixes: 3 result handlers, drained stock batches and 2 profit groups.
 The fifth EKS run passed: 29.867/s, write p95 86.969 ms, no backlog growth ([evidence](shardshop-testing/evidence/2026-11-06-eks-order-capacity.json)). Kind passed at 30.011/s. The AWS time cost approximately US$1.45.
 Lesson: measure again after each fix, because the limit moves to the next stage.
+
+<a id="step-710"></a>
+### Step 7.10 — Test packages by deployment
+
+**Done 2026-11-06.**
+The 172 test classes moved from `testing.kind` and `testing.cucumber` to packages by where they run: `browser`, `infra`, `support`, `integration`, `cluster` (`gate`, `drill`, `recovery`, `capacity`), `kind` and `aws`. Shared classes no longer depend on `kind` or `aws`.
+The cluster checks now use `ClusterIT`, `-Pcluster`, `shardshop.cluster.*`, `cluster-features` and `cluster-*` tags. The kind-only checks keep `kind-*`.
+These passed: 404 offline tests, the complete Testcontainers suite (163 scenarios), a dry run of all 55 cluster scenarios in the gates image, and a disposable lab with `up.sh`, `cluster-deployment` and `cluster-saga-drill`. A first lab stopped on a stalled image pull.
+Lesson: clean the build after a package move, because stale classes hide broken imports.

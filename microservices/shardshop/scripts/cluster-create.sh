@@ -32,7 +32,7 @@ resume_cluster
 # An existing lab must prove its allocator protections before provisioning.
 # A partial failed bootstrap requires explicit recovery, never a counter reset.
 if [[ "$created_cluster" == false ]]; then
-    verify_kind kind-allocator
+    verify_kind cluster-allocator
 fi
 kubectl --context "$context" --request-timeout=30s apply -f "$work/namespace.yaml"
 verify_dns
@@ -51,13 +51,13 @@ provision_rabbitmq_credentials
 export SHARDSHOP_FRESH="$created_cluster"
 helmfile -f "$work/helmfile.yaml.gotmpl" -l stage=infrastructure sync --skip-deps --skip-needs
 if [[ "$created_cluster" == true ]]; then
-    verify_kind kind-admission-bootstrap
+    verify_kind cluster-admission-bootstrap
     registry_uid=$(k create configmap shardshop-snowflake-generators --from-literal=highWaterMark=0 \
         -o jsonpath='{.metadata.uid}')
     render generator-identity --set-literal "generatorRegistryUid=$registry_uid" >"$work/generator-identity.yaml"
     k create -f "$work/generator-identity.yaml"
 fi
-verify_kind kind-allocator
-verify_kind kind-infrastructure
+verify_kind cluster-allocator
+verify_kind cluster-infrastructure
 echo 'ShardShop cluster, database and broker foundation are ready; no application release was changed.'
 echo 'Run scripts/up.sh to build, migrate and start the applications.'

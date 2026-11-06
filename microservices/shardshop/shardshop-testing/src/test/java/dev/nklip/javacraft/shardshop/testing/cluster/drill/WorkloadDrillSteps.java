@@ -1,0 +1,16 @@
+package dev.nklip.javacraft.shardshop.testing.cluster.drill;
+
+import io.cucumber.java.en.Then;
+import java.io.IOException;
+
+public final class WorkloadDrillSteps {
+    @Then("two temporary HTTP seeders preserve IDs and one replacement product JVM recovers workload traffic")
+    public void drill() throws IOException, InterruptedException { new WorkloadDrill().repeatAndReplace(); }
+    @Then("scoped saga retries, rejection replay and two orders for the same stock preserve permanent effects")
+    public void sagaReplay() throws Exception { new SagaDrill().replayAndRace(); }
+
+    @Then("the saga JVM on a different worker resumes CDC while HTTP commits new orders")
+    public void sagaRelocate() throws IOException, InterruptedException { new SagaDrill().relocateCdc(); }
+    @Then("an HTTP rollout preserves the saga JVM and its active CDC slots")
+    public void httpRollout() throws IOException, InterruptedException { new SagaDrill().rolloutHttp(); }
+}

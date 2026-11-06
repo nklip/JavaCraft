@@ -2,7 +2,9 @@ package dev.nklip.javacraft.shardshop.testing.kind;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import dev.nklip.javacraft.shardshop.testing.cucumber.config.Json;
+import dev.nklip.javacraft.shardshop.testing.support.Json;
+import dev.nklip.javacraft.shardshop.testing.cluster.ClusterLab;
+import dev.nklip.javacraft.shardshop.testing.cluster.Saga;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -16,7 +18,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
-import static dev.nklip.javacraft.shardshop.testing.kind.KindDeployment.require;
+import static dev.nklip.javacraft.shardshop.testing.cluster.Deployment.require;
 
 /** Read-only evidence across the pre-5.3 foundation upgrade on an explicitly owned lab. */
 public final class KindUpgradeWitness {
@@ -27,16 +29,16 @@ public final class KindUpgradeWitness {
             "catalog.flyway_schema_history", "ordering.flyway_schema_history");
     private static final List<String> LEDGER_TABLES = List.of("ledger.ledger_operations", "ledger.ledger_entries",
             "ledger.ledger_result_ids", "ledger.flyway_schema_history");
-    private final KindLab lab;
-    private final KindSaga sql;
+    private final ClusterLab lab;
+    private final Saga sql;
 
-    public KindUpgradeWitness() { this(new KindLab()); }
-    KindUpgradeWitness(KindLab lab) { this.lab = lab; sql = new KindSaga(lab); }
+    public KindUpgradeWitness() { this(new ClusterLab()); }
+    KindUpgradeWitness(ClusterLab lab) { this.lab = lab; sql = new Saga(lab); }
 
     private Path evidence() throws IOException {
         require(lab.clusterName().startsWith("shardshop-test-"), "Upgrade evidence requires an owned test cluster");
-        String value = System.getProperty("shardshop.kind.upgrade.evidence", "");
-        require(!value.isBlank() && Path.of(value).isAbsolute(), "Set an absolute shardshop.kind.upgrade.evidence file");
+        String value = System.getProperty("shardshop.cluster.upgrade.evidence", "");
+        require(!value.isBlank() && Path.of(value).isAbsolute(), "Set an absolute shardshop.cluster.upgrade.evidence file");
         return Path.of(value);
     }
 
@@ -58,18 +60,18 @@ public final class KindUpgradeWitness {
         validateRetained(before, observe());
         for (String shard : lab.shards()) {
             privileges(shard);
-            require(sql.number(shard, KindSaga.stockViolations()) == 0, "Retained stock invariant differs on " + shard);
-            require(sql.number(shard, KindSaga.profitViolations()) == 0, "Retained profit invariant differs on " + shard);
+            require(sql.number(shard, Saga.stockViolations()) == 0, "Retained stock invariant differs on " + shard);
+            require(sql.number(shard, Saga.profitViolations()) == 0, "Retained profit invariant differs on " + shard);
         }
     }
 
     /** Optional baseline fixture: a real accepted order with its result deliberately lost on the owned lab. */
     private void captureReplayFixture(ObjectNode before) throws IOException, InterruptedException {
-        String order = System.getProperty("shardshop.kind.upgrade.order", "");
+        String order = System.getProperty("shardshop.cluster.upgrade.order", "");
         if (order.isBlank()) return;
-        order = KindSaga.id(order);
-        String saga = KindSaga.id(System.getProperty("shardshop.kind.upgrade.saga", ""));
-        String home = System.getProperty("shardshop.kind.upgrade.home", "");
+        order = Saga.id(order);
+        String saga = Saga.id(System.getProperty("shardshop.cluster.upgrade.saga", ""));
+        String home = System.getProperty("shardshop.cluster.upgrade.home", "");
         require(lab.shards().contains(home), "Upgrade replay fixture must select an inventory shard");
         require(sql.number(home, "SELECT count(*) FROM ordering.orders o JOIN ordering.order_sagas s USING(order_id) "
                 + "WHERE o.order_id=" + order + " AND s.saga_id=" + saga + " AND o.status='PENDING_LEDGER' "
@@ -87,8 +89,8 @@ public final class KindUpgradeWitness {
         JsonNode before = Json.parse(Files.readAllBytes(evidence()));
         validateBaseline(before);
         JsonNode fixture = before.path("replay");
-        String order = KindSaga.id(fixture.path("order").asText());
-        String saga = KindSaga.id(fixture.path("saga").asText());
+        String order = Saga.id(fixture.path("order").asText());
+        String saga = Saga.id(fixture.path("saga").asText());
         String home = fixture.path("home").asText();
         require(lab.shards().contains(home), "Missing retained replay fixture shard");
         lab.await("operator reset replays the retained exhausted order", java.time.Duration.ofSeconds(150), () -> {
@@ -117,7 +119,7 @@ public final class KindUpgradeWitness {
         for (String kind : List.of("namespace", "clusters.postgresql.cnpg.io", "databases.postgresql.cnpg.io", "pvc")) {
             String response = kind.equals("namespace") ? lab.kubectl("get", kind, "shardshop", "-o", "json")
                     : lab.kubectl("get", kind, "-o", "json");
-            for (JsonNode object : KindLab.items(KindLab.parse(response))) identity(identities, kind, object);
+            for (JsonNode object : ClusterLab.items(ClusterLab.parse(response))) identity(identities, kind, object);
         }
         for (String name : List.of("shardshop-snowflake-generators", "shardshop-generator-identity", "shardshop-migration-topology")) {
             JsonNode object = resource("configmap", name);
@@ -156,7 +158,7 @@ public final class KindUpgradeWitness {
     }
 
     private JsonNode resource(String kind, String name) throws IOException, InterruptedException {
-        return KindLab.parse(lab.kubectl("get", kind, name, "-o", "json"));
+        return ClusterLab.parse(lab.kubectl("get", kind, name, "-o", "json"));
     }
 
     private static void identity(ObjectNode identities, String kind, JsonNode object) throws IOException {
@@ -224,13 +226,13 @@ public final class KindUpgradeWitness {
     }
 
     private void privileges(String shard) throws IOException, InterruptedException {
-        JsonNode actual = KindLab.parse(sql.sql(shard, "SELECT coalesce(jsonb_object_agg(k,v),'{}'::jsonb)::text FROM ("
+        JsonNode actual = ClusterLab.parse(sql.sql(shard, "SELECT coalesce(jsonb_object_agg(k,v),'{}'::jsonb)::text FROM ("
                 + "SELECT n.nspname||'.'||c.relname||'.'||p.priv k,jsonb_agg(a.attname ORDER BY a.attname) v "
                 + "FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_attribute a ON a.attrelid=c.oid "
                 + "AND a.attnum>0 AND NOT a.attisdropped CROSS JOIN (VALUES ('SELECT'),('INSERT'),('UPDATE'),('REFERENCES')) p(priv) "
                 + "WHERE n.nspname IN ('catalog','ordering') AND c.relkind IN ('r','v') "
                 + "AND has_column_privilege('ordering_operator',c.oid,a.attnum,p.priv) GROUP BY 1) q"));
-        require(actual.equals(KindLab.parse("""
+        require(actual.equals(ClusterLab.parse("""
                 {"ordering.orders.SELECT":["order_id","status"],
                  "ordering.order_sagas.SELECT":["next_reconciliation_at","order_id","reconciliation_attempts","saga_id","status"],
                  "ordering.order_sagas.UPDATE":["next_reconciliation_at","reconciliation_attempts"]}

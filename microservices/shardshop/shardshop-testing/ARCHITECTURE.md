@@ -8,7 +8,7 @@ test-only: it has no main classes, it is never deployed, and it runs only in Mav
 builds.
 
 - **Runs as:** Cucumber integration scenarios with `-Pintegration`, and opt-in
-  kind suites that observe the deployed lab. The
+  cluster suites that observe the kind lab or EKS ([packages](README.md#packages)). The
   [infrastructure design](../infra/ARCHITECTURE.md#verification-gates-and-drills)
   describes the kind profiles and drills.
 ## Contents
@@ -31,9 +31,9 @@ explain the durability assumptions behind these scenarios.
 | Scenario | Topic | Current coverage |
 |---:|---|---|
 | [1](#scenario-1) | Seeding gate and product traffic | Integration features and the release gates of `up.sh` |
-| [2](#scenario-2) | Regional placement, routing, schemas and roles | Integration features, routing vectors and the `kind-topology` gate |
+| [2](#scenario-2) | Regional placement, routing, schemas and roles | Integration features, routing vectors and the `cluster-topology` gate |
 | [3](#scenario-3) | Primary and replica reads | Integration features and the opt-in strict replica-read drill |
-| [4](#scenario-4) | Confirmed order effects | Integration features and the `kind-saga` gate |
+| [4](#scenario-4) | Confirmed order effects | Integration features and the `cluster-saga` gate |
 | [5](#scenario-5) | Ledger rejection, compensation and replay | Integration features and the saga drill |
 | [6](#scenario-6) | Crash recovery and CDC | Integration features for relay and crash recovery, the observability gate, the saga drill and the synchronous failover drill |
 | [7](#scenario-7) | Broker retries, dead letters and reconciliation | Integration features for broker policies, reconciliation, manual reset and transport cleanup. The retry drill covers shard outage and DLQ pressure (see the [drill runbook](RUNBOOK.md#4-retry-and-dlq-capacity-drills)) |
@@ -83,7 +83,7 @@ publication, including a run with no pending versioned migrations. Preserve
 the reservation after publication failure and reuse it on a matching rerun.
 Run the version-2 routing vectors in `shardshop-core/sharding`, including values above
 2^53 and signed-long boundary checks, and verify that both services route through
-it. Run the Maven `kind-topology` scenarios to compare the same golden fixtures
+it. Run the Maven `cluster-topology` scenarios to compare the same golden fixtures
 with SQL hashing and the deployed seller and buyer placement constraints on
 every primary.
 
@@ -231,17 +231,17 @@ results of the last complete run.
 
 | Scenario | Integration suite | Lab run |
 |---:|---|---|
-| [1](#scenario-1) | `ProductSeeder`, `ProductReader` and `WorkloadControl` features | Release gates of both `up.sh` runs and `kind-deployment`: seeded catalog and reads on both product pods. `kind-workload-drill`: repeated seeding and a new product JVM |
-| [2](#scenario-2) | `CatalogMigration`, `LedgerMigration`, `ProductApi`, `OrderApi` and `StockReservation` features; routing vectors in `ShardRouterTest` | `kind-topology` in the release gates; `kind-migration-reservation`, `kind-migrations-idle` and `kind-publications` |
-| [3](#scenario-3) | `ProductApi` (replica read profile), `ProductReader` and `ProductTransport` features | `kind-deployment`: clean primary reads. `kind-replica-read-drill` on `shard-b`: lag, standby loss and hung queries |
-| [4](#scenario-4) | `OrderApi`, `OrderResults`, `LedgerConsumer`, `LedgerPublisher` and `CdcRelay` features | `kind-saga` in the release gates: USD and EUR orders with ledger, stock and profit effects. `kind-saga-drill`: duplicate envelopes |
-| [5](#scenario-5) | `LedgerConsumer`, `OrderResults` and `TransportCleanup` features: a rejected decision stays after cleanup and a policy change | `kind-saga-drill`: duplicate envelopes keep their decisions |
-| [6](#scenario-6) | `CdcRelay`, `LedgerPublisher`, `LedgerConsumer` and `OrderResults` features: crash boundaries and replay | `kind-saga-drill`: CDC relocation and a rolling update under HTTP writes. `kind-observability` in the release gates. `kind-failover-drill` on `shard-b` |
-| [7](#scenario-7) | `RabbitMq`, `Reconciliation`, `ManualReconciliationReset`, `ManualReconciliationResetSql`, `TransportCleanup` and `TransportCleanupMigration` features | `kind-retry-drill`: a shard outage, and an unbound and a full DLQ on both publishers |
-| [8](#scenario-8) | — | `kind-database-drill`, `kind-replica-read-drill` and `kind-failover-drill` on `shard-b`; `kind-backup`, `kind-restore`, `kind-recovery-schema` and `kind-recovery-drill`. The optional asynchronous-loss drill stays outside qualification |
+| [1](#scenario-1) | `ProductSeeder`, `ProductReader` and `WorkloadControl` features | Release gates of both `up.sh` runs and `cluster-deployment`: seeded catalog and reads on both product pods. `cluster-workload-drill`: repeated seeding and a new product JVM |
+| [2](#scenario-2) | `CatalogMigration`, `LedgerMigration`, `ProductApi`, `OrderApi` and `StockReservation` features; routing vectors in `ShardRouterTest` | `cluster-topology` in the release gates; `cluster-migration-reservation`, `cluster-migrations-idle` and `cluster-publications` |
+| [3](#scenario-3) | `ProductApi` (replica read profile), `ProductReader` and `ProductTransport` features | `cluster-deployment`: clean primary reads. `cluster-replica-read-drill` on `shard-b`: lag, standby loss and hung queries |
+| [4](#scenario-4) | `OrderApi`, `OrderResults`, `LedgerConsumer`, `LedgerPublisher` and `CdcRelay` features | `cluster-saga` in the release gates: USD and EUR orders with ledger, stock and profit effects. `cluster-saga-drill`: duplicate envelopes |
+| [5](#scenario-5) | `LedgerConsumer`, `OrderResults` and `TransportCleanup` features: a rejected decision stays after cleanup and a policy change | `cluster-saga-drill`: duplicate envelopes keep their decisions |
+| [6](#scenario-6) | `CdcRelay`, `LedgerPublisher`, `LedgerConsumer` and `OrderResults` features: crash boundaries and replay | `cluster-saga-drill`: CDC relocation and a rolling update under HTTP writes. `cluster-observability` in the release gates. `cluster-failover-drill` on `shard-b` |
+| [7](#scenario-7) | `RabbitMq`, `Reconciliation`, `ManualReconciliationReset`, `ManualReconciliationResetSql`, `TransportCleanup` and `TransportCleanupMigration` features | `cluster-retry-drill`: a shard outage, and an unbound and a full DLQ on both publishers |
+| [8](#scenario-8) | — | `cluster-database-drill`, `cluster-replica-read-drill` and `cluster-failover-drill` on `shard-b`; `cluster-backup`, `cluster-restore`, `cluster-recovery-schema` and `cluster-recovery-drill`. The optional asynchronous-loss drill stays outside qualification |
 | [9](#scenario-9) | `OrderApi` and `ProductApi` features, and the order and product unit tests | — |
-| [10](#scenario-10) | `shardshop-core/idgen` unit tests (lost CAS, exhaustion, `TimeSource`), `IdParserTest`, `JsonFieldsTest`, `CatalogInputTest` and `OrderInputTest`; `GeneratorAllocation` on k3s; `ProductApi` and `OrderProducer` features | `kind-admission-bootstrap` in `cluster-create.sh`, `kind-allocator`, the rollouts of both `up.sh` runs, `kind-workload-drill`, `kind-backup`, `kind-restore` and `kind-backup-allocator`. One registry UID stays the same in all steps |
-| [11](#scenario-11) | `StockReservation` feature | `kind-saga-drill`: two orders for the same stock never oversell |
+| [10](#scenario-10) | `shardshop-core/idgen` unit tests (lost CAS, exhaustion, `TimeSource`), `IdParserTest`, `JsonFieldsTest`, `CatalogInputTest` and `OrderInputTest`; `GeneratorAllocation` on k3s; `ProductApi` and `OrderProducer` features | `cluster-admission-bootstrap` in `cluster-create.sh`, `cluster-allocator`, the rollouts of both `up.sh` runs, `cluster-workload-drill`, `cluster-backup`, `cluster-restore` and `cluster-backup-allocator`. One registry UID stays the same in all steps |
+| [11](#scenario-11) | `StockReservation` feature | `cluster-saga-drill`: two orders for the same stock never oversell |
 
 ## 3. AWS deployment acceptance
 <sub>[Back to Contents](#contents)</sub>
@@ -256,17 +256,17 @@ computer runs the backup, restore, recovery and allocator checks with the contex
 
 | Scenario | Checks on EKS |
 |---:|---|
-| [1](#scenario-1) | `eks-release` and `kind-deployment` in the PostSync gate. `kind-workload-drill` |
-| [2](#scenario-2) | `kind-migration-reservation`, `kind-migrations-idle` and `kind-publications` in the PreSync gates. `kind-topology` |
-| [3](#scenario-3) | `kind-deployment`. `kind-replica-read-drill` on `shard-b` |
-| [4](#scenario-4) | `kind-saga` in the PostSync gate. `kind-saga-drill` |
-| [5](#scenario-5) | `kind-saga-drill` |
-| [6](#scenario-6) | `kind-saga-drill`, `kind-observability` in the PostSync gate and `kind-failover-drill` on `shard-b` |
-| [7](#scenario-7) | `kind-retry-drill` with three brokers. It checks each broker for restarts and the cluster for alarms |
-| [8](#scenario-8) | `kind-database-drill`, `kind-replica-read-drill` and `kind-failover-drill` on `shard-b`. `eks-backup` and `eks-pitr-drill` for the S3 backups. `kind-backup`, `kind-restore`, `kind-recovery-schema` and `kind-recovery-drill` with a logical bundle from EKS |
+| [1](#scenario-1) | `eks-release` and `cluster-deployment` in the PostSync gate. `cluster-workload-drill` |
+| [2](#scenario-2) | `cluster-migration-reservation`, `cluster-migrations-idle` and `cluster-publications` in the PreSync gates. `cluster-topology` |
+| [3](#scenario-3) | `cluster-deployment`. `cluster-replica-read-drill` on `shard-b` |
+| [4](#scenario-4) | `cluster-saga` in the PostSync gate. `cluster-saga-drill` |
+| [5](#scenario-5) | `cluster-saga-drill` |
+| [6](#scenario-6) | `cluster-saga-drill`, `cluster-observability` in the PostSync gate and `cluster-failover-drill` on `shard-b` |
+| [7](#scenario-7) | `cluster-retry-drill` with three brokers. It checks each broker for restarts and the cluster for alarms |
+| [8](#scenario-8) | `cluster-database-drill`, `cluster-replica-read-drill` and `cluster-failover-drill` on `shard-b`. `eks-backup` and `eks-pitr-drill` for the S3 backups. `cluster-backup`, `cluster-restore`, `cluster-recovery-schema` and `cluster-recovery-drill` with a logical bundle from EKS |
 | [9](#scenario-9) | None. The integration suite and the unit tests check the HTTP validation of the same code without a cluster |
-| [10](#scenario-10) | `kind-admission-bootstrap` before the registry creation, `kind-allocator` in the PreSync gate, the rollouts of each sync, `kind-workload-drill`, `kind-backup`, `kind-restore` and `kind-backup-allocator`. One registry UID stays the same in all steps |
-| [11](#scenario-11) | `kind-saga-drill` |
+| [10](#scenario-10) | `cluster-admission-bootstrap` before the registry creation, `cluster-allocator` in the PreSync gate, the rollouts of each sync, `cluster-workload-drill`, `cluster-backup`, `cluster-restore` and `cluster-backup-allocator`. One registry UID stays the same in all steps |
+| [11](#scenario-11) | `cluster-saga-drill` |
 
 The public webpages of the AWS deployment have their own checks. `Webpages.feature` of
 the integration suite checks the rendered resources against the Envoy Gateway CRDs on a
@@ -291,13 +291,13 @@ These checks of the local deployment do not run on EKS:
 ## 4. Coordinated backup and isolated restore
 <sub>[Back to Contents](#contents)</sub>
 
-The opt-in `kind-backup` and `kind-restore` tags implement the coordinated baseline.
-Neither belongs to `kind-drill` or the default suite. The
+The opt-in `cluster-backup` and `cluster-restore` tags implement the coordinated baseline.
+Neither belongs to `cluster-drill` or the default suite. The
 [runbook](RUNBOOK.md#8-coordinated-backup-and-isolated-restore) defines the explicit
 source, the external artifact, the independent allocator history and the fresh
 target parameters.
 
-The standalone opt-in `kind-backup-allocator` export refreshes independent latest
+The standalone opt-in `cluster-backup-allocator` export refreshes independent latest
 allocator history after ready source JVM restarts, under the host lifecycle lock
 and deployment/saga readiness checks. Run it after final source gates before
 stopping; any subsequent generator restart requires another refresh before
@@ -329,9 +329,9 @@ Point-in-time recovery and production cutover are outside this baseline.
 <sub>[Back to Contents](#contents)</sub>
 
 Four operator and drill tags export original records, audit, repair one selected order,
-and run the causal older-dump drill. A fifth focused tag, `kind-recovery-schema`,
+and run the causal older-dump drill. A fifth focused tag, `cluster-recovery-schema`,
 checks native repeated schema restore, namespace grants, publication membership
-and all database fingerprints without applications or a broker. They are excluded from `kind-drill`. Verified 6.3
+and all database fingerprints without applications or a broker. They are excluded from `cluster-drill`. Verified 6.3
 bundles and independent latest allocator history create only fresh owned isolated
 targets; no source connection or source write is made. Audit/repair replace the
 older ledger database with a same-or-later verified ledger bundle. Targets remain
@@ -359,7 +359,7 @@ synchronous profile is unchanged. See the
 ## 6. Synchronous failover drill
 <sub>[Back to Contents](#contents)</sub>
 
-The opt-in `kind-failover-drill`, also selected by `kind-drill`, implements the
+The opt-in `cluster-failover-drill`, also selected by `cluster-drill`, implements the
 promotion portions of scenarios 6 and 8. The
 [runbook](RUNBOOK.md#10-synchronous-failover-drill) describes invocation and recovery.
 
@@ -434,7 +434,7 @@ retains the shared lock.
 ## 7. Strict replica-read drill
 <sub>[Back to Contents](#contents)</sub>
 
-The opt-in `kind-replica-read-drill` scenario, also selected by `kind-drill`,
+The opt-in `cluster-replica-read-drill` scenario, also selected by `cluster-drill`,
 covers the deployed read portions of scenarios 3 and 8. The runbook documents
 [invocation and recovery](RUNBOOK.md#7-strict-replica-read-drill). The failover drill
 above covers promotion.
@@ -514,7 +514,7 @@ An integral-second schedule or the end of later diagnostic collection does not
 prove this duration. A short window or insufficient samples invalidates the
 measurement; do not extend it until latency happens to pass.
 
-The `kind-order-capacity` scenario does this protocol at 30 orders/s
+The `cluster-order-capacity` scenario does this protocol at 30 orders/s
 ([runbook](RUNBOOK.md#14-capacity-measurement)). A restarted producer first replays
 the earlier ordinals of its run name, thus the warmup starts after the replay. The
 scenario fails when the producer backlog

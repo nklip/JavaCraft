@@ -260,7 +260,7 @@ HTTP/2 through Envoy gave no gain, thus the lab keeps HTTP/1.1
 ([decision](DECISIONS.md#keep-http11)).
 
 **Writes on the AWS deployment.** Three `t4g.xlarge` workers, one in each zone, passed
-30 orders/s with the `kind-order-capacity` check as a Job in the cluster:
+30 orders/s with the `cluster-order-capacity` check as a Job in the cluster:
 **29.867 orders/s**, final write p95 **86.969 ms**, saga mean **2.582 s**, reads near
 200/s, no errors, cancellations or backpressure, and no backlog growth. Cross-zone
 round trips set the limits of the sequential saga stages, thus the result and profit

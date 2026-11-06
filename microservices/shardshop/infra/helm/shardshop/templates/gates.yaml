@@ -146,11 +146,11 @@ subjects:
 {{- end }}
 {{- $gates := list }}
 {{- if eq .Values.render "migrations" }}
-{{- $gates = list (dict "phase" "PreSync" "wave" 0 "tags" "kind-allocator | kind-infrastructure | kind-migration-reservation | kind-migrations-idle") }}
+{{- $gates = list (dict "phase" "PreSync" "wave" 0 "tags" "cluster-allocator | cluster-infrastructure | cluster-migration-reservation | cluster-migrations-idle") }}
 {{- else if eq .Values.render "application-release" }}
 {{- $gates = list
-      (dict "phase" "PreSync" "wave" 0 "tags" "kind-publications | kind-migration-reservation | kind-drills-idle")
-      (dict "phase" "PostSync" "wave" 1 "tags" "eks-release | kind-deployment") }}
+      (dict "phase" "PreSync" "wave" 0 "tags" "cluster-publications | cluster-migration-reservation | cluster-drills-idle")
+      (dict "phase" "PostSync" "wave" 1 "tags" "eks-release | cluster-deployment") }}
 {{- end }}
 {{- range $gates }}
 ---

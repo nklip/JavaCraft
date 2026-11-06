@@ -1,4 +1,4 @@
-# The gates image of the AWS deployment. It runs the KindIT gates and drills with the JUnit
+# The gates image of the AWS deployment. It runs the ClusterIT gates and drills with the JUnit
 # console launcher and kubectl, against the API server of its own cluster. The runbook in
 # infra/terraform/README.md stages the context: gates/lib (the test classpath),
 # gates/classes (the test classes and features), gates/snapshot (the invocation snapshot of
@@ -17,20 +17,20 @@ ADD --checksum=sha256:fcc16f63186659d9722014b7e02d5fdd2d4e669cb8c0ab66365d7d3b8b
     https://dl.k8s.io/release/v1.37.2/bin/linux/arm64/kubectl /usr/local/bin/kubectl
 # The workload drill renders its temporary seeder Job with helm template.
 COPY --from=helm --chmod=0755 /linux-arm64/helm /usr/local/bin/helm
-# Only the gates user can read the files. KindLab requires a private mode-700 directory and a
+# Only the gates user can read the files. ClusterLab requires a private mode-700 directory and a
 # mode-600 kubeconfig.
 COPY --chown=10001:10001 --chmod=u=rwX,go= gates /gates
-# The reports of KindIT and the temporary drill files go to the writable /tmp volume, because
+# The reports of ClusterIT and the temporary drill files go to the writable /tmp volume, because
 # the snapshot is read-only.
 WORKDIR /tmp
 USER 10001:10001
 ENV HOME=/tmp
-# The Job gives the tag expression of its gate or drill, for example --include-tag=kind-deployment,
+# The Job gives the tag expression of its gate or drill, for example --include-tag=cluster-deployment,
 # and a drill gives its other system properties in JDK_JAVA_OPTIONS.
 # The system properties are the same as in the Failsafe configuration of the kind profile.
 ENTRYPOINT ["/usr/bin/java", "-XX:MaxRAMPercentage=50", "-Djava.util.logging.manager=org.jboss.logmanager.LogManager", \
-    "-Dshardshop.kind.snapshot=/gates/snapshot", "-Dshardshop.kind.workDirectory=/tmp/work", "-Dshardshop.directory=/gates/source", \
-    "-Dshardshop.kind.cluster=shardshop-test-eks", "-Dshardshop.kind.kubeconfig=/gates/kube/config", \
+    "-Dshardshop.cluster.snapshot=/gates/snapshot", "-Dshardshop.cluster.workDirectory=/tmp/work", "-Dshardshop.directory=/gates/source", \
+    "-Dshardshop.cluster.name=shardshop-test-eks", "-Dshardshop.cluster.kubeconfig=/gates/kube/config", \
     "-cp", "/gates/classes:/gates/lib/*", "org.junit.platform.console.ConsoleLauncher", "execute", \
-    "--select-class=dev.nklip.javacraft.shardshop.testing.kind.KindIT", "--fail-if-no-tests", "--disable-banner", \
+    "--select-class=dev.nklip.javacraft.shardshop.testing.cluster.ClusterIT", "--fail-if-no-tests", "--disable-banner", \
     "--details=tree"]

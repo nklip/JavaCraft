@@ -163,13 +163,13 @@
                 </configuration>
             </plugin>
             <plugin>
-                <!-- Docker scenarios use -Pintegration; live lab gates use the separate opt-in -Pkind profile. -->
+                <!-- Docker scenarios use -Pintegration; live lab gates use the separate opt-in -Pcluster profile. -->
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <configuration>
                     <failIfNoTests>true</failIfNoTests>
                     <excludes>
-                        <exclude>**/KindIT.java</exclude>
+                        <exclude>**/ClusterIT.java</exclude>
                     </excludes>
                     <systemPropertyVariables>
                         <!-- The scenarios find the packages, migrations and datasets in this source tree. -->
@@ -280,12 +280,12 @@
             </dependencies>
         </profile>
         <profile>
-            <id>kind</id>
+            <id>cluster</id>
             <properties>
-                <shardshop.kind.tags>kind-deployment</shardshop.kind.tags>
+                <shardshop.cluster.tags>cluster-deployment</shardshop.cluster.tags>
             </properties>
             <dependencies>
-                <!-- The gates image of the AWS deployment runs KindIT with the JUnit console launcher. -->
+                <!-- The gates image of the AWS deployment runs ClusterIT with the JUnit console launcher. -->
                 <dependency>
                     <groupId>org.junit.platform</groupId>
                     <artifactId>junit-platform-console</artifactId>
@@ -299,15 +299,15 @@
                         <artifactId>maven-failsafe-plugin</artifactId>
                         <configuration>
                             <includes combine.self="override">
-                                <include>**/KindIT.java</include>
+                                <include>**/ClusterIT.java</include>
                             </includes>
                             <excludes combine.self="override"/>
                             <!-- JUnit discovery filters reject an empty selection; Cucumber filters merely skip it. -->
-                            <groups>${shardshop.kind.tags}</groups>
+                            <groups>${shardshop.cluster.tags}</groups>
                         </configuration>
                         <executions>
                             <execution>
-                                <id>kind-tests</id>
+                                <id>cluster-tests</id>
                                 <goals>
                                     <goal>integration-test</goal>
                                     <goal>verify</goal>
@@ -331,7 +331,7 @@
                                 <configuration>
                                     <excludes combine.self="override">
                                         <exclude>**/ShardRoutingStartupIT.java</exclude>
-                                        <exclude>**/KindIT.java</exclude>
+                                        <exclude>**/ClusterIT.java</exclude>
                                     </excludes>
                                 </configuration>
                             </execution>

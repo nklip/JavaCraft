@@ -97,9 +97,9 @@ ConfigMap of the chart.
 
 The gates image runs the Maven gates of the local deployment as Argo CD hook Jobs on
 EKS, and the [drills](../terraform/README.md#run-the-drills) as Jobs that the runbook
-creates. It runs `KindIT` with the JUnit console launcher, not with Maven. The Job
+creates. It runs `ClusterIT` with the JUnit console launcher, not with Maven. The Job
 gives the tag expression of its gate or drill, for example
-`--include-tag=kind-deployment`. A drill Job gives its other system properties in
+`--include-tag=cluster-deployment`. A drill Job gives its other system properties in
 `JDK_JAVA_OPTIONS`. The
 [AWS runbook](../terraform/README.md#deliver-shardshop-with-argo-cd) builds the image
 for each run, because the image contains the snapshot of the run.
