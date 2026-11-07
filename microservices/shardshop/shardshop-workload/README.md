@@ -4,7 +4,7 @@
 
 The workload aggregator contains exactly three independently runnable submodules and the `shardshop-datasets`
 library. The applications are clients of the public product and order APIs. They create, read and order
-through HTTP only. `up.sh` starts all three with each release, as the [lab start](../README.md#start-the-lab)
+through HTTP only. `up.sh` starts all three with each release, as the [lab start](../README.md#1-start-the-lab)
 shows.
 
 | Submodule | Workload | Deployment |
@@ -31,7 +31,7 @@ core modules contain no datasets.
   resolve persisted IDs by creation key through ordinary resource lookups. No runtime manifest is shared
   between applications.
 
-See the [product creation contract](../shardshop-product/ARCHITECTURE.md#creation-keys-and-seller-placement) and
+See the [product creation contract](../shardshop-product/ARCHITECTURE.md#3-creation-keys-and-seller-placement) and
 the [order allocation contract](../shardshop-order/ARCHITECTURE.md#service-issued-order-allocations).
 
 ### Workload lifecycle

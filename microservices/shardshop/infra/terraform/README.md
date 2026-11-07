@@ -2,7 +2,7 @@
 
 [ShardShop](../../README.md) › [Infrastructure](../README.md) › **AWS foundation** · [Container images](../images/README.md) · [Plan milestone 7](../../PLAN.md#4-milestone-7-aws-deployment)
 
-Terraform creates the AWS foundation of milestone 7: a VPC, an EKS
+Terraform creates the AWS foundation: a VPC, an EKS
 cluster, ECR repositories, a backup bucket, the runtime secrets and the IAM roles of
 the workloads. The [runbook](#deliver-shardshop-with-argo-cd) then delivers ShardShop
 on EKS with Argo CD, [opens the webpages](#open-the-webpages) and runs the drills. The local deployment does not use
@@ -29,7 +29,7 @@ There are three Terraform root modules:
 | Workers | One managed node group in each zone, because an EBS volume stays in its zone. Graviton `t4g.xlarge` with Amazon Linux 2023 arm64, because the images are linux/arm64. This size holds the database tier with the backup sidecars, three brokers, one restore cluster, Argo CD, the applications, the gates and the add-ons (`node_instance_type`). A `t4g.large` holds all of them except the applications, and a `t4g.medium` (4 GiB) does not hold the backup sidecars. IMDSv2 with a hop limit of 1. The cluster API can reach the pods on 8080 and 9187, because the gates read the application and CloudNativePG metrics through the API server proxy. |
 | Storage | [`eks-values.yaml`](../helm/shardshop/eks-values.yaml) makes the shared chart create the StorageClass `shardshop-gp3`: encrypted gp3 volumes with the tag `Project=shardshop`, created in the zone of the scheduled pod and deleted with their claim. Each shard has one instance in each zone. |
 | Add-ons | `vpc-cni`, `eks-pod-identity-agent`, `kube-proxy`, `coredns`, `aws-ebs-csi-driver`, the community add-on `cert-manager` for the backup plugin (its webhook port 10260 has its own node rule), and `aws-secrets-store-csi-driver-provider` with the Kubernetes Secret sync. Each one uses the newest add-on version for the cluster version at apply time. |
-| Images | One ECR repository for each image in [`skaffold.yaml`](../../skaffold.yaml) and for the [gates image](../images/README.md#4-gates-image), with immutable tags and a scan on push. Four repositories below `shardshop-charts/` keep the OCI charts that Argo CD applies. |
+| Images | One ECR repository for each image in [`skaffold.yaml`](../../skaffold.yaml) and for the [gates image](../images/README.md#4-gates-image), with immutable tags and a scan on push. Six repositories below `shardshop-charts/` keep the OCI charts that Argo CD applies. |
 | Delivery | A self-managed [Argo CD](../helm/argocd/values.yaml) applies ShardShop from the [delivery chart](../helm/delivery): one child Application for each layer, in sync waves, with pinned charts. The Maven gates of the local deployment run as hook Jobs. An admission policy denies a sync that skips the hooks. |
 | Backups | Bucket `shardshop-backups-<account>-<region>` with SSE-S3 encryption, blocked public access and a TLS-only policy. The [Barman Cloud Plugin](../helm/barman-cloud/values.yaml) archives the WAL of each database cluster continuously below the prefix of the cluster, for example `shard-a/`. A base backup starts with the cluster and then runs each day. The plugin keeps 7 days. |
 | Secrets | One AWS Secrets Manager secret for each login role of `runtimeSecrets` in `eks-values.yaml`, and `shardshop/rabbitmq` with the broker passwords, the Erlang cookie and the `users.json` of [`users.jq`](../helm/shardshop/files/rabbitmq/users.jq). The passwords are ephemeral and the values write-only, thus no password is in the Terraform state. A destroy deletes the secrets without a recovery window. The shared chart syncs them to the Kubernetes Secrets that kind creates with `cluster-create.sh`, through a holder pod that mounts them. |
@@ -63,7 +63,7 @@ modules to the IAM user that runs Terraform:
 
 [`operator-policy-webpages.json`](operator-policy-webpages.json) gives the
 permissions for the public webpages of the AWS deployment
-([plan](../../PLAN.md#78-stable-aws-webpage-urls-and-access-control)). It is a
+([changelog](../../CHANGELOG.md#step-78--stable-aws-webpage-urls-and-access-control)). It is a
 second policy, because one managed policy can have a maximum of 6,144 characters:
 
 - The user can create CloudFront distributions, CloudFront VPC origins and Cognito
@@ -215,7 +215,7 @@ export TF_VAR_api_allowed_cidrs='["0.0.0.0/0"]'
 
 ### Check the foundation
 
-The `kind` Maven profile of the checks on this computer uses the context
+The `cluster` Maven profile of the checks on this computer uses the context
 `kind-<cluster>` and a private kubeconfig outside `~/.kube`. Thus write the cluster credentials to a new
 private directory, with the context `kind-shardshop-test-eks`. The kind contexts
 stay unchanged. Use the same shell until the destroy, because `$run` keeps the
@@ -321,7 +321,7 @@ Always sync all the resources of an Application.
    ```
 
 3. Write the values that contain the account ID: the ECR images and the backup
-   bucket. Then write the invocation snapshot of the gates and the drills. The `kind`
+   bucket. Then write the invocation snapshot of the gates and the drills. The `cluster`
    profile requires `kind.json`, but the checks on EKS do not read it. The workload
    drill renders its temporary seeder Jobs from `chart/`, `environment.yaml` and
    `inventory.yaml`:
@@ -616,7 +616,7 @@ render drill-identity | kubectl --context kind-shardshop-test-eks delete -f -
 A drill Job stays one day after its end, and its log has the drill output and the
 failures. A failed drill restores its changes and releases its lock. If a drill keeps
 its lock, examine the data, and recover the drill as the
-[testing runbook](../../shardshop-testing/RUNBOOK.md#3-kind-verification-snapshot)
+[testing runbook](../../shardshop-testing/RUNBOOK.md#3-cluster-verification-snapshot)
 tells before the next attempt:
 
 ```bash

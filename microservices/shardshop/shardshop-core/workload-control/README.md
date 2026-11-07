@@ -68,12 +68,9 @@ credentials or Kubernetes API token.
 
 ### Producer limits
 
-The cap of 30 starts per second follows the lab measurements in the [changelog](../../CHANGELOG.md#step-414--concurrent-order-writes-and-a-separate-saga-process).
-At that rate the producer reached 29.45 new orders per second with bounded order, outbox and profit backlogs and
-a final rolling write p95 of 93.73 ms. At target 10/s the write p95 was 91.42 ms. Four submission slots were
-sufficient. The maximum of 12 matches the aggregate pool budget of one HTTP JVM (four connections per shard).
-A request can wait up to one second for a pool connection before it gets `503`, so HTTP concurrency can exceed
-12 during short bursts. Retained finite stock and host contention limit these measurements, so the default
+The cap of 30 starts per second and the concurrency maximum of 12 are the
+[producer rate limits](../../shardshop-workload/shardshop-order-producer/README.md#rate-limit). The qualified
+operating point at 30 orders/s is in the [performance summary](../../ARCHITECTURE.md#4-performance). The default
 stays 0.5/s.
 
 ### Seeder modes

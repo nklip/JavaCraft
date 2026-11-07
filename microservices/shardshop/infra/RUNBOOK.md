@@ -19,7 +19,6 @@ deployment, the broker, the stop, the destruction and the recovery. The
 9. [Lifecycle lock](#9-lifecycle-lock)
 10. [Node networking](#10-node-networking)
 11. [CloudNativePG operator](#11-cloudnativepg-operator)
-12. [One-time procedures](#12-one-time-procedures)
 
 ## 1. Kind topology
 <sub>[Back to Contents](#contents)</sub>
@@ -83,7 +82,7 @@ flowchart TB
   ledger. The script waits for the roles at their current generation, then up to 180
   seconds for each `Database` to reach its current generation and the `applied`
   status. The Flyway Jobs of `up.sh` then make the tables
-  ([migrations](../database/RUNBOOK.md#database-schemas-and-migrations)).
+  ([migrations](../database/RUNBOOK.md#3-database-schemas-and-migrations)).
 
 **Database clusters.** The infrastructure release makes these clusters and the
 persistent [broker](#4-rabbitmq-broker):
@@ -550,9 +549,9 @@ a recovery step when the data must survive.
   [audit of older backups](../shardshop-testing/RUNBOOK.md#9-older-backup-audit-and-selected-repair).
 - If storage is lost, keep the remaining volumes and the independent recovery
   artifacts before you try a restore.
-- The [backup policy](../database/ARCHITECTURE.md#replication-and-backup-policy)
+- The [backup policy](../database/ARCHITECTURE.md#7-replication-and-backup-policy)
   requires external dumps with routing and schema identities, and a separate latest
-  allocator history. The [restore audit](../shardshop-order/ARCHITECTURE.md#orders-lost-by-asynchronous-failover-or-restore)
+  allocator history. The [restore audit](../shardshop-order/ARCHITECTURE.md#4-orders-lost-by-asynchronous-failover-or-restore)
   defines the reconciliation of later order and ledger state.
 - Without usable recovery artifacts, the deleted history cannot be recovered.
 
@@ -625,39 +624,3 @@ Do not delete the allocator state or the database volumes as a workaround.
 - To upgrade, examine the support deadline in the lock. Then vendor and verify the new
   chart, and update `values.yaml` and the lock together. The AWS deployment installs
   the same chart and values.
-
-## 12. One-time procedures
-<sub>[Back to Contents](#contents)</sub>
-
-### First upgrade from a v1-only ledger
-
-For this one-time cutover of a retained lab, the ledger must accept v2 before new order
-pods publish v2 commands.
-
-1. Pause the rollout of the **order Deployment**, then run `up.sh`. The existing order
-   pods continue to serve and to send v1:
-
-   ```bash
-   kubectl --context kind-shardshop -n shardshop rollout pause deployment/shardshop-order
-   bash microservices/shardshop/scripts/up.sh
-   ```
-
-2. While `up.sh` waits for the application readiness, use another terminal. Make sure
-   that the ledger Deployment and its ready pod use the **new ledger image digest that
-   this invocation printed**, that the new generation is observed and that no old
-   ledger pod remains.
-3. Complete the order rollout:
-
-   ```bash
-   kubectl --context kind-shardshop -n shardshop rollout status deployment/shardshop-ledger --timeout=120s
-   kubectl --context kind-shardshop -n shardshop rollout resume deployment/shardshop-order
-   ```
-
-- A successful rollout status for the old digest is not sufficient.
-- If the build or the deployment fails, resume the order rollout before you leave the
-  cutover.
-- If an operator paused the rollout before, keep that paused state, and do not take it
-  over.
-
-After this upgrade, both services understand v2, and the next deployments use the
-ordinary `up.sh`. No stored message or ledger decision changes during the transition.

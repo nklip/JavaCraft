@@ -63,17 +63,13 @@ their internet egress. `nat_gateway_per_zone = true` changes this
 
 **Decision.** EKS uses the same CloudNativePG chart, shared chart and inventory as
 kind. `eks-values.yaml` changes only the storage and the zone placement, and makes
-the shared chart create an encrypted gp3 StorageClass. Plain Helm and kubectl
-commands in the [runbook](infra/terraform/README.md#deliver-shardshop-with-argo-cd)
-installed the database tier, without a script or Helmfile, until Argo CD replaced
-them. The user selected the runbook commands and an API endpoint open to all
-addresses on 2026-11-01.
+the shared chart create an encrypted gp3 StorageClass. The user selected an API
+endpoint open to all addresses on 2026-11-01.
 
 **Reason.** The EBS CSI add-on can create only a default class without an explicit
 volume type or encryption. A class in the chart is explicit, testable and leaves
-with the infrastructure release. Secrets Manager and Argo CD later replaced the
-credential and delivery commands of the runbook. The exit address of the
-operator's VPN changes for each connection, thus one `/32` filter blocks kubectl.
+with the infrastructure release. The exit address of the operator's VPN changes for
+each connection, thus one `/32` filter blocks kubectl.
 
 **Result.** IAM authentication and the access entries are the only protection of
 an open endpoint. Destroy the foundation after each run.
@@ -321,7 +317,7 @@ high-water mark.
 
 **Result.** A restore bundle authorizes no production cutover
 (`trafficAuthorized: false`). See the
-[backup policy](database/ARCHITECTURE.md#replication-and-backup-policy) and
+[backup policy](database/ARCHITECTURE.md#7-replication-and-backup-policy) and
 [step 6.4](CHANGELOG.md#step-64--restore-audit-and-recovery).
 
 ## 3. Build, test and delivery
@@ -369,7 +365,7 @@ earlier image can still start.
 
 **Decision.** Test Java behavior only with Maven: unit tests, the `integration`
 profile with Testcontainers and pinned images, the Cucumber scenarios of
-`shardshop-testing`, and the opt-in `kind` profile on the lab. The allocation
+`shardshop-testing`, and the opt-in `cluster` profile on a deployment. The allocation
 scenarios use an unprivileged k3s container as the Kubernetes API. Testcontainers
 runs without Ryuk, and a JVM shutdown hook removes each container.
 

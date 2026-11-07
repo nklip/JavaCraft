@@ -13,9 +13,15 @@ recovery of that module.
 | [Product](shardshop-product/RUNBOOK.md), [order](shardshop-order/RUNBOOK.md), [ledger](shardshop-ledger/RUNBOOK.md) | Service configuration, behavior and tests |
 | [Workloads](shardshop-workload/README.md) | Seeding gate, workload pods, datasets, seeder, reader and producer |
 | [Core](shardshop-core/README.md) | Contracts, ID validation, ID generation, routing and workload control |
-| [Verification](shardshop-testing/RUNBOOK.md) | Testcontainers scenarios, kind suites, drills and capacity measurement |
+| [Verification](shardshop-testing/RUNBOOK.md) | Testcontainers scenarios, cluster suites, drills and capacity measurement |
 
-## Java and Maven
+## Contents
+1. [Java and Maven](#1-java-and-maven)
+2. [Build and run](#2-build-and-run)
+3. [Dependency and test validation](#3-dependency-and-test-validation)
+
+## 1. Java and Maven
+<sub>[Back to Contents](#contents)</sub>
 
 Set `JAVA_HOME` to a maintained JDK **25 or newer patch**. The qualified build is
 in [VERSIONS](VERSIONS.md). For example:
@@ -29,7 +35,7 @@ This example is not a vendor or exact-patch restriction. Use the `bin/java` of t
 same JDK to launch the packaged applications.
 
 Application and Flyway containers use the pinned Canonical OpenJDK 25 JRE. The
-[migration runbook](database/RUNBOOK.md#database-schemas-and-migrations) describes
+[migration runbook](database/RUNBOOK.md#3-database-schemas-and-migrations) describes
 the Flyway image. The container runtime does not change the JDK that `JAVA_HOME`
 selects.
 
@@ -41,7 +47,8 @@ Quarkus plugin's declared minimum. Its Toolchains execution selects the
 Compilation targets release 25 with preview features disabled, whichever JDK
 builds it. These rules are inherited only by ShardShop's children.
 
-## Build and run
+## 2. Build and run
+<sub>[Back to Contents](#contents)</sub>
 
 All six applications use Quarkus in JVM mode on Java 25. Maven module
 tests need no Docker or Kubernetes; chart rendering and release
@@ -109,7 +116,8 @@ a deployed snapshot. Production startup still fails for a missing file, missing
 shard/region keys or an invalid topology; packaged integration tests cover those
 failures and a valid external snapshot.
 
-## Dependency and test validation
+## 3. Dependency and test validation
+<sub>[Back to Contents](#contents)</sub>
 
 The scoped Quarkus platform BOM manages application and test dependencies. The local
 parent aligns JUnit and Mockito with that platform, overrides Netty, Jackson and

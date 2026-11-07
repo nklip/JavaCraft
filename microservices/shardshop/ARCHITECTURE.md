@@ -1,6 +1,6 @@
 # ShardShop architecture
 
-[README](README.md) · [Runbook](RUNBOOK.md) · [Implementation plan](PLAN.md) · [Version policy](VERSIONS.md) · [Dated evidence](CHANGELOG.md)
+[ShardShop](README.md) › **Architecture** · [Runbook](RUNBOOK.md) · [Decisions](DECISIONS.md) · [Implementation plan](PLAN.md) · [Version policy](VERSIONS.md) · [Changelog](CHANGELOG.md)
 
 ShardShop is a system-design lab. Its local deployment runs a regional product
 catalog, sharded orders and an asynchronous ledger on one kind cluster. This overview
@@ -215,7 +215,7 @@ primary. Open connections and transactions can still fail. See
 
 See [routing](shardshop-core/sharding/README.md),
 [ID generation](shardshop-core/idgen/README.md) and
-[database consistency](database/ARCHITECTURE.md#consistency-and-failure-boundaries)
+[database consistency](database/ARCHITECTURE.md#6-consistency-and-failure-boundaries)
 for the contracts. The [failover evidence](CHANGELOG.md#step-62--synchronous-failover-drills), the
 [backup and restore evidence](CHANGELOG.md#step-63--coordinated-backup-and-isolated-restore) and the
 [audit and repair evidence](CHANGELOG.md#step-64--restore-audit-and-recovery) are in the changelog.
@@ -227,8 +227,8 @@ for the contracts. The [failover evidence](CHANGELOG.md#step-62--synchronous-fai
 - Before a release that needs a schema change, verify the version of each schema
   owner on every shard.
 
-The [product](shardshop-product/ARCHITECTURE.md#product-api),
-[order](shardshop-order/ARCHITECTURE.md#order-creation-and-ledger-saga) and
+The [product](shardshop-product/ARCHITECTURE.md#1-product-api),
+[order](shardshop-order/ARCHITECTURE.md#2-order-creation-and-ledger-saga) and
 [infrastructure](infra/ARCHITECTURE.md#6-rabbitmq-and-delivery-reliability) designs
 define the HTTP contracts, the validation order, the saga, reconciliation,
 quarantine and message delivery. The repository [AGENTS.md](../../AGENTS.md)
@@ -353,7 +353,7 @@ flowchart LR
 | Applications | The same sources and image recipe | Six applications and three workloads, loaded into kind | The same, copied to ECR with digest pins |
 | Delivery | The shared Helm chart | Helmfile with Maven gates | Argo CD from pinned OCI charts in ECR, with the Maven gates as hook Jobs ([runbook](infra/terraform/README.md#deliver-shardshop-with-argo-cd)) |
 | Webpages | The five pages and their APIs | `webpages.sh` forwards local ports, without a login | One CloudFront address with a Cognito login and role rules, through Envoy Gateway and an internal NLB ([runbook](infra/terraform/README.md#open-the-webpages)) |
-| Checks | The Maven `kind` profile | All gates, drills and acceptance scenarios | The gates, the drills of the eleven acceptance scenarios and the `eks-*` scenarios, as Jobs in the cluster. The backup checks run on the developer computer. EKS variants replace the checks of kind nodes ([list](shardshop-testing/ARCHITECTURE.md#3-aws-deployment-acceptance)) |
+| Checks | The Maven `cluster` profile | All gates, drills and acceptance scenarios | The gates, the drills of the eleven acceptance scenarios and the `eks-*` scenarios, as Jobs in the cluster. The backup checks run on the developer computer. EKS variants replace the checks of kind nodes ([list](shardshop-testing/ARCHITECTURE.md#3-aws-deployment-acceptance)) |
 
 The local deployment runs the complete system on one computer:
 
@@ -503,7 +503,7 @@ flowchart TB
 Each database pod has a backup sidecar. The pod identity of a cluster can write
 only below its own prefix. A restore cluster can only read the prefix of its
 source. kind keeps its coordinated logical dumps
-([backup policy](database/ARCHITECTURE.md#replication-and-backup-policy)).
+([backup policy](database/ARCHITECTURE.md#7-replication-and-backup-policy)).
 
 ```mermaid
 flowchart LR
@@ -523,7 +523,7 @@ flowchart LR
 #### Runtime secrets
 
 The databases, the Flyway Jobs and the brokers read the same Secret names and keys
-on both targets. Only the source of the passwords is different.
+on both deployments. Only the source of the passwords is different.
 
 ```mermaid
 flowchart LR
@@ -558,7 +558,7 @@ flowchart LR
         C0 & C1 & C2 --- Q3["Each quorum queue<br/>three members, one leader"]
     end
 ```
----
+
 ## 6. Detailed design documents
 <sub>[Back to Contents](#contents)</sub>
 

@@ -186,7 +186,7 @@ mvn -B -ntp -f microservices/shardshop/pom.xml \
   -pl shardshop-product,shardshop-order -am clean verify
 ```
 
-The [six-application audit](../../RUNBOOK.md#dependency-and-test-validation) produces the dependency and SBOM
+The [six-application audit](../../RUNBOOK.md#3-dependency-and-test-validation) produces the dependency and SBOM
 reports for the ownership checks.
 
 ### Generator allocation at JVM startup

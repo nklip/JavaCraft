@@ -8,9 +8,10 @@ test-only: it has no main classes, it is never deployed, and it runs only in Mav
 builds.
 
 - **Runs as:** Cucumber integration scenarios with `-Pintegration`, and opt-in
-  cluster suites that observe the kind lab or EKS ([packages](README.md#packages)). The
+  cluster suites that observe the kind lab or EKS ([packages](README.md#2-packages)). The
   [infrastructure design](../infra/ARCHITECTURE.md#verification-gates-and-drills)
-  describes the kind profiles and drills.
+  describes the cluster profile and the drills.
+
 ## Contents
 1. [Acceptance scenarios](#1-acceptance-scenarios)
 2. [Acceptance commands and evidence](#2-acceptance-commands-and-evidence)
@@ -25,7 +26,7 @@ builds.
 ## 1. Acceptance scenarios
 <sub>[Back to Contents](#contents)</sub>
 
-These are the eleven acceptance requirements, with stable scenario IDs. The [consistency and failure boundaries](../database/ARCHITECTURE.md#consistency-and-failure-boundaries)
+These are the eleven acceptance requirements, with stable scenario IDs. The [consistency and failure boundaries](../database/ARCHITECTURE.md#6-consistency-and-failure-boundaries)
 explain the durability assumptions behind these scenarios.
 
 | Scenario | Topic | Current coverage |
@@ -227,7 +228,7 @@ results of the last complete run.
   runs the unit and provider tests of all modules, the packaged startup tests and
   the Cucumber features in the table.
 - **Lab run:** the [acceptance run on a disposable lab](RUNBOOK.md#13-acceptance-run-on-a-disposable-lab)
-  runs the lifecycle scripts and the kind tags in the table.
+  runs the lifecycle scripts and the cluster tags in the table.
 
 | Scenario | Integration suite | Lab run |
 |---:|---|---|
@@ -465,7 +466,7 @@ unlocking. Failed restoration retains the shared lock.
 | PostgreSQL and RabbitMQ integration tests | Transaction boundaries, privileges, CDC capture and checkpoint recovery, and delivery policies |
 | Bounded Kubernetes drills | Seeding, traffic, and failover |
 
-The [verification runbook](RUNBOOK.md) and the [build runbook](../RUNBOOK.md#dependency-and-test-validation)
+The [verification runbook](RUNBOOK.md) and the [build runbook](../RUNBOOK.md#3-dependency-and-test-validation)
 contain the module-scoped build and drill commands.
 
 ## 9. Capacity measurement

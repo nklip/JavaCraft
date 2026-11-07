@@ -18,11 +18,11 @@ its own generator slot. HTTP replicas run no background saga loops.
 
 The normal `up.sh` workflow applies ordering migrations through V8, including the
 transport retention indexes, before deploying the image.
-The [manual reconciliation reset](RUNBOOK.md#manual-reconciliation-reset) uses
+The [manual reconciliation reset](RUNBOOK.md#6-manual-reconciliation-reset) uses
 the separate `ordering_operator` login. Existing labs need `cluster-create.sh`
 before `up.sh` once to provision that credential and its roles.
 
-In the lab, `up.sh` deploys both processes; see the [lab start](../README.md#start-the-lab).
+In the lab, `up.sh` deploys both processes; see the [lab start](../README.md#1-start-the-lab).
 Apply the catalog and ordering migrations before order serves requests; the
 application never runs Flyway. `--check-startup` validates the routing, generator
 and pool configuration and exits without a database connection. In the saga
@@ -176,7 +176,7 @@ texts, but never a message body or a password.
 **CDC relay.** `CDC reader for <shard> stopped; retrying in <delay> ms: <cause>`
 follows an ordinary failure. `CDC recovery required for <shard>: <reason>` means
 that the reader stopped for explicit recovery; the
-[runbook](RUNBOOK.md#order-outbox-cdc-relay) lists the reasons and the recovery.
+[runbook](RUNBOOK.md#3-order-outbox-cdc-relay) lists the reasons and the recovery.
 
 **Result consumer.** Its log tells an operator why a delivery did not complete:
 
@@ -204,10 +204,10 @@ repeats when the count changes or after five minutes; `Reconciliation budget rec
 means none remain pending at the limit. `Saga reconciliation unavailable for <shard> [at saga <id>]; pending work will retry: <cause>`
 reports a failed scan or replay transaction once per affected shard, followed by
 `Saga reconciliation resumed for <shard>` after a complete clean pass. See the
-[reconciliation runbook](RUNBOOK.md#durable-reconciliation) for inspection and
+[reconciliation runbook](RUNBOOK.md#5-durable-reconciliation) for inspection and
 configuration.
 
 **Transport cleanup.** `Transport cleanup unavailable for <shard>; will retry: <cause>`
 reports a failed cleanup phase, followed by `Transport cleanup resumed for <shard>`
-after recovery. The [cleanup runbook](RUNBOOK.md#transport-cleanup) explains the
+after recovery. The [cleanup runbook](RUNBOOK.md#7-transport-cleanup) explains the
 retention window and why published outbox rows can still be waiting for CDC.

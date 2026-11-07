@@ -539,14 +539,11 @@ Order and ledger expose Prometheus metrics through `/q/metrics`, with samples ev
 
 **Done 2026-10-25,** under the user-approved reduced local-maintenance scope.
 
-- A plan review of 2026-10-25 added this step. It also made the JavaScript test runners fail without Node, replaced crash source lines with statement anchors, and added a primary-profile deployment check.
+- A plan review added this step. The JavaScript test runners fail without Node, the crash barriers use statement anchors, and a deployment check requires the primary read profile.
 - Updates: Quarkus 3.40.1.1, Jackson 2.21.8, pgJDBC 42.7.14, a refreshed JRE and a reproducible Flyway image.
-- Older-lab upgrade: on a pre-5.3 lab, `cluster-create.sh` and `up.sh` kept 39 resource and credential identities, four database identities and 6,408 row hashes.
-- The user accepted the saved JRE, K3s and Flyway-driver findings until 2026-10-28. CNPG and managed PostgreSQL changes were outside the scope.
-- The nine final gates passed in 108.2 s.
-- Performance went to later steps: 10/s write p95 was 133.783 ms, 30/s reached backpressure at ~24.65/s, and the first 1,000/s read window gave 948.2/s.
+- Older-lab upgrade: on a pre-5.3 lab, `cluster-create.sh` and `up.sh` kept all resource, credential and database identities and 6,408 row hashes. The nine final gates passed.
+- Performance went to steps 6.5–6.7: the write p95 at 10/s was 133.783 ms, and 30/s stopped at approximately 24.65/s.
 - Lesson: one standby stopped its WAL replay while its pod stayed ready. Pod readiness does not prove replication health.
-- Lesson: a rolling p95 needs at least 1,024 post-warmup samples, thus the collector uses monotonic deadlines and a sample gate.
 
 <a id="step-61"></a>
 ### Step 6.1 — Strict replica-read drill
@@ -562,19 +559,11 @@ Lesson: a wrapper with `umask 077` gave the packaged directories mode 0744, and 
 
 **Done 2026-10-26.**
 The user approved the CNPG 1.30.1 pin for this drill, because it was still the latest release.
-The `kind-failover-drill` proves:
-
-- CDC pauses with either standby absent while quorum writes continue.
-- Planned switchover and a real primary failure keep acknowledged sagas, unpublished commands and slot continuity.
-- A survivor that lags stays read-only and unpromoted for 180 seconds.
-
+The `kind-failover-drill` proves that CDC pauses with either standby absent while quorum writes continue.
+A planned switchover and a real primary failure keep acknowledged sagas, unpublished commands and slot continuity.
+A survivor that lags stays read-only and unpromoted for 180 seconds.
 The complete scenario passed in 743.7 seconds, and the eight final gates passed.
-Lessons from the failed attempts:
-
-- A former primary keeps a `synced=false` logical slot copy, which blocks slot synchronization. The guard retires only that inactive copy after it verifies the new primary.
-- Fence patches compare only the Cluster UID and the fence value, because CNPG status updates invalidated whole-resource preconditions.
-- Recovery writes and control restoration retry `503` and transient failures with the same request.
-- The guard waits for both physical standby slots before a logical decode.
+Lesson: a former primary keeps a `synced=false` logical slot copy, which blocks slot synchronization. Thus the guard retires only that inactive copy after it verifies the new primary.
 
 <a id="step-63"></a>
 ### Step 6.3 — Coordinated backup and isolated restore
@@ -635,15 +624,10 @@ See the [read diagnostics evidence](shardshop-testing/evidence/2026-10-28-read-d
 ### Step 6.8 — HTTP/2 transport
 
 **Done 2026-10-30:** research done, HTTP/1.1 kept.
-A support review on 2026-10-29 checked the support dates of all lock entries due by 2026-11-01, without the security part.
-The research sent h2c with prior knowledge from the workload clients through two standalone Envoy pods to product and order.
-After a Docker restart, both transports met all write criteria at 10, 20 and 30 orders/s:
-
-- Write p95 at 10, 20 and 30/s: `HTTP_1_1` 29.3, 25.6 and 26.7 ms. `H2C` 31.3, 32.8 and 32.0 ms. `H2C` with 32 streams 33.4, 53.0 and 52.0 ms.
-- Highest passed read target: 8,000/s with `HTTP_1_1`, 6,000/s with `H2C` and 16 streams, 8,000/s with 32 streams. Read p95 at 8,000/s was 2 ms against 5 ms.
-
-On 2026-10-30 the user kept HTTP/1.1, because HTTP/2 gave no throughput gain, a higher latency and more components. One Envoy pod received all connections and had no drain on SIGTERM.
-The implementation is reverted. Its 46 files are in a local Git stash.
+The research sent h2c from the workload clients through two standalone Envoy pods to product and order.
+Both transports met all write criteria at 10, 20 and 30 orders/s, with a write p95 of 26–29 ms for `HTTP_1_1` and 31–33 ms for `H2C`.
+The highest passed read target was 8,000/s with `HTTP_1_1` and 6,000/s with `H2C` and 16 streams. With 32 streams, `H2C` passed 8,000/s, but with a read p95 of 5 ms against 2 ms.
+The user kept HTTP/1.1 ([decision](DECISIONS.md#keep-http11)). The 46 reverted files are in a local Git stash.
 Lesson: a background job started with `&` from a non-interactive shell ignores SIGINT. Thus start `up.sh` as a normal background task.
 See the [transport comparison evidence](shardshop-testing/evidence/2026-10-30-http2-transport-comparison.json).
 

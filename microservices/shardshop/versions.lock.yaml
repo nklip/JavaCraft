@@ -8,30 +8,21 @@ checked_on: '2026-10-31'
 review_by: '2026-11-04'
 status: complete
 deployment_ready: false
-deployment_scope: The retained database baseline is unchanged. Cleanup of the latest
-  read qualification attempt passed, restoring saved controls, unchanged producer
-  template, node identities/volumes, kubeconfig and the stopped state.
-  Step 6.0 application/build selections passed one normal application release and
-  both application recovery drills. The later 30/s attempt failed throughput/backpressure and is incomplete.
-  Step 6.0 reduced local maintenance passed, including nine final kind-gate cases
-  with zero failures/errors/skips and verified restoration of the stopped lab.
-  User-deferred capacity qualification remains in 6.5 (10/s latency), 6.6 (30/s
-  writes) and 6.7 (1000 reads/s); full performance/deployment readiness remains
-  unqualified, so deployment_ready stays false. CNPG/managed PostgreSQL changes
-  remain excluded, and existing advisory/support deadlines are unchanged.
-  Step 6.2 synchronous failover qualified on 2026-10-26 under the recorded user
-  decision for the existing CNPG pin. The complete drill, automatic recovery
-  and eight final gates passed; original primaries, controls, routing/profile,
-  deployment specifications and retained volumes were restored before shutdown.
-  Backup/restore and final capacity/readiness acceptance remain unqualified.
+deployment_scope: The local acceptance run of step 6.9 (2026-10-31) and the AWS
+  acceptance run of step 7.7 (2026-11-03) passed all eleven acceptance scenarios,
+  with failover, backup, restore and recovery. Capacity is qualified at 30 orders/s
+  (steps 6.6 and 7.9) and 1000 product reads/s (step 6.7), measured separately.
+  deployment_ready stays false while SBOM-AND-RUNTIME is open, the risk acceptances
+  end on 2026-11-30, the CNPG upgrade is due on 2026-11-30 and the version review
+  due on 2026-11-04 is not done. See VERSIONS.md and CHANGELOG.md.
 scope:
   host_platform: darwin/arm64
   container_platform: linux/arm64
   policy: Community LTS where available; otherwise compatible maintained GA with regular
     upgrades.
   verification: Initial artifact checks covered official metadata, support matrices,
-    OCI identities and Maven artifacts. Later steps qualified native images, local
-    cluster deployment and recovery through 5.5. Docker Desktop signature and CNPG
+    OCI identities and Maven artifacts. Later steps qualified native images, the local
+    deployment through step 6.9 and the AWS deployment through step 7.10. Docker Desktop signature and CNPG
     chart cosign checks are recorded in their dated entries; there is no blanket
     signature verification claim for every artifact. See VERSIONS.md and CHANGELOG.md.
   date_inheritance: Unless overridden, entries use checked_on/review_by above; support_refs
@@ -47,9 +38,9 @@ scope:
     recomputed. Later dated entries qualify native runtime behavior, loaded image
     identity and advisory gates, including seven image gates in step 5.5. Each image
     retains its own verification scope, exceptions and review deadline.
-  selection_status: Selected Maven pins are applied only to ShardShop. Infrastructure
-    and applications were deployed and verified through 5.5; the retained lab was
-    stopped with data preserved afterward. Historical artifact evidence is in VERSIONS.md.
+  selection_status: Selected Maven pins are applied only to ShardShop. The retained
+    lab runs the selected versions since step 6.9, and each AWS run deploys them and
+    then destroys the deployment. Historical artifact evidence is in CHANGELOG.md.
 sources:
   nodejs_releases: https://nodejs.org/en/blog/release
   nodejs_support: https://nodejs.org/en/about/previous-releases
@@ -2492,8 +2483,7 @@ unresolved:
     are not dependencies. The three plugin-only XML prereleases are recorded in
     maven.plugin_prerelease_exception; other plugin security overrides are retained.
 - id: SBOM-AND-RUNTIME
-  blocks:
-  - '4.9'
+  blocks: []
   status: open
   finding: Node inventory and advisory scan completed on 2026-09-28 (Docker Scout
     1.20.3); 160 OS binary packages; 597 indexed packages; 155 distinct advisories
@@ -2542,11 +2532,10 @@ unresolved:
     the product, seeder and reader images passed the critical/high gate with reviewed
     OpenVEX statements (images.shardshop_applications), but the gate covers only the
     packages that Docker Scout indexes. On 2026-10-10 the user decided to record this
-    gap and keep this item open. Step 3.9 stays done with the gap recorded. The item
-    blocks step 4.9, because that step checks the order, ledger and order producer
-    images with the same script and the same JRE base. Close it only when a check
-    covers every package of the base image and a review handles the OSV advisories
-    above.
+    gap and keep this item open. Step 3.9 stays done with the gap recorded. Steps
+    4.9 to 7.10 are also done with this gap recorded, thus the item blocks no plan
+    step. It keeps deployment_ready false. Close it only when a check covers every
+    package of the base image and a review handles the OSV advisories above.
 - id: HOST-RUNTIME-UPDATE
   blocks:
   - '1.1'

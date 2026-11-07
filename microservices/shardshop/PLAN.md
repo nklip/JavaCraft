@@ -4,9 +4,9 @@
 
 This plan lists the implementation steps of ShardShop and their status. The
 [CHANGELOG](CHANGELOG.md) has the result of each done step, and
-[DECISIONS.md](DECISIONS.md) has the reasons for the main choices. The full plan
-before the documentation compression, with the acceptance condition of each done
-step, is in the Git tag `shardshop-docs-full-2026-10-31`.
+[DECISIONS.md](DECISIONS.md) has the reasons for the main choices. The acceptance
+condition of each done step is in Git history: milestones 0–6 in the tag
+`shardshop-docs-full-2026-10-31`, and milestone 7 in commit `3baa38da`.
 
 ## Contents
 1. [Status](#1-status)
@@ -21,14 +21,11 @@ step, is in the Git tag `shardshop-docs-full-2026-10-31`.
   2026-10-31 ([record](CHANGELOG.md#step-69--complete-demo-and-acceptance-run)).
 - **Step 6.8 ended as research.** HTTP/2 gave no performance gain, thus ShardShop
   keeps HTTP/1.1 ([decision](DECISIONS.md#keep-http11)).
-- **Milestone 7 (AWS deployment):** steps 7.1 to 7.10 are **Done**
-  ([7.1](CHANGELOG.md#step-71--terraform-aws-foundation), [7.2](CHANGELOG.md#step-72--eks-values-and-operators),
-  [7.3](CHANGELOG.md#step-73--cloud-durability), [7.4](CHANGELOG.md#step-74--local-and-aws-architecture-overview),
-  [7.5](CHANGELOG.md#step-75--argo-cd-delivery-of-the-database-layer), [7.6](CHANGELOG.md#step-76--applications-and-gates-through-argo-cd),
-  [7.7](CHANGELOG.md#step-77--cloud-acceptance), [7.8](CHANGELOG.md#step-78--stable-aws-webpage-urls-and-access-control),
-  [7.9](CHANGELOG.md#step-79--sustained-30-new-orderss-on-eks), [7.10](CHANGELOG.md#step-710--test-packages-by-deployment)).
-- **Version deadlines:** the local risk acceptance ends and the CNPG upgrade is
-  due on 2026-11-30 ([open findings](VERSIONS.md#3-open-findings-and-risk-acceptance)).
+- **Milestone 7 (AWS deployment) is done.** Steps 7.1 to 7.10 are in
+  [section 4](#4-milestone-7-aws-deployment).
+- **Version deadlines:** the version review of 2026-11-04 is still due. The local
+  risk acceptance ends and the CNPG upgrade is due on 2026-11-30
+  ([open findings](VERSIONS.md#3-open-findings-and-risk-acceptance)).
 
 ## 2. Rules for a step
 <sub>[Back to Contents](#contents)</sub>
@@ -53,15 +50,15 @@ step, is in the Git tag `shardshop-docs-full-2026-10-31`.
    - Workload definitions have no IDs
      ([datasets](shardshop-workload/shardshop-datasets/README.md#definitions-and-keys)).
    - Seller profit is the confirmed margin in each currency
-     ([seller profit](shardshop-product/ARCHITECTURE.md#seller-profit)).
+     ([seller profit](shardshop-product/ARCHITECTURE.md#4-seller-profit)).
    - The placement is `shard-a=US`, `shard-b=EU` and `shard-c=ASIA`
-     ([regional placement](database/ARCHITECTURE.md#sharding-and-replication)).
+     ([regional placement](database/ARCHITECTURE.md#1-sharding-and-replication)).
    - Flyway SQL has no SQL functions or triggers. Retained baselines are
      immutable, thus schema changes use fix-forward migrations
-     ([migrations](database/ARCHITECTURE.md#migrations)).
+     ([migrations](database/ARCHITECTURE.md#4-migrations)).
 7. Test Java behavior only with Maven tests. Where IO matters, use the
    `integration` profile with Testcontainers and pinned images. Use the opt-in
-   `kind` profile for checks on the lab. Do not add a Bash or Python check for
+   `cluster` profile for checks on a deployment. Do not add a Bash or Python check for
    Java behavior. A change of prose only needs a link check and a content check,
    not a build or a lab run.
 8. Use the retained lab for checks that do not disrupt it. For a fresh lab, obey
@@ -191,218 +188,19 @@ Each step name links to its CHANGELOG entry. Step 0.5 ran after step 2.4.
 
 This milestone adds the AWS deployment without a change to the local deployment:
 every earlier step must still run and pass on kind. Qualify each new tool,
-provider and service under [VERSIONS.md](VERSIONS.md) before use. Record the costs
-and the teardown commands.
+provider and service under [VERSIONS.md](VERSIONS.md) before use. Before an AWS
+run, give the cost estimate and get the approval of the user (`AGENTS.md`
+section 11). Record the costs and the teardown commands.
 
-### 7.1 Terraform AWS foundation
-
-Depends on 6.9. Status: **Done** ([record](CHANGELOG.md#step-71--terraform-aws-foundation)).
-
-- `infra/terraform/` provisions these resources: a VPC across three availability
-  zones, an EKS cluster on a Kubernetes minor version inside the CNPG support
-  matrix, workers in all zones, ECR repositories, an encrypted S3 bucket for
-  backups, and least-privilege IAM for the workloads.
-- The Terraform state is in a remote backend with a lock.
-- `terraform destroy` removes everything.
-
-### 7.2 EKS values and operators
-
-Depends on 7.1. Status: **Done** ([record](CHANGELOG.md#step-72--eks-values-and-operators)).
-
-- The same vendored CloudNativePG chart and `values.yaml` install the operator on
-  EKS.
-- `infra/helm/shardshop/eks-values.yaml` renders the shared chart and inventory
-  with gp3 storage and one instance of each shard in each zone.
-- Keep the separate order HTTP and saga Deployments, their process modes and their
-  rollout strategies.
-- The topology drills of steps 1.3 and 2.1 pass on EKS.
-
-### 7.3 Cloud durability
-
-Depends on 7.2. Status: **Done** ([record](CHANGELOG.md#step-73--cloud-durability)).
-
-- Every shard and the ledger back up to S3 with continuous WAL archiving, and a
-  point-in-time restore passes.
-- RabbitMQ runs three brokers with three-member quorum queues.
-- Runtime secrets come from AWS Secrets Manager.
-- The local profile keeps its single broker and logical dumps.
-
-### 7.4 Local and AWS architecture overview
-
-Depends on 7.3. Status: **Done** ([record](CHANGELOG.md#step-74--local-and-aws-architecture-overview)).
-
-- [`microservices/README.md`](../README.md#modules) lists ShardShop, and the
-  ShardShop README has the same navigation link back as the other modules.
-- [ARCHITECTURE.md](ARCHITECTURE.md) explains what the local deployment and the
-  AWS deployment share, what only the local deployment has, and what the AWS
-  deployment adds.
-- Mermaid diagrams show this: the high-level design first, then the low-level
-  design of the delivery, the network and placement, the backups, the secrets and
-  the broker.
-- The text and the diagrams use ASD-STE100. Use a diagram instead of long text,
-  and clarity instead of small details.
-
-### 7.5 Argo CD delivery of the database layer
-
-Depends on 7.4. Status: **Done** ([record](CHANGELOG.md#step-75--argo-cd-delivery-of-the-database-layer)).
-
-- A self-managed Argo CD 3.5 from a vendored, verified Helm chart runs on EKS.
-- Argo CD applies the [database layer](database/ARCHITECTURE.md#database-change-management)
-  from the EKS values: the CloudNativePG operator with the same vendored chart, the
-  backup plugin, the infrastructure, the migrations and the routing ConfigMap.
-- The source is an OCI artifact in ECR with a digest pin. Only the migrations use
-  the immutable chart version, because Argo CD puts the revision into the names of
-  generated hook Jobs. The runbook packages the charts from the working tree, thus
-  a run needs no Git push.
-- Implement an explicit delivery contract that replaces the Helmfile stage
-  dependencies and the Helm revision-based Job identities. Argo
-  [renders with `helm template`](https://argo-cd.readthedocs.io/en/stable/user-guide/helm/),
-  thus `.Release.Revision` cannot identify a new sync. Use
-  [sync phases and waves](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/)
-  with readiness checks.
-- Give each migration attempt an identity without collisions, and safe retention
-  and deletion policies. Never delete an active or interrupted migration to retry
-  it.
-- Verify a resync without changes, changed migrations, a failure before the
-  publication, interrupted attempts and recovery. Do not cache a completed Job, and
-  do not claim an SQL rollback.
-- The kind renders and the local Helmfile workflow do not change.
-
-### 7.6 Applications and gates through Argo CD
-
-Depends on 7.5. Status: **Done** ([record](CHANGELOG.md#step-76--applications-and-gates-through-argo-cd)).
-
-- Argo CD deploys the six application artifacts, with both order processes, from
-  ECR with digest pins. The applications layer uses the immutable chart version, as
-  the migrations do, because it has generated hook Jobs.
-- The current Maven safety and acceptance checks run in pre-sync and post-sync
-  verification Jobs with a gates image. Checks that read kind nodes get an EKS
-  variant.
-- Give each seeder attempt an identity without collisions, and verify seeder
-  reruns.
-- Prevent a selective sync that bypasses the required hooks or gates.
-
-### 7.7 Cloud acceptance
-
-Depends on 7.6. Status: **Done** ([record](CHANGELOG.md#step-77--cloud-acceptance)).
-
-- All eleven scenarios pass on EKS with evidence and costs. A check that cannot
-  run on EKS has a documented reason.
-- The local Helmfile workflow still passes step 6.9 without changes.
-
-### 7.8 Stable AWS webpage URLs and access control
-
-Depends on 4.10 and 7.7. Status: **Done** ([record](CHANGELOG.md#step-78--stable-aws-webpage-urls-and-access-control)).
-
-- Qualify Envoy Gateway as the Gateway API controller
-  ([decision](DECISIONS.md#envoy-gateway-behind-cloudfront)). The qualification
-  must prove that a `SecurityPolicy` rule lets only the Cognito operator group
-  change a workload. If it cannot, use the AWS Load Balancer Controller with
-  oauth2-proxy.
-- Deliver the `GatewayClass`, `Gateway`, `HTTPRoute` and `SecurityPolicy`
-  resources through GitOps in the EKS overlay. The AWS Load Balancer Controller
-  makes an internal NLB for the Envoy Service. Run the Envoy pods in each zone,
-  with a disruption budget and a drain at shutdown.
-- Before the AWS run, test the routes and the role rules in Maven on a local
-  Kubernetes API where possible.
-- Five webpages and the APIs that they need use the default `*.cloudfront.net`
-  hostname of one CloudFront distribution. The webpages are the product and order
-  pages and the three
-  [workload-control pages](shardshop-core/workload-control/README.md#pages-and-api).
-  CloudFront supplies the certificate and the HTTP-to-HTTPS redirect. There is no
-  domain, Route 53 zone or ACM certificate
-  ([decision](DECISIONS.md#cloudfront-default-hostname)).
-- A CloudFront VPC origin connects the distribution to the internal load
-  balancer. If no trusted certificate can match the load balancer name, the origin
-  connection uses HTTP on this private path. Document the result.
-- Terraform owns the distribution, the VPC origin and a Cognito user pool with a
-  group for each role. The AWS Load Balancer Controller creates the NLB, thus
-  Terraform applies the origin after Argo CD creates the `Gateway`. The user attaches the IAM
-  permissions for these services in
-  [`operator-policy-webpages.json`](infra/terraform/operator-policy-webpages.json).
-- The access is public through CloudFront, with a login. Enforce authentication
-  and role-based authorization on the webpages and the APIs. A viewer role can
-  read all five pages. Only an operator role can change a workload: set the rate,
-  pause, resume and start a seeder run. A cross-site request cannot change a
-  workload.
-- Expose only the intended routes and methods: `GET` on the product and order
-  pages and APIs, and the methods of the
-  [control contract](shardshop-core/workload-control/src/main/resources/contracts/openapi.yaml)
-  on the workload pages and APIs. Only CloudFront can reach the load balancer.
-  Other APIs, the databases and the brokers stay internal.
-- The acceptance proves valid HTTPS, the redirect, and the rejection of
-  unauthenticated and unauthorized requests. A viewer cannot change a workload.
-  No direct backend access bypasses these controls.
-- A copied URL such as `/products/?region=EU&page=3` shows the same view on a
-  different authorized device, also after a login. The hostname stays after a pod
-  replacement and an application redeployment, without port forwarding. A new
-  AWS deployment can get a new hostname.
-- Document the URLs, the access configuration, the costs and the teardown order:
-  delete the `Gateway` before `terraform destroy`. Step 6.9 still passes locally
-  without changes.
-
-### 7.9 Sustained 30 new orders/s on EKS
-
-Depends on 7.8. Status: **Done** ([record](CHANGELOG.md#step-79--sustained-30-new-orderss-on-eks)).
-
-On 2026-11-04, the order producer on EKS stayed at 24.9 new orders/s with the
-target rate 30/s. The kind lab reached 29.35/s at this target
-([step 6.6](CHANGELOG.md#step-66--sustained-30-new-orderss)). The control page
-showed these values:
-
-| Value | EKS, target 30/s | kind, target 30/s |
+| Step | Depends on | Status |
 |---|---|---|
-| Achieved rate | 24.9/s | 29.35/s |
-| Non-terminal backlog | 98 of the bound 100 | Below 100 |
-| Write latency p95 | 77.958 ms | 85.702 ms |
-| Saga latency, mean and p95 | 3,986.915 ms and 4,421.462 ms | p95 2,228.357 ms |
-| Backend errors | 4 of 79,081 requests | 0 |
-
-The backlog bound limits the rate to the bound divided by the saga latency:
-100 / 3.99 s = approximately 25/s. Thus the slow saga, not the writes, keeps the
-rate below the target.
-
-- Find the cause with measurements, not with tuning by trial. Measure on EKS where
-  the saga time goes: the outbox CDC relay, the broker with three-member quorum
-  queues in three zones, the ledger consumer, the order result consumer, and the
-  status polling of the producer (2 observer slots for up to 100 open orders).
-  Also examine the 4 backend errors, the CPU of the workers (`t4g` instances can
-  use burst credits) and the cross-zone database and broker traffic.
-- Compare each part with the same measurement on kind, so that the result shows
-  which part is slower on EKS.
-- Fix the cause with the smallest change. Ask the user before a change of a
-  producer limit (the backlog bound or the observer slots), a broker or database
-  setting, or the instance type. Do not weaken the saga or the order invariants.
-- The acceptance on EKS: at the target 30/s for at least 90 seconds, the producer
-  sends at least 29.35 new orders/s with no error, no cancellation and no
-  backpressure. Write p95 stays below 100 ms, and the backlogs stay below their
-  bounds and drain. Step 6.6 still passes on kind.
-- Record the measurements, the cause, the fix and the costs. Before the AWS run,
-  give the cost estimate and get the approval of the user.
-
-### 7.10 Test packages by deployment
-
-Depends on 7.9. Status: **Done** ([record](CHANGELOG.md#step-710--test-packages-by-deployment)).
-
-The package `testing.kind` holds the checks of both deployments, the offline chart
-tests and helpers of the Testcontainers suite. Its names say "kind", also for the
-checks that run on EKS.
-
-- Group the classes of `shardshop-testing` by where they run: `browser`, `infra`
-  (offline chart and script tests), `support` (helpers of more than one suite),
-  `integration` (Testcontainers), `cluster` with `gate`, `drill`, `recovery` and
-  `capacity` (both deployments), `kind` (local deployment only) and `aws` (AWS
-  deployment only).
-- Shared classes do not depend on `kind` or `aws`. `integration` and `cluster`
-  depend only on `support`.
-- Rename the contract of the cluster checks: `ClusterIT` to `ClusterIT`, the Maven
-  profile `kind` to `cluster`, the properties `shardshop.cluster.*` to
-  `shardshop.cluster.*`, the folder `cluster-features` to `cluster-features`, and the
-  `kind-*` tags of the checks that run on both deployments to `cluster-*`. The checks
-  that run only on kind keep `kind-*`, and the EKS checks keep `eks-*`.
-- No check changes its behavior. The scripts, the Helmfile, the charts, the gates
-  image and the runbooks use the new names. The CHANGELOG history keeps the old names.
-- The acceptance: the module compiles; the browser, infra and unit tests and the
-  complete Testcontainers suite pass; on a disposable lab `cluster-create.sh`,
-  `up.sh`, the default cluster suite and one drill pass; the launcher of the gates
-  image finds `ClusterIT`. No AWS run.
+| [7.1 Terraform AWS foundation](CHANGELOG.md#step-71--terraform-aws-foundation) | 6.9 | Done |
+| [7.2 EKS values and operators](CHANGELOG.md#step-72--eks-values-and-operators) | 7.1 | Done |
+| [7.3 Cloud durability](CHANGELOG.md#step-73--cloud-durability) | 7.2 | Done |
+| [7.4 Local and AWS architecture overview](CHANGELOG.md#step-74--local-and-aws-architecture-overview) | 7.3 | Done |
+| [7.5 Argo CD delivery of the database layer](CHANGELOG.md#step-75--argo-cd-delivery-of-the-database-layer) | 7.4 | Done |
+| [7.6 Applications and gates through Argo CD](CHANGELOG.md#step-76--applications-and-gates-through-argo-cd) | 7.5 | Done |
+| [7.7 Cloud acceptance](CHANGELOG.md#step-77--cloud-acceptance) | 7.6 | Done |
+| [7.8 Stable AWS webpage URLs and access control](CHANGELOG.md#step-78--stable-aws-webpage-urls-and-access-control) | 4.10, 7.7 | Done |
+| [7.9 Sustained 30 new orders/s on EKS](CHANGELOG.md#step-79--sustained-30-new-orderss-on-eks) | 7.8 | Done |
+| [7.10 Test packages by deployment](CHANGELOG.md#step-710--test-packages-by-deployment) | 7.9 | Done |

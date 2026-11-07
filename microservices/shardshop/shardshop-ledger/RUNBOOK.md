@@ -2,7 +2,16 @@
 
 [ShardShop](../README.md) › [Ledger](README.md) › **Runbook** · [Architecture](ARCHITECTURE.md)
 
-## Command consumer
+## Contents
+1. [Command consumer](#1-command-consumer)
+2. [Result publisher](#2-result-publisher)
+3. [Configuration](#3-configuration)
+4. [Transport cleanup](#4-transport-cleanup)
+5. [Metrics](#5-metrics)
+6. [Tests](#6-tests)
+
+## 1. Command consumer
+<sub>[Back to Contents](#contents)</sub>
 
 Ledger consumes `ledger.record-order` with manual acknowledgement and one
 prefetched delivery per process. It validates the complete `RecordOrder` schema,
@@ -36,7 +45,8 @@ is still detected after inbox cleanup. V2 backfills existing bindings from their
 inboxes and deliberately stops if that original payload is unavailable; reconcile
 such retained data before retrying the migration. V1 remains unchanged.
 
-## Result publisher
+## 2. Result publisher
+<sub>[Back to Contents](#contents)</sub>
 
 The ledger polls committed pending rows in `ledger_outbox`, joining
 `ledger_result_ids` for the saved result envelope. It publishes that exact JSON
@@ -62,7 +72,8 @@ opens a new one without a failed attempt. Each new connection logs one INFO line
 pending results. The retry log includes a bounded cause without payloads. A timeout cause names its
 phase: the connection, the publication or its confirm.
 
-## Configuration
+## 3. Configuration
+<sub>[Back to Contents](#contents)</sub>
 
 Configure the dedicated ledger database and broker credentials:
 
@@ -105,7 +116,8 @@ can take one additional timeout. Failed streams are discarded before retry.
 Multiple ledger processes may publish duplicates, while the conditional mark
 preserves newer replay attempts.
 
-## Transport cleanup
+## 4. Transport cleanup
+<sub>[Back to Contents](#contents)</sub>
 
 Apply ledger migrations through V3 before enabling cleanup. V3 adds retention
 indexes without changing rows or runtime grants. Normal startup runs cleanup in
@@ -136,12 +148,13 @@ FROM ledger.ledger_outbox
 WHERE published_at < statement_timestamp() - INTERVAL '24 hours';
 ```
 
-The [retention contract](../database/ARCHITECTURE.md#retention) lists the permanent
+The [retention contract](../database/ARCHITECTURE.md#5-retention) lists the permanent
 records. Verify cleanup, replay and concurrent rearm with the tags
 `@transport-cleanup or @transport-cleanup-migration or @ledger-publisher` in the
-command of the [Tests](#tests) section.
+command of the [Tests](#6-tests) section.
 
-## Metrics
+## 5. Metrics
+<sub>[Back to Contents](#contents)</sub>
 
 The application exposes Prometheus text at `/q/metrics`. Ledger-owned gauges
 have no command, order, message, or other high-cardinality labels:
@@ -164,7 +177,8 @@ read in-memory Agroal state and remain available during a database outage.
 
 `--check-startup` does not start the sampler or query the database.
 
-## Tests
+## 6. Tests
+<sub>[Back to Contents](#contents)</sub>
 
 Build the ledger and the order, then run the disposable PostgreSQL and RabbitMQ
 acceptance:

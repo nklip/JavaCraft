@@ -6,7 +6,15 @@ This runbook describes the shard clusters, the ledger database, the migration
 workflow and the roles and tables of each schema. The [README](README.md) shows how
 to monitor them.
 
-## Shard clusters
+## Contents
+1. [Shard clusters](#1-shard-clusters)
+2. [Separate ledger database](#2-separate-ledger-database)
+3. [Database schemas and migrations](#3-database-schemas-and-migrations)
+4. [Ordering schema and catalog access](#4-ordering-schema-and-catalog-access)
+5. [Ledger schema and replay records](#5-ledger-schema-and-replay-records)
+
+## 1. Shard clusters
+<sub>[Back to Contents](#contents)</sub>
 
 Each shard runs PostgreSQL with one primary and two standbys, each on a separate
 worker with its own 2 GiB PVC. The nine pods share three workers; anti-affinity is
@@ -41,7 +49,8 @@ retain the WAL each standby needs, so a large extra floor only fills the 2 GiB v
 These are not hard disk-usage caps: monitor free space and lag, and recover an
 invalidated slot explicitly after an outage that exceeds the retained WAL budget.
 
-## Separate ledger database
+## 2. Separate ledger database
+<sub>[Back to Contents](#contents)</sub>
 
 [`clusters.yaml`](../infra/helm/shardshop/templates/clusters.yaml) adds a separate
 CloudNativePG cluster with one PostgreSQL instance, separate from the nine shard
@@ -57,7 +66,7 @@ bootstrap owner `ledger_owner`; application clients use the separate `ledger-app
 Secret. Secret values are never committed or printed. TLS clients
 can mount only `ca.crt` from `ledger-db-ca` and use `sslmode=verify-full`. The bootstrap owner
 owns only the database; `ledger_schema_owner` owns schema `ledger`, its objects,
-and its Flyway history. The [ledger schema](#ledger-schema-and-replay-records)
+and its Flyway history. The [ledger schema](#5-ledger-schema-and-replay-records)
 section describes its migrations and runtime grants.
 No application is wired to the bootstrap owner. Like the shards, the cluster
 revokes `TEMPORARY` and access to schema `public` from `PUBLIC` when it is created.
@@ -72,10 +81,11 @@ describes the coordinated backup and isolated restore.
 
 `cluster-destroy.sh` removes the whole lab, including its storage and kind kubeconfig; kind storage is disposable and is not a backup.
 
-## Database schemas and migrations
+## 3. Database schemas and migrations
+<sub>[Back to Contents](#contents)</sub>
 
 No Maven module owns a schema: databases, roles and migrations belong to the
-database layer in [ARCHITECTURE.md](ARCHITECTURE.md#database-change-management).
+database layer in [ARCHITECTURE.md](ARCHITECTURE.md#2-database-change-management).
 Keep all Flyway SQL simple and declarative: tables, constraints, indexes, grants,
 and data changes only. Do not create SQL functions or triggers; use Java for
 business logic and scripts for deployment checks.
@@ -192,7 +202,7 @@ UIDs would need to replace.
 
 ### Catalog roles and tables
 
-[ARCHITECTURE](ARCHITECTURE.md#roles) defines the catalog roles and their
+[ARCHITECTURE](ARCHITECTURE.md#3-roles) defines the catalog roles and their
 memberships. `cluster-create.sh` generates catalog login passwords into the Secrets
 `catalog-migrator` and `product-app`, shared by all three shards; neither is
 committed or printed. The `order_app` credentials use the separate `order-app`
@@ -243,7 +253,8 @@ rows consistent.
 
 The product application does not depend on Flyway, and its startup never migrates.
 
-## Ordering schema and catalog access
+## 4. Ordering schema and catalog access
+<sub>[Back to Contents](#contents)</sub>
 
 [`database/shard/ordering/`](shard/ordering) has its own V1, repeatable
 grants and `flyway.toml`. It uses `ordering.flyway_schema_history` and runs as
@@ -273,7 +284,7 @@ and cannot update sellers.
 Run `cluster-create.sh` before `up.sh`, so the operator Secret and roles exist before
 Flyway reapplies `R__ordering_grants.sql`. The repeatable grants revoke stale table
 and column permissions before they grant the narrow reset permissions. Use the checked-in [reset operation](operations/reset-reconciliation.sql)
-through native `psql`; the [order runbook](../shardshop-order/RUNBOOK.md#manual-reconciliation-reset)
+through native `psql`; the [order runbook](../shardshop-order/RUNBOOK.md#6-manual-reconciliation-reset)
 documents selection, verified TLS, output and failure handling. The SQL operation
 is outside the Flyway directories and never runs during deployment.
 
@@ -309,7 +320,7 @@ transitions, envelope validation and stock reserve/release; cleanup is permitted
 only after the retention and CDC checkpoint gates.
 
 Ordering V8 adds receipt-time and confirmed-publication retention indexes. The
-[order cleanup worker](../shardshop-order/RUNBOOK.md#transport-cleanup) enforces the
+[order cleanup worker](../shardshop-order/RUNBOOK.md#7-transport-cleanup) enforces the
 window and durable CDC checkpoint using the existing application grants.
 
 `orphan_results` and `conflicting_results` retain envelopes, correlation IDs,
@@ -333,7 +344,8 @@ the [Debezium JDBC offset-store column contract](https://debezium.io/documentati
 The Debezium relay sets `offset.storage.jdbc.table.name` to that qualified name and
 disables publication auto-creation.
 
-## Ledger schema and replay records
+## 5. Ledger schema and replay records
+<sub>[Back to Contents](#contents)</sub>
 
 [`database/ledger/ledger/`](ledger/ledger) contains `V1__ledger.sql`,
 the migration `V2__permanent_command_envelopes.sql`, the complete
@@ -381,13 +393,13 @@ canonical received payload, preserving different conflicts sharing an ID.
 The publisher joins `ledger_outbox.message_id` to
 `ledger_result_ids.result_message_id` to load the saved envelope. A deferred
 foreign key requires the outbox attempt to match the permanent binding at commit.
-[ARCHITECTURE](../shardshop-order/ARCHITECTURE.md#reconciliation-and-replayed-outcomes) defines how
+[ARCHITECTURE](../shardshop-order/ARCHITECTURE.md#3-reconciliation-and-replayed-outcomes) defines how
 Java replays a duplicate command and confirms each publication attempt.
 
 The SQL constraints and grants supply storage boundaries. Java implements command
 validation, decision/entry atomicity, conflict detection and replay transactions.
 The result publisher confirms each publication and marks only its matching
-attempt. The [ledger cleanup worker](../shardshop-ledger/RUNBOOK.md#transport-cleanup)
+attempt. The [ledger cleanup worker](../shardshop-ledger/RUNBOOK.md#4-transport-cleanup)
 implements cleanup after confirmed publication and retention. Ledger V3 adds its
 receipt-time and confirmed-publication indexes.
 A DELETE grant does not enforce these cleanup gates. The ledger application does

@@ -27,7 +27,7 @@ to `shardshop-ledger`, which records it in a separate ledger database as part of
 RabbitMQ is the message transport. Debezium reads the PostgreSQL write-ahead log (WAL), not RabbitMQ.
 See [Debezium Server's RabbitMQ sink](https://debezium.io/documentation/reference/stable/operations/debezium-server.html#debezium-server-rabbitmq-stream-sink-configuration).
 This design embeds Debezium Engine in the order relay. Thus the relay keeps the publication bookkeeping and the
-[mandatory-routing protocol](../shardshop-order/ARCHITECTURE.md#cdc-from-shard-writes-to-the-ledger).
+[mandatory-routing protocol](../shardshop-order/ARCHITECTURE.md#5-cdc-from-shard-writes-to-the-ledger).
 Kafka and a separate Debezium Server deployment are not necessary.
 
 There are six top-level Maven modules and twelve Java modules: six deployable applications, five library
@@ -47,7 +47,7 @@ an application API. The ledger has a consumer process because the ledger databas
 messages.
 
 No module owns a database schema or ships migrations. Schemas, roles and migrations belong to the
-[database layer](../database/ARCHITECTURE.md#database-change-management), and each service connects with its
+[database layer](../database/ARCHITECTURE.md#2-database-change-management), and each service connects with its
 own login role. PostgreSQL and RabbitMQ are supporting infrastructure.
 
 ### Dependency rules

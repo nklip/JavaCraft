@@ -30,7 +30,7 @@ policy. The [runbook](RUNBOOK.md) has the procedures, and the
 <sub>[Back to Contents](#contents)</sub>
 
 The runbooks describe the [cluster](RUNBOOK.md#1-kind-topology), the
-[storage and database sizes](../database/RUNBOOK.md#shard-clusters) and the
+[storage and database sizes](../database/RUNBOOK.md#1-shard-clusters) and the
 [generator registry](../shardshop-core/idgen/README.md#generator-allocation-at-jvm-startup).
 These rules apply to each change:
 
@@ -111,7 +111,7 @@ community-only policy of [VERSIONS.md](../VERSIONS.md).
 | Helmfile | The order of the Helm releases and their Maven gate hooks |
 | Helm | The infrastructure, routing and application resources, and the Flyway and seeder hook Jobs. It also renders the DNS probes and the bootstrap identity manifests |
 | Kubernetes and CloudNativePG | The reconciliation of the resources |
-| Maven: the opt-in `kind` scenarios | The invariants and the readiness checks, with the same invocation snapshot |
+| Maven: the opt-in `cluster` scenarios | The invariants and the readiness checks, with the same invocation snapshot |
 | Terraform and Argo CD, AWS deployment only | The AWS foundation, and on EKS the order of the layers and the gate hook Jobs ([AWS foundation](terraform/README.md)) |
 
 These resources stay outside the Helm releases: the namespace, the credential Secrets,
@@ -122,7 +122,7 @@ The manual saga reconciliation uses `psql` and SQL that the database owns, with 
 restricted `ordering_operator` login. `cluster-create.sh` creates its Secret when the
 Secret is missing, CNPG reconciles its roles, and the Flyway ordering stream grants
 its column permissions. No application gets this Secret, and no lifecycle command
-does a reset. See the [operator procedure](../shardshop-order/RUNBOOK.md#manual-reconciliation-reset).
+does a reset. See the [operator procedure](../shardshop-order/RUNBOOK.md#6-manual-reconciliation-reset).
 
 ## 4. Lab lifecycle
 <sub>[Back to Contents](#contents)</sub>
@@ -290,17 +290,12 @@ these effects:
 - The lifecycle uses no extra wrappers, embedded Python, downloaded tool binaries or
   Java lifecycle controller.
 
-### Helm ownership and adoption
+### Helm ownership
 
-- Retained resources from the earlier apply workflow need an explicit one-time
-  transfer of ownership, after safety checks and an inspection of each resource and
-  its UID. This includes the existing immutable SQL ConfigMaps that agree with the
-  current snapshot. The metadata-only patches test the UID and the `resourceVersion`,
-  and keep the specifications and the data.
 - A normal startup never adopts a different Helm release. The namespace, the
-  credentials and the allocator state are never transferred.
-- The ShardShop releases use the three-way merge of Helm for the resources that the
-  earlier workflow applied. `cnpg` keeps server-side updates.
+  credentials and the allocator state stay outside the releases.
+- The ShardShop releases use the client-side three-way merge of Helm. `cnpg` keeps
+  server-side updates.
 - Helm owns the hook completion and the bounded rollout waits. Maven keeps the
   topology, allocator, readiness and current-generation Publication checks.
 - The client-side three-way merge of Helm keeps an environment variable or a node
@@ -309,7 +304,7 @@ these effects:
 
 ### Verification gates and drills
 
-The opt-in Maven `kind` scenarios check the invariants and the readiness with the
+The opt-in Maven `cluster` scenarios check the invariants and the readiness with the
 same invocation snapshot. Each guard runs before the change that it protects. The
 readiness checks observe:
 
@@ -325,7 +320,7 @@ reconciliation with a Java controller.
 
 | Profile | Selection | Checks |
 |---|---|---|
-| `cluster-deployment` | Default of the `kind` profile through `shardshop.cluster.tags` | Deployed routing, independent replication and persistent-volume identity (`cluster-topology`), product workload (`cluster-workload`), saga effects (`cluster-saga`) and recovery and pressure metrics (`cluster-observability`) |
+| `cluster-deployment` | Default of the `cluster` profile through `shardshop.cluster.tags` | Deployed routing, independent replication and persistent-volume identity (`cluster-topology`), product workload (`cluster-workload`), saga effects (`cluster-saga`) and recovery and pressure metrics (`cluster-observability`) |
 | `cluster-database-drill` | Explicit `cluster-drill` | Standby replacement, quorum availability, blocked commits and WAL retention on the first inventory shard, or on `shardshop.cluster.drillShard` |
 | `cluster-workload-drill` | Explicit `cluster-drill` | Repeated temporary seeder Jobs, identical saved IDs and the replacement of one product pod |
 | `cluster-saga-drill` | Explicit `cluster-drill` | Duplicate delivery, replay after a policy change, two orders for the same stock, saga replacement between workers, and continuous writes while the HTTP pods change, with unchanged saga and CDC ownership |
@@ -466,7 +461,7 @@ outbox relay of the ledger polls its own database.
   `RollingUpdate` with two replicas. The saga uses one replica and `Recreate`. Only the
   saga owns the stock and profit workers, the CDC relay and the result consumer. Each
   JVM reserves its own generator slot. The
-  [order architecture](../shardshop-order/ARCHITECTURE.md#processes) describes the
+  [order architecture](../shardshop-order/ARCHITECTURE.md#1-processes) describes the
   split.
 - **Stock worker.** The saga runs one stock scan at a time for each buyer shard, and
   at most three shard scans at the same time by default. The sagas in the batch of one
@@ -475,7 +470,8 @@ outbox relay of the ledger polls its own database.
 - **Profit worker.** In the lab, the profit worker polls each 100 ms with at most 32
   intents for each buyer shard. A separate bounded pool permits three buyer-shard
   scans at the same time by default, with one scan at a time for each shard. A scan
-  posts its intents in two groups at the same time, one group for each seller.
+  posts its intents in two groups at the same time, and the intents of one seller
+  stay in one group.
   `shardshop.order.profit.shard-concurrency=1` gives
   back the original serial global scan. Without the lab values, the worker polls each
   250 ms with eight intents. Stock and profit share the database pools of each shard.
@@ -713,7 +709,7 @@ old parked deliveries. A retry exhaustion never cancels an order.
   their capacity. Never change to drop-head or classic dead-lettering. See the
   [quorum retry and dead-letter semantics](https://www.rabbitmq.com/docs/quorum-queues).
 - **Parked messages.** Never publish parked messages again. The
-  [reconciliation contract](../shardshop-order/ARCHITECTURE.md#reconciliation-and-replayed-outcomes)
+  [reconciliation contract](../shardshop-order/ARCHITECTURE.md#3-reconciliation-and-replayed-outcomes)
   creates their commands and results again from the saga state and the permanent
   ledger decisions. After the last automatic attempt, only a manual reconciliation
   reset or a restore continues the saga.
@@ -738,7 +734,7 @@ old parked deliveries. A retry exhaustion never cancels an order.
   the age of pending sagas and the result conflicts. A broker outage can keep WAL
   as well as outbox rows, thus set disk and lag alerts and a finite WAL retention
   budget. If this budget invalidates a slot, use the
-  [explicit CDC recovery procedure](../shardshop-order/ARCHITECTURE.md#cdc-from-shard-writes-to-the-ledger).
+  [explicit CDC recovery procedure](../shardshop-order/ARCHITECTURE.md#5-cdc-from-shard-writes-to-the-ledger).
   Never skip the missing changes.
 - **Bounds.** Use a bounded consumer prefetch and database timeouts. The queue
   delivery limit bounds the attempts of one transport message. The persisted limit of

@@ -21,7 +21,7 @@ The producer is a continuous HTTP/1.1 workload. See the
 ### Currency mix
 
 The seeder creates country-aware sellers and products in US, EU and ASIA. The
-[shared currency policy](../../shardshop-product/ARCHITECTURE.md#regional-currency-policy) governs product
+[shared currency policy](../../shardshop-product/ARCHITECTURE.md#6-regional-currency-policy) governs product
 prices, and the location of the buyer never limits currency. The normal ledger configuration accepts all seven
 supported currencies.
 
@@ -180,13 +180,11 @@ All durations must be positive.
 
 ### Rate limit
 
-The operating cap of 30 starts/s follows the [lab measurements](../../CHANGELOG.md#step-414--concurrent-order-writes-and-a-separate-saga-process). Target 10 achieved
-9.78 new orders/s with a final rolling write p95 of 91.42 ms. Target 30 achieved 29.45/s with a write p95 of
-93.73 ms and bounded order, outbox and profit backlogs. These short retained-stock runs include stock
-cancellations. They are not a guarantee for every host or an indefinitely stocked catalog. The default stays
-0.5/s. Four submission slots were sufficient for that rate. The concurrency limit of 12 matches the aggregate
-database pool budget of one HTTP JVM: four connections per shard. Additional HTTP requests can wait up to one
-second for a connection before `503`. The pool does not reject every thirteenth concurrent request at once.
+The operating cap of 30 starts/s matches the qualified operating point of 30 orders/s in the
+[performance summary](../../ARCHITECTURE.md#4-performance). It is not a guarantee for every host or for a catalog
+with finite stock. The default stays 0.5/s, and four submission slots are sufficient for it. The concurrency
+limit of 12 matches the aggregate database pool budget of one HTTP JVM: four connections per shard. Additional
+HTTP requests can wait up to one second for a connection before `503`. The pool does not reject every thirteenth concurrent request at once.
 
 ### Stock use
 

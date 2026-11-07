@@ -101,7 +101,7 @@ arbitrary large IDs, including values above 2^53, and do not derive IDs. A rejec
 the status, and exception messages contain no response payload. Callers can distinguish a missing resource, a
 rejected request and a retryable service failure, and the workload owns the retry policy.
 
-After a change to common, run the [six-application audit](../../RUNBOOK.md#dependency-and-test-validation).
+After a change to common, run the [six-application audit](../../RUNBOOK.md#3-dependency-and-test-validation).
 `DatasetSourcesTest` checks the retained name pools, the name and email correspondence of the buyers, the
 regional coverage and the retained source hashes. `Contracts.feature` of `shardshop-testing` checks that all 151
 seller, 201 product and 3000 buyer creation payloads match the product and order contracts

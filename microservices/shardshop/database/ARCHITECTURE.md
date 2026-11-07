@@ -8,7 +8,17 @@ with its own login role.
 
 - **Runs as:** three regional CloudNativePG clusters with three instances each,
   and one separate single-instance ledger cluster.
-## Sharding and replication
+## Contents
+1. [Sharding and replication](#1-sharding-and-replication)
+2. [Database change management](#2-database-change-management)
+3. [Roles](#3-roles)
+4. [Migrations](#4-migrations)
+5. [Retention](#5-retention)
+6. [Consistency and failure boundaries](#6-consistency-and-failure-boundaries)
+7. [Replication and backup policy](#7-replication-and-backup-policy)
+
+## 1. Sharding and replication
+<sub>[Back to Contents](#contents)</sub>
 
 Product and order share one **logical database deployment**, implemented as three
 independent PostgreSQL shards. They connect to the same `shardshop` database on
@@ -76,7 +86,8 @@ an operator decision. Primary and replica roles can change during failover. See
 [CNPG synchronous replication](https://cloudnative-pg.io/docs/1.30/replication/)
 and [quorum-based failover](https://cloudnative-pg.io/docs/1.30/failover/).
 
-## Database change management
+## 2. Database change management
+<sub>[Back to Contents](#contents)</sub>
 
 Changes are either declarative Kubernetes resources or versioned SQL migrations:
 nothing is applied by hand, and no step needs a superuser session. The same
@@ -105,7 +116,7 @@ pinned upstream Flyway image, not its Temurin runtime. The image and Jobs select
 UID/GID 10001. `up.sh` builds and scans the image before cluster mutation, then
 loads it into the prepared kind cluster and verifies its manifest digest on every
 node before SQL or a new application release, as the
-[migration runbook](RUNBOOK.md#database-schemas-and-migrations) describes.
+[migration runbook](RUNBOOK.md#3-database-schemas-and-migrations) describes.
 This is the local ARM64 delivery path; a future cloud deployment must publish and
 qualify the same final image for its target architecture.
 
@@ -197,11 +208,12 @@ database/
 | ledger | `V2__permanent_command_envelopes.sql` | Permanent `command_envelope` on `ledger_result_ids` |
 | ledger | `V3__transport_cleanup_indexes.sql` | Retention indexes for inbox receipt time and confirmed outbox publication time |
 
-## Roles
+## 3. Roles
+<sub>[Back to Contents](#contents)</sub>
 
 Object privileges belong to group roles that cannot log in; login roles inherit
 those grants. The CDC login additionally has the powerful `REPLICATION` role
-attribute described in the [CDC contract](../shardshop-order/ARCHITECTURE.md#cdc-from-shard-writes-to-the-ledger).
+attribute described in the [CDC contract](../shardshop-order/ARCHITECTURE.md#5-cdc-from-shard-writes-to-the-ledger).
 This is PostgreSQL's role-membership model: passwords rotate without touching
 ownership, and adding a service means one login role and its memberships, with no
 SQL. For the catalog:
@@ -225,7 +237,7 @@ payload, catalog, ledger, DDL, owner or replication privileges. The
 `ordering-operator` Secret belongs only to human operations and is never mounted
 in an application. The checked-in [reset SQL](operations/reset-reconciliation.sql)
 uses the order advisory lock followed by the saga row lock and changes only a
-selected pending pair; see the [procedure](../shardshop-order/RUNBOOK.md#manual-reconciliation-reset).
+selected pending pair; see the [procedure](../shardshop-order/RUNBOOK.md#6-manual-reconciliation-reset).
 These are column privileges, not row policies: the protected reset operation owns
 the pending-state check. The ledger uses
 non-login `ledger_schema_owner` and `ledger_writer` groups. `ledger_migrator` has
@@ -254,7 +266,8 @@ the database.
 - The CNPG bootstrap owner (`shardshop_owner`, `ledger_owner`) owns only its
   database. Each schema gets its own owner through the `Database` resource.
 
-## Migrations
+## 4. Migrations
+<sub>[Back to Contents](#contents)</sub>
 
 - Keep all Flyway SQL simple and declarative: tables, constraints, indexes,
   grants, and data changes only. Do not create SQL functions or triggers; business
@@ -278,7 +291,8 @@ the database.
   service, pod, and endpoint; account for both product pods when budgeting
   PostgreSQL connections.
 
-## Retention
+## 5. Retention
+<sub>[Back to Contents](#contents)</sub>
 
 Retain `ledger.ledger_operations` **permanently**, including rejected decisions,
 logical IDs, request fingerprint, immutable snapshot, and result data sufficient
@@ -324,10 +338,11 @@ the command stream.
 Both workers recheck publication and age in the DELETE. Ledger also rechecks the
 selected publication attempt and timestamp, preserving results rearmed by a
 concurrent duplicate command. Configuration, failure logs and inspection belong
-to the [order](../shardshop-order/RUNBOOK.md#transport-cleanup) and
-[ledger](../shardshop-ledger/RUNBOOK.md#transport-cleanup) runbooks.
+to the [order](../shardshop-order/RUNBOOK.md#7-transport-cleanup) and
+[ledger](../shardshop-ledger/RUNBOOK.md#4-transport-cleanup) runbooks.
 
-## Consistency and failure boundaries
+## 6. Consistency and failure boundaries
+<sub>[Back to Contents](#contents)</sub>
 
 Sharding distributes data; replication provides two standbys for each shard. The
 product service's two pods scale HTTP handling independently of these database
@@ -358,11 +373,12 @@ The optional physical asynchronous-loss demonstration is not qualified. See
 [scenarios 3, 6 and 8](../shardshop-testing/ARCHITECTURE.md#scenario-3) for the
 drills that cover failover, backup, restore and audit.
 
-## Replication and backup policy
+## 7. Replication and backup policy
+<sub>[Back to Contents](#contents)</sub>
 
-The [replication contract](#sharding-and-replication) defines quorum synchronous
+The [replication contract](#1-sharding-and-replication) defines quorum synchronous
 replication and logical-slot synchronization. The
-[order recovery design](../shardshop-order/ARCHITECTURE.md#orders-lost-by-asynchronous-failover-or-restore)
+[order recovery design](../shardshop-order/ARCHITECTURE.md#4-orders-lost-by-asynchronous-failover-or-restore)
 defines the audit for lost orders. These rules apply to backup and restore:
 
 - Dump the three shards and the ledger database to storage outside kind. Restore

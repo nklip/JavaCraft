@@ -20,7 +20,7 @@ here when multiple modules need them.
 | IDs and hashing | `IdParser`, `Sha256` | `IdParser` validates canonical positive IDs from text or a JSON string token. `Sha256.unsignedDigest` hashes unchanged UTF-8 text as an unsigned big-endian integer. |
 | Strict JSON | `StrictJson`, `JsonFields`, `JsonResponses`, `JsonRequests` | One strict reader of request and response bodies: strict UTF-8, unique members and no trailing tokens. `JsonRequests` and `JsonFields.nonblankText` decode request bodies strictly. |
 | HTTP client | `JsonHttpClient`, `HttpResponseException` | The bounded JSON HTTP client. A rejected status carries an optional bounded error-code token, never a response body. |
-| Currency | `CurrencyPolicy` | The seller-country currency policy and exact `NUMERIC(19,2)` money rules ([policy](../../shardshop-product/ARCHITECTURE.md#regional-currency-policy)). |
+| Currency | `CurrencyPolicy` | The seller-country currency policy and exact `NUMERIC(19,2)` money rules ([policy](../../shardshop-product/ARCHITECTURE.md#6-regional-currency-policy)). |
 | JDBC (`common.jdbc`) | `DatabasePhases`, `Endpoint`, `JdbcUrls` | The bounded transaction engine, database endpoints, and the TLS and driver defaults. |
 | RabbitMQ (`common.amqp`) | `ConfirmedPublisher`, `QueueConsumer`, `BrokerSettings` | The publisher and consumer of order and ledger. |
 | Logging | `Failures` | Log text for failures of background workers, such as the order CDC readers and the ledger consumer. |
@@ -94,5 +94,5 @@ Run the tests of this library alone:
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-core/common clean verify
 ```
 
-The [six-application audit](../../RUNBOOK.md#dependency-and-test-validation) runs all affected application
+The [six-application audit](../../RUNBOOK.md#3-dependency-and-test-validation) runs all affected application
 checks without infrastructure, including dependency and SBOM reports and packaged routing tests.

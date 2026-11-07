@@ -14,7 +14,16 @@ database. Order never writes directly to the ledger database.
   writes stock reservations, product stock and seller profit in `catalog` on the
   seller shards.
 
-## Processes
+## Contents
+1. [Processes](#1-processes)
+2. [Order creation and ledger saga](#2-order-creation-and-ledger-saga)
+3. [Reconciliation and replayed outcomes](#3-reconciliation-and-replayed-outcomes)
+4. [Orders lost by asynchronous failover or restore](#4-orders-lost-by-asynchronous-failover-or-restore)
+5. [CDC from shard writes to the ledger](#5-cdc-from-shard-writes-to-the-ledger)
+6. [Regional order page](#6-regional-order-page)
+
+## 1. Processes
+<sub>[Back to Contents](#contents)</sub>
 
 | Process | Deployment | Replicas | Strategy | Runs |
 |---|---|---:|---|---|
@@ -29,7 +38,8 @@ replica, because each shard's replication slot has one active reader. The
 [runtime topology](../infra/ARCHITECTURE.md#5-runtime-topology) owns the deployment
 details.
 
-## Order creation and ledger saga
+## 2. Order creation and ledger saga
+<sub>[Back to Contents](#contents)</sub>
 
 Buyers are created through order from workload-owned person definitions containing
 first name, surname, email, phone, postal address and region.
@@ -45,7 +55,7 @@ the order request. Later buyer/order calls route by returned buyer ID.
 | `POST /api/v1/buyers/{buyerId}/order-allocations` | Issue an order ID for a run name and request ordinal | See [allocations](#service-issued-order-allocations) |
 | `PUT /api/v1/buyers/{buyerId}/orders/{orderId}` | Place an order with a stable order-service-issued Snowflake ID and immutable creation payload | `202 Accepted`, its ID, and a status URL; an identical retry returns `202` while pending or `200` with the existing terminal status; `409` for conflicting ID reuse |
 | `GET /api/v1/buyers/{buyerId}/orders/{orderId}` | Read the current status | The status, or `404` |
-| `GET /api/v1/orders` | List the orders of one buyer home region | See the [regional order page](#regional-order-page) |
+| `GET /api/v1/orders` | List the orders of one buyer home region | See the [regional order page](#6-regional-order-page) |
 
 - Buyer names and address text are nonblank; email uses the contract's ASCII form,
   and phone is `+` followed by 7–15 ASCII digits.
@@ -332,7 +342,8 @@ against duplicates and conflicting results. Cancelling an already confirmed
 order is outside this workflow; it would require a separate compensating ledger
 entry and saga, not deletion of the original ledger row.
 
-## Reconciliation and replayed outcomes
+## 3. Reconciliation and replayed outcomes
+<sub>[Back to Contents](#contents)</sub>
 
 ### Reconciliation schedule
 
@@ -388,7 +399,7 @@ the workers, then the saga row lock, and rechecks that both order and saga are
 `PENDING_LEDGER`. A terminal, missing or mismatched pair is a no-op. Only the two
 retry fields change; no message is enqueued by the reset itself. A successful
 commit reports the previous attempt count and new UTC eligibility time.
-The [operator procedure](RUNBOOK.md#manual-reconciliation-reset) covers credential
+The [operator procedure](RUNBOOK.md#6-manual-reconciliation-reset) covers credential
 provisioning, verified TLS, bounded lock waits and inspection after an uncertain
 commit. The reset does not resolve quarantine or recover missing CDC state.
 
@@ -406,7 +417,7 @@ the saved connector identity and `lsn_commit` when available, falling back to
 `lsn`, as the CDC restart check does. Only the captured IDs may be deleted, and
 the DELETE rechecks publication and age. Losing the in-memory batch on restart
 only delays cleanup. Inbox cleanup continues while an outbox batch waits for CDC.
-The [database retention rules](../database/ARCHITECTURE.md#retention) define the
+The [database retention rules](../database/ARCHITECTURE.md#5-retention) define the
 permanent records that remain; cleanup never resets reconciliation state.
 
 ### Ledger replay of a duplicate command
@@ -518,7 +529,8 @@ and concurrent updates. Shared pools and hot seller rows can limit throughput;
 the existing deadlines and durable retry handling remain in effect. Stage-only
 measurements do not establish full-saga capacity.
 
-## Orders lost by asynchronous failover or restore
+## 4. Orders lost by asynchronous failover or restore
+<sub>[Back to Contents](#contents)</sub>
 
 A failover on the asynchronous profile or a restore from an older backup can lose
 an accepted order. This section describes how order detects and handles that loss.
@@ -563,7 +575,7 @@ the orders on all primaries by ID and fingerprint.
 - After a restore from an older backup, the audit also finds ledger entries whose
   results were acknowledged before the order was lost.
 - After an asynchronous-loss drill it should find none: CDC publishes no command
-  for WAL the standbys lack ([replication contract](../database/ARCHITECTURE.md#sharding-and-replication)),
+  for WAL the standbys lack ([replication contract](../database/ARCHITECTURE.md#1-sharding-and-replication)),
   so a lost order leaves no ledger entry.
 - It persists missing or mismatched pairs in the same quarantine and reports them.
   It is privileged operational tooling, not cross-database access in either
@@ -596,7 +608,8 @@ Automatic reconciliation repairs missing messages. It cannot recover lost
 database history. These limits apply to shard restores and to the deliberate
 asynchronous-loss profile, not to the synchronous durability criteria.
 
-## CDC from shard writes to the ledger
+## 5. CDC from shard writes to the ledger
+<sub>[Back to Contents](#contents)</sub>
 
 Use the **transactional outbox with log-based CDC** pattern. Each accepted order
 progresses through stock reservation, then inserts one `RecordOrder` envelope into
@@ -708,7 +721,8 @@ mismatch (Debezium's `offset.mismatch.strategy=trust_offset`, never
 reader stopped this way. Before an upgrade of the relay, qualify Debezium with
 PostgreSQL, the application runtime and RabbitMQ under [VERSIONS.md](../VERSIONS.md).
 
-## Regional order page
+## 6. Regional order page
+<sub>[Back to Contents](#contents)</sub>
 
 Order serves a read-only `/orders/` page and `GET /api/v1/orders`.
 

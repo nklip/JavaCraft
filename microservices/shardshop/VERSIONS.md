@@ -15,7 +15,7 @@ The policy for this local project is community support with regular updates:
 - The Snowflake library and the Quarkus plugin XML libraries are the only exceptions to the maintained-release
   rule. Refer to [Snowflake library](#snowflake-library) and [Quarkus plugin XML libraries](#quarkus-plugin-xml-libraries).
 
-The lock has `deployment_ready: false`, because backup/restore and the final capacity acceptance are not qualified.
+The lock has `deployment_ready: false`. The [open findings](#3-open-findings-and-risk-acceptance) are not resolved.
 
 ## Contents
 1. [Current versions](#1-current-versions)
@@ -142,7 +142,7 @@ The host tools come from the user's `PATH`. The repository downloads no binary a
 
 Other host tools: Docker Buildx and Docker Scout from Docker Desktop, `jq` from `PATH`, and PostgreSQL 18.x `psql`
 from `PATH` for the
-[manual reconciliation reset](shardshop-order/RUNBOOK.md#manual-reconciliation-reset).
+[manual reconciliation reset](shardshop-order/RUNBOOK.md#6-manual-reconciliation-reset).
 
 ### AWS foundation
 
@@ -230,7 +230,7 @@ The gate examines only the packages that Docker Scout indexes. Refer to
 - Re-evaluate the full compatibility matrix for each change. A Kubernetes update alone can make the operator
   unsupported.
 - Qualify a Maven change with the resolved Maven graph, the SBOM and advisory check, and the contract, unit and
-  integration tests. Use the commands in [RUNBOOK.md](RUNBOOK.md#dependency-and-test-validation).
+  integration tests. Use the commands in [RUNBOOK.md](RUNBOOK.md#3-dependency-and-test-validation).
 - Qualify an image change with two uncached builds that give the same digests, the Scout gate, and a run of
   `scripts/up.sh` on the lab.
 - Qualify a Flyway change with the migration Jobs through `scripts/up.sh`. Change the image and the
@@ -247,9 +247,8 @@ The gate examines only the packages that Docker Scout indexes. Refer to
 - A support review examines releases and compatibility. A security review examines images and advisories. The next
   security review is due by 2026-11-30 (`security_review_2026_10_31.next_review_by`).
 - [PLAN.md](PLAN.md#2-rules-for-a-step) requires the complete due review before a step starts, or a
-  recorded user decision. On 2026-11-04 the user started step 7.8 without the review that was due that day
-  ("implement 7.8 ... without review"). On 2026-11-06 the user started step 7.9 without the same review and
-  without the entries due on 2026-11-05. The review stays due.
+  recorded user decision. The user started steps 7.8 to 7.10 without the review that was due on 2026-11-04 and
+  without the entries due on 2026-11-05. This review is still due.
 - A query to a public advisory service uses package names only. Do not send the dependency inventory or the
   versions. An empty advisory response is not evidence that a package has no finding.
 
@@ -292,10 +291,9 @@ No newer release exists for these images:
   and the AWS Load Balancer Controller v3.6.2 have no critical or high finding.
 - The gates image: 1 critical and 5 high in `golang.org/x/net` 0.57.0 and `golang.org/x/text` 0.40.0 of kubectl
   1.37.2, the newest 1.37 release. On 2026-11-06 Scout rated CVE-2026-78661 high in `golang.org/x/net` below
-  0.62.0, thus kubectl now has 6 high, and Helm 4.3.1 has 1 high (`golang.org/x/net` 0.60.0). The user accepted
-  it for the EKS runs of step 7.9 until 2026-11-30. 1 high each in `httpcore5` and
-  `httpcore5-h2` 5.3.6 of Testcontainers on the test
-  classpath, which the gates do not use in the cluster.
+  0.62.0, thus kubectl has 6 high, and Helm 4.3.1 has 1 high (`golang.org/x/net` 0.60.0). The user accepted
+  these findings for the EKS runs until 2026-11-30. The test classpath also has 1 high each in `httpcore5` and
+  `httpcore5-h2` 5.3.6 of Testcontainers, which the gates do not use in the cluster.
 
 The acceptance applies only to the pinned images on an EKS cluster that the runbook destroys after the run. The lock
 records the findings in `images.barman_cloud_plugin`, `images.barman_cloud_sidecar`, `images.argocd`,
@@ -327,8 +325,8 @@ On 2026-10-10, OSV listed 14 Ubuntu 26.04 advisories for these images. Docker Sc
 Ubuntu gives all 14 the priority medium. Their CVSS 3.1 vectors give six of them a high base score of 7.0–8.1. The
 2026-10-23 JRE rebuild fixed the zlib advisory CVE-2026-85091.
 
-`SBOM-AND-RUNTIME` in the lock stays open and blocks step 4.9. The lock lists the advisory IDs. Close the item only
-when a check covers every package of the base image and a review handles these advisories.
+`SBOM-AND-RUNTIME` in the lock stays open. The lock lists the advisory IDs. Close the item only when a check covers
+every package of the base image and a review handles these advisories.
 [OSV](https://osv.dev/), [Ubuntu CVE tracker](https://ubuntu.com/security/cves).
 
 ### CNPG upgrade deadline
@@ -502,40 +500,16 @@ patch changes them, unless a security reason occurs:
 ## 5. Review log
 <sub>[Back to Contents](#contents)</sub>
 
-The full text of each review is in the Git tag `shardshop-docs-full-2026-10-31` and in [CHANGELOG.md](CHANGELOG.md).
+This log lists the reviews since 2026-10-31. The Git tag `shardshop-docs-full-2026-10-31` has the earlier reviews, and
+[CHANGELOG.md](CHANGELOG.md) has the result of each step.
 
 | Date | Scope | Result |
 |---|---|---|
-| 2026-09-28 | Step 0.1 initial inventory | Image indexes verified. Canonical OpenJDK 25 images and the kind node 1.36.4 fallback selected. |
-| 2026-09-28 | Step 0.3 build pins | Effective POMs matched 17 plugin pins. Plugin overrides replaced prerelease transitives. |
-| 2026-09-28 | Step 1.1 host runtime | Docker Desktop 4.92.0. kind node findings accepted for the loopback-only lab. |
-| 2026-09-29 | Step 1.2 CNPG chart | Vendored CNPG chart 0.29.1, signature verified. |
-| 2026-09-30 | Step 2.3 migration runtime | Flyway 13.8.1 image. Superseded by the Canonical JRE migration image. |
-| 2026-10-03 | Quarkus target | Quarkus 3.40 LTS selected. |
-| 2026-10-04 | Step 0.5 Quarkus migration | Six applications qualified. Plugin XML exception recorded. |
-| 2026-10-06 | Steps 3.2 and 3.3 | jackson-core in common. Snowflake 0.0.2 qualified on Java 25. |
-| 2026-10-07 | Steps 3.4, 3.5 and 3.6 | Datasets, product REST/JDBC and the Netty override qualified. |
-| 2026-10-08 | Step 3.8 reader client | Apache HttpClient 5 added. |
-| 2026-10-08 | Request balancer candidates | Step 6.8 candidates listed. Superseded. |
-| 2026-10-10 | Step 3.9 images and metrics | Images, Scout gate and VEX qualified. Micrometer added. Scout gap recorded. |
-| 2026-10-11 | Step 3.9 reader fault tolerance | SmallRye Fault Tolerance added. |
-| 2026-10-12 | Steps 3.10 and 3.11 test dependencies | Testcontainers, Cucumber and k3s selected. Test image findings accepted. |
-| 2026-10-13 | Step 3.12 contract tests | Vert.x validator replaced the Python tools. |
-| 2026-10-14 | Helmfile and Skaffold | Helmfile 1.8.0 and Skaffold 2.25.0 qualified. VEX version 3. |
-| 2026-10-16 | Steps 4.1 and 4.3 | Order provider and RabbitMQ 4.3.6 qualified. |
-| 2026-10-18 | Steps 4.4, 4.5 and 4.6 | Debezium, lz4-java override and ledger qualified. VEX version 4. |
-| 2026-10-21 | Step 4.12 currency precision | ISO 4217 minor units verified. |
-| 2026-10-22 | Step 4.13 workload control | Workloads gained Quarkus REST. No new version. |
-| 2026-10-24 | Steps 5.3 and 5.5 | Migration image build reproducible. Metrics in order and ledger. |
-| 2026-10-25 | Step 6.0 maintenance review | Quarkus 3.40.1.1, Jackson 2.21.8, pgJDBC 42.7.14 and Temurin 25.0.5+8. CNPG excluded. |
-| 2026-10-26 | Step 6.2 CNPG decision | Step 6.2 permitted on CNPG 1.30.1. Deadline unchanged. |
-| 2026-10-29 | Support review | Support only. No version change. |
-| 2026-10-29 | Step 6.8 security decision | Step 6.8 permitted with the security review open. |
-| 2026-10-29 | Step 6.8 balancer and HTTP/2 client | Envoy 1.40.2 and h2c selected. Reverted 2026-10-30, HTTP/1.1 kept. |
 | 2026-10-31 | Security review | Docker Desktop, Flyway, PostgreSQL, RabbitMQ, host tools and plugins updated. Risk acceptance until 2026-11-30. |
 | 2026-10-31 | Step 7.1 AWS foundation | Terraform 1.17.1, AWS provider 6.71.0, VPC module 6.7.3, EKS module 21.29.0 and EKS 1.36 selected. |
 | 2026-11-01 | Step 7.5 Argo CD delivery | Argo CD 3.5.6 (chart 10.11.6, image signature verified) selected, self-managed. The EKS managed capability needs IAM Identity Center. |
 | 2026-11-01 | Step 7.3 cloud durability | Barman Cloud Plugin 0.15.1 (chart 0.8.1, chart signature verified, images unsigned), the cert-manager and Secrets Store CSI add-ons selected. External Secrets Operator not selected, because no supported release lists Kubernetes 1.36. |
 | 2026-11-02 | Step 7.6 gates image | kubectl 1.37.2 linux/arm64 and the JUnit console launcher 6.1.3 selected for the gates image. Its findings accepted for EKS runs until 2026-11-30. |
 | 2026-11-02 | Step 7.7 drill Jobs | Helm 4.3.1 linux/arm64 added to the gates image, because the drills run in the cluster. |
+| 2026-11-04 | Step 7.8 webpages | Envoy Gateway v1.9.3 (chart v1.9.3 with the Gateway API 1.6.1 CRDs, Envoy proxy `distroless-v1.39.5`) and the AWS Load Balancer Controller v3.6.2 selected, without a signature check. The Envoy Gateway findings accepted for EKS runs until 2026-11-30. |
 | 2026-11-06 | Step 7.9 gates image | CVE-2026-78661 (high, `golang.org/x/net` below 0.62.0 in kubectl and Helm) accepted for the EKS runs until 2026-11-30. No version change. |

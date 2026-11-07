@@ -194,7 +194,7 @@ routing configuration intact. Startup and migration snapshot the input inventory
 
 Product and order import `/etc/shardshop/routing/application.properties` at startup, so future Deployments must
 mount the ConfigMap there. Local JAR launches copy its properties to a file and set `SHARDSHOP_ROUTING_CONFIG`,
-as [build and run](../../RUNBOOK.md#build-and-run) shows. The Java library requires names and regions, rejects
+as [build and run](../../RUNBOOK.md#2-build-and-run) shows. The Java library requires names and regions, rejects
 invalid entries and mismatched list lengths, and keeps an immutable list of shards with their regions. It
 routes the unsigned SHA-256 digest of a positive decimal ID modulo the list size. Missing or invalid
 configuration fails the startup. Applications do not watch the cluster health or reload routing while they run.

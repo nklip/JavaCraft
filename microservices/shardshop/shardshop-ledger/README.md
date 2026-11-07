@@ -8,7 +8,7 @@ separate database, and publishes the saved results with publisher confirms.
 ## Start
 
 In the lab, `up.sh` deploys ledger as one pod; see the
-[lab start](../README.md#start-the-lab). Apply ledger migrations through V3 before
+[lab start](../README.md#1-start-the-lab). Apply ledger migrations through V3 before
 starting the application; V3 adds transport retention indexes.
 
 `-Dquarkus.config.locations=file:/path/to/ledger.properties` loads an external
@@ -21,7 +21,7 @@ or connecting to external services.
 Prometheus metrics are available on the application port at `/q/metrics`.
 The ledger samples pending results and conflict quarantine every 10 seconds;
 scrapes read cached samples and do not query PostgreSQL. See the
-[metrics runbook](RUNBOOK.md#metrics) for names and freshness checks.
+[metrics runbook](RUNBOOK.md#5-metrics) for names and freshness checks.
 
 ```bash
 kubectl --context kind-shardshop -n shardshop logs deployment/shardshop-ledger
@@ -46,7 +46,7 @@ the publication or its confirm.
 
 `Ledger transport cleanup failed; retrying: <cause>` reports a failed cleanup
 transaction once until `Ledger transport cleanup recovered` follows a successful
-pass. See the [cleanup runbook](RUNBOOK.md#transport-cleanup) for retention settings
+pass. See the [cleanup runbook](RUNBOOK.md#4-transport-cleanup) for retention settings
 and inspection.
 
 The [RabbitMQ management UI](../infra/README.md#rabbitmq-management) shows the

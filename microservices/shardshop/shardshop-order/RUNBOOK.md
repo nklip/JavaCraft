@@ -4,14 +4,26 @@
 
 **Working directory:** Run all shell commands from the repository root.
 
-## Buyer and order provider
+## Contents
+1. [Buyer and order provider](#1-buyer-and-order-provider)
+2. [Stock reservation and compensation](#2-stock-reservation-and-compensation)
+3. [Order outbox CDC relay](#3-order-outbox-cdc-relay)
+4. [Order result consumer and seller profit](#4-order-result-consumer-and-seller-profit)
+5. [Durable reconciliation](#5-durable-reconciliation)
+6. [Manual reconciliation reset](#6-manual-reconciliation-reset)
+7. [Transport cleanup](#7-transport-cleanup)
+8. [Tests](#8-tests)
+9. [Order page tests](#9-order-page-tests)
+
+## 1. Buyer and order provider
+<sub>[Back to Contents](#contents)</sub>
 
 Order creates immutable buyers, allocates order IDs, accepts idempotent order
 requests, and exposes their current saga status. Acceptance first persists a
 pending order; the stock and ledger workflow determines its eventual outcome.
 The [OpenAPI contract](src/main/resources/contracts/openapi.yaml) defines full
 request and response schemas; the
-[saga architecture](ARCHITECTURE.md#order-creation-and-ledger-saga) defines
+[saga architecture](ARCHITECTURE.md#2-order-creation-and-ledger-saga) defines
 the cross-service workflow.
 
 New orders require products allowed by their seller's immutable country/region and
@@ -97,7 +109,7 @@ persist complete profiles and costs. Existing table-level runtime grants cover
 the new columns without broadening privileges.
 
 Run the module checks and packaged-provider PostgreSQL scenarios. Replace `<tags>` with
-the tags in the table of the [Tests](#tests) section:
+the tags in the table of the [Tests](#8-tests) section:
 
 ```bash
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-order,shardshop-product -am -Paudit verify
@@ -117,7 +129,8 @@ setting stops the start before a generator reservation. The first command also
 builds product, because product shares the phase engine. These checks do not change
 the kind lab.
 
-## Stock reservation and compensation
+## 2. Stock reservation and compensation
+<sub>[Back to Contents](#contents)</sub>
 
 After HTTP acceptance commits, the saga process polls each buyer shard for
 `PENDING_STOCK` sagas and cancelled sagas with unfinished releases. It claims a
@@ -168,7 +181,8 @@ rollback under injected constraints, and denied `TRUNCATE`. Every phase checks
 `stock = initial_stock - active reserved quantities`. The separate order API
 scenarios disable the worker to isolate acceptance's atomicity and validation.
 
-## Order outbox CDC relay
+## 3. Order outbox CDC relay
+<sub>[Back to Contents](#contents)</sub>
 
 Order starts one independently supervised Debezium reader for each
 routing shard. The reader snapshots retained pending outboxes, then captures
@@ -258,7 +272,7 @@ and the original records in a fresh frozen owned target. Missing history or cost
 conflicts and unproved catalog effects stay unresolved. No destructive reset shortcut
 exists. Physical asynchronous loss and production cutover are not qualified. The
 relay acceptance uses the tag `@cdc-relay` in the command of the
-[Tests](#tests) section.
+[Tests](#8-tests) section.
 
 Both order processes expose `/q/metrics`; the saga process refreshes its durable
 outbox, saga, quarantine and CDC gauges every ten seconds through the bounded
@@ -268,7 +282,8 @@ the distinction between ordinary reconnects and explicit recovery, and why CDC
 checkpoint distance is WAL pressure rather than business-event lag. Failed
 refreshes leave the last sample visible with a failure gauge and increasing age.
 
-## Order result consumer and seller profit
+## 4. Order result consumer and seller profit
+<sub>[Back to Contents](#contents)</sub>
 
 Order consumes `order.ledger-results` with manual acknowledgements and
 `shardshop.order.results.concurrency` handlers (default 3, 1–16), each on its own
@@ -299,7 +314,7 @@ Ordering migration V5 retains the first accepted envelope in
 `order_result_ids.received_envelope`. Matching terminal deliveries are harmless,
 including a new reserved reconciliation result ID. A changed same-ID payload or
 timestamp remains detectable after inbox/outbox cleanup. The consumer applies
-reconciliation results from the [durable reconciliation worker](#durable-reconciliation).
+reconciliation results from the [durable reconciliation worker](#5-durable-reconciliation).
 
 Confirmation also inserts one durable `ordering.profit_intents` row per item in
 the same transaction, using `(unit_price - unit_cost) * quantity` from immutable
@@ -310,8 +325,8 @@ a failed transaction. `CONFIRMED` can be visible before seller balances catch up
 The profit worker reads bounded batches from each buyer shard, releases the
 connection, and posts each intent on its seller's shard. With `shard-concurrency`
 above one, a bounded pool runs independent non-overlapping scans for buyer shards,
-and each scan posts its batch in `item-concurrency` groups at the same time (one
-group for each seller). Each shard waits `poll-interval`
+and each scan posts its batch in `item-concurrency` groups at the same time. The
+intents of one seller stay in one group. Each shard waits `poll-interval`
 after its scan. Value `1` restores the original all-shards serial scan followed
 by one polling delay. The seller transaction
 inserts immutable `catalog.profit_credits` keyed by `(order_id, product_id)` and
@@ -360,7 +375,8 @@ The tags for the result consumer and profit worker are
 `@order-results or @order-api or @stock-reservation or @catalog-migration`. Build
 order and ledger with `-Pintegration,audit install` first.
 
-## Durable reconciliation
+## 5. Durable reconciliation
+<sub>[Back to Contents](#contents)</sub>
 
 The saga process enables ledger reconciliation by default. Every scan reads a
 bounded page from each primary and rechecks each candidate under the order
@@ -398,10 +414,10 @@ ORDER BY next_reconciliation_at, saga_id;
 ```
 
 Check the ledger decision, result queues and quarantine, and the
-[CDC recovery state](#order-outbox-cdc-relay). Reconciliation does not reset a lost
+[CDC recovery state](#3-order-outbox-cdc-relay). Reconciliation does not reset a lost
 slot or offset, delete transport rows, or reset an exhausted budget. Safe cleanup
-is performed by the separate [transport cleanup worker](#transport-cleanup);
-the [manual operator reset](#manual-reconciliation-reset) gives an exhausted saga
+is performed by the separate [transport cleanup worker](#7-transport-cleanup);
+the [manual operator reset](#6-manual-reconciliation-reset) gives an exhausted saga
 a new retry budget.
 The tag for the packaged scenarios is `@saga-reconciliation`.
 
@@ -413,7 +429,8 @@ durable CDC checkpoint has passed the insert. Lost recorded and rejected results
 recover through permanent ledger decisions, including a policy change after the
 original rejection.
 
-## Manual reconciliation reset
+## 6. Manual reconciliation reset
+<sub>[Back to Contents](#contents)</sub>
 
 Use this after investigating an exhausted `PENDING_LEDGER` saga and restoring the
 failed dependency. The reset operates on one explicit order/saga pair on the
@@ -507,7 +524,8 @@ Ctrl+C after use. If a new `Forwarding from` line appears, press Ctrl+C again. S
 The tags for the SQL boundary, permissions and recovery scenarios are
 `@manual-reconciliation-reset or @manual-reconciliation-reset-sql`.
 
-## Transport cleanup
+## 7. Transport cleanup
+<sub>[Back to Contents](#contents)</sub>
 
 The saga process enables transport cleanup by default. Apply ordering migrations
 through V8 using the normal `up.sh` workflow; V8 adds retention indexes. HTTP
@@ -536,7 +554,7 @@ continues while an outbox batch waits for CDC.
 
 `Transport cleanup unavailable for <shard>; will retry: <cause>` reports a failed
 phase once per affected shard. `Transport cleanup resumed for <shard>` reports
-recovery. If old published rows remain, inspect the [CDC state](#order-outbox-cdc-relay)
+recovery. If old published rows remain, inspect the [CDC state](#3-order-outbox-cdc-relay)
 and its logs; publication alone is insufficient. This query reports rows past
 the age window, before the additional CDC check, using the default window:
 
@@ -546,12 +564,13 @@ FROM ordering.order_outbox
 WHERE published_at < statement_timestamp() - INTERVAL '24 hours';
 ```
 
-The [retention contract](../database/ARCHITECTURE.md#retention) defines the retained
+The [retention contract](../database/ARCHITECTURE.md#5-retention) defines the retained
 business records. Changing cleanup settings never grants a new reconciliation budget
 or repairs a missing slot. The tags for the packaged cleanup checks are
 `@transport-cleanup or @transport-cleanup-migration`.
 
-## Tests
+## 8. Tests
+<sub>[Back to Contents](#contents)</sub>
 
 Run the PostgreSQL and RabbitMQ scenarios from the repository root. Build the
 modules first, then run the packaged scenarios with the tags of the topic:
@@ -571,7 +590,8 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pinteg
 | Manual reconciliation reset | `@manual-reconciliation-reset or @manual-reconciliation-reset-sql` |
 | Transport cleanup | `@transport-cleanup or @transport-cleanup-migration` |
 
-## Order page tests
+## 9. Order page tests
+<sub>[Back to Contents](#contents)</sub>
 
 Run the focused Testcontainers API and browser scenarios from the repository root:
 

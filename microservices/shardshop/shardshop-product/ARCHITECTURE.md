@@ -13,7 +13,17 @@ describes how those writes use catalog storage.
 - **Owns:** sellers, products and their creation keys in schema `catalog`, on the
   home shard of each seller, and the zero-balance setup of seller profit.
 
-## Product API
+## Contents
+1. [Product API](#1-product-api)
+2. [Product page](#2-product-page)
+3. [Creation keys and seller placement](#3-creation-keys-and-seller-placement)
+4. [Seller profit](#4-seller-profit)
+5. [Read profiles, TLS and deadlines](#5-read-profiles-tls-and-deadlines)
+6. [Regional currency policy](#6-regional-currency-policy)
+7. [Catalog storage](#7-catalog-storage)
+
+## 1. Product API
+<sub>[Back to Contents](#contents)</sub>
 
 Product generates seller/product IDs when workloads send ID-free payloads. There
 are no embedded datasets or fixture-ID whitelists. Creation requires a stable
@@ -53,7 +63,8 @@ no independent region or shard selector.
   error. Product descriptions are nonblank and at most 2,000 Unicode scalar values.
 - Unit cost uses the product's currency and may exceed its price.
 
-## Product page
+## 2. Product page
+<sub>[Back to Contents](#contents)</sub>
 
 The read-only `/products/` page ships inside the product application and uses the
 listing API. It lists arbitrary created products without depending on workload
@@ -79,7 +90,8 @@ datasets.
 - **Privileges.** Product receives column-level read access to the credit fields
   needed for earnings; it gains no credit mutation privileges.
 
-## Creation keys and seller placement
+## 3. Creation keys and seller placement
+<sub>[Back to Contents](#contents)</sub>
 
 Workloads send `POST /api/v1/sellers`,
 `POST /api/v1/sellers/{sellerId}/products`, and `POST /api/v1/buyers` with an
@@ -114,7 +126,8 @@ only serialize unrelated requests; database constraints retain full key scopes.
 Changing inventory order/membership/regions still requires an explicit data
 migration, including these durable key homes.
 
-## Seller profit
+## 4. Seller profit
+<sub>[Back to Contents](#contents)</sub>
 
 Seller profit is the sum of `(snapshotted unitPrice - unitCost) × quantity` for
 confirmed sales, retained separately for each currency. New sellers start with
@@ -142,7 +155,8 @@ spans shards, and `CONFIRMED` can precede eventual balance application.
   mutate or delete immutable credit/intent payloads. Product can still only
   initialize zero balances.
 
-## Read profiles, TLS and deadlines
+## 5. Read profiles, TLS and deadlines
+<sub>[Back to Contents](#contents)</sub>
 
 All writes, order validation, order status reads, and saga processing use `-rw`.
 Product reads also use `-rw` by default. An optional load-test profile uses `-ro`
@@ -186,7 +200,8 @@ configuration and concurrent edits. Recovery restores replay, fencing and the
 original profile, checks every ready product pod, removes owned fixtures, restores
 workload controls and passes the primary deployment gate before unlocking.
 
-## Regional currency policy
+## 6. Regional currency policy
+<sub>[Back to Contents](#contents)</sub>
 
 | Seller region | Seller country | New product currencies | Fractional digits |
 |---|---|---|---|
@@ -236,12 +251,9 @@ saved outcome before allowlist evaluation. Ledger results retain their v1 format
 
 Normal deployment permits CNY, EUR, GBP, JPY, KRW, USD and VND. Rejection/replay drills
 scope a temporary allowlist to their own fixtures and restore the deployed policy.
-The first rollout holds the order Deployment paused until the new ledger image is
-ready, preventing v2 commands from reaching a v1-only consumer; the
-[upgrade runbook](../infra/RUNBOOK.md#first-upgrade-from-a-v1-only-ledger) documents this sequence.
-No retained lab reset or baseline migration edit is part of this cutover.
 
-## Catalog storage
+## 7. Catalog storage
+<sub>[Back to Contents](#contents)</sub>
 
 `catalog.sellers`, `catalog.products` and `catalog.stock_reservations` all live on
 the seller's shard, so their foreign keys stay local. The

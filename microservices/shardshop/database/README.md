@@ -10,9 +10,9 @@ database, their roles and schemas, and the Flyway migration streams.
 The database layer has no process of its own. `cluster-create.sh` creates the
 clusters, roles, databases and schemas; `up.sh` runs the Flyway migrations as Helm
 hook Jobs before it deploys the applications. Applications never migrate at
-startup. See the [lab start](../README.md#start-the-lab).
+startup. See the [lab start](../README.md#1-start-the-lab).
 
-The [manual reconciliation reset](../shardshop-order/RUNBOOK.md#manual-reconciliation-reset)
+The [manual reconciliation reset](../shardshop-order/RUNBOOK.md#6-manual-reconciliation-reset)
 uses a separate operator login and native `psql`. Existing labs first reconcile
 its credential and roles with `cluster-create.sh`, then apply the repeatable
 grants with `up.sh`.

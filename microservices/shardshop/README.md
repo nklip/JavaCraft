@@ -2,14 +2,21 @@
 <sub>[Back to Microservices](../README.md#microservices)</sub>
 
 [Architecture](ARCHITECTURE.md) · [Runbook](RUNBOOK.md) · [Implementation plan](PLAN.md) ·
-[Version policy](VERSIONS.md) · [Changelog](CHANGELOG.md)
+[Decisions](DECISIONS.md) · [Version policy](VERSIONS.md) · [Changelog](CHANGELOG.md)
 
-ShardShop is a local system-design lab: a regional product catalog, sharded orders
-and an asynchronous ledger on one kind cluster. This page tells you how to start
-the lab and which monitors it has. The [runbook](RUNBOOK.md) and the runbooks of
+ShardShop is a system-design lab: a regional product catalog, sharded orders and
+an asynchronous ledger. The local deployment runs on one kind cluster, and the AWS
+deployment runs the same system on EKS. This page tells you how to start the local
+deployment and which monitors it has. The [runbook](RUNBOOK.md) and the runbooks of
 the modules contain all other procedures: configuration, tests, stop, recovery.
 
-## Start the lab
+## Contents
+1. [Start the lab](#1-start-the-lab)
+2. [Monitoring](#2-monitoring)
+3. [Layout](#3-layout)
+
+## 1. Start the lab
+<sub>[Back to Contents](#contents)</sub>
 
 ### Prerequisites
 
@@ -26,7 +33,7 @@ the modules contain all other procedures: configuration, tests, stop, recovery.
   in through Docker Desktop or `docker login`. `up.sh` builds and scans the images
   before it changes the cluster, thus it needs network access.
 - **Java and Maven:** `JAVA_HOME` set to a maintained JDK 25 or newer patch, and Maven 3.9.16 or
-  newer on `PATH` ([details](RUNBOOK.md#java-and-maven)).
+  newer on `PATH` ([details](RUNBOOK.md#1-java-and-maven)).
 - **Browser checks:** Node.js on `PATH` is required by the Maven verification
   module, including builds run by the lifecycle scripts. Missing Node fails the
   build. The acceptance run uses Node **24.22.2 LTS**. For a separate Homebrew keg, prepend
@@ -103,9 +110,10 @@ Each module guide tells how to start that application by itself:
 [ledger](shardshop-ledger/README.md), [seeder](shardshop-workload/shardshop-product-seeder/README.md),
 [reader](shardshop-workload/shardshop-product-reader/README.md) and
 [producer](shardshop-workload/shardshop-order-producer/README.md).
-[Build and run](RUNBOOK.md#build-and-run) shows the build and the packaged JARs.
+[Build and run](RUNBOOK.md#2-build-and-run) shows the build and the packaged JARs.
 
-## Monitoring
+## 2. Monitoring
+<sub>[Back to Contents](#contents)</sub>
 
 | Monitor | How to open it | Details |
 |---|---|---|
@@ -118,12 +126,13 @@ Each module guide tells how to start that application by itself:
 | Application logs | `kubectl logs` of each Deployment or Job | Each module guide lists its log lines |
 | RabbitMQ management | Port 15672 of Service `shardshop-rabbitmq` | [Infrastructure](infra/README.md#rabbitmq-management) |
 | Pods, databases and migrations | `kubectl` and `helm` | [Infrastructure](infra/README.md#3-monitoring), [database](database/README.md#monitoring) |
-| Test results | Maven report folders | [Verification](shardshop-testing/README.md#results) |
+| Test results | Maven report folders | [Verification](shardshop-testing/README.md#6-results) |
 
 All commands use the `kind-shardshop` context. Each module guide describes its own
 monitors in detail.
 
-## Layout
+## 3. Layout
+<sub>[Back to Contents](#contents)</sub>
 
 Each module has an `ARCHITECTURE.md` for its design, a `RUNBOOK.md` for its
 procedures and a README for its start and monitoring entry points.
@@ -132,10 +141,10 @@ procedures and a README for its start and monitoring entry points.
 - `shardshop-workload/`: datasets, product seeder, product reader and order producer.
 - `shardshop-product/`, `shardshop-order/`, `shardshop-ledger/`: the services. Order is one
   image with separate HTTP and saga Deployments.
-- `shardshop-testing/`: Cucumber scenarios, with a Testcontainers profile and a live kind profile.
+- `shardshop-testing/`: Cucumber scenarios, with a Testcontainers profile and a `cluster` profile for a running deployment.
 - `database/`: Flyway streams `shard/catalog`, `shard/ordering` and `ledger/ledger`.
 - `infra/`: `kind.yaml`, `shards.yaml`, `helmfile.yaml.gotmpl`, the Helm charts and the
-  image recipes. The AWS deployment of milestone 7 uses [`terraform/`](infra/terraform/README.md)
+  image recipes. The AWS deployment uses [`terraform/`](infra/terraform/README.md)
   and [`eks-values.yaml`](infra/helm/shardshop/eks-values.yaml).
 - `scripts/`: `cluster-create.sh`, `up.sh`, `down.sh`, `cluster-destroy.sh` and `webpages.sh`.
 

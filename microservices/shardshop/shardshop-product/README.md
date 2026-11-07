@@ -8,13 +8,13 @@ reads from the regional catalog shards.
 ## Start
 
 In the lab, `up.sh` deploys product as two identical pods behind the Service
-`shardshop-product` on port 8080; see the [lab start](../README.md#start-the-lab).
+`shardshop-product` on port 8080; see the [lab start](../README.md#1-start-the-lab).
 Each product JVM reserves a new generator ID at every start.
 
 Outside Kubernetes, build product and start `target/quarkus-app/quarkus-run.jar`
 with the routing snapshot, reachable shard databases and a fixed test generator
 ID, as
-[build and run](../RUNBOOK.md#build-and-run) describes. `--check-startup`
+[build and run](../RUNBOOK.md#2-build-and-run) describes. `--check-startup`
 validates the configuration and exits.
 
 ## Monitoring
@@ -34,7 +34,7 @@ Back/Forward. Last shares the existing eight-second loading deadline; if it
 fails, Refresh retries the jump.
 
 The page reads `GET /api/v1/products?region=US&limit=25&after=<productId>`; the
-[product API](ARCHITECTURE.md#product-api) defines its parameters.
+[product API](ARCHITECTURE.md#1-product-api) defines its parameters.
 
 ### Metrics
 

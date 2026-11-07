@@ -31,7 +31,7 @@ on EKS.
 ## 2. Start
 <sub>[Back to Contents](#contents)</sub>
 
-The [lab start](../README.md#start-the-lab) creates the infrastructure once and then
+The [lab start](../README.md#1-start-the-lab) creates the infrastructure once and then
 deploys the applications on it:
 
 | Command | Starts |
@@ -122,7 +122,7 @@ replicas through the Kubernetes pod proxy.
 Order names have the prefix `shardshop_order_`, ledger names `shardshop_ledger_`.
 Order labels are fixed process, shard and (where applicable) status values, never
 order/customer IDs. See the [order metric contract](../shardshop-order/README.md)
-and [ledger metric contract](../shardshop-ledger/RUNBOOK.md#metrics) for details.
+and [ledger metric contract](../shardshop-ledger/RUNBOOK.md#5-metrics) for details.
 
 RabbitMQ's existing [management API](#rabbitmq-management), `GET /api/queues/shardshop`,
 provides numeric `messages_ready`, `messages_unacknowledged`, `message_bytes_ready`

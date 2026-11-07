@@ -118,7 +118,7 @@ asynchronous profile omits the commit acknowledgement requirement.
 The product service queries PostgreSQL for every load-test read. Caching is disabled, so the reader exercises
 the database. Measure request rate, latency, errors, pool saturation, shard distribution and replica lag.
 Configure finite HTTP and SQL timeouts, bounded concurrency, and bounded retries with backoff. The
-[product read profile](../../shardshop-product/ARCHITECTURE.md#read-profiles-tls-and-deadlines) defines the
+[product read profile](../../shardshop-product/ARCHITECTURE.md#5-read-profiles-tls-and-deadlines) defines the
 server budgets.
 
 ## Operation

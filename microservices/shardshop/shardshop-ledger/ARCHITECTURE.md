@@ -138,6 +138,6 @@ The DELETE rechecks receipt/publication time and, for an outbox, its selected
 publication attempt. Under `READ COMMITTED`, a concurrent replay either makes
 the old delete ineligible or recreates a removed outbox as a new pending attempt.
 Permanent bindings and exact envelopes remain available in both cases. The
-[retention rules](../database/ARCHITECTURE.md#retention) define what may be removed;
+[retention rules](../database/ARCHITECTURE.md#5-retention) define what may be removed;
 DELETE privileges alone do not enforce the publication or age checks. Ledger V3
 adds receipt-time and confirmed-publication indexes without changing grants.
