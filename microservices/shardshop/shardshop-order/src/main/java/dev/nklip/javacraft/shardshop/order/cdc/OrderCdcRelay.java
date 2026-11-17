@@ -10,6 +10,7 @@ import io.debezium.engine.format.Json;
 import org.jboss.logging.Logger;
 
 import java.sql.Connection;
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -27,6 +28,19 @@ public final class OrderCdcRelay implements AutoCloseable {
     private static final ConfirmedPublisher.Destination COMMANDS = new ConfirmedPublisher.Destination(
             "ledger.commands", "ledger.record-order", "command", "order-command-publisher");
 
+    public record Settings(Duration pollInterval) {
+        public Settings {
+            if (pollInterval == null || pollInterval.compareTo(Duration.ofMillis(100)) < 0
+                    || pollInterval.compareTo(Duration.ofSeconds(30)) > 0) {
+                throw new IllegalArgumentException("CDC poll interval must be between 100ms and 30s");
+            }
+        }
+
+        public static Settings defaults() {
+            return new Settings(Duration.ofMillis(500));
+        }
+    }
+
     public record ShardSettings(String shard, Endpoint application, Endpoint replication) {
         public ShardSettings {
             CdcConfiguration.identity(shard);
@@ -36,10 +50,16 @@ public final class OrderCdcRelay implements AutoCloseable {
     }
 
     private final List<Reader> readers;
+    private final Settings settings;
     private final AtomicBoolean started = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
 
     public OrderCdcRelay(List<ShardSettings> shards, BrokerSettings rabbit) {
+        this(shards, rabbit, Settings.defaults());
+    }
+
+    public OrderCdcRelay(List<ShardSettings> shards, BrokerSettings rabbit, Settings settings) {
+        this.settings = Objects.requireNonNull(settings, "settings");
         Objects.requireNonNull(shards, "shards");
         Objects.requireNonNull(rabbit, "rabbit");
         Set<String> seen = new HashSet<>();
@@ -203,7 +223,7 @@ public final class OrderCdcRelay implements AutoCloseable {
                     AtomicReference<Throwable> completionFailure = new AtomicReference<>();
                     DebeziumEngine<ChangeEvent<String, String>> created = DebeziumEngine.create(Json.class)
                             .using(CdcConfiguration.properties(settings.shard(), settings.application(),
-                                    settings.replication()))
+                                    settings.replication(), OrderCdcRelay.this.settings))
                             .notifying(processor)
                             .using((success, message, failure) -> {
                                 if (!success) {

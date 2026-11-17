@@ -3,6 +3,7 @@ package dev.nklip.javacraft.shardshop.order.cdc;
 import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -14,7 +15,7 @@ class CdcConfigurationTest {
                 + "&sslrootcert=%2Fcert%2Fca.crt", "order_app", "app-secret");
         Endpoint replication = new Endpoint(app.jdbcUrl(), "order_cdc", "cdc-secret");
 
-        Properties config = CdcConfiguration.properties("shard-a", app, replication);
+        Properties config = CdcConfiguration.properties("shard-a", app, replication, OrderCdcRelay.Settings.defaults());
 
         assertEquals("shardshop_order_shard_a", config.getProperty("name"));
         assertEquals("shardshop_order_shard_a", config.getProperty("topic.prefix"));
@@ -48,6 +49,10 @@ class CdcConfigurationTest {
         assertEquals("30", config.getProperty("driver.socketTimeout"));
         assertEquals("5000", config.getProperty("database.query.timeout.ms"));
         assertEquals("10000", config.getProperty("task.management.timeout.ms"));
+        assertEquals("500", config.getProperty("poll.interval.ms"));
+        assertEquals("1000", config.getProperty("offset.flush.interval.ms"));
+        assertEquals("ORDERED", config.getProperty("record.processing.order"));
+        assertEquals("1", config.getProperty("record.processing.threads"));
     }
 
     /** An empty snapshot and an idle outbox still commit positions, so a restart finds a paired offset and slot. */
@@ -55,12 +60,23 @@ class CdcConfigurationTest {
     void heartbeatsEmitTransactionalMessagesThatTheReaderCanConfirm() {
         Endpoint endpoint = new Endpoint("jdbc:postgresql://database:5432/shardshop", "order_app", "app-secret");
 
-        Properties config = CdcConfiguration.properties("shard-a", endpoint, endpoint);
+        Properties config = CdcConfiguration.properties("shard-a", endpoint, endpoint, OrderCdcRelay.Settings.defaults());
 
         assertEquals("10000", config.getProperty("heartbeat.interval.ms"));
         assertEquals("SELECT pg_logical_emit_message(true, 'shardshop-cdc-heartbeat', '')",
                 config.getProperty("heartbeat.action.query"));
         assertEquals("shardshop-cdc-heartbeat", config.getProperty("message.prefix.include.list"));
+    }
+
+    @Test
+    void configuredPollIntervalReachesConnectorWithoutChangingCheckpointFrequency() {
+        Endpoint endpoint = new Endpoint("jdbc:postgresql://database:5432/shardshop", "order_app", "app-secret");
+        for (long millis : new long[]{100, 250, 30_000}) {
+            Properties config = CdcConfiguration.properties("shard-a", endpoint, endpoint,
+                    new OrderCdcRelay.Settings(Duration.ofMillis(millis)));
+            assertEquals(Long.toString(millis), config.getProperty("poll.interval.ms"));
+            assertEquals("1000", config.getProperty("offset.flush.interval.ms"));
+        }
     }
 
     @Test

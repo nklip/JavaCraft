@@ -236,13 +236,18 @@ the slot could pass `max_slot_wal_keep_size` (512 MB) ([step 4.4](CHANGELOG.md#s
 ### Shard-concurrent stock and profit workers
 
 **Decision.** The stock and profit workers process the buyer-home shards
-concurrently, with one lane for each shard. The default is 3. The value 1 keeps
-the serial scan.
+concurrently, with one lane for each shard. The default shard concurrency is 3.
+For stock, `shard-concurrency=1` scans all shards before the polling delay; also
+set `workers-per-shard=1` for sequential work within each batch
+([stock settings](shardshop-order/RUNBOOK.md#2-stock-reservation-and-compensation)).
+For profit, `shard-concurrency=1` serializes shard turns and credits. Each turn
+processes one batch, and each shard keeps its own delay
+([profit scheduling](shardshop-order/ARCHITECTURE.md#seller-profit-posting)).
 
 **Reason.** In isolated A/B runs, the stock stage increased from 40.60 to 57.99
 orders/s (+42.8%), and the profit stage from 182.29 to 299.16 intents/s (+64.1%).
 
-**Result.** Each shard batch and the operations of each order stay sequential
+**Result.** The isolated measurements used sequential work within each shard batch
 ([step 6.5](CHANGELOG.md#step-65--order-write-p95-below-100-ms)). The
 [saga stages for cross-zone latency](#saga-stages-for-cross-zone-latency) added
 concurrency inside the result and profit stages.

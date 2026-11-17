@@ -43,7 +43,7 @@ public class CdcWiring {
                 throw new IllegalArgumentException("CDC is enabled but shardshop.order.cdc.broker.password is not set");
             }
         }
-        return new OrderCdcRelay(shards, brokerSettings(config));
+        return new OrderCdcRelay(shards, brokerSettings(config), new OrderCdcRelay.Settings(config.pollInterval()));
     }
 
     /** The CDC publisher and the result consumer share the order broker connection and credential. */

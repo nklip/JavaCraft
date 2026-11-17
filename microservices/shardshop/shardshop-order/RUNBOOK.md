@@ -232,6 +232,7 @@ and TLS certificate. Configure the replication login separately:
 
 ```properties
 shardshop.order.cdc.enabled=true
+shardshop.order.cdc.poll-interval=500ms
 shardshop.order.cdc.connections.shard-a.username=ordering_cdc
 shardshop.order.cdc.connections.shard-a.password=${ORDERING_CDC_PASSWORD}
 shardshop.order.cdc.broker.host=shardshop-rabbitmq
@@ -241,6 +242,17 @@ shardshop.order.cdc.broker.username=shardshop-order
 shardshop.order.cdc.broker.password=${RABBITMQ_ORDER_PASSWORD}
 shardshop.order.cdc.broker.timeout=5s
 ```
+
+CDC polling accepts 100 ms–30 seconds and defaults to 500 ms. `100ms` is an
+opt-in setting for evaluating sparse-command latency. In the pinned Debezium
+version, this setting controls underfilled queue waits and idle replication-stream
+waits; full batches do not wait for this timer. These stream reads are not table
+queries. The independent durable offset flush interval stays at one second.
+A shorter poll interval does not change publication-before-checkpoint ordering
+or the cleanup rule requiring a durable checkpoint past the row.
+Measure command age, CPU and checkpoint lag under the target workload before
+changing the default; the [ledger polling comparison](../shardshop-ledger/RUNBOOK.md#3-configuration)
+measures a different mechanism and does not establish CDC performance.
 
 When CDC is enabled in the saga process, startup fails before the generator reservation unless every
 routing shard has `shardshop.order.cdc.connections.<shard>.password` and the broker
@@ -341,12 +353,14 @@ quarantined for investigation. No partial confirmation or profit intent survives
 a failed transaction. `CONFIRMED` can be visible before seller balances catch up.
 
 The profit worker reads bounded batches from each buyer shard, releases the
-connection, and posts each intent on its seller's shard. With `shard-concurrency`
-above one, a bounded pool runs independent non-overlapping scans for buyer shards,
-and each scan posts its batch in `item-concurrency` groups at the same time. The
-intents of one seller stay in one group. Each shard waits `poll-interval`
-after its scan. Value `1` restores the original all-shards serial scan followed
-by one polling delay. The seller transaction
+connection, and posts each intent on its seller's shard. A bounded pool runs
+independent non-overlapping scans for buyer shards. Each scheduling turn processes
+one batch, then requeues the shard immediately only if the batch was full and
+every intent was applied. Other ready shards run before that continuation. Empty,
+partial, deferred, blocked or failed batches wait `poll-interval`, including while
+another shard is busy. Value `1` serializes shard turns and credits; larger values
+also post each batch in `item-concurrency` groups. Intents of one seller stay in
+one group. The seller transaction
 inserts immutable `catalog.profit_credits` keyed by `(order_id, product_id)` and
 increments the matching currency balance only for a new credit. A matching
 existing credit is a no-op. Only after that commit does a separate home-shard

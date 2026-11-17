@@ -221,3 +221,4 @@ qualification remain separate, pending work.
 | [8.1 Reduce order-acceptance SQL round trips](CHANGELOG.md#step-81--reduce-order-acceptance-sql-round-trips) | Done | Fewer SQL round trips; focused order-reactor checks passed. |
 | [8.2 Bounded worker concurrency](CHANGELOG.md#step-82--bounded-worker-concurrency) | Done | Bounded stock and ledger concurrency, including stock-lane recovery; focused worker checks passed. |
 | [8.3 RabbitMQ publication pipelining](CHANGELOG.md#step-83--rabbitmq-publication-pipelining) | Done | Bounded confirmed publication windows and consistent shutdown errors; focused publisher checks passed. |
+| [8.4 Productive batch scheduling](CHANGELOG.md#step-84--productive-batch-scheduling) | Done | Immediate continuation after productive batches, with shard delays preserved; production-path profit-worker checks passed. |

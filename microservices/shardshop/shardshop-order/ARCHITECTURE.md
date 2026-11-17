@@ -526,10 +526,13 @@ ProfitWorker runs outside HTTP request threads, with one non-overlapping scan
 per buyer shard and a bounded pool of three concurrent scans by default. A scan
 posts its batch in `shardshop.order.profit.item-concurrency` groups (default 2) at
 the same time. The intents of one seller stay in one group, in their order, thus two
-groups never wait for the same balance row. `shardshop.order.profit.shard-concurrency=1`
-preserves the original serial all-shards scan and delay; larger values use a
-separate delay after each shard's scan. The configured limit is capped by shard
-count and is independent of StockWorker's limit.
+groups never wait for the same balance row. Each scheduling turn processes at
+most one batch. A full batch with every intent applied requeues immediately,
+behind other ready shards; empty, partial, deferred, blocked or failed batches
+wait the configured poll interval. Each shard has its own delay, so a busy shard
+does not shorten a failing shard's backoff. `shardshop.order.profit.shard-concurrency=1`
+serializes shard turns and credits. The configured limit is capped by shard count
+and is independent of StockWorker's limit.
 
 Each intent commits an idempotent seller credit and atomic balance increment
 before marking completion in a separate home-shard transaction. No connection

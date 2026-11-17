@@ -136,6 +136,30 @@ can take one additional timeout. Failed streams are discarded before retry.
 Multiple ledger processes may publish duplicates, while the conditional mark
 preserves newer replay attempts.
 
+The polling delay applies after an empty or partial batch; full batches already
+continue immediately. Keep the 500 ms default unless sparse-result latency
+justifies more idle database work. `100ms` is an opt-in candidate; failure retries
+still use their separate 500 ms–30 second backoff.
+
+A bounded local PostgreSQL probe on 2026-11-17 used the production relay, JDBC
+store and runtime role, a pool of four and batch size 100. After a 100-query warmup,
+each interval ran idle for ten seconds and detected 15 sparse committed results.
+
+| Observation | 500 ms | 100 ms |
+|---|---:|---:|
+| Idle pending reads per second | 1.9 | 9.0 |
+| Total pending-read client time during ten idle seconds | 121 ms | 604 ms |
+| JVM CPU during ten idle seconds | 110 ms | 417 ms |
+| Mean commit-to-detection delay | 256 ms | 54 ms |
+| Maximum commit-to-detection delay | 436 ms | 109 ms |
+
+The probe bypassed broker publication after detecting rows. Client time includes
+pool, transaction and network work; JVM CPU includes the probe, and PostgreSQL CPU
+was not measured. This small sequential comparison supports a latency/cost
+tradeoff, not a throughput or capacity claim. It does not measure CDC or the full
+saga. The defaults remain unchanged; evaluate both settings under the intended
+workload before adopting the shorter interval.
+
 ## 4. Transport cleanup
 <sub>[Back to Contents](#contents)</sub>
 

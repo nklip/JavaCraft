@@ -22,6 +22,7 @@ class CdcWiringTest {
 
     @BeforeEach
     void broker() {
+        when(config.pollInterval()).thenReturn(Duration.ofMillis(250));
         when(order.process()).thenReturn(OrderConfiguration.Process.SAGA);
         var broker = mock(CdcConfiguration.Broker.class);
         when(config.broker()).thenReturn(broker);
@@ -59,6 +60,7 @@ class CdcWiringTest {
             assertEquals("cdc-test-secret", first.replication().password());
             assertEquals("ordering_cdc", shards.get(1).replication().username());
             assertEquals("cdc-test-secret-b", shards.get(1).replication().password());
+            assertEquals(new OrderCdcRelay.Settings(Duration.ofMillis(250)), context.arguments().get(2));
             assertEquals(new BrokerSettings("broker", 5672, "shardshop", "shardshop-order",
                     "broker-test-secret", Duration.ofSeconds(5)), context.arguments().get(1));
         })) {
@@ -112,6 +114,17 @@ class CdcWiringTest {
                 assertEquals(List.of(), context.arguments().getFirst()))) {
             wiring.relay(config, order, topology);
             assertEquals(1, construction.constructed().size());
+        }
+    }
+
+    @Test
+    void invalidPollIntervalsFailBeforeAnyReaderIsConstructed() {
+        for (Duration interval : new Duration[]{null, Duration.ZERO, Duration.ofMillis(99),
+                Duration.ofSeconds(30).plusNanos(1), Duration.ofDays(1)}) {
+            when(config.pollInterval()).thenReturn(interval);
+            assertEquals("CDC poll interval must be between 100ms and 30s",
+                    assertThrows(IllegalArgumentException.class,
+                            () -> wiring.relay(config, order, topology)).getMessage());
         }
     }
 

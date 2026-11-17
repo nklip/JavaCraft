@@ -22,7 +22,7 @@ final class CdcConfiguration {
         return "shardshop_order_" + shard.replace('-', '_');
     }
 
-    static Properties properties(String shard, Endpoint application, Endpoint replication) {
+    static Properties properties(String shard, Endpoint application, Endpoint replication, OrderCdcRelay.Settings settings) {
         Properties parsed = Driver.parseURL(replication.jdbcUrl(), null);
         if (parsed == null) {
             throw new IllegalArgumentException("Invalid PostgreSQL replication endpoint");
@@ -65,7 +65,7 @@ final class CdcConfiguration {
         result.setProperty("max.batch.size", "64");
         result.setProperty("max.queue.size", "256");
         result.setProperty("max.queue.size.in.bytes", "16777216");
-        result.setProperty("poll.interval.ms", "500");
+        result.setProperty("poll.interval.ms", Long.toString(settings.pollInterval().toMillis()));
         result.setProperty("record.processing.threads", "1");
         result.setProperty("record.processing.order", "ORDERED");
         result.setProperty("record.processing.shutdown.timeout.ms", "5000");

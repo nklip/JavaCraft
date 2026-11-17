@@ -33,6 +33,30 @@ class ProfitWorkerTest {
     private final ShardTopology topology = ShardTopology.fromNamesAndRegions("a,b", "US,EU");
     private final ProfitWorker.Settings settings = new ProfitWorker.Settings(true, Duration.ofMillis(100), 2, 1);
 
+    @ParameterizedTest
+    @ValueSource(ints = {1, 3})
+    void fullSuccessfulBatchContinuesBeforeTheIdleDelay(int concurrency) throws Exception {
+        var home = topology.shards().getFirst();
+        var seller = topology.shards().getLast();
+        var first = credit(41);
+        var second = credit(42);
+        var next = credit(43);
+        when(router.route(51)).thenReturn(seller);
+        when(store.pendingProfit(home, 2)).thenReturn(List.of(first, second), List.of(next), List.of());
+        CountDownLatch nextApplied = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            nextApplied.countDown();
+            return null;
+        }).when(store).markProfitApplied(home, next);
+        try (var worker = new ProfitWorker(store, router, topology,
+                new ProfitWorker.Settings(true, Duration.ofSeconds(30), 2, concurrency))) {
+            worker.start();
+            await(nextApplied);
+        }
+        verify(store).markProfitApplied(home, first);
+        verify(store).markProfitApplied(home, second);
+    }
+
     @Test
     void oneFailedSellerDoesNotStopOtherIntentsOrHomeShards() {
         var first = topology.shards().getFirst();
@@ -47,8 +71,11 @@ class ProfitWorkerTest {
         doThrow(new ProfitFailure(ProfitFailure.Reason.UNAVAILABLE)).when(store)
                 .retryProfit(eq(first), eq(failed), any());
 
-        try (var worker = new ProfitWorker(store, router, topology, settings)) {
-            worker.poll();
+        var clock = new ProfitWorkerSchedulingTest.ClockedScheduler();
+        try (var worker = new ProfitWorker(store, router, topology, settings, ignored -> clock.executor)) {
+            worker.start();
+            clock.next();
+            clock.next();
         }
         verify(store).creditProfit(second, healthy);
         verify(store).markProfitApplied(first, healthy);
@@ -90,9 +117,12 @@ class ProfitWorkerTest {
         };
         log.addHandler(capture);
         log.setUseParentHandlers(false);
-        try (var worker = new ProfitWorker(store, router, topology, settings)) {
-            worker.poll();
-            worker.poll();
+        var clock = new ProfitWorkerSchedulingTest.ClockedScheduler();
+        try (var worker = new ProfitWorker(store, router, topology, settings, ignored -> clock.executor)) {
+            worker.start();
+            for (int turn = 0; turn < 4; turn++) {
+                clock.next();
+            }
         } finally {
             log.removeHandler(capture);
             log.setUseParentHandlers(true);
@@ -147,9 +177,12 @@ class ProfitWorkerTest {
         when(store.pendingProfit(home, 2)).thenThrow(new ProfitFailure(ProfitFailure.Reason.UNAVAILABLE))
                 .thenReturn(List.of());
         when(store.pendingProfit(other, 2)).thenReturn(List.of());
-        try (var worker = new ProfitWorker(store, router, topology, settings)) {
-            worker.poll();
-            worker.poll();
+        var clock = new ProfitWorkerSchedulingTest.ClockedScheduler();
+        try (var worker = new ProfitWorker(store, router, topology, settings, ignored -> clock.executor)) {
+            worker.start();
+            for (int turn = 0; turn < 4; turn++) {
+                clock.next();
+            }
         }
         verify(store, times(2)).pendingProfit(home, 2);
         verify(store, times(2)).pendingProfit(other, 2);

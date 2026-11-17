@@ -789,6 +789,17 @@ regression first failed for the defect and then passed. The
 
 Lesson: Confirmed windows still need replay and shutdown guarantees.
 
+### Step 8.4 — Productive batch scheduling
+
+**Done 2026-11-17.**
+Workers continue immediately after productive batches. Profit scheduling preserves
+each shard's delay and removes the unused polling path; tests exercise the
+production lane. Focused worker checks passed, and the
+[worker decision](DECISIONS.md#shard-concurrent-stock-and-profit-workers) describes
+the resulting scheduling behavior.
+
+Lesson: Test the scheduler used in production, including each shard's delay.
+
 #### Pending qualification
 
 Deployment and capacity qualification of the combined revision remain pending.

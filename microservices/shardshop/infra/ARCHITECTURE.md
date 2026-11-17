@@ -467,14 +467,17 @@ outbox relay of the ledger polls its own database.
   at most three shard scans at the same time by default. The sagas in the batch of one
   shard stay sequential, and a full batch starts the next batch at once.
   `shardshop.order.stock.shard-concurrency=1` gives back the original serial global scan.
-- **Profit worker.** In the lab, the profit worker polls each 100 ms with at most 32
-  intents for each buyer shard. A separate bounded pool permits three buyer-shard
+- **Profit worker.** In the lab, the profit worker uses a 100 ms idle delay with
+  at most 32 intents per batch for each buyer shard. A separate bounded pool permits three buyer-shard
   scans at the same time by default, with one scan at a time for each shard. A scan
   posts its intents in two groups at the same time, and the intents of one seller
   stay in one group.
-  `shardshop.order.profit.shard-concurrency=1` gives
-  back the original serial global scan. Without the lab values, the worker polls each
-  250 ms with eight intents. Stock and profit share the database pools of each shard.
+  A full batch that applies every intent requeues immediately, after other ready
+  shards; other outcomes keep the polling delay. Each turn processes one batch.
+  `shardshop.order.profit.shard-concurrency=1` serializes shard turns and credits.
+  Without the lab values, the idle delay is 250 ms with eight intents per batch.
+  See the [profit scheduling rules](../shardshop-order/ARCHITECTURE.md#seller-profit-posting).
+  Stock and profit share the database pools of each shard.
 - **Capacity.** The capacity checks include the profit intents that are not applied,
   the orders that are not final and the commands that are not published. A
   confirmation can come before the seller profit, thus a flat order backlog alone does

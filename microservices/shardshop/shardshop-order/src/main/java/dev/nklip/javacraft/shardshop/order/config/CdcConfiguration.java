@@ -13,6 +13,9 @@ public interface CdcConfiguration {
     @WithDefault("true")
     boolean enabled();
 
+    @WithDefault("500ms")
+    Duration pollInterval();
+
     Map<String, Connection> connections();
 
     Broker broker();

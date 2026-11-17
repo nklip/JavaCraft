@@ -21,6 +21,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.IntFunction;
 
 /** Recovers confirmed margin intents after process restarts and unknown seller commits. */
 public final class ProfitWorker implements AutoCloseable {
@@ -30,6 +31,7 @@ public final class ProfitWorker implements AutoCloseable {
     private final ProfitCoordinator coordinator;
     private final ShardTopology topology;
     private final Settings settings;
+    private final IntFunction<ScheduledExecutorService> schedulerFactory;
     /** Shards with a logged failure; a later completed intent on such a shard logs that posting resumed. */
     private final Set<String> unavailable = ConcurrentHashMap.newKeySet();
     private ScheduledExecutorService executor;
@@ -65,11 +67,18 @@ public final class ProfitWorker implements AutoCloseable {
     }
 
     public ProfitWorker(ProfitStore store, ShardRouter router, ShardTopology topology, Settings settings) {
+        this(store, router, topology, settings, lanes -> Executors.newScheduledThreadPool(lanes,
+                Thread.ofPlatform().daemon().name("order-profit-worker-", 0).factory()));
+    }
+
+    ProfitWorker(ProfitStore store, ShardRouter router, ShardTopology topology, Settings settings,
+                 IntFunction<ScheduledExecutorService> schedulerFactory) {
         this.store = store;
         this.router = router;
         this.coordinator = new ProfitCoordinator(store, router);
         this.topology = topology;
         this.settings = settings;
+        this.schedulerFactory = schedulerFactory;
     }
 
     public synchronized void start() {
@@ -77,82 +86,105 @@ public final class ProfitWorker implements AutoCloseable {
             return;
         }
         int lanes = Math.min(settings.shardConcurrency(), topology.shards().size());
-        executor = Executors.newScheduledThreadPool(lanes,
-                Thread.ofPlatform().daemon().name("order-profit-worker-", 0).factory());
-        if (settings.shardConcurrency() == 1) {
-            // Preserve the original global scan and delay as an operational rollback baseline.
-            executor.scheduleWithFixedDelay(this::poll, 0, settings.interval().toMillis(), TimeUnit.MILLISECONDS);
-        } else {
-            if (settings.itemConcurrency() > 1) {
-                items = Executors.newFixedThreadPool(lanes * settings.itemConcurrency(),
-                        Thread.ofPlatform().daemon().name("order-profit-item-", 0).factory());
-            }
-            for (var home : topology.shards()) {
-                // A periodic task never overlaps itself, even when other home lanes are still busy.
-                executor.scheduleWithFixedDelay(() -> pollShard(home), 0,
-                        settings.interval().toMillis(), TimeUnit.MILLISECONDS);
-            }
+        executor = schedulerFactory.apply(lanes);
+        if (settings.shardConcurrency() > 1 && settings.itemConcurrency() > 1) {
+            items = Executors.newFixedThreadPool(lanes * settings.itemConcurrency(),
+                    Thread.ofPlatform().daemon().name("order-profit-item-", 0).factory());
+        }
+        for (var home : topology.shards()) {
+            executor.schedule(new Lane(home), 0, TimeUnit.MILLISECONDS);
         }
     }
 
-    void poll() {
-        for (var home : topology.shards()) {
-            if (Thread.currentThread().isInterrupted()) {
+    /** One batch per turn: requeue productive lanes behind other ready shards instead of draining inline. */
+    private final class Lane implements Runnable {
+        private final Shard home;
+
+        private Lane(Shard home) {
+            this.home = home;
+        }
+
+        @Override
+        public synchronized void run() {
+            if (closed || Thread.currentThread().isInterrupted()) {
                 return;
             }
-            pollShard(home);
+            boolean full = false;
+            try {
+                full = pollShard(home);
+            } finally {
+                if (!closed && !Thread.currentThread().isInterrupted()) {
+                    try {
+                        executor.schedule(this, full ? 0 : settings.interval().toMillis(), TimeUnit.MILLISECONDS);
+                    } catch (RejectedExecutionException stopped) {
+                        if (!closed) {
+                            throw stopped;
+                        }
+                    }
+                }
+            }
         }
     }
 
-    void pollShard(Shard home) {
+    boolean pollShard(Shard home) {
         if (Thread.currentThread().isInterrupted()) {
-            return;
+            return false;
         }
         List<PendingCredit> pending;
         try {
             pending = store.pendingProfit(home, settings.batchSize());
         } catch (RuntimeException failure) {
             unavailable(home, "polling", failure);
-            return;
+            return false;
         }
         ExecutorService parallel = items;
         List<List<PendingCredit>> groups = groups(pending, parallel == null ? 1 : settings.itemConcurrency());
+        boolean applied;
         if (groups.size() < 2) {
-            post(home, pending);
-            return;
-        }
-        // Step 7.9: one credit at a time capped a home lane at approximately 26 credits/s on EKS (35 ms each).
-        List<Future<?>> running = new ArrayList<>();
-        try {
-            for (var group : groups) {
-                running.add(parallel.submit(() -> post(home, group)));
+            applied = post(home, pending);
+        } else {
+            // Step 7.9: one credit at a time capped a home lane at approximately 26 credits/s on EKS (35 ms each).
+            List<Future<Boolean>> running = new ArrayList<>();
+            try {
+                for (var group : groups) {
+                    running.add(parallel.submit(() -> post(home, group)));
+                }
+                applied = true;
+                for (var group : running) {
+                    // Join every group even when an earlier group could not advance.
+                    applied &= group.get();
+                }
+            } catch (InterruptedException interrupted) {
+                running.forEach(group -> group.cancel(true));
+                Thread.currentThread().interrupt();
+                return false;
+            } catch (ExecutionException | RejectedExecutionException failure) {
+                running.forEach(group -> group.cancel(true));
+                unavailable(home, "posting", failure);
+                return false;
             }
-            for (var group : running) {
-                group.get();
-            }
-        } catch (InterruptedException interrupted) {
-            running.forEach(group -> group.cancel(true));
-            Thread.currentThread().interrupt();
-        } catch (ExecutionException | RejectedExecutionException failure) {
-            // post() reports its own failures; this is a stopped executor during close.
-            running.forEach(group -> group.cancel(true));
-            unavailable(home, "posting", failure);
         }
+        return applied && pending.size() == settings.batchSize() && !Thread.currentThread().isInterrupted();
     }
 
-    private void post(Shard home, List<PendingCredit> credits) {
+    private boolean post(Shard home, List<PendingCredit> credits) {
+        boolean applied = true;
         for (var credit : credits) {
             if (Thread.currentThread().isInterrupted()) {
-                return;
+                return false;
             }
             try {
-                report(home, credit, coordinator.process(home, credit));
+                Progress progress = coordinator.process(home, credit);
+                applied &= progress.status() == Progress.Status.APPLIED;
+                report(home, credit, progress);
             } catch (RuntimeException failure) {
                 // The home shard could not save the retry time or the block, thus it failed as well.
                 // An unavailable seller must not stop other sellers or home shards.
+                applied = false;
                 unavailable(home, "posting", failure);
             }
         }
+        return applied;
     }
 
     /** The credits of one seller stay in one group, in their batch order; empty groups are left out. */
