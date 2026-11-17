@@ -670,12 +670,17 @@ cross-shard transaction assembly.
   ledger consumer. Preserve source order within each shard; there is no global
   order across shards, and redelivery still requires the existing idempotency
   checks.
-- **Checkpoint.** After a publisher confirm with no mandatory return, mark that
-  outbox row published in its shard using the existing service role. Only after
-  that local transaction commits may the batch consumer mark the source record
-  processed and allow its offset to be flushed. Never advance past a failed
-  publication or status update. Use finite publish/SQL timeouts and bounded
-  backoff; on exhaustion, fail that reader.
+- **Checkpoint.** Process source records in fixed windows of at most 16 records.
+  Publish the window's commands in source order, with at most 16 confirms in
+  flight and at most 1 MiB per envelope. After every command confirms with no
+  mandatory return, mark all window commands published in one shard transaction
+  using the existing service role. No database transaction spans broker IO.
+  Only after that transaction commits may the consumer mark the window's source
+  records processed, in order. Finish the Debezium batch only after all windows
+  succeed. A failure leaves its complete window unprocessed; an uncertain broker
+  or database outcome may replay that window with unchanged IDs and envelopes.
+  Never advance past a failed publication or status update. Use finite
+  publish/SQL timeouts and bounded backoff; on exhaustion, fail that reader.
 - **Supervision.** A per-shard supervisor restarts a failed reader from its durable
   position with capped exponential backoff, indefinitely, without affecting other
   shards or the pod's liveness; alert when a reader stays down or lags past a

@@ -2,6 +2,7 @@ package dev.nklip.javacraft.shardshop.ledger.persistence;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.nklip.javacraft.shardshop.common.JsonRequests;
+import dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher;
 import dev.nklip.javacraft.shardshop.common.jdbc.DatabasePhases;
 import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import dev.nklip.javacraft.shardshop.common.jdbc.JdbcUrls;
@@ -27,6 +28,8 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.TreeSet;
 import java.util.function.Function;
@@ -191,21 +194,59 @@ public final class JdbcLedgerStore implements LedgerStore, ResultOutbox, Transpo
     /** A stale confirm must leave a newer replay pending, including after outbox cleanup/recreation. */
     @Override
     public boolean markPublished(long messageId, long publicationAttempt) {
-        if (messageId < 1 || publicationAttempt < 1) {
-            throw new IllegalArgumentException("Ledger result ID and publication attempt must be positive");
-        }
+        return markPublished(List.of(new PendingResult(messageId, publicationAttempt, "{}"))) == 1;
+    }
+
+    @Override
+    public int markPublished(List<PendingResult> results) {
+        List<PendingResult> window = validatedWindow(results);
         return phases.run(DatabasePhases.Pool.of(pool, () -> pool.flush(AgroalDataSource.FlushMode.ALL)),
                 false, DatabasePhases.PHASE_BUDGET, (connection, deadline) -> {
+                    connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
                     DatabasePhases.refreshTimeouts(connection, deadline);
-                    try (PreparedStatement statement = connection.prepareStatement(
-                            "UPDATE ledger.ledger_outbox SET published_at=GREATEST(clock_timestamp(), created_at) "
-                                    + "WHERE message_id=? AND publication_attempt=? AND published_at IS NULL")) {
-                        statement.setLong(1, messageId);
-                        statement.setLong(2, publicationAttempt);
-                        return statement.executeUpdate() == 1;
-                    }
+                    return markPublished(connection, window);
                 }, IllegalArgumentException.class,
                 failure -> new IllegalStateException("Ledger result publication mark unavailable", failure));
+    }
+
+    private static List<PendingResult> validatedWindow(List<PendingResult> results) {
+        if (results == null || results.isEmpty() || results.size() > ConfirmedPublisher.MAX_BATCH_SIZE) {
+            throw new IllegalArgumentException("Ledger publication mark window must contain 1..16 results");
+        }
+        List<PendingResult> window = List.copyOf(results);
+        HashSet<Long> ids = new HashSet<>();
+        for (PendingResult result : window) {
+            if (!ids.add(result.messageId())) {
+                throw new IllegalArgumentException("Ledger publication mark identities must be unique");
+            }
+        }
+        return window;
+    }
+
+    static int markPublished(Connection connection, List<PendingResult> results) throws SQLException {
+        List<PendingResult> window = validatedWindow(results);
+        String values = String.join(",", Collections.nCopies(window.size(), "(CAST(? AS bigint),CAST(? AS bigint))"));
+        // Lock in stable ID order even when overlapping publishers fetched rows in a different order.
+        // Both guards survive a concurrent rearm or removal/recreation of the transport row.
+        try (PreparedStatement statement = connection.prepareStatement(
+                "WITH observed(message_id, publication_attempt) AS (VALUES " + values + "), "
+                        + "eligible AS MATERIALIZED (SELECT target.message_id, target.publication_attempt "
+                        + "FROM ledger.ledger_outbox AS target JOIN observed "
+                        + "ON target.message_id=observed.message_id "
+                        + "AND target.publication_attempt=observed.publication_attempt "
+                        + "WHERE target.published_at IS NULL ORDER BY target.message_id FOR UPDATE OF target) "
+                        + "UPDATE ledger.ledger_outbox AS target "
+                        + "SET published_at=GREATEST(clock_timestamp(), target.created_at) FROM eligible "
+                        + "WHERE target.message_id=eligible.message_id "
+                        + "AND target.publication_attempt=eligible.publication_attempt "
+                        + "AND target.published_at IS NULL")) {
+            int parameter = 1;
+            for (PendingResult result : window) {
+                statement.setLong(parameter++, result.messageId());
+                statement.setLong(parameter++, result.publicationAttempt());
+            }
+            return statement.executeUpdate();
+        }
     }
 
     @Override

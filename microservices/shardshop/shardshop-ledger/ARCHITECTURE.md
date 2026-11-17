@@ -88,13 +88,16 @@ supports the polling result relay; ledger has no CDC publication.
 
 The polling result relay reads a bounded batch of pending outbox rows joined to
 their permanent result envelopes, releases the database transaction, and publishes
-each saved envelope with mandatory routing and persistent delivery. Only a positive
-confirm without a return permits a separate transaction to set `published_at` where
-both result ID and publication attempt match.
+windows of at most 16 saved envelopes with mandatory routing and persistent delivery.
+All messages in a window must receive positive confirms without any return before
+one separate transaction marks matching attempts published. The mark locks rows in
+result-ID order and compares both result ID and publication attempt, including after
+outbox cleanup and recreation. Stale attempts are left pending independently.
 
 - The relay never increments attempts or changes saved envelopes.
-- Failed or uncertain publications remain pending and retry with a fresh broker
-  stream and capped backoff; process restart resumes pending rows. A stream that
+- Failed or uncertain windows remain pending in full and retry with a fresh broker
+  stream and capped backoff. A failed or uncertain mark may replay the whole window;
+  process restart resumes pending rows. A stream that
   the broker closed while it was idle opens a new connection before the next
   publication.
 - The relay uses the shared `ConfirmedPublisher` of common, as the order CDC relay

@@ -779,6 +779,16 @@ and the stock scheduling regression tests.
 
 Lesson: Bound concurrency and keep retries scheduled after unexpected failures.
 
+### Step 8.3 — RabbitMQ publication pipelining
+
+**Done 2026-11-17.**
+Publishers use confirmed windows of at most 16 messages. Failed windows remain
+eligible for replay, and shutdown reports consistent errors. The shutdown-race
+regression first failed for the defect and then passed. The
+[relay contract](shardshop-order/ARCHITECTURE.md#relay-contract) owns replay behavior.
+
+Lesson: Confirmed windows still need replay and shutdown guarantees.
+
 #### Pending qualification
 
 Deployment and capacity qualification of the combined revision remain pending.

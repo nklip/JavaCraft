@@ -6,6 +6,8 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.GetResponse;
 import com.rabbitmq.client.ShutdownSignalException;
+import dev.nklip.javacraft.shardshop.common.amqp.BrokerSettings;
+import dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher;
 import dev.nklip.javacraft.shardshop.testing.support.Json;
 import dev.nklip.javacraft.shardshop.testing.support.RabbitMqBroker;
 import dev.nklip.javacraft.shardshop.testing.support.ShardShopFiles;
@@ -257,6 +259,63 @@ public final class RabbitMqStepDefinitions {
             RabbitMqBroker.await("the source released its confirmed dead letter", DELIVERY,
                     () -> broker.queue(queue).path("messages").asInt() == 0);
             assertEquals(0, channel.queueDeclarePassive(queue + ".dlq").getMessageCount());
+        }
+    }
+
+    @Then("a full publisher window delivers every persistent message in source order")
+    public void publisherWindow() throws Exception {
+        List<ConfirmedPublisher.Publication> messages = publications();
+        try (ConfirmedPublisher publisher = confirmedPublisher()) {
+            publisher.publishBatch(messages);
+        }
+        assertPublishedWindow(messages);
+    }
+
+    @Then("a mandatory return fails the complete publisher window and a fresh stream replays its messages")
+    public void returnedPublisherWindow() throws Exception {
+        List<ConfirmedPublisher.Publication> messages = publications();
+        try (Connection connection = broker.connect("admin"); Channel channel = connection.createChannel()) {
+            channel.queueUnbind("ledger.record-order", "ledger.commands", "ledger.record-order");
+            try (ConfirmedPublisher publisher = confirmedPublisher()) {
+                IOException failure = assertThrows(IOException.class, () -> publisher.publishBatch(messages));
+                assertTrue(failure.getMessage().contains("unroutable"), failure.toString());
+                assertThrows(IllegalStateException.class, () -> publisher.publishBatch(messages),
+                        "A failed window must invalidate its stream");
+                assertEquals(0, channel.queueDeclarePassive("ledger.record-order").getMessageCount());
+            } finally {
+                channel.queueBind("ledger.record-order", "ledger.commands", "ledger.record-order");
+            }
+        }
+        try (ConfirmedPublisher retry = confirmedPublisher()) {
+            retry.publishBatch(messages);
+        }
+        assertPublishedWindow(messages);
+    }
+
+    private ConfirmedPublisher confirmedPublisher() {
+        return new ConfirmedPublisher(new BrokerSettings("127.0.0.1", broker.port(), "shardshop",
+                "shardshop-order", broker.orderPassword(), Duration.ofSeconds(5)),
+                new ConfirmedPublisher.Destination("ledger.commands", "ledger.record-order", "command", "batch-test"));
+    }
+
+    private static List<ConfirmedPublisher.Publication> publications() {
+        return java.util.stream.IntStream.range(0, ConfirmedPublisher.MAX_BATCH_SIZE)
+                .mapToObj(index -> new ConfirmedPublisher.Publication("batch-message-" + index,
+                        payload("batch-" + index))).toList();
+    }
+
+    private void assertPublishedWindow(List<ConfirmedPublisher.Publication> messages) throws Exception {
+        try (Connection connection = broker.connect("admin"); Channel channel = connection.createChannel()) {
+            for (ConfirmedPublisher.Publication expected : messages) {
+                GetResponse actual = delivery(channel, "ledger.record-order", DELIVERY);
+                assertEquals(expected.messageId(), actual.getProps().getMessageId());
+                assertArrayEquals(expected.body(), actual.getBody());
+                assertEquals(2, actual.getProps().getDeliveryMode());
+                assertEquals("application/json", actual.getProps().getContentType());
+                channel.basicAck(actual.getEnvelope().getDeliveryTag(), false);
+            }
+            assertEquals(0, channel.queueDeclarePassive("ledger.record-order").getMessageCount(),
+                    "The successful window must deliver each message exactly once");
         }
     }
 

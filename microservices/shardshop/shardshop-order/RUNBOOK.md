@@ -206,8 +206,14 @@ lock prevents overlapping readers from writing the shared JDBC offset store.
 
 The relay sends the stored `RecordOrder` JSON unchanged, with persistent delivery,
 mandatory routing and publisher confirms. A return or negative/missing confirm
-leaves the row unpublished. After confirmation, an `order_app` transaction marks
-`published_at`; only then may Debezium checkpoint that source record. Snapshot
+leaves its window unmarked. Each reader processes fixed windows of at most 16
+source records and sends their commands in source order, with at most 16 confirms
+in flight and 1 MiB per envelope. After every command confirms, one `order_app`
+transaction marks the window's `published_at` values. Only after that commit may
+Debezium process the window's source records. The batch finishes only when every
+window succeeds. A failed or uncertain publication or mark leaves that window
+unprocessed; restart can replay the complete window with unchanged IDs and JSON.
+No database transaction spans broker IO. There is no window-size setting. Snapshot
 rows already published, metadata updates, deletes and connector control records
 do not become commands. Redelivery retains the original message identity.
 Order and ledger share this publisher (`ConfirmedPublisher` in

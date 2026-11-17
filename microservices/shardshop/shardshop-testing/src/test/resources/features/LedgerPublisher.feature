@@ -24,7 +24,8 @@ Feature: Packaged ledger result publisher
   Scenario: A broker connection loss does not strand pending results
     Then the publisher reconnects and confirms a later result
 
-  Scenario: A stale confirmation cannot mark a newer replay attempt
+  @publisher-batch
+  Scenario: A mixed current and stale confirmation window preserves the newer replay attempt
     Then an older publisher confirmation cannot clear a newer pending attempt
 
   @transport-cleanup

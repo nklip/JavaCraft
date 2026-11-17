@@ -131,8 +131,8 @@ public final class CdcRelayStepDefinitions {
         eventually("baseline is durably checkpointed", () -> relay.offsetLsn(shard) >= baselineFence);
         order.stopSaga();
         var crash = CrashBreakpoint.atSourceAnchor("shardshop-order",
-                "dev.nklip.javacraft.shardshop.order.cdc.CdcBatchProcessor", "process",
-                "publisher.publish(messageId, envelope);");
+                "dev.nklip.javacraft.shardshop.order.cdc.CdcBatchProcessor", "handleBatch",
+                "publisher.publishBatch(publications);");
         try (crash) {
             order.crashSagaAt(crash);
             order.restartSaga();
@@ -158,8 +158,8 @@ public final class CdcRelayStepDefinitions {
                 () -> relay.offsetLsn(shard) >= baselineFence);
         order.stopSaga();
         var crash = CrashBreakpoint.atSourceAnchor("shardshop-order",
-                "dev.nklip.javacraft.shardshop.order.cdc.CdcBatchProcessor", "process",
-                "status.markPublished(messageId);");
+                "dev.nklip.javacraft.shardshop.order.cdc.CdcBatchProcessor", "handleBatch",
+                "status.markPublished(publications.stream().map(ConfirmedPublisher.Publication::messageId).toList());");
         try (crash) {
             order.crashSagaAt(crash);
             order.restartSaga();
@@ -186,8 +186,8 @@ public final class CdcRelayStepDefinitions {
                 () -> relay.offsetLsn(shard) >= baselineFence);
         order.stopSaga();
         var crash = CrashBreakpoint.atSourceAnchor("shardshop-order",
-                "dev.nklip.javacraft.shardshop.order.cdc.CdcBatchProcessor", "process",
-                "status.markPublished(messageId);", "}");
+                "dev.nklip.javacraft.shardshop.order.cdc.CdcBatchProcessor", "handleBatch",
+                "for (ChangeEvent<String, String> event : window) {", "committer.markProcessed(event);");
         try (crash) {
             order.crashSagaAt(crash);
             order.restartSaga();
@@ -323,22 +323,29 @@ public final class CdcRelayStepDefinitions {
         var baseline = relay.insert(shard, false);
         relay.delivery(baseline);
         eventually("baseline checkpoint is durable", () -> relay.offsetLsn(shard) > baseline.walBeforeInsert());
+        order.stopSaga();
         long checkpoint = relay.offsetLsn(shard);
+        var pending = java.util.List.of(relay.insert(shard, false), relay.insert(shard, false), relay.insert(shard, false));
+        long firstInsert = pending.getFirst().walBeforeInsert();
         relay.unbindCommands();
-        var unroutable = relay.insert(shard, false);
+        order.restartSaga();
         eventually("CDC reader retries after the unroutable publish and names the cause",
                 () -> retried(order, shard, "RabbitMQ returned unroutable command publication"));
-        assertFalse(relay.published(unroutable));
+        for (var source : pending) assertFalse(relay.published(source), source.messageId());
         long failedPosition = relay.offsetLsn(shard);
-        assertTrue(failedPosition >= checkpoint && failedPosition <= unroutable.walBeforeInsert(),
-                "The failed record must not advance the durable source LSN past its insert");
+        assertTrue(failedPosition >= checkpoint && failedPosition <= firstInsert,
+                "The failed window must not advance the durable source LSN past its first insert");
         relay.assertNoDelivery(Duration.ofSeconds(1));
-        assertFalse(relay.published(unroutable));
-        assertTrue(relay.offsetLsn(shard) <= unroutable.walBeforeInsert(),
-                "Retries must not advance the source LSN past the failed command");
+        for (var source : pending) assertFalse(relay.published(source), source.messageId());
+        assertTrue(relay.offsetLsn(shard) <= firstInsert,
+                "Retries must not checkpoint past any member of the failed window");
         relay.bindCommands();
-        relay.delivery(unroutable, Duration.ofSeconds(40));
-        eventually("recovered command is marked published", () -> relay.published(unroutable));
+        for (var source : pending) {
+            relay.delivery(source, Duration.ofSeconds(40));
+            eventually("recovered command is marked published", () -> relay.published(source));
+        }
+        eventually("all recovered commands reach their durable checkpoint", () ->
+                relay.offsetLsn(shard) > pending.getLast().walBeforeInsert());
     }
 
     @Then("a terminated CDC walsender reconnects and delivers the next command")

@@ -7,6 +7,7 @@ import io.debezium.engine.ChangeEvent;
 import io.debezium.engine.DebeziumEngine;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
@@ -15,7 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
 final class CdcBatchProcessor implements DebeziumEngine.ChangeConsumer<ChangeEvent<String, String>> {
     @FunctionalInterface
     interface PublicationStatus {
-        void markPublished(String messageId) throws Exception;
+        void markPublished(List<String> messageIds) throws Exception;
     }
 
     private final String destination;
@@ -42,9 +43,24 @@ final class CdcBatchProcessor implements DebeziumEngine.ChangeConsumer<ChangeEve
             throw stopped();
         }
         try {
-            for (ChangeEvent<String, String> event : records) {
-                process(event);
-                committer.markProcessed(event);
+            for (int start = 0; start < records.size(); start += ConfirmedPublisher.MAX_BATCH_SIZE) {
+                List<ChangeEvent<String, String>> window = records.subList(start,
+                        Math.min(records.size(), start + ConfirmedPublisher.MAX_BATCH_SIZE));
+                List<ConfirmedPublisher.Publication> publications = new ArrayList<>(window.size());
+                for (ChangeEvent<String, String> event : window) {
+                    ConfirmedPublisher.Publication publication = publication(event);
+                    if (publication != null) {
+                        publications.add(publication);
+                    }
+                }
+                if (!publications.isEmpty()) {
+                    publisher.publishBatch(publications);
+                    status.markPublished(publications.stream().map(ConfirmedPublisher.Publication::messageId).toList());
+                }
+                // No source offset may pass any command whose confirmation or durable mark failed.
+                for (ChangeEvent<String, String> event : window) {
+                    committer.markProcessed(event);
+                }
             }
             committer.markBatchFinished();
         } catch (InterruptedException interrupted) {
@@ -62,9 +78,9 @@ final class CdcBatchProcessor implements DebeziumEngine.ChangeConsumer<ChangeEve
         return interrupted;
     }
 
-    private void process(ChangeEvent<String, String> event) throws Exception {
+    private ConfirmedPublisher.Publication publication(ChangeEvent<String, String> event) throws Exception {
         if (event.value() == null) {
-            return; // tombstone
+            return null; // tombstone
         }
         JsonNode value = json.readTree(event.value());
         JsonNode payload = value.path("payload");
@@ -76,11 +92,11 @@ final class CdcBatchProcessor implements DebeziumEngine.ChangeConsumer<ChangeEve
             if (destination.equals(event.destination())) {
                 throw new IllegalArgumentException("Captured outbox record has no operation");
             }
-            return; // connector metadata or heartbeat
+            return null; // connector metadata or heartbeat
         }
         String op = operation.asText();
         if (op.equals("u") || op.equals("d") || op.equals("t") || op.equals("m")) {
-            return; // metadata changes, cleanup, truncation and heartbeat messages
+            return null; // metadata changes, cleanup, truncation and heartbeat messages
         }
         if (!op.equals("r") && !op.equals("c")) {
             throw new IllegalArgumentException("Unexpected CDC operation");
@@ -102,7 +118,7 @@ final class CdcBatchProcessor implements DebeziumEngine.ChangeConsumer<ChangeEve
         }
         JsonNode publishedAt = after.path("published_at");
         if (op.equals("r") && !publishedAt.isMissingNode() && !publishedAt.isNull()) {
-            return; // first snapshot may include already confirmed rows
+            return null; // first snapshot may include already confirmed rows
         }
         JsonNode envelopeNode = after.path("envelope");
         if (!envelopeNode.isTextual()) {
@@ -114,7 +130,6 @@ final class CdcBatchProcessor implements DebeziumEngine.ChangeConsumer<ChangeEve
                 || !messageId.equals(command.path("messageId").textValue())) {
             throw new IllegalArgumentException("Captured outbox message ID does not match its envelope");
         }
-        publisher.publish(messageId, envelope);
-        status.markPublished(messageId);
+        return new ConfirmedPublisher.Publication(messageId, envelope);
     }
 }

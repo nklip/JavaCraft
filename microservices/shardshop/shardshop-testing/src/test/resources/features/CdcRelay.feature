@@ -43,7 +43,8 @@ Feature: Order outbox WAL relay to the durable ledger command queue
   Scenario: One shard reader outage does not stop a healthy shard
     Then an unavailable CDC shard leaves its command pending while another shard publishes
 
-  Scenario: Mandatory return prevents publication and the reconnect recovers the same command
+  @publisher-batch
+  Scenario: Mandatory return keeps every command pending and prevents a checkpoint past the failed window
     Then an unroutable CDC command stays pending until its route and reader recover
 
   Scenario: A dropped replication connection reconnects without losing a command

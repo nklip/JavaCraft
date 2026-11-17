@@ -30,8 +30,16 @@ classes are in common.
 
 ### RabbitMQ engines
 
-- `ConfirmedPublisher` is one ordered stream with persistent mandatory messages, publisher confirms and finite
-  timeouts. It replaces the publishers that order and ledger copied.
+- `ConfirmedPublisher` is one ordered stream with persistent mandatory messages and finite timeouts. It sends
+  up to 16 messages (at most 1 MiB each) before waiting for the whole window's publisher confirms. The RabbitMQ
+  client handles individual and cumulative acknowledgements. Mandatory returns are correlated by message ID
+  within that window; an unknown return also fails the stream. Only a window with all positive confirms and
+  no returns succeeds. A failure or uncertain result discards the stream, so callers can replay the entire
+  window with unchanged identities. Each caller marks its outbox in a separate transaction after success;
+  no connection is held during broker IO. These are fixed bounds, independent of the relay's fetch batch.
+  The publication deadline covers the whole window, including blocked writes and confirm waits; connection
+  cleanup has one additional bounded timeout. Closing interrupts active work without waiting for the
+  publication monitor. The single-message API uses a one-message window.
 - `QueueConsumer` uses manual acknowledgements after the local commit and reconnects with backoff and jitter. It
   opens one channel for each handler (`concurrency`, default 1, maximum 16), each with one prefetched delivery.
   The client runs the channels on a pool of twice the available processors. It replaces the copied queue consumers.

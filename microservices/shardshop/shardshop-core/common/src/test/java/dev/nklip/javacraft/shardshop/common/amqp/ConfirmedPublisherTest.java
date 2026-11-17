@@ -19,9 +19,12 @@ import java.io.IOException;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -32,6 +35,7 @@ import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.AdditionalMatchers.aryEq;
 import static org.mockito.Mockito.*;
 
 class ConfirmedPublisherTest {
@@ -92,10 +96,10 @@ class ConfirmedPublisherTest {
         var order = inOrder(channel);
         order.verify(channel).confirmSelect();
         order.verify(channel).basicPublish(eq("ledger.commands"), eq("ledger.record-order"), eq(true),
-                properties.capture(), same(body));
+                properties.capture(), aryEq(body));
         order.verify(channel).waitForConfirms(1000);
         order.verify(channel).basicPublish(eq("ledger.commands"), eq("ledger.record-order"), eq(true),
-                properties.capture(), same(body));
+                properties.capture(), aryEq(body));
         order.verify(channel).waitForConfirms(1000);
         assertEquals(2, properties.getAllValues().getFirst().getDeliveryMode());
         assertEquals("application/json", properties.getAllValues().getFirst().getContentType());
@@ -104,6 +108,198 @@ class ConfirmedPublisherTest {
         verify(factory, times(1)).newConnection();
         verify(connection).close(1000);
         verify(connection, never()).abort(anyInt());
+    }
+
+    @Test
+    void pipelinesTheEntireWindowBeforeWaitingForItsConfirms() throws Exception {
+        try (var publisher = publisher(Duration.ofSeconds(1))) {
+            publisher.publishBatch(List.of(new ConfirmedPublisher.Publication("42", body),
+                    new ConfirmedPublisher.Publication("43", body), new ConfirmedPublisher.Publication("44", body)));
+        }
+        var sent = ArgumentCaptor.forClass(AMQP.BasicProperties.class);
+        var order = inOrder(channel);
+        order.verify(channel, times(3)).basicPublish(eq("ledger.commands"), eq("ledger.record-order"), eq(true),
+                sent.capture(), aryEq(body));
+        order.verify(channel).waitForConfirms(1000);
+        assertEquals(List.of("42", "43", "44"), sent.getAllValues().stream()
+                .map(AMQP.BasicProperties::getMessageId).toList());
+        assertTrue(sent.getAllValues().stream().allMatch(p -> p.getDeliveryMode() == 2
+                && "application/json".equals(p.getContentType())));
+    }
+
+    @Test
+    void returnForOneMessageFailsTheWholePositivelyConfirmedWindow() throws Exception {
+        AtomicReference<ReturnCallback> callback = returns();
+        try (var publisher = publisher(Duration.ofSeconds(1))) {
+            when(channel.waitForConfirms(anyLong())).thenAnswer(call -> {
+                callback.get().handle(returned("43"));
+                return true;
+            });
+            assertEquals("RabbitMQ returned unroutable command publication", assertThrows(IOException.class,
+                    () -> publisher.publishBatch(List.of(new ConfirmedPublisher.Publication("42", body),
+                            new ConfirmedPublisher.Publication("43", body)))).getMessage());
+            assertThrows(IllegalStateException.class, () -> publisher.publish("42", body));
+        }
+        verify(channel, times(2)).basicPublish(anyString(), anyString(), eq(true), any(), any(byte[].class));
+        verify(connection).abort(anyInt());
+    }
+
+    @Test
+    void unknownOrMissingReturnIdentityFailsClosed() throws Exception {
+        AtomicReference<ReturnCallback> callback = returns();
+        try (var publisher = publisher(Duration.ofSeconds(1))) {
+            when(channel.waitForConfirms(anyLong())).thenAnswer(call -> {
+                callback.get().handle(returned(null));
+                return true;
+            });
+            assertEquals("RabbitMQ returned an unknown command publication", assertThrows(IOException.class,
+                    () -> publisher.publish("42", body)).getMessage());
+        }
+    }
+
+    @Test
+    void partialWriteFailureNeverReportsWindowSuccessAndInvalidatesStream() throws Exception {
+        try (var publisher = publisher(Duration.ofSeconds(1))) {
+            doNothing().doThrow(new IOException("socket closed")).when(channel)
+                    .basicPublish(anyString(), anyString(), eq(true), any(), any(byte[].class));
+            assertThrows(IOException.class, () -> publisher.publishBatch(List.of(
+                    new ConfirmedPublisher.Publication("42", body), new ConfirmedPublisher.Publication("43", body),
+                    new ConfirmedPublisher.Publication("44", body))));
+            assertThrows(IllegalStateException.class, () -> publisher.publish("44", body));
+        }
+        verify(channel, times(2)).basicPublish(anyString(), anyString(), eq(true), any(), any(byte[].class));
+        verify(channel, never()).waitForConfirms(anyLong());
+        verify(connection).abort(anyInt());
+    }
+
+    @Test
+    void negativeConfirmAppliesToTheWholeWindow() throws Exception {
+        try (var publisher = publisher(Duration.ofSeconds(1))) {
+            when(channel.waitForConfirms(anyLong())).thenReturn(false);
+            assertThrows(IOException.class, () -> publisher.publishBatch(List.of(
+                    new ConfirmedPublisher.Publication("42", body), new ConfirmedPublisher.Publication("43", body))));
+            assertThrows(IllegalStateException.class, () -> publisher.publish("42", body));
+        }
+        verify(channel, times(2)).basicPublish(anyString(), anyString(), eq(true), any(), any(byte[].class));
+        verify(channel).waitForConfirms(anyLong());
+    }
+
+    @Test
+    void missingWindowConfirmHasOneBoundedDeadlineAndInvalidatesTheStream() throws Exception {
+        var publisher = publisher(Duration.ofMillis(150));
+        CountDownLatch release = new CountDownLatch(1);
+        when(channel.waitForConfirms(anyLong())).thenAnswer(call -> {
+            release.await();
+            return true;
+        });
+        try {
+            TimeoutException failure = assertThrows(TimeoutException.class, () -> publisher.publishBatch(List.of(
+                    new ConfirmedPublisher.Publication("42", body), new ConfirmedPublisher.Publication("43", body))));
+            assertEquals("RabbitMQ command publication confirm timed out", failure.getMessage());
+            assertThrows(IllegalStateException.class, () -> publisher.publish("42", body));
+            verify(channel, times(2)).basicPublish(anyString(), anyString(), eq(true), any(), any(byte[].class));
+            verify(channel).waitForConfirms(150);
+            verify(connection).abort(anyInt());
+        } finally {
+            release.countDown();
+            publisher.close();
+        }
+    }
+
+    @Test
+    void disconnectDuringConfirmsFailsTheWholeWindow() throws Exception {
+        try (var publisher = publisher(Duration.ofSeconds(1))) {
+            when(channel.waitForConfirms(anyLong())).thenThrow(
+                    new ShutdownSignalException(true, false, null, connection));
+            assertThrows(ShutdownSignalException.class, () -> publisher.publishBatch(List.of(
+                    new ConfirmedPublisher.Publication("42", body), new ConfirmedPublisher.Publication("43", body))));
+            assertThrows(IllegalStateException.class, () -> publisher.publish("42", body));
+        }
+        verify(connection).abort(anyInt());
+    }
+
+    @Test
+    void closeDuringWindowValidationRejectsPublicationAsClosed() throws Exception {
+        var publisher = publisher(Duration.ofSeconds(5));
+        var publications = spy(new ArrayList<>(List.of(new ConfirmedPublisher.Publication("42", body))));
+        CountDownLatch validating = new CountDownLatch(1);
+        CountDownLatch resume = new CountDownLatch(1);
+        doAnswer(call -> {
+            validating.countDown();
+            assertTrue(resume.await(2, TimeUnit.SECONDS));
+            return false;
+        }).when(publications).isEmpty();
+        try (var callers = Executors.newSingleThreadExecutor()) {
+            var running = callers.submit(() -> { publisher.publishBatch(publications); return null; });
+            try {
+                assertTrue(validating.await(2, TimeUnit.SECONDS));
+                assertTimeoutPreemptively(Duration.ofSeconds(1), publisher::close);
+                resume.countDown();
+                var failure = assertThrows(ExecutionException.class, () -> running.get(2, TimeUnit.SECONDS));
+                assertInstanceOf(IllegalStateException.class, failure.getCause());
+                assertEquals("Publisher is closed", failure.getCause().getMessage());
+                verify(factory, never()).newConnection();
+            } finally {
+                resume.countDown();
+                publisher.close();
+            }
+        }
+    }
+
+    @Test
+    void closeInterruptsAWindowWaitingForConfirms() throws Exception {
+        var publisher = publisher(Duration.ofSeconds(5));
+        CountDownLatch confirming = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        when(channel.waitForConfirms(anyLong())).thenAnswer(call -> {
+            confirming.countDown();
+            release.await();
+            return true;
+        });
+        try (var callers = Executors.newSingleThreadExecutor()) {
+            var running = callers.submit(() -> { publisher.publish("42", body); return null; });
+            try {
+                assertTrue(confirming.await(2, TimeUnit.SECONDS));
+                publisher.close();
+                assertThrows(ExecutionException.class, () -> running.get(2, TimeUnit.SECONDS));
+            } finally {
+                release.countDown();
+                publisher.close();
+            }
+        }
+    }
+
+    @Test
+    void invalidWindowsAreRejectedBeforeBrokerIoAndPublicationBytesAreImmutable() throws Exception {
+        try (var publisher = publisher(Duration.ofSeconds(1))) {
+            var publication = new ConfirmedPublisher.Publication("42", body);
+            assertThrows(IllegalArgumentException.class, () -> publisher.publishBatch(List.of()));
+            assertThrows(IllegalArgumentException.class, () -> publisher.publishBatch(
+                    java.util.Collections.nCopies(ConfirmedPublisher.MAX_BATCH_SIZE + 1, publication)));
+            assertThrows(IllegalArgumentException.class, () -> publisher.publishBatch(List.of(publication, publication)));
+            assertThrows(IllegalArgumentException.class, () -> new ConfirmedPublisher.Publication("43",
+                    new byte[ConfirmedPublisher.MAX_BODY_BYTES + 1]));
+            verify(factory, never()).newConnection();
+            byte[] original = body.clone();
+            body[0] = 0;
+            publication.body()[0] = 0;
+            publisher.publishBatch(List.of(publication));
+            verify(channel).basicPublish(anyString(), anyString(), eq(true), any(), aryEq(original));
+        }
+    }
+
+    private AtomicReference<ReturnCallback> returns() {
+        AtomicReference<ReturnCallback> callback = new AtomicReference<>();
+        when(channel.addReturnListener(any(ReturnCallback.class))).thenAnswer(call -> {
+            callback.set(call.getArgument(0));
+            return mock(ReturnListener.class);
+        });
+        return callback;
+    }
+
+    private Return returned(String messageId) {
+        return new Return(312, "NO_ROUTE", "ledger.commands", "ledger.record-order",
+                new AMQP.BasicProperties.Builder().messageId(messageId).build(), body);
     }
 
     @Test
@@ -116,7 +312,7 @@ class ConfirmedPublisherTest {
         var publisher = publisher(Duration.ofSeconds(1));
         when(channel.waitForConfirms(anyLong())).thenAnswer(call -> {
             callback.get().handle(new Return(312, "NO_ROUTE", "ledger.commands", "ledger.record-order",
-                    new AMQP.BasicProperties(), body));
+                    new AMQP.BasicProperties.Builder().messageId("42").build(), body));
             return true;
         });
 
@@ -223,7 +419,7 @@ class ConfirmedPublisherTest {
 
         publisher.publish("43", body);
 
-        verify(fresh).basicPublish(eq("ledger.commands"), eq("ledger.record-order"), eq(true), any(), same(body));
+        verify(fresh).basicPublish(eq("ledger.commands"), eq("ledger.record-order"), eq(true), any(), aryEq(body));
         verify(fresh).waitForConfirms(1000);
         verify(connection).abort(anyInt());
         assertEquals(List.of("RabbitMQ command publisher connected to ledger.commands",

@@ -8,12 +8,13 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.AdditionalMatchers.aryEq;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -39,11 +40,10 @@ class CdcBatchProcessorTest {
         processor.handleBatch(List.of(first, second), committer);
 
         InOrder order = inOrder(publisher, status, committer);
-        order.verify(publisher).publish(eq("123"), aryEq(firstEnvelope.getBytes(StandardCharsets.UTF_8)));
-        order.verify(status).markPublished("123");
+        order.verify(publisher).publishBatch(argThat(batch -> matches(batch,
+                List.of("123", "124"), List.of(firstEnvelope, secondEnvelope))));
+        order.verify(status).markPublished(List.of("123", "124"));
         order.verify(committer).markProcessed(first);
-        order.verify(publisher).publish(eq("124"), aryEq(secondEnvelope.getBytes(StandardCharsets.UTF_8)));
-        order.verify(status).markPublished("124");
         order.verify(committer).markProcessed(second);
         order.verify(committer).markBatchFinished();
     }
@@ -52,26 +52,25 @@ class CdcBatchProcessorTest {
     void failedPublishStopsAtRecordWithoutCompletingBatchOrFollowingCommand() throws Exception {
         ChangeEvent<String, String> first = outbox("c", "123", "{\"messageId\":\"123\"}", null);
         ChangeEvent<String, String> second = outbox("c", "124", "{\"messageId\":\"124\"}", null);
-        doThrow(new IllegalStateException("broker failed")).when(publisher).publish(eq("123"), any());
+        doThrow(new IllegalStateException("broker failed")).when(publisher).publishBatch(anyList());
 
         assertThrows(InterruptedException.class, () -> processor.handleBatch(List.of(first, second), committer));
         assertNotNull(processor.failure());
-        verify(publisher, times(1)).publish(eq("123"), any());
+        verify(publisher, times(1)).publishBatch(argThat(batch -> batch.size() == 2));
         verifyNoInteractions(status, committer);
         assertThrows(InterruptedException.class, () -> processor.handleBatch(List.of(second), committer));
-        verify(publisher, never()).publish(eq("124"), any());
+        verify(publisher, times(1)).publishBatch(anyList());
     }
 
     @Test
     void failedStatusCommitCannotAdvanceOffset() throws Exception {
         ChangeEvent<String, String> event = outbox("c", "123", "{\"messageId\":\"123\"}", null);
         ChangeEvent<String, String> later = outbox("c", "124", "{\"messageId\":\"124\"}", null);
-        doThrow(new IllegalStateException("database failed")).when(status).markPublished("123");
+        doThrow(new IllegalStateException("database failed")).when(status).markPublished(List.of("123", "124"));
 
         assertThrows(InterruptedException.class, () -> processor.handleBatch(List.of(event, later), committer));
 
-        verify(publisher).publish(eq("123"), any());
-        verify(publisher, never()).publish(eq("124"), any());
+        verify(publisher).publishBatch(argThat(batch -> batch.size() == 2));
         verify(committer, never()).markProcessed(any());
         verify(committer, never()).markBatchFinished();
     }
@@ -132,8 +131,8 @@ class CdcBatchProcessorTest {
         processor.handleBatch(List.of(event), committer);
 
         InOrder order = inOrder(publisher, status, committer);
-        order.verify(publisher).publish(eq("123"), aryEq(envelope.getBytes(StandardCharsets.UTF_8)));
-        order.verify(status).markPublished("123");
+        order.verify(publisher).publishBatch(argThat(batch -> matches(batch, List.of("123"), List.of(envelope))));
+        order.verify(status).markPublished(List.of("123"));
         order.verify(committer).markProcessed(event);
         order.verify(committer).markBatchFinished();
     }
@@ -148,6 +147,138 @@ class CdcBatchProcessorTest {
         assertThrows(InterruptedException.class, () -> processor.handleBatch(List.of(malformed), committer));
 
         verifyNoInteractions(publisher, status, committer);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void metadataBetweenCommandsWaitsForTheWindowCommitBeforeOrderedProcessing() throws Exception {
+        var first = outbox("c", "123", "{\"messageId\":\"123\"}", null);
+        ChangeEvent<String, String> tombstone = mock(ChangeEvent.class);
+        when(tombstone.value()).thenReturn(null);
+        var second = outbox("c", "124", "{\"messageId\":\"124\"}", null);
+
+        processor.handleBatch(List.of(first, tombstone, second), committer);
+
+        InOrder order = inOrder(publisher, status, committer);
+        order.verify(publisher).publishBatch(argThat(batch -> batch.stream()
+                .map(ConfirmedPublisher.Publication::messageId).toList().equals(List.of("123", "124"))));
+        order.verify(status).markPublished(List.of("123", "124"));
+        order.verify(committer).markProcessed(first);
+        order.verify(committer).markProcessed(tombstone);
+        order.verify(committer).markProcessed(second);
+        order.verify(committer).markBatchFinished();
+    }
+
+    @Test
+    void fullWindowAndPartialTailCommitInSourceOrder() throws Exception {
+        List<ChangeEvent<String, String>> records = commands(19);
+
+        processor.handleBatch(records, committer);
+
+        InOrder order = inOrder(publisher, status, committer);
+        order.verify(publisher).publishBatch(argThat(batch -> batch.size() == 16
+                && batch.getFirst().messageId().equals("1") && batch.getLast().messageId().equals("16")));
+        order.verify(status).markPublished(ids(1, 16));
+        for (var record : records.subList(0, 16)) {
+            order.verify(committer).markProcessed(record);
+        }
+        order.verify(publisher).publishBatch(argThat(batch -> batch.size() == 3
+                && batch.getFirst().messageId().equals("17") && batch.getLast().messageId().equals("19")));
+        order.verify(status).markPublished(ids(17, 19));
+        for (var record : records.subList(16, 19)) {
+            order.verify(committer).markProcessed(record);
+        }
+        order.verify(committer).markBatchFinished();
+        verify(publisher, times(2)).publishBatch(anyList());
+        verify(status, times(2)).markPublished(anyList());
+    }
+
+    @Test
+    void failedLaterWindowRetainsEarlierProcessedPrefixWithoutFinishingBatch() throws Exception {
+        List<ChangeEvent<String, String>> records = commands(35);
+        doNothing().doThrow(new IllegalStateException("missing confirm"))
+                .when(publisher).publishBatch(anyList());
+
+        assertThrows(InterruptedException.class, () -> processor.handleBatch(records, committer));
+
+        verify(status).markPublished(ids(1, 16));
+        verify(status, times(1)).markPublished(anyList());
+        for (var record : records.subList(0, 16)) {
+            verify(committer).markProcessed(record);
+        }
+        for (var record : records.subList(16, 35)) {
+            verify(committer, never()).markProcessed(record);
+        }
+        verify(publisher, times(2)).publishBatch(anyList());
+        verify(committer, never()).markBatchFinished();
+    }
+
+    @Test
+    void uncertainStatusCommitReplaysSameIdsAndEnvelopeBeforeAnySourceCheckpoint() throws Exception {
+        String firstEnvelope = "{ \"messageId\":\"123\", \"orderId\":\"987654321012345678\" }";
+        String secondEnvelope = "{\"messageId\":\"124\",\"schemaVersion\":1}";
+        var first = outbox("c", "123", firstEnvelope, null);
+        var second = outbox("c", "124", secondEnvelope, null);
+        List<String> committed = new ArrayList<>();
+        AtomicBoolean firstCommit = new AtomicBoolean(true);
+        doAnswer(call -> {
+            committed.addAll(call.getArgument(0)); // Database committed, but its response was lost.
+            if (firstCommit.getAndSet(false)) {
+                throw new java.sql.SQLException("commit outcome unknown");
+            }
+            return null;
+        }).when(status).markPublished(anyList());
+
+        assertThrows(InterruptedException.class, () -> processor.handleBatch(List.of(first, second), committer));
+        assertEquals(List.of("123", "124"), committed);
+        verifyNoInteractions(committer);
+
+        var restarted = new CdcBatchProcessor(IDENTITY, publisher, status);
+        restarted.handleBatch(List.of(first, second), committer);
+
+        verify(publisher, times(2)).publishBatch(argThat(batch -> matches(batch,
+                List.of("123", "124"), List.of(firstEnvelope, secondEnvelope))));
+        InOrder order = inOrder(status, committer);
+        order.verify(status, times(2)).markPublished(List.of("123", "124"));
+        order.verify(committer).markProcessed(first);
+        order.verify(committer).markProcessed(second);
+        order.verify(committer).markBatchFinished();
+    }
+
+    @Test
+    void malformedRecordPreventsAnyCheckpointWithinItsWindow() throws Exception {
+        var first = outbox("c", "123", "{\"messageId\":\"123\"}", null);
+        var invalid = outbox("c", "124", "{\"messageId\":\"999\"}", null);
+
+        assertThrows(InterruptedException.class, () -> processor.handleBatch(List.of(first, invalid), committer));
+
+        verifyNoInteractions(publisher, status, committer);
+    }
+
+    private List<ChangeEvent<String, String>> commands(int count) throws Exception {
+        List<ChangeEvent<String, String>> records = new ArrayList<>();
+        for (int id = 1; id <= count; id++) {
+            records.add(outbox("c", Integer.toString(id), "{\"messageId\":\"" + id + "\"}", null));
+        }
+        return records;
+    }
+
+    private static List<String> ids(int first, int last) {
+        return java.util.stream.IntStream.rangeClosed(first, last).mapToObj(Integer::toString).toList();
+    }
+
+    private static boolean matches(List<ConfirmedPublisher.Publication> batch, List<String> ids,
+                                   List<String> envelopes) {
+        if (!batch.stream().map(ConfirmedPublisher.Publication::messageId).toList().equals(ids)) {
+            return false;
+        }
+        for (int index = 0; index < batch.size(); index++) {
+            if (!java.util.Arrays.equals(envelopes.get(index).getBytes(StandardCharsets.UTF_8),
+                    batch.get(index).body())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @SuppressWarnings("unchecked")

@@ -30,3 +30,11 @@ Feature: RabbitMQ provisioning and delivery reliability
 
   Scenario: Capacity backpressure preserves an unconfirmed dead letter
     Then queue capacity rejects publishes and a full parking queue retains its dead letter until capacity returns
+
+  @publisher-batch
+  Scenario: A full bounded publisher window preserves message identity and order
+    Then a full publisher window delivers every persistent message in source order
+
+  @publisher-batch
+  Scenario: A returned publisher window requires replay through a fresh stream
+    Then a mandatory return fails the complete publisher window and a fresh stream replays its messages

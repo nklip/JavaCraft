@@ -2,6 +2,7 @@ package dev.nklip.javacraft.shardshop.order.cdc;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.nklip.javacraft.shardshop.common.amqp.ConfirmedPublisher;
 import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import dev.nklip.javacraft.shardshop.common.jdbc.JdbcUrls;
 
@@ -11,16 +12,30 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
 
 /** Application-role SQL for ownership, recovery preflight, and publication status. */
 final class CdcStore {
     private static final long OWNERSHIP_KEY = 0x736861726473686fL;
-    private final Endpoint endpoint;
+    @FunctionalInterface
+    interface ConnectionFactory {
+        Connection open() throws SQLException;
+    }
+
+    private final ConnectionFactory connections;
     private final Endpoint replication;
     private final ObjectMapper json = new ObjectMapper();
 
     CdcStore(Endpoint endpoint, Endpoint replication) {
-        this.endpoint = endpoint;
+        this(endpoint, replication, () -> DriverManager.getConnection(JdbcUrls.withDriverLimits(endpoint.jdbcUrl()),
+                endpoint.username(), endpoint.password()));
+    }
+
+    CdcStore(Endpoint endpoint, Endpoint replication, ConnectionFactory connections) {
+        Objects.requireNonNull(endpoint);
+        this.connections = Objects.requireNonNull(connections);
         this.replication = replication;
     }
 
@@ -196,33 +211,44 @@ final class CdcStore {
     }
 
     void markPublished(String messageId) throws SQLException {
-        long id = Long.parseLong(messageId);
+        markPublished(List.of(messageId));
+    }
+
+    /** One local transaction after the entire broker window is confirmed; replay preserves the first mark. */
+    void markPublished(List<String> messageIds) throws SQLException {
+        if (messageIds.isEmpty() || messageIds.size() > ConfirmedPublisher.MAX_BATCH_SIZE
+                || new HashSet<>(messageIds).size() != messageIds.size()) {
+            throw new IllegalArgumentException("Invalid CDC publication window");
+        }
+        List<Long> ids = messageIds.stream().map(Long::parseLong).toList();
+        String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
         try (Connection connection = connect()) {
             connection.setAutoCommit(false);
-            try (PreparedStatement statement = prepare(connection,
-                    "UPDATE ordering.order_outbox SET published_at = clock_timestamp() "
-                            + "WHERE message_id = ? AND published_at IS NULL")) {
-                statement.setLong(1, id);
-                int updated = statement.executeUpdate();
-                if (updated != 1) {
-                    try (PreparedStatement check = prepare(connection,
-                            "SELECT published_at IS NOT NULL FROM ordering.order_outbox WHERE message_id = ?")) {
-                        check.setLong(1, id);
-                        try (ResultSet rows = check.executeQuery()) {
-                            if (!rows.next() || !rows.getBoolean(1)) {
-                                throw new SQLException("Captured outbox row is missing or still unpublished");
-                            }
-                        }
+            try {
+                try (PreparedStatement statement = prepare(connection,
+                        "UPDATE ordering.order_outbox SET published_at = COALESCE(published_at, clock_timestamp()) "
+                                + "WHERE message_id IN (" + placeholders + ")")) {
+                    for (int index = 0; index < ids.size(); index++) {
+                        statement.setLong(index + 1, ids.get(index));
+                    }
+                    if (statement.executeUpdate() != ids.size()) {
+                        throw new SQLException("Captured outbox row is missing");
                     }
                 }
+                connection.commit();
+            } catch (SQLException failure) {
+                try {
+                    connection.rollback();
+                } catch (SQLException rollbackFailure) {
+                    failure.addSuppressed(rollbackFailure);
+                }
+                throw failure;
             }
-            connection.commit();
         }
     }
 
     private Connection connect() throws SQLException {
-        return DriverManager.getConnection(JdbcUrls.withDriverLimits(endpoint.jdbcUrl()),
-                endpoint.username(), endpoint.password());
+        return connections.open();
     }
 
     private static PreparedStatement prepare(Connection connection, String sql) throws SQLException {

@@ -102,8 +102,9 @@ public final class LedgerPublisherStepDefinitions {
         runtime.stop();
         var crash = CrashBreakpoint.atSourceAnchor("shardshop-ledger",
                 "dev.nklip.javacraft.shardshop.ledger.result.LedgerResultRelay", "run",
-                "active.publish(Long.toString(result.messageId()),",
-                "result.envelope().getBytes(StandardCharsets.UTF_8));", "if (closed.get()) {");
+                "active.publishBatch(window.stream().map(result -> new ConfirmedPublisher.Publication(",
+                "Long.toString(result.messageId()),",
+                "result.envelope().getBytes(StandardCharsets.UTF_8))).toList());", "if (closed.get()) {");
         try (crash) {
             runtime.crashAt(crash);
             runtime.startWithPublisher(database, broker, "USD");
@@ -201,10 +202,12 @@ public final class LedgerPublisherStepDefinitions {
     @Then("an older publisher confirmation cannot clear a newer pending attempt")
     public void staleConfirmation() throws Exception {
         ObjectNode command = command(107, "USD");
+        ObjectNode current = command(109, "USD");
         long resultId = id(command, "resultMessageId");
         runtime.start(database, broker, "USD");
         publish(command);
-        await("first pending result", () -> pending(command));
+        publish(current);
+        await("both pending results", () -> pending(command) && pending(current));
         runtime.stop();
 
         try (var holder = postgres.superuser(database)) {
@@ -218,7 +221,8 @@ public final class LedgerPublisherStepDefinitions {
             }
             runtime.startWithPublisher(database, broker, "USD");
             assertDelivery(command, "RECORDED", delivery());
-            await("publisher waiting to mark the confirmed attempt", this::blockedPublicationUpdate);
+            assertDelivery(current, "RECORDED", delivery());
+            await("publisher waiting to mark the confirmed window", this::blockedPublicationUpdate);
             unbind();
             try (PreparedStatement binding = holder.prepareStatement(
                     "UPDATE ledger.ledger_result_ids SET publication_attempt=2 WHERE result_message_id=?");
@@ -234,6 +238,8 @@ public final class LedgerPublisherStepDefinitions {
         await("new attempt to fail while unroutable", () -> retryLogged() && !blockedPublicationUpdate());
         assertTrue(runtime.lines().stream().noneMatch(line -> line.contains("Ledger result publication mark unavailable")),
                 "The stale mark must finish by its attempt fence, not a database timeout: " + runtime.tail());
+        awaitPublished(current);
+        assertEquals(1, attempt(current), "The current member of a mixed window must be marked");
         assertEquals(2, attempt(command));
         assertTrue(pending(command), "A stale confirm must not mark attempt two");
         bind();
@@ -376,7 +382,7 @@ public final class LedgerPublisherStepDefinitions {
         try (var connection = postgres.superuser(database);
              PreparedStatement query = connection.prepareStatement("SELECT count(*) FROM pg_stat_activity "
                      + "WHERE datname=? AND usename='ledger_app' AND wait_event_type='Lock' "
-                     + "AND query ILIKE '%ledger_outbox%' AND query ILIKE 'UPDATE%'") ) {
+                     + "AND query ILIKE 'WITH observed%'") ) {
             query.setString(1, database);
             try (ResultSet rows = query.executeQuery()) {
                 rows.next();

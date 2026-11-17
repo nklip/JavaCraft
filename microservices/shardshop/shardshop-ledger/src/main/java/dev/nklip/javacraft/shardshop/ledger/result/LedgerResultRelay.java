@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
-/** Serially publishes committed results, then conditionally settles their outbox attempts. */
+/** Publishes bounded windows of committed results before atomically settling matching attempts. */
 public final class LedgerResultRelay implements AutoCloseable {
     private static final Logger LOG = Logger.getLogger(LedgerResultRelay.class);
     private static final long INITIAL_BACKOFF_MILLIS = 500;
@@ -52,7 +52,7 @@ public final class LedgerResultRelay implements AutoCloseable {
                 try {
                     List<PendingResult> batch = Objects.requireNonNull(outbox.pending(settings.batchSize()),
                             "pending results");
-                    for (PendingResult result : batch) {
+                    for (int offset = 0; offset < batch.size(); offset += ConfirmedPublisher.MAX_BATCH_SIZE) {
                         if (closed.get()) {
                             break;
                         }
@@ -61,13 +61,16 @@ public final class LedgerResultRelay implements AutoCloseable {
                             active = Objects.requireNonNull(publishers.get(), "result publisher");
                             publisher = active;
                         }
-                        // The reserved result ID and the exact saved envelope.
-                        active.publish(Long.toString(result.messageId()),
-                                result.envelope().getBytes(StandardCharsets.UTF_8));
+                        List<PendingResult> window = batch.subList(offset,
+                                Math.min(batch.size(), offset + ConfirmedPublisher.MAX_BATCH_SIZE));
+                        // Every reserved result ID and its exact saved envelope must be confirmed.
+                        active.publishBatch(window.stream().map(result -> new ConfirmedPublisher.Publication(
+                                Long.toString(result.messageId()),
+                                result.envelope().getBytes(StandardCharsets.UTF_8))).toList());
                         if (closed.get()) {
                             break;
                         }
-                        outbox.markPublished(result.messageId(), result.publicationAttempt());
+                        outbox.markPublished(window);
                     }
                     backoff = INITIAL_BACKOFF_MILLIS;
                     if (batch.size() < settings.batchSize() && !shutdown.await(

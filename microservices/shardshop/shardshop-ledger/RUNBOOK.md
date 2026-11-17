@@ -55,7 +55,9 @@ The ledger polls committed pending rows in `ledger_outbox`, joining
 `ledger_result_ids` for the saved result envelope. It publishes that exact JSON
 with the order-reserved result ID to `order.saga-results`, routing key
 `order.ledger-results`. Messages are persistent and mandatory; a positive broker
-confirm without a return is required before marking a row published.
+confirm without a return for every message in a window is required before marking
+any of its rows published. A window contains at most 16 messages; this fixed bound
+does not add a configuration setting.
 
 The mark compares both `message_id` and the sent `publication_attempt`. A replay
 that increments the permanent attempt and rearms or recreates the outbox therefore
@@ -64,8 +66,11 @@ changes the envelope, its timestamps or the attempt counter. A crash or uncertai
 database commit after publication can deliver the same result again; delivery is
 at least once.
 
-One publication is in flight per process. Reads and conditional marks use separate
-bounded database transactions, with no database connection held during broker IO.
+One window is in flight per process. After all its confirms, one atomic database
+transaction marks the matching attempts. A failed or uncertain publication leaves
+the entire window pending; an uncertain mark may replay the entire window. Reads
+and conditional marks use separate bounded database transactions, with no database
+connection held during broker IO.
 The relay reads at most 100 rows per batch by default, immediately continues after
 a full batch, and otherwise polls every 500 ms. Errors retain pending rows and
 replace the publisher connection, backing off from 500 ms to 30 seconds. When the

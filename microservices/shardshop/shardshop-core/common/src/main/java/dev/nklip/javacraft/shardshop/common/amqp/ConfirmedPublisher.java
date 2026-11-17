@@ -7,12 +7,17 @@ import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.impl.DefaultExceptionHandler;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -26,17 +31,22 @@ import java.util.concurrent.atomic.AtomicReference;
  * connection is uncertain. The application owns the settings and credentials; each stream owns its one connection.
  */
 public final class ConfirmedPublisher implements AutoCloseable {
+    /** One pipelined window, bounded independently of the caller's fetch batch. */
+    public static final int MAX_BATCH_SIZE = 16;
+    public static final int MAX_BODY_BYTES = 1_048_576;
+
     private static final System.Logger LOG = System.getLogger(ConfirmedPublisher.class.getName());
 
     private final Destination destination;
     private final ConnectionFactory factory;
     private final int timeoutMillis;
     private final ExecutorService worker;
-    private final AtomicBoolean returned = new AtomicBoolean();
+    private final AtomicBoolean closed = new AtomicBoolean();
     /** The open connection; whoever takes it from here closes it, thus each connection closes once. */
     private final AtomicReference<Connection> live = new AtomicReference<>();
-    private volatile boolean closed;
     private Channel channel;
+    private Returns returns;
+    private volatile boolean awaitingConfirms;
 
     public ConfirmedPublisher(BrokerSettings settings, Destination destination) {
         this(settings, destination, new ConnectionFactory());
@@ -53,22 +63,42 @@ public final class ConfirmedPublisher implements AutoCloseable {
         factory.setExceptionHandler(new DriverFailures());
     }
 
-    /** Publishes one persistent JSON message with mandatory routing and waits for its broker confirm. */
-    public synchronized void publish(String messageId, byte[] body) throws Exception {
-        if (closed) {
+    /** Compatibility for a single-message window. */
+    public void publish(String messageId, byte[] body) throws Exception {
+        publishBatch(List.of(new Publication(messageId, body)));
+    }
+
+    /**
+     * Sends a bounded window in order before waiting for all confirms. Success is all-or-nothing: a return,
+     * negative/missing confirm or uncertain write invalidates the stream, and the caller may replay the whole
+     * window with the original identities. No database work belongs inside this method.
+     */
+    public synchronized void publishBatch(List<Publication> publications) throws Exception {
+        if (closed.get()) {
             throw new IllegalStateException("Publisher is closed");
         }
-        if (messageId == null || messageId.isBlank()) {
-            throw new IllegalArgumentException("messageId is required");
+        Objects.requireNonNull(publications, "publications");
+        if (publications.isEmpty() || publications.size() > MAX_BATCH_SIZE) {
+            throw new IllegalArgumentException("Publication window must contain 1.." + MAX_BATCH_SIZE + " messages");
         }
-        Objects.requireNonNull(body, "body");
-        if (body.length == 0) {
-            throw new IllegalArgumentException("body is empty");
+        List<Publication> batch = List.copyOf(publications);
+        var ids = new HashSet<String>();
+        for (Publication publication : batch) {
+            if (!ids.add(publication.messageId())) {
+                throw new IllegalArgumentException("Publication window contains duplicate message IDs");
+            }
         }
-        Future<?> attempt = worker.submit(() -> {
-            publishOnWorker(messageId, body);
-            return null;
-        });
+        awaitingConfirms = false;
+        Future<?> attempt;
+        try {
+            attempt = worker.submit(() -> {
+                publishOnWorker(batch);
+                return null;
+            });
+        } catch (RejectedExecutionException e) {
+            // close() may shut down the worker after the initial closed check, without taking this monitor.
+            throw new IllegalStateException("Publisher is closed", e);
+        }
         try {
             attempt.get(timeoutMillis, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
@@ -77,9 +107,10 @@ public final class ConfirmedPublisher implements AutoCloseable {
             Thread.currentThread().interrupt();
             throw e;
         } catch (TimeoutException e) {
+            String phase = awaitingConfirms ? "publication confirm" : "publication";
             attempt.cancel(true);
             invalidate();
-            throw new TimeoutException("RabbitMQ " + destination.kind() + " publication timed out");
+            throw timeout(phase, e);
         } catch (ExecutionException e) {
             invalidate();
             Throwable cause = e.getCause();
@@ -93,7 +124,7 @@ public final class ConfirmedPublisher implements AutoCloseable {
         }
     }
 
-    private void publishOnWorker(String messageId, byte[] body) throws Exception {
+    private void publishOnWorker(List<Publication> batch) throws Exception {
         if (channel != null && !channel.isOpen()) {
             // All publications of the closed idle stream have their confirms, thus a new connection is safe.
             channel = null;
@@ -106,15 +137,24 @@ public final class ConfirmedPublisher implements AutoCloseable {
             connect();
         }
 
-        returned.set(false);
-        AMQP.BasicProperties properties = new AMQP.BasicProperties.Builder()
-                .deliveryMode(2)
-                .contentType("application/json")
-                .messageId(messageId)
-                .build();
-        channel.basicPublish(destination.exchange(), destination.routingKey(), true, properties, body);
+        Returns current = returns;
+        current.begin(batch);
+        for (Publication publication : batch) {
+            if (closed.get()) {
+                throw new IOException("Publisher closed during publication");
+            }
+            AMQP.BasicProperties properties = new AMQP.BasicProperties.Builder()
+                    .deliveryMode(2)
+                    .contentType("application/json")
+                    .messageId(publication.messageId())
+                    .build();
+            channel.basicPublish(destination.exchange(), destination.routingKey(), true, properties, publication.body);
+        }
         boolean confirmed;
+        awaitingConfirms = true;
         try {
+            // The RabbitMQ client tracks individual and cumulative ACK/NACK delivery tags for this channel.
+            // It also dispatches a mandatory return before the corresponding confirm.
             confirmed = channel.waitForConfirms(timeoutMillis);
         } catch (TimeoutException missing) {
             throw timeout("publication confirm", missing);
@@ -122,11 +162,62 @@ public final class ConfirmedPublisher implements AutoCloseable {
         if (!confirmed) {
             throw new IOException("RabbitMQ negatively confirmed " + destination.kind() + " publication");
         }
-        if (returned.get()) {
-            throw new IOException("RabbitMQ returned unroutable " + destination.kind() + " publication");
-        }
-        if (closed) {
+        current.finish();
+        if (closed.get()) {
             throw new IOException("Publisher closed during publication");
+        }
+    }
+
+    /** Owns immutable bytes so a caller cannot change an in-flight envelope. At most 16 MiB per window. */
+    public record Publication(String messageId, byte[] body) {
+        public Publication {
+            if (messageId == null || messageId.isBlank()) {
+                throw new IllegalArgumentException("messageId is required");
+            }
+            Objects.requireNonNull(body, "body");
+            if (body.length == 0 || body.length > MAX_BODY_BYTES) {
+                throw new IllegalArgumentException("Publication body must contain 1.." + MAX_BODY_BYTES + " bytes");
+            }
+            body = body.clone();
+        }
+
+        @Override
+        public byte[] body() {
+            return body.clone();
+        }
+    }
+
+    /** Callback state belongs to one channel, so a late callback from an old connection cannot affect a new one. */
+    private final class Returns {
+        private Map<String, Boolean> publications = Map.of();
+        private boolean unexpected;
+
+        synchronized void begin(List<Publication> batch) throws IOException {
+            if (unexpected) {
+                throw new IOException("RabbitMQ returned an unknown " + destination.kind() + " publication");
+            }
+            publications = new HashMap<>();
+            for (Publication publication : batch) {
+                publications.put(publication.messageId(), false);
+            }
+        }
+
+        synchronized void returned(String messageId) {
+            if (messageId == null || !publications.containsKey(messageId)) {
+                unexpected = true;
+            } else {
+                publications.put(messageId, true);
+            }
+        }
+
+        synchronized void finish() throws IOException {
+            if (unexpected) {
+                throw new IOException("RabbitMQ returned an unknown " + destination.kind() + " publication");
+            }
+            if (publications.containsValue(true)) {
+                throw new IOException("RabbitMQ returned unroutable " + destination.kind() + " publication");
+            }
+            publications = Map.of();
         }
     }
 
@@ -138,7 +229,7 @@ public final class ConfirmedPublisher implements AutoCloseable {
             throw timeout("publisher connection", missing);
         }
         live.set(opened);
-        if (closed) {
+        if (closed.get()) {
             // A concurrent invalidation that found no connection leaves this one to the worker.
             if (live.compareAndSet(opened, null)) {
                 abort(opened);
@@ -147,10 +238,12 @@ public final class ConfirmedPublisher implements AutoCloseable {
         }
         Channel openedChannel = opened.createChannel();
         channel = openedChannel;
-        if (closed) {
+        if (closed.get()) {
             throw new IOException("Publisher closed while opening a channel");
         }
-        openedChannel.addReturnListener(message -> returned.set(true));
+        Returns callbacks = new Returns();
+        returns = callbacks;
+        openedChannel.addReturnListener(message -> callbacks.returned(message.getProperties().getMessageId()));
         openedChannel.confirmSelect();
         LOG.log(System.Logger.Level.INFO, "RabbitMQ " + destination.kind() + " publisher connected to "
                 + destination.exchange());
@@ -164,7 +257,7 @@ public final class ConfirmedPublisher implements AutoCloseable {
     }
 
     private void invalidate() {
-        closed = true;
+        closed.set(true);
         worker.shutdownNow();
         cleanup(false);
     }
@@ -206,9 +299,8 @@ public final class ConfirmedPublisher implements AutoCloseable {
     }
 
     @Override
-    public synchronized void close() {
-        if (!closed) {
-            closed = true;
+    public void close() {
+        if (closed.compareAndSet(false, true)) {
             worker.shutdownNow();
             cleanup(true);
         }

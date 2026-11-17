@@ -3,11 +3,94 @@ package dev.nklip.javacraft.shardshop.order.cdc;
 import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import org.junit.jupiter.api.Test;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
 class CdcStoreTest {
     private static final CdcStore.Slot SLOT = new CdcStore.Slot(true, false, "reserved", null, "pgoutput",
             "logical", true, true, 100L);
+
+    @Test
+    void publicationWindowUsesOneTransactionAndPreservesExistingPublicationTime() throws SQLException {
+        Connection connection = mock(Connection.class);
+        PreparedStatement statement = mock(PreparedStatement.class);
+        when(connection.prepareStatement(anyString())).thenReturn(statement);
+        when(statement.executeUpdate()).thenReturn(2);
+        Endpoint endpoint = new Endpoint("jdbc:postgresql://localhost/shardshop", "app", "");
+        CdcStore store = new CdcStore(endpoint, endpoint, () -> connection);
+
+        store.markPublished(List.of("123", "124"));
+
+        var order = inOrder(connection, statement);
+        order.verify(connection).setAutoCommit(false);
+        order.verify(connection).prepareStatement(argThat(sql -> sql.contains("COALESCE(published_at, clock_timestamp())")
+                && sql.contains("WHERE message_id IN (?,?)")));
+        order.verify(statement).setQueryTimeout(3);
+        order.verify(statement).setLong(1, 123L);
+        order.verify(statement).setLong(2, 124L);
+        order.verify(statement).executeUpdate();
+        order.verify(statement).close();
+        order.verify(connection).commit();
+        verify(connection, never()).rollback();
+        verify(connection, times(1)).prepareStatement(anyString());
+    }
+
+    @Test
+    void missingRowRollsBackWholePublicationWindow() throws SQLException {
+        Connection connection = mock(Connection.class);
+        PreparedStatement statement = mock(PreparedStatement.class);
+        when(connection.prepareStatement(anyString())).thenReturn(statement);
+        when(statement.executeUpdate()).thenReturn(1);
+        Endpoint endpoint = new Endpoint("jdbc:postgresql://localhost/shardshop", "app", "");
+        CdcStore store = new CdcStore(endpoint, endpoint, () -> connection);
+
+        assertThrows(SQLException.class, () -> store.markPublished(List.of("123", "124")));
+
+        verify(connection).rollback();
+        verify(connection, never()).commit();
+        verify(connection).close();
+    }
+
+    @Test
+    void failedUpdateRollsBackBeforeReportingFailure() throws SQLException {
+        Connection connection = mock(Connection.class);
+        PreparedStatement statement = mock(PreparedStatement.class);
+        when(connection.prepareStatement(anyString())).thenReturn(statement);
+        SQLException failure = new SQLException("write unavailable");
+        when(statement.executeUpdate()).thenThrow(failure);
+        Endpoint endpoint = new Endpoint("jdbc:postgresql://localhost/shardshop", "app", "");
+        CdcStore store = new CdcStore(endpoint, endpoint, () -> connection);
+
+        assertSame(failure, assertThrows(SQLException.class, () -> store.markPublished(List.of("123", "124"))));
+
+        verify(connection).rollback();
+        verify(connection, never()).commit();
+    }
+
+    @Test
+    void uncertainCommitIsReportedEvenIfRollbackAlsoFails() throws SQLException {
+        Connection connection = mock(Connection.class);
+        PreparedStatement statement = mock(PreparedStatement.class);
+        when(connection.prepareStatement(anyString())).thenReturn(statement);
+        when(statement.executeUpdate()).thenReturn(2);
+        SQLException unknown = new SQLException("connection lost during commit");
+        SQLException rollback = new SQLException("connection closed");
+        doThrow(unknown).when(connection).commit();
+        doThrow(rollback).when(connection).rollback();
+        Endpoint endpoint = new Endpoint("jdbc:postgresql://localhost/shardshop", "app", "");
+        CdcStore store = new CdcStore(endpoint, endpoint, () -> connection);
+
+        assertSame(unknown, assertThrows(SQLException.class, () -> store.markPublished(List.of("123", "124"))));
+
+        assertArrayEquals(new Throwable[] {rollback}, unknown.getSuppressed());
+        verify(connection).close();
+    }
 
     @Test
     void startsOnlyFromAFreshStateAnUncheckpointedFirstStartOrAPairedPosition() {
