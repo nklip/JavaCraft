@@ -253,6 +253,126 @@ rows consistent.
 
 The product application does not depend on Flyway, and its startup never migrates.
 
+### Product earnings cutover
+
+Catalog V7 adds `catalog.product_profits`, keyed by product and currency. It
+backfills retained credit amounts while holding an exclusive lock on the credit table.
+The lock waits for earlier credit transactions to finish; the backfill then sees
+their committed rows. Flyway commits the table, totals and writer fence together.
+No history is removed or recalculated from current product prices.
+
+The `product_total_applied` column is true for retained credits. Its new-row
+default is false and a check requires true. Updated order workers explicitly
+write true and increment both seller and product totals in the same transaction.
+An old worker cannot commit an uncounted credit after the migration: its insert
+fails with SQLSTATE `23514`, which the existing worker retries with durable
+backoff. This also fences old duplicate inserts until the new worker takes over.
+The new worker verifies retained credit identities without incrementing again.
+Old product readers that aggregate credits also wait for this exclusive lock and
+can hit their normal read deadline during a long backfill.
+
+Run the normal migration-before-application deployment. Until the new saga image
+starts, profit application can lag and old workers may log retry failures;
+orders and pending intents remain durable. If deployment stops after migration,
+complete the updated saga rollout. Rolling back only the saga binary will pause
+profit posting again; do not remove the fence or rewrite Flyway history. The
+existing bounded migration lock and statement timeouts still apply. A large
+retained-credit backfill may exceed them and abort atomically; investigate its
+size before authorizing the bounded maintenance procedure below.
+
+#### Retained-history maintenance through V7
+
+V7 is immutable. A later migration cannot shorten its scans or remove its exclusive
+lock on a database still at V6. Use this opt-in path during a planned outage when
+the normal 15-second statement budget is too small. It runs the original SQL and
+validates its original checksum; it does not repair history or disable the writer fence.
+
+| Limit | Normal migration | V7 maintenance |
+|---|---:|---:|
+| Statement | 15 seconds | 120 seconds |
+| JDBC socket | 30 seconds | 150 seconds |
+| Lock acquisition | 5 seconds | 5 seconds |
+| One shard Job | 180 seconds | 360 seconds |
+
+The [maintenance configuration](shard/catalog/flyway-v7-maintenance.conf) targets
+catalog version 7. The chart accepts `migration.catalogV7Maintenance=true` only for
+a standalone catalog Job on one inventory shard. Normal release rendering and
+other streams reject this setting. Later deployments use the unchanged normal
+configuration. The longer budget is a bound, not a large-history capacity guarantee.
+
+1. Inspect the retained-credit size and failure evidence, take the
+   [coordinated backup](../shardshop-testing/RUNBOOK.md#8-coordinated-backup-and-isolated-restore),
+   and arrange the outage. Check that catalog history is at V6 and that no
+   [migration or lifecycle operation](../infra/ARCHITECTURE.md#7-retained-lifecycle-safety)
+   is active. Use the already built, scanned and available migration image. Do not
+   run this procedure concurrently with `up.sh` or an Argo CD sync.
+2. Record the application and workload replica counts. Pause producers and readers,
+   stop new API traffic, and let pending orders and profit intents drain while the
+   saga still runs. Then stop the order HTTP, order saga and product pods. Verify
+   their termination before starting SQL. On an Argo CD deployment, coordinate
+   reconciliation so it cannot restart them during maintenance. The exclusive lock
+   still exists; keeping legacy readers and writers stopped prevents requests from
+   accumulating behind it.
+3. Prepare a disposable chart snapshot from the repository root. Select one shard
+   from [the inventory](../infra/shards.yaml). The example uses the kind deployment;
+   use the matching context, environment values and qualified image for another deployment.
+
+   ```bash
+   maintenance_chart=$(mktemp -d)
+   cp -R microservices/shardshop/infra/helm/shardshop/. "$maintenance_chart/"
+   cp -R microservices/shardshop/database "$maintenance_chart/migrations"
+   maintenance_shard=shard-a
+   helm template catalog-v7-maintenance "$maintenance_chart" --namespace shardshop \
+     -f microservices/shardshop/infra/shards.yaml \
+     -f microservices/shardshop/infra/helm/shardshop/kind-values.yaml \
+     --set render=migration --set migrationStream=catalog \
+     --set migrationShard="$maintenance_shard" --set migration.catalogV7Maintenance=true \
+     > "$maintenance_chart/$maintenance_shard.yaml"
+   ```
+
+4. Review the rendered Job and ConfigMap, including image, target shard, deadline
+   and configuration file. Ensure no Job named `<shard>-catalog-migration` already
+   exists; preserve any earlier failed Job's evidence before resolving that name.
+   Apply and wait for this one shard:
+
+   ```bash
+   kubectl --context kind-shardshop -n shardshop apply -f "$maintenance_chart/$maintenance_shard.yaml"
+   kubectl --context kind-shardshop -n shardshop wait --for=condition=complete \
+     "job/$maintenance_shard-catalog-migration" --timeout=420s
+   kubectl --context kind-shardshop -n shardshop logs "job/$maintenance_shard-catalog-migration"
+   ```
+
+   Stop on failure. Preserve logs and inspect the terminal Job; do not automatically
+   retry or raise limits again. A failed V7 transaction rolls back its table, totals
+   and fence together, but an earlier successful shard stays upgraded. Keep the
+   maintenance pause until a recovery or rollout decision is made.
+5. After success, delete only that completed Job. Reuse the same chart snapshot,
+   set `maintenance_shard` to the next inventory shard, and rerun the `helm template`
+   and `kubectl` commands above. Keep the immutable ConfigMaps as migration evidence.
+   After all shards succeed, remove the local chart snapshot, deploy the updated applications
+   through the normal workflow, restore the recorded replica counts, and run the
+   [saga gate](../shardshop-testing/RUNBOOK.md#11-saga-gate-and-drill) before resuming
+   traffic. Do not restart an old saga binary against the new fence. An interrupted
+   rollout requires the same roll-forward handling described above.
+
+Product reads totals with a point join. It has no total mutation privileges.
+Its previous limited credit-read grant remains for old reader pods during rollout.
+Totals use exact unbounded `NUMERIC`, matching the old `SUM` range, including
+negative and zero earnings. Seller balance overflow still rolls back the credit
+and both totals. Retain credit history for audit and replay; transport cleanup
+must not delete it or the totals. After restoration or an accounting investigation,
+compare the stored product totals with retained credits as the migration owner:
+
+```sql
+WITH expected AS (
+    SELECT product_id, currency, sum(amount) AS amount
+    FROM catalog.profit_credits GROUP BY product_id, currency
+)
+SELECT product_id, currency, expected.amount AS expected, totals.amount AS actual
+FROM expected FULL JOIN catalog.product_profits totals USING (product_id, currency)
+WHERE expected.amount IS DISTINCT FROM totals.amount;
+```
+
 ## 4. Ordering schema and catalog access
 <sub>[Back to Contents](#contents)</sub>
 

@@ -53,7 +53,7 @@ final class JdbcProfitSession {
         // ON CONFLICT serializes concurrent workers on the permanent credit key.
         // Only the winner changes the balance, within this same transaction.
         try (PreparedStatement statement = prepare("INSERT INTO catalog.profit_credits "
-                + "(order_id, product_id, seller_id, currency, amount) VALUES (?, ?, ?, ?, ?) "
+                + "(order_id, product_id, seller_id, currency, amount, product_total_applied) VALUES (?, ?, ?, ?, ?, true) "
                 + "ON CONFLICT (order_id, product_id) DO NOTHING RETURNING order_id")) {
             statement.setLong(1, credit.orderId());
             statement.setLong(2, credit.productId());
@@ -80,6 +80,16 @@ final class JdbcProfitSession {
             statement.setString(3, credit.currency());
             if (statement.executeUpdate() != 1) {
                 throw new SQLException("Profit balance was not updated");
+            }
+        }
+        try (PreparedStatement statement = prepare("INSERT INTO catalog.product_profits (product_id, currency, amount) "
+                + "VALUES (?, ?, ?) ON CONFLICT (product_id, currency) "
+                + "DO UPDATE SET amount = catalog.product_profits.amount + EXCLUDED.amount")) {
+            statement.setLong(1, credit.productId());
+            statement.setString(2, credit.currency());
+            statement.setBigDecimal(3, credit.amount());
+            if (statement.executeUpdate() != 1) {
+                throw new SQLException("Product profit total was not updated");
             }
         }
     }

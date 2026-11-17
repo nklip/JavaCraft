@@ -88,7 +88,7 @@ public final class RestoreVerification {
                 + "OR p.product_id<>i.product_id OR p.currency<>i.currency OR i.unit_cost IS NULL "
                 + "OR p.amount<>(i.unit_price-i.unit_cost)*i.quantity") == 0, "Profit intent differs from immutable order margin");
         require(count(connection, Saga.stockViolations()) == 0, "Stock differs from permanent reservation history");
-        require(count(connection, Saga.profitViolations()) == 0, "Seller balance differs from permanent profit credits");
+        require(count(connection, Saga.profitViolations()) == 0, "Seller or product totals differ from permanent profit credits");
     }
 
     static void validateDecision(Order order, Decision decision) throws IOException {

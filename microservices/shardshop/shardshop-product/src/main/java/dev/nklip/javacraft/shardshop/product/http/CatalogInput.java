@@ -5,6 +5,7 @@ import dev.nklip.javacraft.shardshop.common.IdParser;
 import dev.nklip.javacraft.shardshop.common.JsonFields;
 import dev.nklip.javacraft.shardshop.common.JsonRequests;
 import dev.nklip.javacraft.shardshop.product.catalog.CatalogFailure;
+import dev.nklip.javacraft.shardshop.product.catalog.CatalogModel.ListingDirection;
 import dev.nklip.javacraft.shardshop.product.catalog.CatalogModel.ProductCreation;
 import dev.nklip.javacraft.shardshop.product.catalog.CatalogModel.SellerCreation;
 import jakarta.ws.rs.core.HttpHeaders;
@@ -91,7 +92,7 @@ final class CatalogInput {
 
     ListingQuery listingQuery(UriInfo uri) {
         MultivaluedMap<String, String> query = uri.getQueryParameters();
-        if (!Set.of("region", "limit", "after").containsAll(query.keySet())) {
+        if (!Set.of("region", "limit", "after", "before", "last").containsAll(query.keySet())) {
             throw invalid();
         }
         String requestedRegion = region(singleQuery(query, "region", true));
@@ -107,7 +108,23 @@ final class CatalogInput {
             }
         }
         String afterText = singleQuery(query, "after", false);
-        return new ListingQuery(requestedRegion, limit, afterText == null ? 0 : id(afterText));
+        String beforeText = singleQuery(query, "before", false);
+        String lastText = singleQuery(query, "last", false);
+        if ((afterText != null ? 1 : 0) + (beforeText != null ? 1 : 0) + (lastText != null ? 1 : 0) > 1) {
+            throw invalid();
+        }
+        if (lastText != null) {
+            if (!"true".equals(lastText)) {
+                throw invalid();
+            }
+            return new ListingQuery(requestedRegion, limit, 0, ListingDirection.LAST);
+        }
+        if (beforeText != null) {
+            return new ListingQuery(requestedRegion, limit,
+                    cursor(beforeText, requestedRegion, limit, "b"), ListingDirection.BEFORE);
+        }
+        return new ListingQuery(requestedRegion, limit, afterText == null ? 0 :
+                afterText.startsWith("p1.") ? cursor(afterText, requestedRegion, limit, "a") : id(afterText));
     }
 
     private String singleQuery(MultivaluedMap<String, String> query, String name, boolean required) {
@@ -121,7 +138,26 @@ final class CatalogInput {
         return values.getFirst();
     }
 
-    record ListingQuery(String region, int limit, long after) {
+    record ListingQuery(String region, int limit, long after, ListingDirection direction) {
+        ListingQuery(String region, int limit, long after) {
+            this(region, limit, after, ListingDirection.AFTER);
+        }
+    }
+
+    static String cursor(String region, int limit, String direction, long boundary) {
+        return "p1." + region + "." + limit + "." + direction + "." + boundary;
+    }
+
+    private long cursor(String text, String region, int limit, String direction) {
+        if (text.length() > 40 || !text.startsWith("p1.")) {
+            throw invalid();
+        }
+        String[] parts = text.split("\\.", -1);
+        if (parts.length != 5 || !parts[1].equals(region) || !parts[2].equals(Integer.toString(limit))
+                || !parts[3].equals(direction)) {
+            throw invalid();
+        }
+        return id(parts[4]);
     }
 
     private String region(String value) {

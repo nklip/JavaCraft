@@ -9,6 +9,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ProfitFailureTest {
     @Test
+    void legacyProductTotalFenceRetriesUntilTheWriterIsUpgraded() {
+        assertEquals(ProfitFailure.Reason.UNAVAILABLE,
+                ProfitFailure.from(new SQLException("profit_credits_product_total_applied", "23514")).reason());
+    }
+
+    @Test
     void classifiesOnlyDefinitiveDataErrorsAsBlocked() {
         assertEquals(ProfitFailure.Reason.MISSING_CATALOG_REFERENCE,
                 ProfitFailure.from(new ExecutionException(new SQLException("missing product", "23503"))).reason());

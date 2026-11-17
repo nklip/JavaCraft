@@ -14,7 +14,7 @@ Feature: Catalog migrations with the Flyway Java API
           VALUES (11, 1, 'Legacy item', 19.95, 'USD', 10, 8)
       """
     When Flyway migrates the catalog stream
-    Then Flyway applies the migrations "2 catalog creation, 3 stock coordination, 4 profit posting, 5 product browser, 6 seller country currency policy, catalog grants"
+    Then Flyway applies the migrations "2 catalog creation, 3 stock coordination, 4 profit posting, 5 product browser, 6 seller country currency policy, 7 product profit totals, catalog grants"
     And catalog_reader reads these rows:
       | query                                                                                                     | rows                    |
       | SELECT company_name, creation_key IS NULL FROM catalog.sellers WHERE seller_id = 1                         | Legacy company,t        |
@@ -36,7 +36,7 @@ Feature: Catalog migrations with the Flyway Java API
           VALUES (101, 11, 1, 'USD', 0.10), (102, 11, 1, 'USD', -7.45)
       """
     When Flyway migrates the catalog stream
-    Then Flyway applies the migrations "5 product browser, 6 seller country currency policy, catalog grants"
+    Then Flyway applies the migrations "5 product browser, 6 seller country currency policy, 7 product profit totals, catalog grants"
     And product_app reads these rows:
       | query | rows |
       | SELECT initial_stock, stock FROM catalog.products WHERE product_id=11 | 10,7 |
@@ -109,7 +109,7 @@ Feature: Catalog migrations with the Flyway Java API
       """
     And catalog_owner adds these rows:
       """
-      INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount) VALUES (101, 12, 2, 'USD', -2.50);
+      INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount, product_total_applied) VALUES (101, 12, 2, 'USD', -2.50, true);
       UPDATE catalog.seller_profits SET amount = amount - 2.50 WHERE seller_id = 2 AND currency = 'USD';
       INSERT INTO catalog.seller_profits(seller_id, currency) VALUES (2, 'JPY')
       """
@@ -121,12 +121,12 @@ Feature: Catalog migrations with the Flyway Java API
       | SELECT currency, amount FROM catalog.seller_profits WHERE seller_id = 2 ORDER BY currency | EUR,0.00;JPY,0.00;USD,-2.50  |
     And these statements fail with their SQLSTATE:
       | role          | statement                                                                                                        | sqlstate |
-      | catalog_owner | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount) VALUES (101, 12, 2, 'USD', -2.50) | 23505 |
-      | catalog_owner | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount) VALUES (102, 12, 3, 'USD', 1.00)  | 23503 |
-      | catalog_owner | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount) VALUES (102, 12, 2, 'EUR', 1.00)  | 23503 |
-      | catalog_owner | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount) VALUES (102, 999, 2, 'USD', 1.00) | 23503 |
-      | catalog_owner | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount) VALUES (0, 12, 2, 'USD', 1.00)    | 23514 |
-      | catalog_owner | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount) VALUES (102, 12, 2, 'USD', 'NaN') | 23514 |
+      | catalog_owner | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount, product_total_applied) VALUES (101, 12, 2, 'USD', -2.50, true) | 23505 |
+      | catalog_owner | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount, product_total_applied) VALUES (102, 12, 3, 'USD', 1.00, true)  | 23503 |
+      | catalog_owner | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount, product_total_applied) VALUES (102, 12, 2, 'EUR', 1.00, true)  | 23503 |
+      | catalog_owner | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount, product_total_applied) VALUES (102, 999, 2, 'USD', 1.00, true) | 23503 |
+      | catalog_owner | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount, product_total_applied) VALUES (0, 12, 2, 'USD', 1.00, true)    | 23514 |
+      | catalog_owner | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount, product_total_applied) VALUES (102, 12, 2, 'USD', 'NaN', true) | 23514 |
       | catalog_owner | UPDATE catalog.seller_profits SET amount = 'NaN' WHERE seller_id = 2 AND currency = 'USD'                        | 23514    |
 
   Scenario: Each role has only the privileges of the role matrix
@@ -141,7 +141,7 @@ Feature: Catalog migrations with the Flyway Java API
       """
     And catalog_owner adds these rows:
       """
-      INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount) VALUES (101, 12, 2, 'USD', -2.50)
+      INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount, product_total_applied) VALUES (101, 12, 2, 'USD', -2.50, true)
       """
     Then these statements fail with their SQLSTATE:
       | role             | statement                                                                                       | sqlstate |
@@ -181,7 +181,7 @@ Feature: Catalog migrations with the Flyway Java API
       | UPDATE catalog.products SET stock = stock - 1 WHERE product_id = 12; INSERT INTO catalog.stock_reservations(order_id, product_id, quantity) VALUES (201, 12, 1); SELECT stock FROM catalog.products WHERE product_id = 12 | 2 |
       | INSERT INTO catalog.stock_reservations(order_id, product_id, quantity) VALUES (201, 12, 1); UPDATE catalog.stock_reservations SET released_at = CURRENT_TIMESTAMP WHERE order_id = 201 AND product_id = 12 AND released_at IS NULL; SELECT released_at IS NOT NULL FROM catalog.stock_reservations WHERE order_id = 201 | t |
       | INSERT INTO catalog.stock_reservations(order_id, product_id, quantity) VALUES (201, 12, 1); DELETE FROM catalog.stock_reservations WHERE order_id = 201; SELECT count(*) FROM catalog.stock_reservations | 0 |
-      | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount) VALUES (102, 12, 2, 'USD', 1.00); UPDATE catalog.seller_profits SET amount = amount + 1.00 WHERE seller_id = 2 AND currency = 'USD'; SELECT amount FROM catalog.seller_profits WHERE seller_id = 2 AND currency = 'USD' | 1.00 |
+      | INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount, product_total_applied) VALUES (102, 12, 2, 'USD', 1.00, true); UPDATE catalog.seller_profits SET amount = amount + 1.00 WHERE seller_id = 2 AND currency = 'USD'; SELECT amount FROM catalog.seller_profits WHERE seller_id = 2 AND currency = 'USD' | 1.00 |
     And the login roles have these catalog privileges:
       | role        | table                      | column   | privilege | granted |
       | product_app | catalog.sellers            |          | SELECT    | yes     |
@@ -292,7 +292,7 @@ Feature: Catalog migrations with the Flyway Java API
       INSERT INTO catalog.profit_credits(order_id,product_id,seller_id,currency,amount) VALUES (101,11,1,'USD',14.90)
       """
     When Flyway migrates the catalog stream
-    Then Flyway applies the migrations "6 seller country currency policy, catalog grants"
+    Then Flyway applies the migrations "6 seller country currency policy, 7 product profit totals, catalog grants"
     And catalog_owner reads these rows:
       | query | rows |
       | SELECT seller_id, coalesce(country_code,'UNRESOLVED') FROM catalog.sellers ORDER BY seller_id | 1,US;2,UNRESOLVED;3,UNRESOLVED |
@@ -307,3 +307,51 @@ Feature: Catalog migrations with the Flyway Java API
     Given regional shard databases "shard-a=US, shard-b=EU, shard-c=ASIA" that Flyway migrated
     When catalog_owner adds a seller for every ISO country and one without a country in each region, each with products in all supported currencies
     Then the legacy report gives each product and each seller without a country the reason of the shared currency policy
+
+  @product-profit-totals
+  Scenario: Existing signed credits backfill exactly once and legacy writers fail closed after migration
+    Given a new shard database with only V1 through V4 of the catalog stream
+    And catalog_owner adds these rows:
+      """
+      INSERT INTO catalog.sellers(seller_id, name) VALUES (1, 'Retained company');
+      INSERT INTO catalog.products(product_id, seller_id, name, price, currency, initial_stock, stock)
+          VALUES (11, 1, 'Retained item', 19.95, 'USD', 10, 8),
+                 (12, 1, 'Wide total', 19.95, 'USD', 10, 8);
+      INSERT INTO catalog.profit_credits(order_id, product_id, seller_id, currency, amount)
+          VALUES (101, 11, 1, 'USD', 0.10), (102, 11, 1, 'USD', -7.45),
+                 (103, 11, 1, 'USD', 0.00),
+                 (104, 12, 1, 'USD', 99999999999999999.99), (105, 12, 1, 'USD', 99999999999999999.99)
+      """
+    When Flyway migrates the catalog stream
+    Then product_app reads these rows:
+      | query | rows |
+      | SELECT product_id, currency, amount FROM catalog.product_profits ORDER BY product_id | 11,USD,-7.35;12,USD,199999999999999999.98 |
+    And order_app reads these rows:
+      | query | rows |
+      | SELECT count(*), bool_and(product_total_applied) FROM catalog.profit_credits | 5,t |
+    And these statements fail with their SQLSTATE:
+      | role | statement | sqlstate |
+      | order_app | INSERT INTO catalog.profit_credits(order_id,product_id,seller_id,currency,amount) VALUES(106,11,1,'USD',1.00) | 23514 |
+      | order_app | INSERT INTO catalog.profit_credits(order_id,product_id,seller_id,currency,amount) VALUES(101,11,1,'USD',0.10) ON CONFLICT DO NOTHING | 23514 |
+      | product_app | UPDATE catalog.product_profits SET amount=0 | 42501 |
+      | product_app | INSERT INTO catalog.product_profits VALUES(11,'EUR',0) | 42501 |
+      | order_app | DELETE FROM catalog.product_profits | 42501 |
+      | order_app | UPDATE catalog.product_profits SET currency='EUR' | 42501 |
+      | order_app | UPDATE catalog.profit_credits SET product_total_applied=false | 42501 |
+    And a second Flyway migration validates the history and applies no migration
+    And product_app reads these rows:
+      | query | rows |
+      | SELECT product_id, currency, amount FROM catalog.product_profits ORDER BY product_id | 11,USD,-7.35;12,USD,199999999999999999.98 |
+    And the catalog schema has no functions and no triggers
+
+  @product-profit-totals
+  Scenario: Product totals include a legacy commit before cutover and fence a queued legacy write
+    Given a new shard database with only V1 through V6 of the catalog stream
+    When the totals migration cuts over while one legacy credit is uncommitted and another waits behind it
+    Then product_app reads these rows:
+      | query | rows |
+      | SELECT product_id,currency,amount FROM catalog.product_profits | 11,USD,7.45 |
+    And order_app reads these rows:
+      | query | rows |
+      | SELECT order_id,amount,product_total_applied FROM catalog.profit_credits | 101,7.45,t |
+    And a second Flyway migration validates the history and applies no migration

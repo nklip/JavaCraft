@@ -23,6 +23,7 @@ class JdbcProfitSessionTest {
     private final PreparedStatement balanceInsert = mock();
     private final PreparedStatement balanceUpdate = mock();
     private final PreparedStatement existing = mock();
+    private final PreparedStatement productTotal = mock();
     private final ResultSet inserted = mock();
     private final ResultSet saved = mock();
     private JdbcProfitSession session;
@@ -38,6 +39,8 @@ class JdbcProfitSessionTest {
         when(connection.prepareStatement(startsWith("INSERT INTO catalog.seller_profits"))).thenReturn(balanceInsert);
         when(connection.prepareStatement(startsWith("UPDATE catalog.seller_profits"))).thenReturn(balanceUpdate);
         when(connection.prepareStatement(startsWith("SELECT seller_id, currency, amount"))).thenReturn(existing);
+        when(connection.prepareStatement(startsWith("INSERT INTO catalog.product_profits"))).thenReturn(productTotal);
+        when(productTotal.executeUpdate()).thenReturn(1);
         when(insert.executeQuery()).thenReturn(inserted);
         when(existing.executeQuery()).thenReturn(saved);
         when(balanceUpdate.executeUpdate()).thenReturn(1);
@@ -48,10 +51,12 @@ class JdbcProfitSessionTest {
     void newCreditAndSignedBalanceUpdateShareTheCallingTransaction() throws SQLException {
         when(inserted.next()).thenReturn(true);
         session.creditProfit(credit);
-        var order = inOrder(insert, balanceInsert, balanceUpdate);
+        var order = inOrder(insert, balanceInsert, balanceUpdate, productTotal);
         order.verify(insert).executeQuery();
         order.verify(balanceInsert).executeUpdate();
         order.verify(balanceUpdate).executeUpdate();
+        order.verify(productTotal).executeUpdate();
+        verify(productTotal).setBigDecimal(3, new BigDecimal("-2.50"));
         verify(balanceUpdate).setBigDecimal(1, new BigDecimal("-2.50"));
         verify(connection, never()).commit();
     }
@@ -66,6 +71,7 @@ class JdbcProfitSessionTest {
         session.creditProfit(credit);
         verify(balanceInsert, never()).executeUpdate();
         verify(balanceUpdate, never()).executeUpdate();
+        verify(productTotal, never()).executeUpdate();
     }
 
     @Test
@@ -79,5 +85,6 @@ class JdbcProfitSessionTest {
         assertEquals(ProfitFailure.Reason.CREDIT_CONFLICT, failure.reason());
         verify(balanceInsert, never()).executeUpdate();
         verify(balanceUpdate, never()).executeUpdate();
+        verify(productTotal, never()).executeUpdate();
     }
 }

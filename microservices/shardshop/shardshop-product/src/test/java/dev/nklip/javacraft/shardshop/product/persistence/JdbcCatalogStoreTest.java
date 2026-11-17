@@ -3,6 +3,7 @@ package dev.nklip.javacraft.shardshop.product.persistence;
 import dev.nklip.javacraft.shardshop.common.jdbc.DatabasePhases;
 import dev.nklip.javacraft.shardshop.common.jdbc.Endpoint;
 import dev.nklip.javacraft.shardshop.product.catalog.CatalogFailure;
+import static dev.nklip.javacraft.shardshop.product.catalog.CatalogModel.*;
 import dev.nklip.javacraft.shardshop.sharding.Shard;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.configuration.supplier.AgroalDataSourceConfigurationSupplier;
@@ -113,7 +114,7 @@ class JdbcCatalogStoreTest {
         store = regionalStore(time);
         doAnswer(invocation -> { time.compareAndSet(0, 1_200_000_000L); return null; }).when(connection).commit();
 
-        assertEquals(List.of(), store.products(List.of(SHARD, new Shard("shard-d", "US")), true, "US", 26, 0));
+        assertEquals(new ProductSelection(List.of(), false), store.productWindow(List.of(SHARD, new Shard("shard-d", "US")), true, "US", 26, 0, ListingDirection.LAST));
 
         verify(replica, times(2)).getConnection();
         verifyNoInteractions(primary);
@@ -127,7 +128,7 @@ class JdbcCatalogStoreTest {
         doAnswer(invocation -> { time.set(2_100_000_000L); return null; }).when(connection).commit();
 
         CatalogFailure failure = assertThrows(CatalogFailure.class,
-                () -> store.products(List.of(SHARD, new Shard("shard-d", "US")), true, "US", 26, 0));
+                () -> store.productWindow(List.of(SHARD, new Shard("shard-d", "US")), true, "US", 26, 0, ListingDirection.LAST));
 
         assertEquals(CatalogFailure.Reason.REPLICA_UNAVAILABLE, failure.reason());
         verify(replica).getConnection();
@@ -137,7 +138,7 @@ class JdbcCatalogStoreTest {
     @Test
     void listingNeverFallsBackWhenAnyRegionalReplicaEndpointIsMissing() {
         CatalogFailure failure = assertThrows(CatalogFailure.class,
-                () -> store.products(List.of(new Shard("shard-d", "US"), SHARD), true, "US", 26, 0));
+                () -> store.productWindow(List.of(new Shard("shard-d", "US"), SHARD), true, "US", 26, 10, ListingDirection.BEFORE));
         assertEquals(CatalogFailure.Reason.REPLICA_UNAVAILABLE, failure.reason());
         verifyNoInteractions(primary, replica, workers);
     }

@@ -757,8 +757,9 @@ Lesson: clean the build after a package move, because stale classes hide broken 
 Each implementation step is recorded in its own commit. **Done** covers the
 implementation and its recorded focused checks; the follow-up remains
 [In Progress](PLAN.md#5-follow-up-performance-and-reliability).
-Focused checks were recorded during implementation; these rewritten
-intermediate commits have not been tested separately.
+The shared [passed-check record](#passed-checks) describes focused runs during
+implementation; it does not establish that every intermediate commit was
+tested separately.
 
 ### Step 8.1 — Reduce order-acceptance SQL round trips
 
@@ -809,8 +810,51 @@ continues to own deadlines and error precedence. Focused order-reactor tests pas
 
 Lesson: Batch lookups within the existing request deadline.
 
+### Step 8.6 — History-independent browsing
+
+**Done 2026-11-17.**
+Cursor browsing and maintained product-profit totals remove history-dependent
+read work. Product-total invariant gates and recovery checks cover accounting.
+V7 backfills retained credits behind a writer fence; opt-in maintenance Helm and
+configuration support, including a real Flyway CLI integration test, preserves
+its SQL checksum. Focused accounting, Helm and CLI checks passed. See the
+[product page](shardshop-product/ARCHITECTURE.md#2-product-page) and
+[V7 cutover](database/RUNBOOK.md#product-earnings-cutover).
+
+Lesson: A maintained total needs accounting checks and a qualified migration path.
+
+#### Passed checks
+
+These local runs passed during the six steps' implementation on 2026-11-17. Counts
+overlap between runs. They are focused evidence, not a complete deployment or
+capacity qualification of the combined revision.
+
+| Check | Recorded result |
+|---|---|
+| Order unit-test reactor, including its dependencies | 994 passed: order 476, common 306, ID generation 158 and sharding 54. |
+| Ledger unit-test reactor | Ledger 69 and common 306 passed. |
+| Focused publisher and worker regressions | 21 publisher tests and 64 worker tests passed. The shutdown-race and stock-continuation regressions first failed for the reported defects; the maintenance chart checks also failed before their fix. |
+| Helm and PostgreSQL accounting/maintenance run | 27 `HelmReleaseTest` checks, 9 `ProfitInvariantIT` checks and the then-existing 2 `CatalogV7MaintenanceIT` checks passed. |
+| Later maintenance CLI run | 27 Helm checks and all 3 maintenance tests passed. The pinned CLI loaded the shipped `.conf` beside TOML, applied only through V7, preserved totals and the writer fence, and validated an unchanged rerun. A missing configuration failed without advancing the database. |
+
+The maintenance tests also exercised a controlled 16-second statement, atomic
+rollback and retry, and a later session with normal timeout bounds. That statement
+proves the configured timeout path, not the time needed for a large retained
+history. The maintenance fixes left the existing versioned SQL bytes unchanged.
+The [verification runbook](shardshop-testing/RUNBOOK.md#2-integration-tests-with-testcontainers)
+owns the focused accounting and CLI commands. Generated logs and reports remain
+outside version control.
+
 #### Pending qualification
 
-Deployment and capacity qualification of the combined revision remain pending.
-The [plan](PLAN.md#5-follow-up-performance-and-reliability) records the separate
-acceptance work. Historical milestone results apply to their original revisions.
+The complete integration suite, current application-image qualification, live
+kind/EKS deployment acceptance and capacity measurements are not established by
+the runs above. The [plan](PLAN.md#5-follow-up-performance-and-reliability) records
+the remaining acceptance work. In particular, V7 still scans retained credits and
+holds an exclusive lock; the opt-in maintenance budget does not establish an
+online cutover or a maximum supported history size. Historical milestone results
+remain evidence for their original revisions.
+
+Lesson: record functional regression evidence separately from deployment and
+performance evidence. A correct optimization needs a new measurement before it
+supports a throughput or latency claim.

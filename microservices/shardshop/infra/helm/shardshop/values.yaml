@@ -55,6 +55,8 @@ ledger:
     wal_keep_size: "0"
 
 migration:
+  # Only for a standalone catalog migration Job during an agreed maintenance window.
+  catalogV7Maintenance: false
   image: docker.io/library/shardshop-flyway:13.12.0-openjdk25@sha256:ff5fe1cabea61ad45f4c7ba9dbfb21ffe99d3bff79392001a80a49e6ab1bb19d
   activeDeadlineSeconds: 180
   ttlSecondsAfterFinished: 86400

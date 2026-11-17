@@ -23,6 +23,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Duration;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -62,6 +65,69 @@ public class CatalogMigrationStepDefinitions {
                 "V1__catalog.sql", "V2__catalog_creation.sql", "V3__stock_coordination.sql", "V4__profit_posting.sql");
         assertEquals(List.of("1 catalog", "2 catalog creation", "3 stock coordination", "4 profit posting"),
                 applied(shards.migrate(shard, v4)));
+    }
+
+    @Given("a new shard database with only V1 through V6 of the catalog stream")
+    public void databaseWithV6() throws SQLException, IOException {
+        CatalogShards.Shard shard = shards.createSingle();
+        Path v6 = CatalogShards.streamWith(ShardShopFiles.newWorkDirectory("migration-"),
+                "V1__catalog.sql", "V2__catalog_creation.sql", "V3__stock_coordination.sql", "V4__profit_posting.sql",
+                "V5__product_browser.sql", "V6__seller_country_currency_policy.sql");
+        shards.migrate(shard, v6);
+    }
+
+    @When("the totals migration cuts over while one legacy credit is uncommitted and another waits behind it")
+    public void concurrentProductTotalCutover() throws Exception {
+        var shard = shards.only();
+        try (Connection holder = shards.superuser(shard); Statement statement = holder.createStatement()) {
+            statement.execute("INSERT INTO catalog.sellers(seller_id,name) VALUES(1,'Cutover company')");
+            statement.execute("INSERT INTO catalog.products(product_id,seller_id,name,price,currency,initial_stock,stock) "
+                    + "VALUES(11,1,'Cutover product',1.00,'USD',10,10)");
+            holder.setAutoCommit(false);
+            statement.execute("INSERT INTO catalog.profit_credits(order_id,product_id,seller_id,currency,amount) "
+                    + "VALUES(101,11,1,'USD',7.45)");
+            try (var executor = Executors.newFixedThreadPool(2)) {
+                var migrating = executor.submit(() -> shards.migrate(shard, CatalogShards.CATALOG_STREAM));
+                try {
+                    awaitCatalogLock("%ADD COLUMN product_total_applied%");
+                    var legacy = executor.submit(() -> {
+                        try (Connection connection = shards.superuser(shard);
+                             Statement late = connection.createStatement()) {
+                            late.execute("/* totals-late-legacy */ INSERT INTO catalog.profit_credits"
+                                    + "(order_id,product_id,seller_id,currency,amount) VALUES(102,11,1,'USD',2.50)");
+                            return "committed";
+                        } catch (SQLException failure) {
+                            return failure.getSQLState();
+                        }
+                    });
+                    awaitCatalogLock("/* totals-late-legacy */%");
+                    holder.commit();
+                    migrating.get(15, TimeUnit.SECONDS);
+                    assertEquals("23514", legacy.get(5, TimeUnit.SECONDS),
+                            "The queued old writer must fail after the migration commits its fence");
+                } finally {
+                    holder.rollback();
+                    executor.shutdownNow();
+                }
+            }
+        }
+    }
+
+    private void awaitCatalogLock(String queryPattern) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+        try (Connection connection = shards.superuser(shards.only()); PreparedStatement query = connection.prepareStatement(
+                "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() "
+                        + "AND wait_event_type='Lock' AND query LIKE ?)")) {
+            query.setString(1, queryPattern);
+            do {
+                try (ResultSet rows = query.executeQuery()) {
+                    assertTrue(rows.next());
+                    if (rows.getBoolean(1)) return;
+                }
+                Thread.sleep(20);
+            } while (System.nanoTime() < deadline);
+        }
+        fail("Expected a bounded lock wait for " + queryPattern);
     }
 
     @Given("a new shard database with only V1 through V5 of the catalog stream")
@@ -210,7 +276,7 @@ public class CatalogMigrationStepDefinitions {
     public void migrateChangedGrants() throws IOException {
         Path location = CatalogShards.streamWith(ShardShopFiles.newWorkDirectory("migration-"),
                 "V1__catalog.sql", "V2__catalog_creation.sql", "V3__stock_coordination.sql",
-                "V4__profit_posting.sql", "V5__product_browser.sql", "V6__seller_country_currency_policy.sql", "R__catalog_grants.sql");
+                "V4__profit_posting.sql", "V5__product_browser.sql", "V6__seller_country_currency_policy.sql", "V7__product_profit_totals.sql", "R__catalog_grants.sql");
         Files.writeString(location.resolve("R__catalog_grants.sql"), "\n-- A later review changed this file.\n",
                 StandardCharsets.UTF_8, StandardOpenOption.APPEND);
         migration = shards.migrate(shards.only(), location);

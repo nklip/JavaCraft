@@ -136,7 +136,7 @@ class JdbcCatalogSessionTest {
     }
 
     @Test
-    void listingReadsSellerStockAndExactSignedAppliedCreditSumsForBoundedProducts() throws SQLException {
+    void listingReadsSellerStockAndExactSignedMaintainedProfitsForBoundedProducts() throws SQLException {
         when(rows.next()).thenReturn(true, true, false);
         when(rows.getLong("seller_id")).thenReturn(9007199254740993L);
         when(rows.getLong("product_id")).thenReturn(9007199254740994L, Long.MAX_VALUE);
@@ -160,6 +160,39 @@ class JdbcCatalogSessionTest {
         verify(statement).setLong(2, 9007199254740993L);
         verify(statement).setInt(3, 2);
         verify(rows).close();
+    }
+
+    @Test
+    void reverseAndLastQueriesUseDescendingBoundedIndexWindowsAndNoCreditHistory() throws SQLException {
+        assertEquals(List.of(), session.products("US", 26, 100, ListingDirection.BEFORE));
+        var sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(connection, atLeastOnce()).prepareStatement(sql.capture());
+        String listing = sql.getAllValues().stream().filter(value -> value.startsWith("WITH page")).findFirst().orElseThrow();
+        assertTrue(listing.contains("p.product_id < ? ORDER BY p.product_id DESC LIMIT ?"));
+        assertTrue(listing.contains("LEFT JOIN catalog.product_profits"));
+        assertFalse(listing.contains("profit_credits"));
+        assertFalse(listing.contains("SUM("));
+        verify(statement).setLong(2, 100);
+        verify(statement).setInt(3, 26);
+
+        clearInvocations(connection, statement);
+        session.products("US", 26, 0, ListingDirection.LAST);
+        verify(connection, atLeastOnce()).prepareStatement(sql.capture());
+        listing = sql.getAllValues().getLast();
+        assertTrue(listing.contains("WHERE s.region = ? ORDER BY p.product_id DESC LIMIT ?"));
+        verify(statement).setInt(2, 26);
+        verify(statement, never()).setLong(anyInt(), anyLong());
+    }
+
+    @Test
+    void oppositeExistenceIsBoundedAndIncludesTheExcludedBoundary() throws SQLException {
+        when(rows.next()).thenReturn(true);
+        when(rows.getBoolean(1)).thenReturn(true);
+        assertTrue(session.productsExist("US", 100, ListingDirection.AFTER));
+        verify(connection).prepareStatement(contains("p.product_id <= ?"));
+        assertTrue(session.productsExist("US", 100, ListingDirection.BEFORE));
+        verify(connection).prepareStatement(contains("p.product_id >= ?"));
+        verify(statement, times(2)).setLong(2, 100);
     }
 
     @Test

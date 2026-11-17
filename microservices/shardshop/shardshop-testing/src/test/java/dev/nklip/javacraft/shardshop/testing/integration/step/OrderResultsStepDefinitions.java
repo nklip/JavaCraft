@@ -367,7 +367,9 @@ public final class OrderResultsStepDefinitions {
         assertEquals(new BigDecimal("14.90"), credit(us, id));
         assertEquals(new BigDecimal("-4.00"), credit(asia, id));
         assertEquals(new BigDecimal("14.90"), balance(us));
+        assertEquals(new BigDecimal("14.90"), productProfit(us));
         assertEquals(new BigDecimal("-4.00"), balance(asia));
+        assertEquals(new BigDecimal("-4.00"), productProfit(asia));
         assertEquals(2, scalar(home(), "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id));
         assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.orphan_results"));
         assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.conflicting_results"));
@@ -380,7 +382,9 @@ public final class OrderResultsStepDefinitions {
         assertEquals(1, credits(us, id));
         assertEquals(1, credits(asia, id));
         assertEquals(new BigDecimal("14.90"), balance(us));
+        assertEquals(new BigDecimal("14.90"), productProfit(us));
         assertEquals(new BigDecimal("-4.00"), balance(asia));
+        assertEquals(new BigDecimal("-4.00"), productProfit(asia));
         assertEquals("CONFIRMED", status(id));
         browser.assertProduct(us, 8, Map.of("USD", "14.90"));
         browser.assertProduct(asia, 8, Map.of("USD", "-4.00"));
@@ -773,6 +777,7 @@ public final class OrderResultsStepDefinitions {
             await("confirmed order credits each seller once", () ->
                     credits(us, id) == 1 && credits(asia, id) == 1);
             assertEquals(new BigDecimal("7.45"), balance(us));
+        assertEquals(new BigDecimal("7.45"), productProfit(us));
             assertEquals(new BigDecimal("-2.00"), balance(asia));
         } else {
             await("rejected order releases reservations", () -> scalar(home(),
@@ -1077,6 +1082,7 @@ public final class OrderResultsStepDefinitions {
         order.restart(Set.of());
         await("deferred seller credited", () -> credits(asia, id) == 1);
         assertEquals(new BigDecimal("7.45"), balance(us));
+        assertEquals(new BigDecimal("7.45"), productProfit(us));
         assertEquals(new BigDecimal("-2.00"), balance(asia));
         assertEquals("CONFIRMED", status(id));
     }
@@ -1131,6 +1137,95 @@ public final class OrderResultsStepDefinitions {
                 + recorded.path("messageId").asText()));
     }
 
+    @Then("a product total write failure rolls back the credit and seller balance before retry")
+    public void productTotalRollback() throws Exception {
+        String id = accept(1, us);
+        startWorkers(false);
+        awaitStatus(id, "PENDING_LEDGER");
+        publishResult(result(command(id), "RECORDED"));
+        awaitStatus(id, "CONFIRMED");
+        var seller = shards.ofSeller(us.seller().id());
+        try (Connection connection = shards.superuser(seller); var statement = connection.createStatement()) {
+            statement.execute("REVOKE INSERT (product_id, currency, amount) ON catalog.product_profits FROM catalog_reserver");
+        }
+        try {
+            order.enableProfit();
+            order.restart(Set.of());
+            await("product-total permission failure retries the durable intent", () -> scalar(home(),
+                    "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id
+                            + " AND failures>0 AND applied_at IS NULL AND blocked_reason IS NULL") == 1);
+            assertEquals(0, credits(us, id));
+            assertEquals(new BigDecimal("0.00"), balance(us));
+            assertEquals(0, scalar(seller, "SELECT count(*) FROM catalog.product_profits WHERE product_id=" + us.id()));
+        } finally {
+            try (Connection connection = shards.superuser(seller); var statement = connection.createStatement()) {
+                statement.execute("GRANT INSERT (product_id, currency, amount) ON catalog.product_profits TO catalog_reserver");
+            }
+        }
+        await("all three seller writes commit on retry", () -> scalar(home(),
+                "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id + " AND applied_at IS NOT NULL") == 1);
+        assertEquals(1, credits(us, id));
+        assertEquals(new BigDecimal("7.45"), balance(us));
+        assertEquals(new BigDecimal("7.45"), productProfit(us));
+    }
+
+    @Then("product totals preserve overflow rollback, zero margins and conflicting credit history")
+    public void productTotalOverflowAndZero() throws Exception {
+        var seller = shards.ofSeller(us.seller().id());
+        try (Connection connection = shards.superuser(seller); var statement = connection.createStatement()) {
+            statement.execute("UPDATE catalog.seller_profits SET amount=99999999999999999.99 WHERE seller_id="
+                    + us.seller().id() + " AND currency='USD'");
+        }
+        String overflow = accept(1, us);
+        startWorkers(true);
+        awaitStatus(overflow, "PENDING_LEDGER");
+        publishResult(result(command(overflow), "RECORDED"));
+        await("overflow blocks the durable intent", () -> scalar(home(),
+                "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + overflow
+                        + " AND blocked_reason='BALANCE_OUT_OF_RANGE' AND applied_at IS NULL") == 1);
+        assertEquals(0, credits(us, overflow));
+        assertEquals(new BigDecimal("99999999999999999.99"), balance(us));
+        assertEquals(0, scalar(seller, "SELECT count(*) FROM catalog.product_profits WHERE product_id=" + us.id()));
+
+        CatalogApi.Product zero = createProduct("zero-margin", "US", "shard-a", "10.00", "10.00");
+        String id = accept(1, zero);
+        awaitStatus(id, "PENDING_LEDGER");
+        ObjectNode envelope = result(command(id), "RECORDED");
+        publishResult(envelope);
+        await("zero margin is applied", () -> scalar(home(),
+                "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id + " AND applied_at IS NOT NULL") == 1);
+        assertEquals(1, credits(zero, id));
+        assertEquals(new BigDecimal("0.00"), productProfit(zero));
+        publishResult(envelope);
+        order.restart(Set.of());
+        assertEquals(1, credits(zero, id));
+        assertEquals(new BigDecimal("0.00"), productProfit(zero));
+
+        CatalogApi.Product conflict = createProduct("credit-conflict", "US", "shard-a", "19.95", "12.50");
+        String conflictId = accept(1, conflict);
+        awaitStatus(conflictId, "PENDING_LEDGER");
+        try (Connection connection = shards.superuser(shards.ofSeller(conflict.seller().id()));
+             var statement = connection.createStatement()) {
+            connection.setAutoCommit(false);
+            statement.execute("INSERT INTO catalog.profit_credits(order_id,product_id,seller_id,currency,amount,"
+                    + "product_total_applied) VALUES(" + conflictId + "," + conflict.id() + ","
+                    + conflict.seller().id() + ",'USD',99.00,true)");
+            statement.execute("INSERT INTO catalog.product_profits(product_id,currency,amount) VALUES("
+                    + conflict.id() + ",'USD',99.00)");
+            statement.execute("UPDATE catalog.seller_profits SET amount=99.00 WHERE seller_id="
+                    + conflict.seller().id() + " AND currency='USD'");
+            connection.commit();
+        }
+        publishResult(result(command(conflictId), "RECORDED"));
+        await("conflicting credit blocks without changing either total", () -> scalar(home(),
+                "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + conflictId
+                        + " AND blocked_reason='CREDIT_CONFLICT' AND applied_at IS NULL") == 1);
+        assertEquals(1, credits(conflict, conflictId));
+        assertEquals(new BigDecimal("99.00"), credit(conflict, conflictId));
+        assertEquals(new BigDecimal("99.00"), balance(conflict));
+        assertEquals(new BigDecimal("99.00"), productProfit(conflict));
+    }
+
     @Then("a committed seller credit is reused after an interrupted home mark by two workers")
     public void interruptedProfitMark() throws Exception {
         String id = accept(1, us);
@@ -1156,6 +1251,7 @@ public final class OrderResultsStepDefinitions {
         }
         assertEquals(1, credits(us, id));
         assertEquals(new BigDecimal("7.45"), balance(us));
+        assertEquals(new BigDecimal("7.45"), productProfit(us));
         assertEquals(0, scalar(home(), "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id
                 + " AND applied_at IS NOT NULL"));
         competitor = new OrderRuntime(shards);
@@ -1168,6 +1264,7 @@ public final class OrderResultsStepDefinitions {
                 "SELECT count(*) FROM ordering.profit_intents WHERE order_id=" + id + " AND applied_at IS NOT NULL") == 1);
         assertEquals(1, credits(us, id));
         assertEquals(new BigDecimal("7.45"), balance(us));
+        assertEquals(new BigDecimal("7.45"), productProfit(us));
     }
 
     @Then("three buyer homes concurrently credit one seller without lost or duplicate profit")
@@ -1246,11 +1343,13 @@ public final class OrderResultsStepDefinitions {
         assertEquals(3, scalar(seller, "SELECT count(DISTINCT order_id)" + creditFilter));
         assertEquals(new BigDecimal("44.70"), decimal(seller.database(), "SELECT sum(amount)" + creditFilter));
         assertEquals(new BigDecimal("44.70"), balance(us));
+        assertEquals(new BigDecimal("44.70"), productProfit(us));
         for (var saved : confirmed) publishResult(saved.result());
         await("duplicate results are acknowledged", () -> broker.queue(RESULT_QUEUE).path("messages").asInt(-1) == 0);
         order.restart(Set.of());
         assertEquals(3, scalar(seller, "SELECT count(*)" + creditFilter));
         assertEquals(new BigDecimal("44.70"), balance(us));
+        assertEquals(new BigDecimal("44.70"), productProfit(us));
         for (var saved : confirmed) {
             buyer = saved.buyerId();
             assertEquals("CONFIRMED", status(saved.orderId()));
@@ -1262,6 +1361,11 @@ public final class OrderResultsStepDefinitions {
     private void profitGrants() throws Exception {
         String database = shards.ofSeller(us.seller().id()).database();
         assertTrue(columnPrivilege(database, "order_app", "catalog.profit_credits", "amount", "INSERT"));
+        assertTrue(columnPrivilege(database, "order_app", "catalog.profit_credits", "product_total_applied", "INSERT"));
+        assertTrue(columnPrivilege(database, "order_app", "catalog.product_profits", "amount", "UPDATE"));
+        assertFalse(columnPrivilege(database, "product_app", "catalog.product_profits", "amount", "UPDATE"));
+        assertFalse(columnPrivilege(database, "product_app", "catalog.product_profits", "amount", "INSERT"));
+        assertFalse(tablePrivilege(database, "order_app", "catalog.product_profits", "DELETE"));
         assertTrue(columnPrivilege(database, "order_app", "catalog.seller_profits", "amount", "UPDATE"));
         assertTrue(columnPrivilege(database, "order_app", "catalog.products", "stock", "UPDATE"));
         assertFalse(columnPrivilege(database, "order_app", "catalog.profit_credits", "amount", "UPDATE"));
@@ -1672,6 +1776,12 @@ public final class OrderResultsStepDefinitions {
     private BigDecimal credit(CatalogApi.Product fixture, String id) throws Exception {
         return decimal(shards.ofSeller(fixture.seller().id()).database(),
                 "SELECT amount FROM catalog.profit_credits WHERE order_id=" + id + " AND product_id=" + fixture.id());
+    }
+
+    private BigDecimal productProfit(CatalogApi.Product fixture) throws Exception {
+        return decimal(shards.ofSeller(fixture.seller().id()).database(),
+                "SELECT amount FROM catalog.product_profits WHERE product_id=" + fixture.id()
+                        + " AND currency='" + fixture.request().path("currency").asText() + "'");
     }
 
     private BigDecimal balance(CatalogApi.Product fixture) throws Exception {

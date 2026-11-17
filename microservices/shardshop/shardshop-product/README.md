@@ -25,16 +25,22 @@ Open <http://127.0.0.1:18080/products/> after `webpages.sh` starts its tunnels.
 Product serves a read-only webpage at `/products/` from its application image.
 The webpage shows the products of one region with their stock, price and earnings.
 
-The controls below the products are **First · Previous · Page N · Next · Last**.
-First returns to page 1 of the selected region. Last follows the remaining pages
-to the end of that region's catalog. First is disabled whenever Previous is;
-Last is disabled whenever Next is, including while loading or after an error.
-The final region and page remain in the URL for copying, reloading and browser
-Back/Forward. Last shares the existing eight-second loading deadline; if it
-fails, Refresh retries the jump.
+The controls below the products are **First · Previous · Catalog page · Next · Last**.
+First reads the beginning of the selected region. Last directly reads its final
+window of up to 25 products; this window can overlap a forward page. Each action,
+including Refresh and browser Back/Forward, makes one listing request within an
+eight-second deadline. Errors show no partial results; Refresh retries the same
+position. Empty cursor views remain visible with available recovery controls.
 
-The page reads `GET /api/v1/products?region=US&limit=25&after=<productId>`; the
-[product API](ARCHITECTURE.md#1-product-api) defines its parameters.
+The URL stores the region and an opaque `after` or `before` cursor, or `last=true`.
+Copied links and reloads request that position directly. Refresh on `last=true`
+reads the latest final window. Region changes start at the beginning. Page numbers
+are not shown because live catalog changes and direct cursors cannot establish
+them. Legacy `page=1` links open the beginning; other numbered links show an
+explicit migration message with First and Last controls instead of traversing the
+catalog. Invalid or mismatched cursors show a recoverable link error.
+
+The [product API](ARCHITECTURE.md#1-product-api) defines the listing parameters.
 
 ### Metrics
 

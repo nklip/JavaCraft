@@ -45,11 +45,24 @@ no independent region or shard selector.
 - Product creation retries compare the original initial stock, preserving any
   current stock changed by orders.
 - The listing requires `region`; the page limit defaults to 25 and is bounded to
-  1–100. The optional `after` is a canonical positive product ID. Results are
-  ordered by numeric product ID, with a nullable `nextAfter` for continuation. Each
-  item includes seller identity, product identity/name, initial/current stock,
-  price and currency, and per-product `profitsEarned` from applied profit credits.
-  A product with no credits reports zero in its own currency.
+  1–100. Results always use ascending numeric product IDs. Use `after=nextCursor`
+  for the next window, `before=previousCursor` for the previous window, or
+  `last=true` for the final up-to-limit window. These selectors are mutually
+  exclusive. Last reads the tail directly without counting or visiting earlier
+  windows; it does not identify an exact page number or align a partial page grid.
+- Navigation cursors bind region, limit and direction. A malformed or mismatched
+  cursor returns `400 INVALID_REQUEST` before IO. Existing clients may continue
+  using a canonical positive decimal ID in `after` and reading `nextAfter`.
+  Empty windows return no cursors. No snapshot across requests is promised.
+- Each shard returns at most `limit + 1` candidates in the selected direction.
+  A bounded existence query checks the opposite edge on the same connection.
+  All shard reads share the existing database deadline; a shard failure fails
+  the complete response. The service merges candidates globally before choosing
+  the window, including regions with several seller shards.
+- Each item includes seller identity, product identity/name, initial/current
+  stock, price and currency, and per-product `profitsEarned` from maintained
+  `catalog.product_profits` balances. Reads join by product and currency instead
+  of summing credit history. Missing balances report zero in the product currency.
 
 ### Validation
 
@@ -70,15 +83,18 @@ The read-only `/products/` page ships inside the product application and uses th
 listing API. It lists arbitrary created products without depending on workload
 datasets.
 
-- **Navigation.** Its region selector offers US, EU and ASIA; pagination and
-  refresh only perform reads. Centered pagination shows First, Previous, Page N,
-  Next and Last. First returns to page 1; Last follows the remaining API cursors to
-  the final page within the same bounded loading deadline. First shares Previous's
-  disabled state, and Last shares Next's, including while loading or after errors.
-- **Links.** The browser URL stores `region` and `page` so copied links, reloads
-  and browser history restore the selected view. Opening a numbered page resolves
-  preceding API cursors under one bounded loading deadline; navigation reuses known
-  cursors. Refresh reloads the current page, and changing region starts at page 1.
+- **Navigation.** Its region selector offers US, EU and ASIA. First, Previous,
+  Next, Last and Refresh only perform reads, with one listing request per action
+  under an eight-second deadline. Last reads the final window of up to 25 products
+  directly; this window can overlap a forward page. Cursor pages have no asserted
+  numeric index. Empty cursor views retain their available recovery controls.
+- **Links.** The browser URL stores `region` and an opaque `after` or `before`
+  cursor, or `last=true`. Copied links, reloads and browser history request the
+  selected position directly. Refresh repeats that request; for `last=true` it
+  reads the latest final window. Changing region starts at the beginning. Legacy
+  `page=1` links migrate to the beginning. Other numbered links show an explicit
+  migration message with First/Last controls and issue no listing requests.
+  Malformed or region/filter-mismatched cursors show a recoverable link error.
 - **Caching.** The HTML, stylesheet and script are served with
   `Cache-Control: no-store` to prevent a deployment from mixing new markup with an
   older cached asset. Versioned asset links also bypass the URLs cached before that
@@ -139,8 +155,11 @@ only read these balances. They never seed a balance or infer profit from stock.
 Confirmation atomically inserts `ordering.profit_intents` from immutable item
 price/cost snapshots on the buyer's shard. A separate worker inserts the permanent
 `catalog.profit_credits` identity `(order_id, product_id)` and increments the
-seller's currency balance in one seller-shard transaction. Only a new credit
-changes the balance; a retry verifies the existing identity and amount. A separate
+seller's currency balance and the matching `catalog.product_profits` total in
+one seller-shard transaction. Only a new credit changes the balances; a retry
+verifies the existing identity and amount. Listing reads the maintained total
+without traversing retained credits. The [database runbook](../database/RUNBOOK.md#product-earnings-cutover)
+describes the safe backfill and legacy-writer fence. A separate
 buyer-shard transaction marks the intent applied. No transaction or connection
 spans shards, and `CONFIRMED` can precede eventual balance application.
 

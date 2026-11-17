@@ -23,7 +23,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 
-import static dev.nklip.javacraft.shardshop.product.catalog.CatalogModel.ListedProduct;
+import static dev.nklip.javacraft.shardshop.product.catalog.CatalogModel.*;
 
 /** Bounded per-endpoint pools and a hard deadline for the entire database phase. */
 public final class JdbcCatalogStore implements CatalogStore, AutoCloseable {
@@ -125,16 +125,26 @@ public final class JdbcCatalogStore implements CatalogStore, AutoCloseable {
 
     @Override
     public List<ListedProduct> products(List<Shard> shards, boolean replica, String region, int limit, long after) {
+        return productWindow(shards, replica, region, limit, after, ListingDirection.AFTER).items();
+    }
+
+    @Override
+    public ProductSelection productWindow(List<Shard> shards, boolean replica, String region, int limit,
+                                          long boundary, ListingDirection direction) {
         DatabasePhases.Deadline deadline = new DatabasePhases.Deadline(nanoTime,
                 nanoTime.getAsLong() + DatabasePhases.PHASE_BUDGET.toNanos());
         List<ListedProduct> products = new ArrayList<>();
+        boolean oppositeExists = false;
         try {
             for (Shard shard : shards) {
-                products.addAll(execute(shard, replica, true, Duration.ofNanos(deadline.remainingNanos()),
-                        session -> session.products(region, limit, after)));
+                ProductSelection selected = execute(shard, replica, true, Duration.ofNanos(deadline.remainingNanos()),
+                        session -> new ProductSelection(session.products(region, limit, boundary, direction),
+                                boundary != 0 && session.productsExist(region, boundary, direction)));
+                products.addAll(selected.items());
+                oppositeExists |= selected.oppositeExists();
             }
             deadline.remainingNanos();
-            return List.copyOf(products);
+            return new ProductSelection(products, oppositeExists);
         } catch (SQLException failure) {
             throw new CatalogFailure(replica ? CatalogFailure.Reason.REPLICA_UNAVAILABLE : CatalogFailure.Reason.UNAVAILABLE);
         }

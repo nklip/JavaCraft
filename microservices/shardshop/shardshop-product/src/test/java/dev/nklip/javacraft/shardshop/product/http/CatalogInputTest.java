@@ -274,6 +274,44 @@ class CatalogInputTest {
         assertEquals(new CatalogInput.ListingQuery("ASIA", 1, 9007199254740993L), input.listingQuery(uri(query)));
     }
 
+    @Test
+    void listingAcceptsBoundCursorsAndDirectLastAndRejectsMismatchesBeforeIo() {
+        var query = new MultivaluedHashMap<String, String>();
+        query.putSingle("region", "US");
+        query.putSingle("after", "p1.US.25.a.9223372036854775807");
+        assertEquals(Long.MAX_VALUE, input.listingQuery(uri(query)).after());
+        query.remove("after");
+        query.putSingle("before", "p1.US.25.b.9007199254740993");
+        assertEquals(dev.nklip.javacraft.shardshop.product.catalog.CatalogModel.ListingDirection.BEFORE,
+                input.listingQuery(uri(query)).direction());
+        for (String invalid : List.of("1", "p1.EU.25.b.1", "p1.US.24.b.1", "p1.US.025.b.1",
+                "p1.US.25.a.1", "p2.US.25.b.1", "p1.US.25.b.0", "p1.US.25.b.01",
+                "p1.US.25.b.9223372036854775808", "p1.US.25.b.1.extra", "p1.US.25.b.1\n")) {
+            query.putSingle("before", invalid);
+            assertInvalid(() -> input.listingQuery(uri(query)));
+        }
+        query.remove("before");
+        query.putSingle("last", "true");
+        assertEquals(dev.nklip.javacraft.shardshop.product.catalog.CatalogModel.ListingDirection.LAST,
+                input.listingQuery(uri(query)).direction());
+        query.putSingle("after", "1");
+        assertInvalid(() -> input.listingQuery(uri(query)));
+        query.remove("after");
+        for (String invalid : List.of("", "false", "TRUE", "1")) {
+            query.putSingle("last", invalid);
+            assertInvalid(() -> input.listingQuery(uri(query)));
+        }
+        query.remove("last");
+        query.putSingle("before", "p1.US.25.b.2");
+        query.putSingle("after", "1");
+        assertInvalid(() -> input.listingQuery(uri(query)));
+        query.remove("before");
+        for (String invalid : List.of("p1.EU.25.a.1", "p1.US.24.a.1", "p1.US.25.b.1", "p1.US.25.a.01")) {
+            query.putSingle("after", invalid);
+            assertInvalid(() -> input.listingQuery(uri(query)));
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"", "0", "01", "101", "9999999999999999999", "-1", "+1", "1.0", "1e0", "1\n", " 1", "１"})
     void listingRejectsInvalidLimits(String limit) {
@@ -302,7 +340,7 @@ class CatalogInputTest {
         query.putSingle("shard", "a");
         assertInvalid(() -> input.listingQuery(uri(query)));
         query.remove("shard");
-        for (String name : List.of("region", "limit", "after")) {
+        for (String name : List.of("region", "limit", "after", "before", "last")) {
             var duplicate = new MultivaluedHashMap<>(query);
             duplicate.put(name, List.of("1", "1"));
             assertInvalid(() -> input.listingQuery(uri(duplicate)));

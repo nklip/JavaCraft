@@ -216,6 +216,9 @@ Each implementation step is recorded in its own commit. **Done** covers the
 implementation and its recorded focused checks. Deployment and capacity
 qualification remain separate, pending work.
 
+The [passed-check record](CHANGELOG.md#passed-checks) covers focused runs during
+implementation, not separate qualification of every intermediate commit.
+
 | Work | Status | Evidence or remaining acceptance |
 |---|---|---|
 | [8.1 Reduce order-acceptance SQL round trips](CHANGELOG.md#step-81--reduce-order-acceptance-sql-round-trips) | Done | Fewer SQL round trips; focused order-reactor checks passed. |
@@ -223,3 +226,4 @@ qualification remain separate, pending work.
 | [8.3 RabbitMQ publication pipelining](CHANGELOG.md#step-83--rabbitmq-publication-pipelining) | Done | Bounded confirmed publication windows and consistent shutdown errors; focused publisher checks passed. |
 | [8.4 Productive batch scheduling](CHANGELOG.md#step-84--productive-batch-scheduling) | Done | Immediate continuation after productive batches, with shard delays preserved; production-path profit-worker checks passed. |
 | [8.5 Batch catalog validation](CHANGELOG.md#step-85--batch-catalog-validation) | Done | Bounded seller-shard lookups for larger baskets; focused order-reactor checks passed. |
+| [8.6 History-independent browsing](CHANGELOG.md#step-86--history-independent-browsing) | Done | Cursor browsing, maintained profit totals, invariant checks and V7 maintenance support; focused accounting, Helm and CLI checks passed. |

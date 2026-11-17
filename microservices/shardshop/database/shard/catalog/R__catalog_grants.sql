@@ -7,14 +7,14 @@ REVOKE ALL ON ALL FUNCTIONS IN SCHEMA catalog FROM PUBLIC, catalog_reader, catal
 -- Remove column privileges from earlier repeatable runs before rebuilding the matrix.
 REVOKE ALL (seller_id, currency, amount) ON catalog.seller_profits
     FROM PUBLIC, catalog_reader, catalog_writer, catalog_reserver;
-REVOKE ALL (order_id, product_id, seller_id, currency, amount, credited_at) ON catalog.profit_credits
+REVOKE ALL (order_id, product_id, seller_id, currency, amount, credited_at, product_total_applied) ON catalog.profit_credits
     FROM PUBLIC, catalog_reader, catalog_writer, catalog_reserver;
 
 GRANT USAGE ON SCHEMA catalog TO catalog_reader, catalog_writer, catalog_reserver;
 GRANT SELECT ON catalog.sellers, catalog.products, catalog.seller_profits TO catalog_reader;
 GRANT SELECT, INSERT ON catalog.sellers, catalog.products TO catalog_writer;
 GRANT SELECT ON catalog.seller_profits TO catalog_writer;
--- Product browsing sums applied credits without exposing order identities or credit timestamps.
+-- Retain the old reader grant during rollout; current browsing reads product_profits below.
 GRANT SELECT (product_id, currency, amount) ON catalog.profit_credits TO catalog_writer;
 -- Creation initializes currencies at the database default; product cannot set/reset profits.
 GRANT INSERT (seller_id, currency) ON catalog.seller_profits TO catalog_writer;
@@ -29,7 +29,14 @@ GRANT SELECT, INSERT ON catalog.stock_reservation_guards TO catalog_reserver;
 GRANT UPDATE (closed) ON catalog.stock_reservation_guards TO catalog_reserver;
 -- Credit identity is immutable. The same transaction inserts it and updates the balance.
 GRANT SELECT ON catalog.profit_credits, catalog.seller_profits TO catalog_reserver;
-GRANT INSERT (order_id, product_id, seller_id, currency, amount)
+GRANT INSERT (order_id, product_id, seller_id, currency, amount, product_total_applied)
     ON catalog.profit_credits TO catalog_reserver;
 GRANT INSERT (seller_id, currency) ON catalog.seller_profits TO catalog_reserver;
 GRANT UPDATE (amount) ON catalog.seller_profits TO catalog_reserver;
+
+-- Product totals retain history's signed, unbounded SUM semantics. Only the order writer mutates them.
+REVOKE ALL (product_id, currency, amount) ON catalog.product_profits
+    FROM PUBLIC, catalog_reader, catalog_writer, catalog_reserver;
+GRANT SELECT ON catalog.product_profits TO catalog_writer, catalog_reserver;
+GRANT INSERT (product_id, currency, amount) ON catalog.product_profits TO catalog_reserver;
+GRANT UPDATE (amount) ON catalog.product_profits TO catalog_reserver;

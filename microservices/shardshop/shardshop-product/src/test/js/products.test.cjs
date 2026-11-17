@@ -16,6 +16,7 @@ class Element {
   dispatch(name) { return this.listeners[name]?.(); }
 }
 
+const token = (region, direction, id) => `p1.${region}.25.${direction}.${id}`;
 function page(region, number, count = 3) {
   return {
     region,
@@ -24,14 +25,16 @@ function page(region, number, count = 3) {
       countryCode: "FR", newOrderEligible: true, legacyReason: null,
       initialStock: 10, stock: 7, price: '99999999999999999.99', currency: 'EUR',
       profitsEarned: { EUR: '-100000000000000000.01' } }],
-    nextAfter: number < count ? String(number * 25) : null
+    nextAfter: number < count ? String(number * 25) : null,
+    nextCursor: number < count ? token(region, 'a', number * 25) : null,
+    previousCursor: number > 1 ? token(region, 'b', (number - 1) * 25 + 1) : null
   };
 }
 const response = data => ({ ok: true, json: async () => data });
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 
 function browser(url = 'https://shop.example/products/', handler = query => page(query.get('region'),
-  query.has('after') ? Number(query.get('after')) / 25 + 1 : 1)) {
+  query.has('last') ? 3 : query.has('after') ? Number(query.get('after').split('.').at(-1)) / 25 + 1 : query.has('before') ? (Number(query.get('before').split('.').at(-1)) - 1) / 25 : 1)) {
   const elements = new Map();
   const element = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
   element('region').value = 'US';
@@ -50,11 +53,11 @@ function browser(url = 'https://shop.example/products/', handler = query => page
     document: { getElementById: element, createElement: () => new Element(),
       createDocumentFragment: () => Object.assign(new Element(), { fragment: true }) },
     window: { location, history, addEventListener: (name, listener) => { listeners[name] = listener; } },
-    URL, URLSearchParams, AbortController,
+    URL, URLSearchParams, AbortController, BigInt,
     setTimeout(callback, ms) { const id = ++timerId; timers.set(id, { callback, ms }); return id; },
     clearTimeout(id) { timers.delete(id); },
     async fetch(path, options) { const query = new URL(path, url).searchParams; calls.push({ query, signal: options.signal });
-      return response(await handler(query, options.signal)); }
+      const result = await handler(query, options.signal); return result?.ok === false ? result : response(result); }
   };
   vm.runInNewContext(script, context, { filename: 'products.js' });
   return {
@@ -71,208 +74,191 @@ function browser(url = 'https://shop.example/products/', handler = query => page
 const paths = app => app.calls.map(call => call.query.get('after'));
 const text = element => element.textContent + element.children.map(text).join('');
 
-// The copied URL is the observable regression: a separate browser must show page 3.
-test('a copied regional page 3 URL restores that page in a new browser', async () => {
-  const app = browser('https://shop.example/products/?region=EU&page=3');
-  await app.settled();
-  assert.equal(app.element('region').value, 'EU');
-  assert.equal(app.element('page-label').textContent, 'Page 3');
+// Restoring a position must perform one direct request, regardless of depth.
+test('copied cursor URL, reload and Refresh fetch only the selected position', async () => {
+  const url = 'https://shop.example/products/?view=compact&region=EU&after=' + token('EU', 'a', 50) + '#catalog';
+  const app = browser(url); await app.settled();
+  assert.equal(app.calls.length, 1);
   assert.match(text(app.element('products')), /EU product 3/);
-  assert.deepEqual(paths(app), [null, '25', '50']);
-  assert.equal(app.element('next').disabled, true);
-  assert.equal(app.element('previous').disabled, false);
-});
-
-test('default state has a canonical URL and preserves unrelated parameters and the fragment', async () => {
-  const app = browser('https://shop.example/products/?view=compact#catalog');
-  await app.settled();
-  assert.equal(app.url, 'https://shop.example/products/?view=compact&region=US&page=1#catalog');
+  assert.equal(app.element('page-label').textContent, 'Catalog page');
+  assert.equal(app.url, url);
+  app.click('refresh'); await app.settled();
+  assert.equal(app.calls.length, 2);
+  assert.equal(app.calls[1].query.get('after'), token('EU', 'a', 50));
   assert.equal(app.entries.length, 1);
-  assert.equal(app.element('page-label').textContent, 'Page 1');
-  assert.equal(app.element('previous').disabled, true);
+  const reloaded = browser(app.url); await reloaded.settled();
+  assert.equal(reloaded.calls.length, 1);
+  assert.match(text(reloaded.element('products')), /EU product 3/);
 });
 
-test('Previous and Next update shareable URLs and reuse known cursors', async () => {
-  const app = browser();
-  await app.settled();
+test('Next Previous First and history each request one durable position', async () => {
+  const app = browser(); await app.settled();
   app.click('next'); await app.settled();
-  assert.equal(app.url, 'https://shop.example/products/?region=US&page=2');
-  app.click('next'); await app.settled();
-  assert.equal(app.element('page-label').textContent, 'Page 3');
+  assert.equal(new URL(app.url).searchParams.get('after'), token('US', 'a', 25));
   app.click('previous'); await app.settled();
-  assert.equal(app.url, 'https://shop.example/products/?region=US&page=2');
-  assert.deepEqual(paths(app), [null, '25', '50', '25']);
-  assert.equal(app.entries.length, 4);
+  assert.equal(app.calls.at(-1).query.get('before'), token('US', 'b', 26));
+  assert.match(text(app.element('products')), /US product 1/);
   app.back(); await app.settled();
-  assert.equal(app.element('page-label').textContent, 'Page 3');
+  assert.match(text(app.element('products')), /US product 2/);
   app.forward(); await app.settled();
-  assert.equal(app.element('page-label').textContent, 'Page 2');
-  assert.equal(app.entries.length, 4);
+  assert.match(text(app.element('products')), /US product 1/);
+  assert.equal(app.calls.length, 5);
+  assert.equal(app.entries.length, 3);
 });
 
-test('region change resets page 1 and Back/Forward restore both region and page', async () => {
-  const app = browser('https://shop.example/products/?region=EU&page=3');
-  await app.settled();
+test('default and legacy page 1 canonicalize without dropping unrelated filters or fragment', async () => {
+  const app = browser('https://shop.example/products/?view=compact&page=1#catalog'); await app.settled();
+  assert.equal(app.url, 'https://shop.example/products/?view=compact&region=US#catalog');
+  assert.equal(app.calls.length, 1);
+  assert.equal(app.element('first').disabled, true);
+});
+
+test('deep numbered links require explicit migration without any traversal', async () => {
+  for (const number of ['2', '99', '999999999999999999999999999999999']) {
+    const app = browser('https://shop.example/products/?region=EU&page=' + number); await app.settled();
+    assert.equal(app.calls.length, 0);
+    assert.match(app.element('state-description').textContent, /Numbered links/);
+    assert.equal(app.element('first').disabled, false);
+    assert.equal(app.element('last').disabled, false);
+    app.click('last'); await app.settled();
+    assert.equal(app.calls.length, 1);
+    assert.equal(app.calls[0].query.get('last'), 'true');
+    assert.equal(new URL(app.url).searchParams.has('page'), false);
+  }
+});
+
+test('invalid and conflicting cursor or region URL parameters surface a recoverable link error', async () => {
+  for (const query of ['region=unknown', 'after=', 'after=bad%20cursor', 'after=0',
+    'last=false', 'after=x&before=y', 'region=US&region=EU', 'last=true&page=3',
+    'after=' + 'x'.repeat(600), 'before=9223372036854775808']) {
+    const app = browser('https://shop.example/products/?' + query); await app.settled();
+    assert.equal(app.calls.length, 0, query);
+    assert.match(app.element('state-title').textContent, /Couldn't open catalog link/);
+    assert.equal(app.element('previous').disabled, true);
+    app.click('first'); await app.settled();
+    assert.equal(app.calls.length, 1);
+  }
+});
+
+test('region changes reset cursors and browser history restores region and cursor directly', async () => {
+  const app = browser('https://shop.example/products/?region=EU&after=' + token('EU', 'a', 50)); await app.settled();
   app.region('ASIA'); await app.settled();
-  assert.equal(app.url, 'https://shop.example/products/?region=ASIA&page=1');
-  assert.match(text(app.element('products')), /ASIA product 1/);
+  assert.equal(app.url, 'https://shop.example/products/?region=ASIA');
   app.back(); await app.settled();
   assert.equal(app.element('region').value, 'EU');
-  assert.equal(app.element('page-label').textContent, 'Page 3');
-  assert.match(text(app.element('products')), /EU product 3/);
+  assert.equal(app.calls.at(-1).query.get('after'), token('EU', 'a', 50));
   app.forward(); await app.settled();
-  assert.equal(app.element('region').value, 'ASIA');
-  assert.equal(app.element('page-label').textContent, 'Page 1');
+  assert.equal(app.calls.length, 4);
 });
 
-test('Refresh rebuilds cursors and refreshes the current page without adding history', async () => {
-  let revision = 0;
-  const app = browser('https://shop.example/products/?region=EU&page=3', query => {
-    const result = page(query.get('region'), query.has('after') ? Number(query.get('after')) / 25 + 1 : 1);
-    result.items[0].name += ' revision ' + revision;
+function catalog(size, query) {
+  const region = query.get('region');
+  const anchor = Number((query.get('after') || query.get('before') || '.0').split('.').at(-1));
+  let ids = Array.from({ length: size }, (_, index) => index + 1);
+  if (query.has('after')) ids = ids.filter(id => id > anchor).slice(0, 25);
+  else if (query.has('before')) ids = ids.filter(id => id < anchor).slice(-25);
+  else ids = query.has('last') ? ids.slice(-25) : ids.slice(0, 25);
+  const result = page(region, 1, 1);
+  result.items = ids.map(id => ({ ...result.items[0], productId: String(id), name: 'Product ' + id }));
+  const first = ids[0], last = ids.at(-1);
+  result.previousCursor = first > 1 ? token(region, 'b', first) : query.has('after') && !ids.length ? token(region, 'b', anchor + 1) : null;
+  result.nextCursor = last < size ? token(region, 'a', last) : null;
+  return result;
+}
+
+test('0 1 25 26 50 51 products preserve direct Last and bidirectional boundaries', async t => {
+  for (const size of [0, 1, 25, 26, 50, 51]) await t.test(String(size), async () => {
+    const app = browser(undefined, query => catalog(size, query)); await app.settled();
+    assert.equal(app.element('products').children.length, Math.min(size, 25));
+    assert.equal(app.element('first').disabled, true);
+    assert.equal(app.element('next').disabled, size <= 25);
+    if (size <= 25) { assert.equal(app.element('last').disabled, true); return; }
+    app.click('last'); await app.settled();
+    assert.equal(app.calls.length, 2);
+    assert.equal(app.calls[1].query.get('last'), 'true');
+    const products = app.element('products').children.map(text);
+    assert.match(products[0], new RegExp('Product ' + (size - 24)));
+    assert.match(products.at(-1), new RegExp('Product ' + size));
+    assert.equal(app.element('last').disabled, true);
+    assert.equal(app.element('previous').disabled, false);
+    assert.equal(app.element('page-label').textContent, 'Last page');
+    app.click('refresh'); await app.settled();
+    assert.equal(app.calls.length, 3);
+    assert.equal(app.calls[2].query.get('last'), 'true');
+    const copied = browser(app.url, query => catalog(size, query)); await copied.settled();
+    assert.equal(copied.calls.length, 1);
+    assert.equal(copied.element('products').children.length, 25);
+    app.click('previous'); await app.settled();
+    assert.equal(app.calls.length, 4);
+    assert.equal(app.calls[3].query.has('before'), true);
+    app.click('first'); await app.settled();
+    assert.equal(app.calls.length, size > 50 ? 5 : 4);
+  });
+});
+
+test('an emptied cursor view offers First and Last recovery without hidden reads', async () => {
+  const app = browser('https://shop.example/products/?region=EU&after=' + token('EU', 'a', 50), query => {
+    const result = catalog(25, query);
+    if (!result.items.length) result.previousCursor = null;
     return result;
   });
   await app.settled();
-  revision++;
-  app.click('refresh'); await app.settled();
-  assert.deepEqual(paths(app), [null, '25', '50', null, '25', '50']);
-  assert.equal(app.element('page-label').textContent, 'Page 3');
-  assert.match(text(app.element('products')), /EU product 3 revision 1/);
-  assert.equal(app.entries.length, 1);
-});
-
-test('invalid page parameters normalize to page 1 before any cursor traversal', async t => {
-  for (const value of ['0', '-1', '01', '1.5', '1e3', ' 2', 'NaN', '9007199254740992', '9'.repeat(400)]) {
-    await t.test(value.slice(0, 30), async () => {
-      const app = browser('https://shop.example/products/?region=EU&page=' + encodeURIComponent(value));
-      await app.settled();
-      assert.equal(app.url, 'https://shop.example/products/?region=EU&page=1');
-      assert.equal(app.element('page-label').textContent, 'Page 1');
-      assert.deepEqual(paths(app), [null]);
-    });
-  }
-});
-
-test('invalid region normalizes to the US first page', async () => {
-  for (const invalid of ['UNKNOWN', 'us', '']) {
-    const app = browser('https://shop.example/products/?region=' + invalid + '&page=3');
-    await app.settled();
-    assert.equal(app.url, 'https://shop.example/products/?region=US&page=1');
-    assert.equal(app.element('region').value, 'US');
-    assert.deepEqual(paths(app), [null]);
-  }
-});
-
-test('a page beyond the catalog end canonicalizes to its last actual page', async () => {
-  const app = browser('https://shop.example/products/?region=EU&page=99');
-  await app.settled();
-  assert.equal(app.url, 'https://shop.example/products/?region=EU&page=3');
-  assert.equal(app.element('page-label').textContent, 'Page 3');
-  assert.match(text(app.element('products')), /EU product 3/);
-  assert.deepEqual(paths(app), [null, '25', '50']);
-  assert.equal(app.element('next').disabled, true);
-});
-
-test('empty pages after a continuation retain the last real page', async () => {
-  const app = browser('https://shop.example/products/?region=EU&page=3', query => {
-    if (query.has('after')) return { region: 'EU', items: [], nextAfter: null };
-    return page('EU', 1);
-  });
-  await app.settled();
-  assert.equal(app.url, 'https://shop.example/products/?region=EU&page=1');
-  assert.equal(app.element('page-label').textContent, 'Page 1');
-  assert.match(text(app.element('products')), /EU product 1/);
-  assert.equal(app.element('next').disabled, true);
-});
-
-test('an empty catalog canonicalizes any requested page to page 1', async () => {
-  const app = browser('https://shop.example/products/?region=EU&page=3', () => ({ region: 'EU', items: [], nextAfter: null }));
-  await app.settled();
-  assert.equal(app.element('page-label').textContent, 'Page 1');
+  assert.equal(app.calls.length, 1);
   assert.equal(app.element('state-title').textContent, 'No products found');
-  assert.equal(app.url, 'https://shop.example/products/?region=EU&page=1');
   assert.equal(app.element('previous').disabled, true);
   assert.equal(app.element('next').disabled, true);
-});
-
-test('an emptied cached page searches backward rather than displaying a fictitious page', async () => {
-  let emptied = false;
-  const app = browser('https://shop.example/products/?region=EU&page=3', query => {
-    const number = query.has('after') ? Number(query.get('after')) / 25 + 1 : 1;
-    return emptied && number > 1 ? { region: 'EU', items: [], nextAfter: null } : page('EU', number);
-  });
-  await app.settled();
-  emptied = true;
-  app.click('previous'); await app.settled();
-  assert.equal(app.element('page-label').textContent, 'Page 1');
-  assert.equal(app.url, 'https://shop.example/products/?region=EU&page=1');
-  assert.equal(app.element('next').disabled, true);
-  assert.deepEqual(paths(app), [null, '25', '50', '25', null]);
-});
-
-test('a superseded region response cannot overwrite a newer region', async () => {
-  const old = deferred();
-  const app = browser('https://shop.example/products/?region=EU&page=3', query =>
-    query.get('region') === 'EU' ? old.promise : page('US', 1));
-  app.region('US'); await app.settled();
-  old.resolve(page('EU', 1)); await app.settled();
-  assert.equal(app.calls[0].signal.aborted, true);
-  assert.equal(app.element('region').value, 'US');
-  assert.match(text(app.element('products')), /US product 1/);
-  assert.equal(app.url, 'https://shop.example/products/?region=US&page=1');
+  assert.equal(app.element('first').disabled, false);
+  assert.equal(app.element('last').disabled, false);
+  app.click('first'); await app.settled();
   assert.equal(app.calls.length, 2);
+  assert.equal(app.element('products').children.length, 25);
 });
 
-test('Back during an in-flight Next load keeps the restored page', async () => {
-  const pending = deferred();
-  const app = browser(undefined, query => query.has('after') ? pending.promise : page('US', 1));
+test('deadline aborts one direct request; Refresh retries the same position', async () => {
+  const pending = deferred(); let stalled = true;
+  const app = browser('https://shop.example/products/?region=EU&last=true', query => stalled ? pending.promise : page('EU', 3));
   await app.settled();
-  app.click('next');
-  assert.equal(app.element('next').disabled, true);
-  app.back(); await app.settled();
-  pending.resolve(page('US', 2)); await app.settled();
-  assert.equal(app.element('page-label').textContent, 'Page 1');
-  assert.match(text(app.element('products')), /US product 1/);
-  assert.equal(app.url, 'https://shop.example/products/?region=US&page=1');
-});
-
-test('cursor traversal shares one eight-second deadline and ignores a late response', async () => {
-  const pending = deferred();
-  const app = browser('https://shop.example/products/?region=EU&page=3', query =>
-    query.has('after') ? pending.promise : page('EU', 1));
-  await app.settled();
-  assert.equal(app.timers.size, 1);
+  assert.equal(app.calls.length, 1);
   assert.equal([...app.timers.values()][0].ms, 8000);
-  assert.equal(app.calls.length, 2);
-  assert.equal(app.calls[0].signal, app.calls[1].signal);
-  app.expire();
-  pending.resolve(page('EU', 2)); await app.settled();
+  app.expire(); pending.resolve(page('EU', 3)); await app.settled();
   assert.equal(app.calls[0].signal.aborted, true);
-  assert.equal(app.calls.length, 2);
-  assert.equal(app.element('state-title').textContent, "Couldn't load products");
   assert.match(app.element('state-description').textContent, /took too long/);
-  assert.equal(app.element('products').children.length, 0);
-  assert.equal(app.element('next').disabled, true);
+  for (const id of ['first', 'previous', 'next', 'last']) assert.equal(app.element(id).disabled, true);
   assert.equal(app.timers.size, 0);
+  stalled = false; app.click('refresh'); await app.settled();
+  assert.equal(app.calls.length, 2);
+  assert.equal(app.calls[1].query.get('last'), 'true');
 });
 
-test('a failed traversal shows no partial page and Refresh retries the requested page', async () => {
-  let failing = true;
-  const app = browser('https://shop.example/products/?region=EU&page=3', query => {
-    if (failing && query.has('after')) throw new Error('unavailable');
-    return page('EU', query.has('after') ? Number(query.get('after')) / 25 + 1 : 1);
-  });
-  await app.settled();
-  assert.equal(app.element('state-title').textContent, "Couldn't load products");
-  assert.equal(app.element('products').children.length, 0);
-  failing = false;
-  app.click('refresh'); await app.settled();
-  assert.equal(app.element('page-label').textContent, 'Page 3');
-  assert.match(text(app.element('products')), /EU product 3/);
+test('superseded Last response cannot overwrite a new region', async () => {
+  const pending = deferred();
+  const app = browser(undefined, query => query.has('last') ? pending.promise : page(query.get('region'), 1));
+  await app.settled(); app.click('last'); await app.settled();
+  app.region('ASIA'); await app.settled();
+  pending.resolve(page('US', 3)); await app.settled();
+  assert.equal(app.calls[1].signal.aborted, true);
+  assert.match(text(app.element('products')), /ASIA product 1/);
+  assert.equal(app.element('first').disabled, true);
+});
+
+test('failed and malformed responses render no partial page and Refresh retries', async () => {
+  for (const failure of ['network', 'shape']) {
+    let failing = true;
+    const app = browser(undefined, () => {
+      if (failing && failure === 'network') throw new Error('unavailable');
+      const result = page('US', 1); if (failing) result.nextCursor = 'invalid cursor'; return result;
+    });
+    await app.settled();
+    assert.equal(app.element('state-title').textContent, "Couldn't load products");
+    assert.equal(app.element('products').children.length, 0);
+    failing = false; app.click('refresh'); await app.settled();
+    assert.match(text(app.element('products')), /US product 1/);
+    assert.equal(app.calls.length, 2);
+  }
 });
 
 test('product identities, exact decimal money, and names remain text', async () => {
-  const app = browser('https://shop.example/products/?region=EU&page=3');
+  const app = browser('https://shop.example/products/?region=EU&after=' + token('EU', 'a', 50));
   await app.settled();
   const content = text(app.element('products'));
   assert.match(content, /9007199254740993/);
@@ -280,161 +266,6 @@ test('product identities, exact decimal money, and names remain text', async () 
   assert.match(content, /99,999,999,999,999,999\.99/);
   assert.match(content, /−100,000,000,000,000,000\.01/);
   assert.match(content, /<b>Seller<\/b>/);
-});
-
-
-test('Refresh clamps the current page when the refreshed catalog becomes shorter', async () => {
-  let count = 3;
-  const app = browser('https://shop.example/products/?region=EU&page=3', query =>
-    page('EU', query.has('after') ? Number(query.get('after')) / 25 + 1 : 1, count));
-  await app.settled();
-  count = 1;
-  app.click('refresh'); await app.settled();
-  assert.equal(app.element('page-label').textContent, 'Page 1');
-  assert.match(text(app.element('products')), /EU product 1/);
-  assert.equal(app.url, 'https://shop.example/products/?region=EU&page=1');
-  assert.equal(app.element('next').disabled, true);
-  assert.deepEqual(paths(app), [null, '25', '50', null]);
-});
-
-// End navigation must resolve a concrete shareable page without publishing a sentinel URL.
-test('First returns to regional page 1 and Back restores the original page and URL fields', async () => {
-  const app = browser('https://shop.example/products/?view=compact&region=EU&page=3#catalog');
-  await app.settled();
-  assert.equal(app.element('first').disabled, false);
-  assert.equal(app.element('last').disabled, true);
-  app.click('first'); await app.settled();
-  assert.equal(app.url, 'https://shop.example/products/?view=compact&region=EU&page=1#catalog');
-  assert.match(text(app.element('products')), /EU product 1/);
-  assert.equal(app.element('first').disabled, true);
-  assert.equal(app.element('previous').disabled, true);
-  assert.equal(app.element('last').disabled, false);
-  assert.equal(app.entries.length, 2);
-  app.back(); await app.settled();
-  assert.equal(app.element('page-label').textContent, 'Page 3');
-  assert.match(text(app.element('products')), /EU product 3/);
-  assert.equal(app.url, 'https://shop.example/products/?view=compact&region=EU&page=3#catalog');
-});
-
-test('Last resolves one shareable history entry and keeps the concrete URL while loading', async () => {
-  const pending = deferred();
-  let waiting = true;
-  const app = browser('https://shop.example/products/?view=compact&region=EU&page=1#catalog', query => {
-    const number = query.has('after') ? Number(query.get('after')) / 25 + 1 : 1;
-    return number === 2 && waiting ? pending.promise : page('EU', number);
-  });
-  await app.settled();
-  app.click('last'); await app.settled();
-  assert.equal(app.url, 'https://shop.example/products/?view=compact&region=EU&page=1#catalog');
-  assert.equal(app.entries.length, 1);
-  for (const id of ['first', 'previous', 'next', 'last']) assert.equal(app.element(id).disabled, true, id);
-  waiting = false;
-  pending.resolve(page('EU', 2)); await app.settled();
-  assert.equal(app.url, 'https://shop.example/products/?view=compact&region=EU&page=3#catalog');
-  assert.match(text(app.element('products')), /EU product 3/);
-  assert.equal(app.element('last').disabled, true);
-  assert.equal(app.element('next').disabled, true);
-  assert.equal(app.entries.length, 2);
-  const copied = browser(app.url); await copied.settled();
-  assert.match(text(copied.element('products')), /EU product 3/);
-  app.back(); await app.settled();
-  assert.equal(app.element('page-label').textContent, 'Page 1');
-  app.forward(); await app.settled();
-  assert.equal(app.element('page-label').textContent, 'Page 3');
-  assert.equal(app.entries.length, 2);
-});
-
-test('Last discovers an appended final page after returning to an earlier page', async () => {
-  let count = 3;
-  const app = browser(undefined, query => page('US', query.has('after') ? Number(query.get('after')) / 25 + 1 : 1, count));
-  await app.settled();
-  app.click('last'); await app.settled();
-  assert.equal(app.element('page-label').textContent, 'Page 3');
-  app.click('first'); await app.settled();
-  count = 4;
-  app.click('last'); await app.settled();
-  assert.equal(app.url, 'https://shop.example/products/?region=US&page=4');
-  assert.match(text(app.element('products')), /US product 4/);
-  assert.equal(app.element('last').disabled, true);
-});
-
-test('Last retains the final populated page when its continuation becomes empty', async () => {
-  const app = browser(undefined, query => {
-    const number = query.has('after') ? Number(query.get('after')) / 25 + 1 : 1;
-    return number === 3 ? { region: 'US', items: [], nextAfter: null } : page('US', number);
-  });
-  await app.settled();
-  app.click('last'); await app.settled();
-  assert.equal(app.url, 'https://shop.example/products/?region=US&page=2');
-  assert.match(text(app.element('products')), /US product 2/);
-  assert.equal(app.element('first').disabled, false);
-  assert.equal(app.element('last').disabled, true);
-  assert.equal(app.element('next').disabled, true);
-  assert.equal(app.entries.length, 2);
-});
-
-test('First and Last are disabled for empty and single-page catalogs', async t => {
-  for (const empty of [false, true]) {
-    await t.test(empty ? 'empty catalog' : 'single-page catalog', async () => {
-      const app = browser(undefined, () => empty ? { region: 'US', items: [], nextAfter: null } : page('US', 1, 1));
-      await app.settled();
-      for (const id of ['first', 'previous', 'next', 'last']) assert.equal(app.element(id).disabled, true, id);
-      app.click('first'); app.click('last'); await app.settled();
-      assert.equal(app.calls.length, 1);
-      assert.equal(app.entries.length, 1);
-    });
-  }
-});
-
-test('a superseded Last traversal cannot overwrite a newer region or its navigation controls', async () => {
-  const pending = deferred();
-  const app = browser('https://shop.example/products/?region=EU&page=1', query =>
-    query.get('region') === 'EU' && query.has('after') ? pending.promise : page(query.get('region'), 1));
-  await app.settled();
-  app.click('last'); await app.settled();
-  const oldSignal = app.calls.at(-1).signal;
-  app.region('ASIA'); await app.settled();
-  pending.resolve(page('EU', 2)); await app.settled();
-  assert.equal(oldSignal.aborted, true);
-  assert.equal(app.url, 'https://shop.example/products/?region=ASIA&page=1');
-  assert.match(text(app.element('products')), /ASIA product 1/);
-  assert.equal(app.element('first').disabled, true);
-  assert.equal(app.element('last').disabled, false);
-  assert.equal(app.calls.at(-1).query.get('region'), 'ASIA');
-});
-
-test('Last shares one eight-second deadline and Refresh retries the end after timeout', async () => {
-  const pending = deferred();
-  let stalled = true;
-  const app = browser('https://shop.example/products/?region=EU&page=2', query => {
-    const number = query.has('after') ? Number(query.get('after')) / 25 + 1 : 1;
-    return stalled && number === 4 ? pending.promise : page('EU', number, 4);
-  });
-  await app.settled();
-  const beforeLast = app.calls.length;
-  app.click('last'); await app.settled();
-  assert.equal(app.timers.size, 1);
-  assert.equal([...app.timers.values()][0].ms, 8000);
-  const traversal = app.calls.slice(beforeLast);
-  assert.ok(traversal.length >= 2, 'Last traverses more than one continuation');
-  assert.ok(traversal.every(call => call.signal === traversal[0].signal));
-  assert.equal(app.url, 'https://shop.example/products/?region=EU&page=2');
-  app.expire();
-  pending.resolve(page('EU', 4, 4)); await app.settled();
-  assert.equal(traversal[0].signal.aborted, true);
-  assert.equal(app.element('state-title').textContent, "Couldn't load products");
-  assert.match(app.element('state-description').textContent, /took too long/);
-  assert.equal(app.element('products').children.length, 0);
-  assert.equal(app.url, 'https://shop.example/products/?region=EU&page=2');
-  assert.equal(app.entries.length, 1);
-  for (const id of ['first', 'previous', 'next', 'last']) assert.equal(app.element(id).disabled, true, id);
-  assert.equal(app.timers.size, 0);
-  stalled = false;
-  app.click('refresh'); await app.settled();
-  assert.equal(app.url, 'https://shop.example/products/?region=EU&page=4');
-  assert.match(text(app.element('products')), /EU product 4/);
-  assert.equal(app.element('first').disabled, false);
-  assert.equal(app.element('last').disabled, true);
 });
 
 
@@ -458,4 +289,61 @@ test('country, legacy reason and currency minor units are visible without losing
   assert.match(rendered[3], /19\.00GBP/);
   assert.match(rendered[3], /Country unresolved/);
   assert.match(rendered[3], /Unavailable for new orders: UNRESOLVED_SELLER_COUNTRY/);
+});
+
+
+test('server rejects region or filter bound cursor with a visible recoverable error', async () => {
+  const app = browser('https://shop.example/products/?region=ASIA&after=' + token('EU', 'a', 50), () => ({ ok: false, status: 400 }));
+  await app.settled();
+  assert.equal(app.calls.length, 1);
+  assert.match(app.element('state-description').textContent, /invalid cursor.*selected region/);
+  assert.equal(app.element('first').disabled, false);
+  assert.equal(app.element('last').disabled, false);
+});
+
+
+test('Back during a pending Next restores directly and discards the late response', async () => {
+  const pending = deferred();
+  const app = browser(undefined, query => query.has('after') ? pending.promise : page('US', 1));
+  await app.settled(); app.click('next');
+  assert.equal(app.element('next').disabled, true);
+  app.back(); await app.settled();
+  pending.resolve(page('US', 2)); await app.settled();
+  assert.equal(app.calls.length, 3);
+  assert.equal(app.calls[1].signal.aborted, true);
+  assert.match(text(app.element('products')), /US product 1/);
+  assert.equal(app.url, 'https://shop.example/products/?region=US');
+});
+
+test('a copied Previous cursor reloads directly and Last Refresh sees appended products', async () => {
+  let size = 51;
+  const app = browser(undefined, query => catalog(size, query)); await app.settled();
+  app.click('last'); await app.settled();
+  size = 60; app.click('refresh'); await app.settled();
+  assert.match(text(app.element('products').children.at(-1)), /Product 60/);
+  assert.equal(app.calls.length, 3);
+  app.click('previous'); await app.settled();
+  const copied = browser(app.url, query => catalog(size, query)); await copied.settled();
+  assert.equal(copied.calls.length, 1);
+  assert.equal(copied.calls[0].query.get('before'), token('US', 'b', 36));
+  assert.equal(text(copied.element('products')), text(app.element('products')));
+});
+
+
+test('response cursors must match the region direction and fixed page size', async () => {
+  for (const [field, value] of [
+    ['nextCursor', token('EU', 'a', 25)],
+    ['nextCursor', token('US', 'b', 25)],
+    ['previousCursor', token('US', 'a', 25)],
+    ['nextCursor', 'p1.US.50.a.25'],
+    ['previousCursor', 'p1.US.25.b.9223372036854775808']
+  ]) {
+    const app = browser(undefined, () => ({ ...page('US', 1), [field]: value }));
+    await app.settled();
+    assert.equal(app.calls.length, 1);
+    assert.equal(app.element('state-title').textContent, "Couldn't load products");
+    assert.match(app.element('state-description').textContent, /unexpected response/);
+    assert.equal(app.element('products').children.length, 0);
+    for (const id of ['first', 'previous', 'next', 'last']) assert.equal(app.element(id).disabled, true);
+  }
 });

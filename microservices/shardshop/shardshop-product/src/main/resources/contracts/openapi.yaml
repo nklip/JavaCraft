@@ -82,15 +82,25 @@ paths:
       summary: Browse created products in a seller home region
       description: |
         Read every shard assigned to the selected region, without dataset filters.
-        Return products ordered by ascending numeric productId, strictly after
-        the optional cursor. limit defaults to 25 and is bounded to 1..100;
+        Return products ordered by ascending numeric productId. Select the first
+        window by default, strictly after the optional after cursor, strictly
+        before a before cursor, or the final up-to-limit window with last=true.
+        after, before and last are mutually exclusive. The final window is not
+        aligned to a counted page grid and has no exact page ordinal. limit defaults to 25 and is bounded to 1..100;
         query integers use canonical ASCII decimal text. Unknown, empty or
         repeated query parameters return 400 before IO. A cursor need not name
-        an existing product. nextAfter is the last returned productId only when
-        more products exist, otherwise null. An empty region returns an empty
-        items array and null nextAfter. Changing region starts a new pagination.
+        an existing product. Legacy after accepts a canonical positive product ID.
+        New navigation uses nextCursor with after or previousCursor with before.
+        These opaque cursors bind region, limit and direction; mismatches and
+        malformed cursors return 400 before IO. nextAfter remains the last returned
+        productId only when later products exist, otherwise null, for existing clients.
+        nextCursor and previousCursor are null at the corresponding edge. Empty
+        windows return no navigation cursors. No count or traversal of preceding
+        pages is needed, and every shard query has bounded candidate output.
+        Changing region or limit starts a new pagination.
 
-        Earnings sum actually applied immutable catalog.profit_credits amounts
+        Earnings read maintained catalog.product_profits balances of actually
+        applied immutable catalog.profit_credits amounts
         for each product and currency. Uncredited products have 0.00 in their
         product currency. Negative margins are retained; reservations, released
         stock and pending profit intents never count as earnings. Product currency
@@ -117,8 +127,22 @@ paths:
             default: 25
         - name: after
           in: query
+          description: nextCursor from a previous response, or a legacy positive product ID.
           schema:
-            $ref: '#/components/schemas/Id'
+            anyOf:
+              - $ref: '#/components/schemas/Id'
+              - $ref: '#/components/schemas/ProductCursor'
+        - name: before
+          in: query
+          description: previousCursor from a previous response, bound to this region and limit.
+          schema:
+            $ref: '#/components/schemas/ProductCursor'
+        - name: last
+          in: query
+          description: Read the final up-to-limit products directly; exclusive with after and before.
+          schema:
+            type: string
+            const: 'true'
       responses:
         '200':
           description: Bounded regional products with current stock and applied earnings.
@@ -143,6 +167,8 @@ paths:
                     legacyReason: null
                     profitsEarned: {EUR: '-1.50'}
                 nextAfter: null
+                nextCursor: null
+                previousCursor: null
         '400':
           $ref: '#/components/responses/InvalidRequest'
         '503':
@@ -551,10 +577,15 @@ components:
                 code: READ_REPLICA_UNAVAILABLE
                 message: Catalog read replica is temporarily unavailable.
   schemas:
+    ProductCursor:
+      type: string
+      maxLength: 40
+      pattern: '^p1\.(US|EU|ASIA)\.([1-9]|[1-9][0-9]|100)\.[ab]\.(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[01][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])(?![\s\S])'
+      description: Opaque versioned navigation coordinate. Boundary fits a signed positive BIGINT. Not an authorization token or a snapshot.
     ProductPage:
       type: object
       additionalProperties: false
-      required: [region, items, nextAfter]
+      required: [region, items, nextAfter, nextCursor, previousCursor]
       properties:
         region:
           $ref: '#/components/schemas/Region'
@@ -566,6 +597,14 @@ components:
         nextAfter:
           anyOf:
             - $ref: '#/components/schemas/Id'
+            - type: 'null'
+        nextCursor:
+          anyOf:
+            - $ref: '#/components/schemas/ProductCursor'
+            - type: 'null'
+        previousCursor:
+          anyOf:
+            - $ref: '#/components/schemas/ProductCursor'
             - type: 'null'
     ProductSummary:
       type: object

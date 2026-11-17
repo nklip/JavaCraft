@@ -541,8 +541,8 @@ does not shorten a failing shard's backoff. `shardshop.order.profit.shard-concur
 serializes shard turns and credits. The configured limit is capped by shard count
 and is independent of StockWorker's limit.
 
-Each intent commits an idempotent seller credit and atomic balance increment
-before marking completion in a separate home-shard transaction. No connection
+Each intent commits an idempotent credit and atomic seller and product balance
+increments before marking completion in a separate home-shard transaction. No connection
 or transaction spans those phases. Multiple buyer shards can target one seller,
 so the permanent credit identity and database balance-row locking protect replay
 and concurrent updates. Shared pools and hot seller rows can limit throughput;

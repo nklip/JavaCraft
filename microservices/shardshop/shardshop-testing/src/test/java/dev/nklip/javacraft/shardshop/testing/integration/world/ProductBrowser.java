@@ -24,9 +24,13 @@ public final class ProductBrowser {
         var response = api.get("/api/v1/products?" + query);
         assertEquals(200, response.status(), response.text());
         JsonNode page = Json.parse(response.body());
-        assertEquals(Set.of("region", "items", "nextAfter"), fields(page));
+        assertEquals(Set.of("region", "items", "nextAfter", "nextCursor", "previousCursor"), fields(page));
         assertTrue(page.path("items").isArray());
         assertTrue(page.path("nextAfter").isNull() || canonicalId(page.path("nextAfter")));
+        for (String field : Set.of("nextCursor", "previousCursor")) {
+            assertTrue(page.path(field).isNull() || (page.path(field).isTextual()
+                    && !page.path(field).asText().isBlank()), field);
+        }
         long previous = 0;
         for (JsonNode row : page.path("items")) {
             assertEquals(FIELDS, fields(row));

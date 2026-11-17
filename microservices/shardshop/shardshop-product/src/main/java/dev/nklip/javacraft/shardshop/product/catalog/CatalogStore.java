@@ -17,6 +17,9 @@ public interface CatalogStore {
     /** Bounded candidates from every selected shard, sharing one database deadline. */
     List<ListedProduct> products(List<Shard> shards, boolean replica, String region, int limit, long after);
 
+    ProductSelection productWindow(List<Shard> shards, boolean replica, String region, int limit,
+                                   long boundary, ListingDirection direction);
+
     interface Session {
         void lock(long key);
 
@@ -29,6 +32,10 @@ public interface CatalogStore {
         Optional<Product> product(long sellerId, long productId);
 
         List<ListedProduct> products(String region, int limit, long after);
+
+        List<ListedProduct> products(String region, int limit, long boundary, ListingDirection direction);
+
+        boolean productsExist(String region, long boundary, ListingDirection direction);
 
         void insertSeller(long id, String key, SellerCreation creation);
 

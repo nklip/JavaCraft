@@ -365,18 +365,23 @@ another shard is busy. Value `1` serializes shard turns and credits; larger valu
 also post each batch in `item-concurrency` groups. Intents of one seller stay in
 one group. The seller transaction
 inserts immutable `catalog.profit_credits` keyed by `(order_id, product_id)` and
-increments the matching currency balance only for a new credit. A matching
+increments the matching seller currency balance and `catalog.product_profits`
+total only for a new credit, in that same transaction. A matching
 existing credit is a no-op. Only after that commit does a separate home-shard
 transaction mark the intent applied. Restarts, competing workers and unknown
 commit responses can repeat the work without double crediting. Losses remain
 negative and currencies are never combined.
 
+Apply catalog V7 before deploying this worker. Its retained-credit backfill and
+legacy-writer fence prevent missed totals during the migration/application gap;
+see the [product earnings cutover](../database/RUNBOOK.md#product-earnings-cutover).
+
 Transient profit failures persist a retry time with one-to-thirty-second backoff
 and jitter. A conflicting credit, missing catalog reference or balance overflow
 sets `blocked_reason` and logs the blocked intent; the intent remains for
 operator investigation. Runtime cannot edit credit/intent amounts or delete
-them. Catalog V4 and the repeatable grants allow order to initialize a currency
-at zero and update only its balance, while product's permissions stay unchanged.
+them. Catalog V4 permits seller balance updates; V7 permits product total
+inserts and amount updates. Product can read these totals but cannot change them.
 
 The saga process enables both workers by default. `--check-startup` validates their settings
 without consuming or posting. Configure them independently:

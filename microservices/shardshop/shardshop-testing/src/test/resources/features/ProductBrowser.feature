@@ -11,6 +11,10 @@ Feature: Regional product browser over the packaged provider
     Given arbitrary browser products occupy both US shards and the other regions
     Then the regional browser paginates every stored product once with exact product earnings
     And the regional browser rejects malformed filters and canonical ID violations
+    And direct product cursors navigate both directions and the final regional window
+
+  Scenario: Direct navigation covers empty and page-size boundaries
+    Then product navigation handles empty partial and full final windows
 
   Scenario: An empty region has no next cursor
     Then an empty region returns an empty terminal browser page

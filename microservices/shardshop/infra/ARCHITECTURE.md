@@ -464,9 +464,12 @@ outbox relay of the ledger polls its own database.
   [order architecture](../shardshop-order/ARCHITECTURE.md#1-processes) describes the
   split.
 - **Stock worker.** The saga runs one stock scan at a time for each buyer shard, and
-  at most three shard scans at the same time by default. The sagas in the batch of one
-  shard stay sequential, and a full batch starts the next batch at once.
-  `shardshop.order.stock.shard-concurrency=1` gives back the original serial global scan.
+  at most three shard scans at the same time by default. The shared chart enables two
+  workers per shard, so independent sagas within one batch can advance concurrently.
+  A full batch starts the next batch at once. Set both
+  `shardshop.order.stock.shard-concurrency=1` and
+  `shardshop.order.stock.workers-per-shard=1` to restore the original serial global scan.
+  See the [stock settings](../shardshop-order/RUNBOOK.md#2-stock-reservation-and-compensation).
 - **Profit worker.** In the lab, the profit worker uses a 100 ms idle delay with
   at most 32 intents per batch for each buyer shard. A separate bounded pool permits three buyer-shard
   scans at the same time by default, with one scan at a time for each shard. A scan

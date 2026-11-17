@@ -143,19 +143,30 @@ final class JdbcCatalogSession implements CatalogStore.Session {
 
     @Override
     public List<ListedProduct> products(String region, int limit, long after) {
-        // Bound the page before aggregating immutable credits; stock reservations are not sales.
+        return products(region, limit, after, ListingDirection.AFTER);
+    }
+
+    @Override
+    public List<ListedProduct> products(String region, int limit, long boundary, ListingDirection direction) {
+        boolean backwards = direction != ListingDirection.AFTER;
+        String ordering = backwards ? " DESC" : " ASC";
+        String predicate = direction == ListingDirection.LAST ? "" :
+                " AND p.product_id " + (backwards ? "<" : ">") + " ?";
+        // Page selection and the indexed maintained balance lookup are independent of credit history size.
         String sql = "WITH page AS (SELECT p.seller_id, p.product_id, s.company_name, p.name, s.region, s.country_code, p.unit_cost, "
                 + "p.initial_stock, p.stock, p.price, p.currency FROM catalog.products p "
                 + "JOIN catalog.sellers s ON s.seller_id = p.seller_id "
-                + "WHERE s.region = ? AND p.product_id > ? ORDER BY p.product_id LIMIT ?) "
-                + "SELECT page.*, COALESCE(credits.amount, 0.00) AS profit FROM page "
-                + "LEFT JOIN LATERAL (SELECT SUM(c.amount) AS amount FROM catalog.profit_credits c "
-                + "WHERE c.product_id = page.product_id AND c.currency = page.currency) credits ON true "
-                + "ORDER BY page.product_id";
+                + "WHERE s.region = ?" + predicate + " ORDER BY p.product_id" + ordering + " LIMIT ?) "
+                + "SELECT page.*, COALESCE(profits.amount, 0.00) AS profit FROM page "
+                + "LEFT JOIN catalog.product_profits profits ON profits.product_id = page.product_id "
+                + "AND profits.currency = page.currency ORDER BY page.product_id" + ordering;
         try (PreparedStatement statement = prepare(sql)) {
             statement.setString(1, region);
-            statement.setLong(2, after);
-            statement.setInt(3, limit);
+            int parameter = 2;
+            if (direction != ListingDirection.LAST) {
+                statement.setLong(parameter++, boundary);
+            }
+            statement.setInt(parameter, limit);
             List<ListedProduct> products = new ArrayList<>();
             try (ResultSet rows = query(statement)) {
                 while (rows.next()) {
@@ -169,6 +180,25 @@ final class JdbcCatalogSession implements CatalogStore.Session {
                 }
             }
             return List.copyOf(products);
+        } catch (SQLException failure) {
+            throw new CatalogFailure(unavailable);
+        }
+    }
+
+    @Override
+    public boolean productsExist(String region, long boundary, ListingDirection direction) {
+        String comparison = direction == ListingDirection.AFTER ? "<=" : ">=";
+        String sql = "SELECT EXISTS (SELECT 1 FROM catalog.products p JOIN catalog.sellers s "
+                + "ON s.seller_id = p.seller_id WHERE s.region = ? AND p.product_id " + comparison + " ?)";
+        try (PreparedStatement statement = prepare(sql)) {
+            statement.setString(1, region);
+            statement.setLong(2, boundary);
+            try (ResultSet rows = query(statement)) {
+                if (!rows.next()) {
+                    throw new SQLException("Missing catalog existence result");
+                }
+                return rows.getBoolean(1);
+            }
         } catch (SQLException failure) {
             throw new CatalogFailure(unavailable);
         }

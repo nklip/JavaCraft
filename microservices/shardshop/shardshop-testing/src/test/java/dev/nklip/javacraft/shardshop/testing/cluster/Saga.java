@@ -249,7 +249,7 @@ public final class Saga {
     public void invariants() throws IOException, InterruptedException {
         for (String shard : lab.shards()) {
             require(number(shard, stockViolations()) == 0, "Stock differs from initial stock minus active reservations on " + shard);
-            require(number(shard, profitViolations()) == 0, "Seller balance differs from permanent currency credits on " + shard);
+            require(number(shard, profitViolations()) == 0, "Seller or product totals differ from permanent currency credits on " + shard);
         }
     }
 
@@ -259,9 +259,13 @@ public final class Saga {
     }
 
     public static String profitViolations() {
-        return "SELECT count(*) FROM catalog.seller_profits p FULL JOIN (SELECT seller_id,currency,sum(amount) AS amount "
+        // Seller balances may be initialized to zero without credits; product totals require an exact credit group.
+        return "SELECT count(*) FROM (SELECT 1 FROM catalog.seller_profits p FULL JOIN (SELECT seller_id,currency,sum(amount) AS amount "
                 + "FROM catalog.profit_credits GROUP BY seller_id,currency) c USING(seller_id,currency) "
-                + "WHERE coalesce(p.amount,0)<>coalesce(c.amount,0)";
+                + "WHERE coalesce(p.amount,0)<>coalesce(c.amount,0) "
+                + "UNION ALL SELECT 1 FROM catalog.product_profits p FULL JOIN (SELECT product_id,currency,sum(amount) AS amount "
+                + "FROM catalog.profit_credits GROUP BY product_id,currency) c USING(product_id,currency) "
+                + "WHERE p.amount IS DISTINCT FROM c.amount) violations";
     }
 
     public long number(String shard, String query) throws IOException, InterruptedException {

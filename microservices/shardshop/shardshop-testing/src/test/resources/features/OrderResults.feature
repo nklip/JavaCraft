@@ -50,9 +50,19 @@ Feature: Order applies ledger results and credits confirmed seller profit
   Scenario: Unknown historical item cost prevents a recorded result from confirming an order
     Then a recorded result with an unknown item cost is quarantined before confirmation
 
+  @product-profit-totals
+  Scenario: A failed product-total write rolls back the seller transaction and resumes exactly once
+    Then a product total write failure rolls back the credit and seller balance before retry
+
+  @product-profit-totals
+  Scenario: Product totals preserve overflow rollback, zero margins and conflicting credit history
+    Then product totals preserve overflow rollback, zero margins and conflicting credit history
+
+  @product-profit-totals
   Scenario: Seller credit survives an interrupted home mark and competing workers
     Then a committed seller credit is reused after an interrupted home mark by two workers
 
+  @product-profit-totals
   Scenario: Different buyer homes concurrently credit the same seller balance
     Then three buyer homes concurrently credit one seller without lost or duplicate profit
 

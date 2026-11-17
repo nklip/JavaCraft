@@ -1,12 +1,16 @@
 package dev.nklip.javacraft.shardshop.testing.support;
 
+import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.PortBinding;
 import com.github.dockerjava.api.model.Ports;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.flywaydb.core.api.output.MigrateResult;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.Container.ExecResult;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.startupcheck.OneShotStartupCheckStrategy;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.utility.MountableFile;
@@ -14,6 +18,7 @@ import org.testcontainers.images.builder.Transferable;
 
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -24,8 +29,10 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 
 /**
  * One PostgreSQL container for the complete Cucumber run. It has the catalog roles and memberships of the lab
@@ -239,6 +246,56 @@ public final class CatalogDatabase {
      */
     public MigrateResult migrate(String database, Path location, Map<String, String> placeholders) {
         return migrate(database, location, placeholders, "catalog");
+    }
+
+    /** Loads the real maintenance properties; only the disposable endpoint, SQL location and placement differ. */
+    public FluentConfiguration catalogConfiguration(String database, Path location, Properties properties) {
+        return Flyway.configure()
+                .configuration(properties)
+                .dataSource(catalogUrl(database), "catalog_migrator", migratorPassword)
+                .locations("filesystem:" + location)
+                .placeholders(Map.of("shardRegion", "US", "shardIndex", "0", "shardCount", "1"));
+    }
+
+    /** Runs the pinned distribution's real CLI with the Job's environment and an unmodified configuration file. */
+    public CliResult migrateCatalogCli(String database, Path location, String configFile) throws IOException {
+        String dockerfile = Files.readString(ShardShopFiles.resolve("infra/images/flyway/Dockerfile"));
+        var distribution = Pattern.compile("(?m)^FROM (\\S+@sha256:[a-f0-9]{64}) AS distribution$")
+                .matcher(dockerfile);
+        if (!distribution.find()) {
+            throw new IllegalStateException("The Flyway Dockerfile must pin its distribution by digest");
+        }
+        // A nonzero process exit is an expected result for negative controls, not a container startup failure.
+        var completion = new OneShotStartupCheckStrategy() {
+            @Override
+            public StartupStatus checkStartupState(DockerClient client, String containerId) {
+                StartupStatus status = super.checkStartupState(client, containerId);
+                return status == StartupStatus.FAILED ? StartupStatus.SUCCESSFUL : status;
+            }
+        }.withTimeout(Duration.ofSeconds(45));
+        try (GenericContainer<?> cli = new GenericContainer<>(DockerImageName.parse(distribution.group(1)))
+                .withNetworkMode("container:" + container.getContainerId())
+                .withEnv("FLYWAY_URL", "jdbc:postgresql://localhost:5432/" + database
+                        + "?sslmode=verify-full&sslrootcert=/flyway/ca.crt")
+                .withEnv("FLYWAY_USER", "catalog_migrator")
+                .withEnv("FLYWAY_PASSWORD", migratorPassword)
+                .withEnv("FLYWAY_PLACEHOLDERS_SHARDREGION", "US")
+                .withEnv("FLYWAY_PLACEHOLDERS_SHARDINDEX", "0")
+                .withEnv("FLYWAY_PLACEHOLDERS_SHARDCOUNT", "1")
+                .withEnv("REDGATE_DISABLE_TELEMETRY", "true")
+                .withCopyFileToContainer(MountableFile.forHostPath(location), "/flyway/sql")
+                .withCopyFileToContainer(MountableFile.forHostPath(trustedCa), "/flyway/ca.crt")
+                .withCommand("-configFiles=" + configFile, "migrate")
+                .withStartupAttempts(1)
+                .withStartupCheckStrategy(completion)) {
+            cli.start();
+            Long exitCode = DockerClientFactory.instance().client().inspectContainerCmd(cli.getContainerId())
+                    .exec().getState().getExitCodeLong();
+            return new CliResult(Objects.requireNonNull(exitCode), cli.getLogs().replace(migratorPassword, "[redacted]"));
+        }
+    }
+
+    public record CliResult(long exitCode, String output) {
     }
 
     /** Runs either owner-controlled stream with the same bounded Flyway settings as the lab. */

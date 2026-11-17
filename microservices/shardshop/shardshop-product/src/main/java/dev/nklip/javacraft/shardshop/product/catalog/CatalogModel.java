@@ -66,7 +66,21 @@ public final class CatalogModel {
         }
     }
 
-    public record ProductPage(String region, List<ListedProduct> items, Long nextAfter) {
+    public enum ListingDirection {
+        AFTER, BEFORE, LAST
+    }
+
+    public record ProductSelection(List<ListedProduct> items, boolean oppositeExists) {
+        public ProductSelection {
+            items = List.copyOf(items);
+        }
+    }
+
+    public record ProductPage(String region, List<ListedProduct> items, Long nextAfter, Long previousBefore) {
+        public ProductPage(String region, List<ListedProduct> items, Long nextAfter) {
+            this(region, items, nextAfter, null);
+        }
+
         public ProductPage {
             items = List.copyOf(items);
         }

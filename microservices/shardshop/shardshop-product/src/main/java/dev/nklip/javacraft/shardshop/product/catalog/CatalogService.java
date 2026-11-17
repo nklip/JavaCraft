@@ -130,6 +130,30 @@ public final class CatalogService {
         return new ProductPage(region, items, more ? items.getLast().productId() : null);
     }
 
+    public ProductPage products(String region, int limit, long boundary, ListingDirection direction) {
+        if (limit < 1 || limit > 100 || boundary < 0 || direction == null
+                || direction == ListingDirection.BEFORE && boundary == 0
+                || direction == ListingDirection.LAST && boundary != 0) {
+            throw new CatalogFailure(INVALID_REQUEST);
+        }
+        ProductSelection selection = store.productWindow(regionalShards(region), replicaReads,
+                region, limit + 1, boundary, direction);
+        Comparator<ListedProduct> order = Comparator.comparingLong(ListedProduct::productId);
+        boolean backwards = direction != ListingDirection.AFTER;
+        List<ListedProduct> candidates = selection.items().stream()
+                .sorted(backwards ? order.reversed() : order).limit(limit + 1L).toList();
+        boolean more = candidates.size() > limit;
+        List<ListedProduct> items = candidates.stream().limit(limit).sorted(order).toList();
+        if (items.isEmpty()) {
+            return new ProductPage(region, items, null, null);
+        }
+        boolean previous = backwards ? more : selection.oppositeExists();
+        boolean next = direction == ListingDirection.AFTER ? more
+                : direction == ListingDirection.BEFORE && selection.oppositeExists();
+        return new ProductPage(region, items, next ? items.getLast().productId() : null,
+                previous ? items.getFirst().productId() : null);
+    }
+
     private static boolean validPrice(String value, String currency) {
         try {
             BigDecimal amount = new BigDecimal(value);

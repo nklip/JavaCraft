@@ -140,10 +140,11 @@ class ProductApiContractTest {
                 .put("profitsEarned", new JsonObject().put("JPY", "-100000000000000000.01"))
                 .put("countryCode", "FR").put("newOrderEligible", false).put("legacyReason", "DISALLOWED_SELLER_CURRENCY");
         JsonObject page = new JsonObject().put("region", "EU").put("items", new JsonArray().add(product))
-                .put("nextAfter", LONG_MAX);
+                .put("nextAfter", LONG_MAX).put("nextCursor", "p1.EU.25.a." + LONG_MAX).put("previousCursor", null);
         assertEquals(List.of(), API.unexpected(SCHEMAS + "ProductPage",
                 List.of(page, page.copy().put("nextAfter", null),
-                        new JsonObject().put("region", "US").put("items", new JsonArray()).put("nextAfter", null)),
+                        new JsonObject().put("region", "US").put("items", new JsonArray()).put("nextAfter", null)
+                                .put("nextCursor", null).put("previousCursor", null)),
                 List.of(without(page, "nextAfter"), page.copy().put("nextAfter", 1),
                         page.copy().put("nextAfter", "01"), page.copy().put("region", "AU"))));
         assertEquals(List.of(), API.unexpected(SCHEMAS + "ProductSummary", List.of(product),
@@ -156,6 +157,15 @@ class ProductApiContractTest {
                         product.copy().put("profitsEarned", new JsonObject().put("JPY", "1.00\n")))));
         JsonObject operation = (JsonObject) API.node("#/paths/~1api~1v1~1products/get");
         assertEquals(Set.of("200", "400", "503"), operation.getJsonObject("responses").fieldNames());
+    }
+
+    @Test
+    void navigationCursorSchemaPreservesExactSignedLongBoundsAndDirections() {
+        assertEquals(List.of(), API.unexpected(SCHEMAS + "ProductCursor",
+                List.of("p1.US.25.a.1", "p1.EU.100.b." + LONG_MAX, "p1.ASIA.1.a.9007199254740993"),
+                List.of("1", "p1.US.25.a.0", "p1.US.25.a.01", "p1.US.25.a.9223372036854775808",
+                        "p1.US.0.a.1", "p1.US.101.a.1", "p1.US.025.a.1", "p1.US.25.c.1",
+                        "p1.AU.25.a.1", "p1.US.25.a.1\n", 1)));
     }
 
     @Test

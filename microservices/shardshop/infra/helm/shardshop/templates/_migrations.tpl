@@ -55,7 +55,7 @@ metadata:
     {{- end }}
 spec:
   backoffLimit: 0
-  activeDeadlineSeconds: {{ $root.Values.migration.activeDeadlineSeconds }}
+  activeDeadlineSeconds: {{ ternary 360 $root.Values.migration.activeDeadlineSeconds $root.Values.migration.catalogV7Maintenance }}
   {{- if .hook }}
   ttlSecondsAfterFinished: {{ $root.Values.migration.ttlSecondsAfterFinished }}
   {{- end }}
@@ -79,7 +79,11 @@ spec:
       containers:
         - name: flyway
           image: {{ $root.Values.migration.image }}
+          {{- if $root.Values.migration.catalogV7Maintenance }}
+          args: [-configFiles=/flyway/sql/flyway-v7-maintenance.conf, migrate]
+          {{- else }}
           args: [-configFiles=/flyway/sql/flyway.toml, migrate]
+          {{- end }}
           env:
             {{- if not $ledger }}
             - name: SHARD_NAME

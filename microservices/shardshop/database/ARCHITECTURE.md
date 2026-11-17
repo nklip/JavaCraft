@@ -182,7 +182,7 @@ applies to migrations as well as infrastructure.
 ```text
 database/
   shard/            # database `shardshop`, applied to every shard primary
-    catalog/        # flyway.toml, V1–V6, R__catalog_grants.sql
+    catalog/        # flyway.toml, V1–V7, R__catalog_grants.sql
     ordering/       # flyway.toml, V1–V8, R__ordering_grants.sql
   ledger/
     ledger/         # database `ledger`, applied once to ledger-db: flyway.toml, V1–V3, R__ledger_grants.sql
@@ -196,6 +196,7 @@ database/
 | catalog | `V4__profit_posting.sql` | Profit posting with the immutable credit identity in one seller-shard transaction |
 | catalog | `V5__product_browser.sql` | An index for the per-product earnings of the product page |
 | catalog | `V6__seller_country_currency_policy.sql` | Seller `country_code` and the read-only `currency_policy_legacy` report |
+| catalog | `V7__product_profit_totals.sql` | Maintained product earnings, retained-credit backfill and a fence against old credit writers |
 | ordering | `V1__ordering.sql` | Buyer, allocation, order, saga, transport and quarantine tables, and the CDC offsets table |
 | ordering | `V2__buyer_profiles_and_item_cost.sql` | Buyer person/contact/address fields, durable creation keys and immutable unit-cost snapshots on accepted order items |
 | ordering | `V3__stock_coordination.sql` | Stock ownership, retry time and failure count on sagas |
@@ -223,8 +224,8 @@ SQL. For the catalog:
 | `catalog_owner` | no | none | Owns schema `catalog`, its objects, and its Flyway history |
 | `catalog_migrator` | yes | `catalog_owner`, without inheriting it | Runs Flyway; `flyway.toml` starts each connection with the `role` option set to `catalog_owner`, so no object belongs to a login |
 | `catalog_reader` | no | none | `SELECT` on sellers, products and seller profits |
-| `catalog_writer` | no | none | `SELECT` and `INSERT` on sellers/products; reads profits and inserts only seller/currency keys at the zero default; `SELECT (product_id, currency, amount)` on profit credits for the regional product page |
-| `catalog_reserver` | no | none | Reservation CRUD, permanent guard creation/closure, and product `stock` updates; immutable profit-credit reads/inserts and seller-profit key inserts/`amount` updates; no `TRUNCATE` |
+| `catalog_writer` | no | none | `SELECT` and `INSERT` on sellers/products; reads profits and inserts only seller/currency keys at the zero default; reads product totals; retained `SELECT (product_id, currency, amount)` on credits supports old reader pods during rollout |
+| `catalog_reserver` | no | none | Reservation CRUD, permanent guard creation/closure, and product `stock` updates; immutable profit-credit reads/inserts, seller-profit key inserts/`amount` updates, and product-profit inserts/`amount` updates; no `TRUNCATE` |
 | `product_app` | yes | `catalog_writer` | Product service |
 | `order_app` | yes | `catalog_reader`, `catalog_reserver`, `ordering_writer` | Order service |
 

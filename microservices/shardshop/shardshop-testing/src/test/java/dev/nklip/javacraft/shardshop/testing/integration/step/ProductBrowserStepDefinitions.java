@@ -122,6 +122,72 @@ public final class ProductBrowserStepDefinitions {
         assertEquals(stored("US").getFirst(), between.path("items").get(0), "Cursor need not identify a product");
     }
 
+    @Then("direct product cursors navigate both directions and the final regional window")
+    public void directNavigation() throws Exception {
+        List<JsonNode> expected = stored("US");
+        JsonNode first = browser.page("region=US&limit=25");
+        assertTrue(first.path("previousCursor").isNull());
+        String secondQuery = "region=US&limit=25&after=" + first.path("nextCursor").asText();
+        JsonNode second = browser.page(secondQuery);
+        assertEquals(expected.subList(25, 50), rows(second));
+        assertEquals(second, browser.page(secondQuery), "A copied cursor or refresh directly restores its window");
+        assertEquals(rows(first), rows(browser.page("region=US&limit=25&before="
+                + second.path("previousCursor").asText())));
+        JsonNode last = browser.page("region=US&limit=25&last=true");
+        assertEquals(expected.subList(expected.size() - 25, expected.size()), rows(last));
+        assertTrue(last.path("nextCursor").isNull());
+        assertTrue(last.path("nextAfter").isNull());
+        JsonNode previous = browser.page("region=US&limit=25&before=" + last.path("previousCursor").asText());
+        assertEquals(expected.subList(expected.size() - 50, expected.size() - 25), rows(previous));
+        assertEquals(rows(last), rows(browser.page("region=US&limit=25&after=" + previous.path("nextCursor").asText())));
+        for (String query : List.of("region=EU&limit=25&after=" + first.path("nextCursor").asText(),
+                "region=US&limit=24&after=" + first.path("nextCursor").asText(),
+                "region=US&last=true&after=1", "region=US&before=bad", "region=US&last=false",
+                "region=US&last=true&last=true", "region=US&before=bad&after=1")) {
+            CatalogApi.assertError(api.get("/api/v1/products?" + query), 400, "INVALID_REQUEST");
+        }
+        var seller = api.seller("shard-a");
+        ObjectNode payload = CatalogApi.itemRequest("US").put("name", "Live catalog insertion");
+        var created = api.post(seller.path() + "/products", "browser-live", Json.bytes(payload));
+        assertEquals(201, created.status(), created.text());
+        var added = api.remember("browser-live", seller, "browser-live", payload, created);
+        assertEquals(rows(second), rows(browser.page(secondQuery)), "A later product does not shift a saved start boundary");
+        JsonNode updatedLast = browser.page("region=US&limit=25&last=true");
+        assertEquals(added.id(), updatedLast.path("items").get(24).path("productId").asText());
+    }
+
+    @Then("product navigation handles empty partial and full final windows")
+    public void navigationBoundaries() throws Exception {
+        ObjectNode request = CatalogApi.sellerRequest("Boundary seller", "EU");
+        var createdSeller = api.createSeller("browser-boundaries", request);
+        assertEquals(201, createdSeller.status(), createdSeller.text());
+        var seller = api.remember("browser-boundaries", "browser-boundaries", request, createdSeller);
+        int count = 0;
+        for (int target : List.of(0, 1, 25, 26, 50, 51)) {
+            while (count < target) {
+                ObjectNode payload = CatalogApi.itemRequest("EU").put("name", "Boundary product " + count);
+                var created = api.post(seller.path() + "/products", "boundary-" + count, Json.bytes(payload));
+                assertEquals(201, created.status(), created.text());
+                count++;
+            }
+            List<JsonNode> expected = stored("EU");
+            JsonNode first = browser.page("region=EU&limit=25");
+            JsonNode last = browser.page("region=EU&limit=25&last=true");
+            assertEquals(expected.subList(0, Math.min(25, target)), rows(first));
+            assertEquals(expected.subList(Math.max(0, target - 25), target), rows(last));
+            assertTrue(first.path("previousCursor").isNull());
+            assertEquals(target <= 25, first.path("nextCursor").isNull());
+            assertTrue(last.path("nextCursor").isNull());
+            assertEquals(target <= 25, last.path("previousCursor").isNull());
+            if (target > 25) {
+                JsonNode previous = browser.page("region=EU&limit=25&before=" + last.path("previousCursor").asText());
+                assertEquals(expected.subList(Math.max(0, target - 50), target - 25), rows(previous));
+                assertEquals(rows(last), rows(browser.page("region=EU&limit=25&after="
+                        + previous.path("nextCursor").asText())));
+            }
+        }
+    }
+
     @Then("the regional browser rejects malformed filters and canonical ID violations")
     public void invalidQueries() throws Exception {
         for (String query : List.of("", "region=", "region=us", "region=AFRICA", "region=US&region=US",
@@ -212,13 +278,24 @@ public final class ProductBrowserStepDefinitions {
     private void credit(CatalogApi.Product fixture, long orderId, String amount) throws Exception {
         try (Connection connection = shards.superuser(shards.ofSeller(fixture.seller().id()));
              PreparedStatement insert = connection.prepareStatement("INSERT INTO catalog.profit_credits "
-                     + "(order_id, product_id, seller_id, currency, amount) VALUES (?, ?, ?, ?, ?::numeric)")) {
+                     + "(order_id, product_id, seller_id, currency, amount, product_total_applied) "
+                     + "VALUES (?, ?, ?, ?, ?::numeric, true)");
+             PreparedStatement total = connection.prepareStatement("INSERT INTO catalog.product_profits "
+                     + "(product_id, currency, amount) VALUES (?, ?, ?::numeric) "
+                     + "ON CONFLICT (product_id, currency) DO UPDATE "
+                     + "SET amount = catalog.product_profits.amount + EXCLUDED.amount")) {
+            connection.setAutoCommit(false);
             insert.setLong(1, orderId);
             insert.setLong(2, Long.parseLong(fixture.id()));
             insert.setLong(3, Long.parseLong(fixture.seller().id()));
             insert.setString(4, fixture.request().path("currency").asText());
             insert.setString(5, amount);
             assertEquals(1, insert.executeUpdate());
+            total.setLong(1, Long.parseLong(fixture.id()));
+            total.setString(2, fixture.request().path("currency").asText());
+            total.setString(3, amount);
+            assertEquals(1, total.executeUpdate());
+            connection.commit();
         }
     }
 

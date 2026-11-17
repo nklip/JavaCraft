@@ -32,17 +32,23 @@ public class ProductBrowserResource {
     public ProductPageResponse products(@Context UriInfo uri) {
         CatalogInput.ListingQuery query = input.listingQuery(uri);
         deadline.check();
-        var page = service.products(query.region(), query.limit(), query.after());
+        var page = service.products(query.region(), query.limit(), query.after(), query.direction());
         deadline.check();
         List<ProductSummary> items = page.items().stream().map(product -> new ProductSummary(
                 Long.toString(product.sellerId()), Long.toString(product.productId()), product.sellerName(),
                 product.name(), product.region(), product.initialStock(), product.stock(), product.price(),
                 product.currency(), product.profitsEarned(), product.countryCode(), product.newOrderEligible(), product.legacyReason())).toList();
         return new ProductPageResponse(page.region(), items,
-                page.nextAfter() == null ? null : Long.toString(page.nextAfter()));
+                page.nextAfter() == null ? null : Long.toString(page.nextAfter()),
+                page.nextAfter() == null ? null : CatalogInput.cursor(page.region(), query.limit(), "a", page.nextAfter()),
+                page.previousBefore() == null ? null : CatalogInput.cursor(page.region(), query.limit(), "b", page.previousBefore()));
     }
 
-    public record ProductPageResponse(String region, List<ProductSummary> items, String nextAfter) {
+    public record ProductPageResponse(String region, List<ProductSummary> items, String nextAfter,
+                                      String nextCursor, String previousCursor) {
+        public ProductPageResponse(String region, List<ProductSummary> items, String nextAfter) {
+            this(region, items, nextAfter, null, null);
+        }
     }
 
     public record ProductSummary(String sellerId, String productId, String sellerName, String name, String region,

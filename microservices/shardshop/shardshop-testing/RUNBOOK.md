@@ -64,6 +64,37 @@ integration profile renders the generator objects of the chart:
 mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pintegration clean verify
 ```
 
+`ProfitInvariantIT` also runs with this profile. It checks the accounting query
+shared by cluster, restore, repair and retained-upgrade verification against a
+migrated PostgreSQL database. It verifies signed and zero balances and rejects
+changed, missing or extra product totals without changing seller balances or credits.
+To run this regression without packaging the applications:
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true -Pintegration \
+  -Dtest=SagaTest,RestoreVerificationTest,RecoveryRepairTest,KindUpgradeWitnessTest \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false \
+  -Dit.test=ProfitInvariantIT -Dfailsafe.failIfNoSpecifiedTests=false verify
+```
+
+`CatalogV7MaintenanceIT` checks the
+[V7 maintenance path](../database/RUNBOOK.md#retained-history-maintenance-through-v7).
+It runs the Flyway CLI distribution pinned in the migration Dockerfile, with the
+Job's arguments, the complete catalog directory at `/flyway/sql`, and credentials
+and placement supplied through environment variables. It checks configuration
+loading, the version-7 target, retained totals, the writer fence and a second CLI
+run. A missing configuration must fail without changing the database. The existing
+Java API checks cover the longer statement budget and transaction rollback.
+The first run may pull the pinned CLI image; it does not build application images.
+
+```bash
+mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am \
+  -Dshardshop.infrastructureOnly=true -Pintegration -Dtest=HelmReleaseTest \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dshardshop.failIfNoTests=false \
+  -Dit.test=CatalogV7MaintenanceIT -Dfailsafe.failIfNoSpecifiedTests=false verify
+```
+
 The scenarios take approximately four minutes with the kind lab stopped and
 approximately six minutes while the lab runs. Cucumber writes its reports to
 `shardshop-testing/target/cucumber-reports`. The application logs stay in

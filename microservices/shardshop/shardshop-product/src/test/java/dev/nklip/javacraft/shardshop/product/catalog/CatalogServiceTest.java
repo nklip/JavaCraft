@@ -8,6 +8,7 @@ import dev.nklip.javacraft.shardshop.sharding.ShardTopology;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
@@ -249,6 +250,79 @@ class CatalogServiceTest {
         assertEquals("DISALLOWED_SELLER_CURRENCY", new Product(1, 2, payload, 7, "ASIA", "JP").legacyReason());
         assertEquals("INVALID_CURRENCY_PRECISION", new Product(1, 2,
                 new ProductCreation("Mug", "Mug", "19.01", "12.00", "JPY", 5), 5, "ASIA", "JP").legacyReason());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {0, 1, 25, 26, 50, 51})
+    void boundedForwardReverseAndLastWindowsCoverRegionalBoundarySizes(int count) {
+        List<Shard> usShards = List.of(topology.shards().get(0), topology.shards().get(3));
+        when(store.productWindow(eq(usShards), eq(false), eq("US"), eq(26), anyLong(), any()))
+                .thenAnswer(invocation -> {
+                    long boundary = invocation.getArgument(4);
+                    ListingDirection direction = invocation.getArgument(5);
+                    // Return each shard's independently bounded candidates, deliberately not globally sorted.
+                    List<ListedProduct> rows = new java.util.ArrayList<>();
+                    for (int shard = 0; shard < 2; shard++) {
+                        final int parity = shard;
+                        var ids = LongStream.rangeClosed(1, count).filter(id -> id % 2 == parity)
+                                .filter(id -> direction == ListingDirection.LAST
+                                        || direction == ListingDirection.BEFORE && id < boundary
+                                        || direction == ListingDirection.AFTER && id > boundary).boxed();
+                        ids = direction == ListingDirection.AFTER ? ids.sorted() : ids.sorted(Comparator.reverseOrder());
+                        rows.addAll(ids.limit(26).map(this::listed).toList());
+                    }
+                    boolean opposite = boundary > 0 && (direction == ListingDirection.AFTER ? count > 0
+                            : direction == ListingDirection.BEFORE && boundary <= count);
+                    return new ProductSelection(rows, opposite);
+                });
+        List<Long> expected = LongStream.rangeClosed(1, count).boxed().toList();
+        ProductPage first = service.products("US", 25, 0, ListingDirection.AFTER);
+        assertEquals(expected.stream().limit(25).toList(), ids(first));
+        assertNull(first.previousBefore());
+        List<Long> forwards = new java.util.ArrayList<>(ids(first));
+        ProductPage page = first;
+        while (page.nextAfter() != null) {
+            long boundary = page.nextAfter();
+            page = service.products("US", 25, boundary, ListingDirection.AFTER);
+            assertTrue(page.items().size() <= 25);
+            forwards.addAll(ids(page));
+        }
+        assertEquals(expected, forwards);
+
+        ProductPage last = service.products("US", 25, 0, ListingDirection.LAST);
+        assertEquals(expected.stream().skip(Math.max(0, count - 25)).toList(), ids(last));
+        assertNull(last.nextAfter());
+        List<Long> backwards = new java.util.ArrayList<>(ids(last));
+        page = last;
+        while (page.previousBefore() != null) {
+            page = service.products("US", 25, page.previousBefore(), ListingDirection.BEFORE);
+            assertNotNull(page.nextAfter());
+            backwards.addAll(ids(page));
+        }
+        assertEquals(expected, backwards.stream().sorted().toList());
+        if (count > 25) {
+            ProductPage second = service.products("US", 25, first.nextAfter(), ListingDirection.AFTER);
+            ProductPage previous = service.products("US", 25, second.previousBefore(), ListingDirection.BEFORE);
+            assertEquals(ids(first), ids(previous));
+        }
+        verifyNoInteractions(generator);
+    }
+
+    @Test
+    void oppositeEdgeComesFromExistenceRatherThanAssumingTheCursorNamesAProduct() {
+        var shards = List.of(topology.shards().get(0), topology.shards().get(3));
+        when(store.productWindow(shards, false, "US", 26, 2, ListingDirection.AFTER))
+                .thenReturn(new ProductSelection(List.of(listed(100)), false));
+        assertNull(service.products("US", 25, 2, ListingDirection.AFTER).previousBefore());
+        when(store.productWindow(shards, false, "US", 26, 200, ListingDirection.BEFORE))
+                .thenReturn(new ProductSelection(List.of(listed(100)), false));
+        assertNull(service.products("US", 25, 200, ListingDirection.BEFORE).nextAfter());
+        fails(INVALID_REQUEST, () -> service.products("US", 25, 0, ListingDirection.BEFORE));
+        fails(INVALID_REQUEST, () -> service.products("US", 25, 1, ListingDirection.LAST));
+    }
+
+    private List<Long> ids(ProductPage page) {
+        return page.items().stream().map(ListedProduct::productId).toList();
     }
 
     private ListedProduct listed(long id) {

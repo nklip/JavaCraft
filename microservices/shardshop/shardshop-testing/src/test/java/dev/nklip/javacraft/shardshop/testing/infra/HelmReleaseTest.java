@@ -454,6 +454,43 @@ class HelmReleaseTest {
     }
 
     @Test
+    void catalogV7MaintenanceIsBoundedAndExplicitlySelectedForOneShard() throws Exception {
+        values.put("migrationShard", "shard-a").put("migrationStream", "catalog");
+        values.putObject("migration").put("catalogV7Maintenance", true);
+        List<JsonNode> resources = render("migration");
+        JsonNode job = jobs(resources).getFirst();
+        assertEquals(360, job.path("spec").path("activeDeadlineSeconds").asInt());
+        assertEquals(JSON.valueToTree(List.of(
+                "-configFiles=/flyway/sql/flyway-v7-maintenance.conf", "migrate")),
+                job.at("/spec/template/spec/containers/0/args"));
+        JsonNode data = named(resources, mountedConfig(job)).path("data");
+        assertEquals(Files.readString(source.resolve("database/shard/catalog/V7__product_profit_totals.sql")),
+                data.path("V7__product_profit_totals.sql").asText());
+        assertEquals(Files.readString(source.resolve("database/shard/catalog/flyway-v7-maintenance.conf")),
+                data.path("flyway-v7-maintenance.conf").asText());
+
+        values.remove("migration");
+        JsonNode normal = jobs(render("migration")).getFirst();
+        assertEquals(180, normal.path("spec").path("activeDeadlineSeconds").asInt());
+        assertEquals(JSON.valueToTree(List.of("-configFiles=/flyway/sql/flyway.toml", "migrate")),
+                normal.at("/spec/template/spec/containers/0/args"));
+    }
+
+    @Test
+    void catalogV7MaintenanceCannotLeakIntoNormalReleasesOrOtherStreams() throws Exception {
+        values.putObject("migration").put("catalogV7Maintenance", true);
+        assertRejected("migrations");
+        assertRejected("application-release");
+        values.put("migrationShard", "shard-a").put("migrationStream", "ordering");
+        assertRejected("migration");
+        values.put("migrationShard", "ledger-db").put("migrationStream", "ledger");
+        assertRejected("migration");
+        values.put("migrationShard", "shard-a").put("migrationStream", "catalog");
+        delete(chart.resolve("migrations"));
+        assertRejected("migration");
+    }
+
+    @Test
     void everyHelmRevisionRunsFlywayEvenWhenSqlReturnsToAnEarlierState() throws Exception {
         List<JsonNode> first = render("migrations");
         Path sql = chart.resolve("migrations/shard/catalog/V1__catalog.sql");

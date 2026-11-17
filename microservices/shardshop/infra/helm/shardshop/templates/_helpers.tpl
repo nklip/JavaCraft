@@ -1,5 +1,13 @@
 {{/* Additional validation that JSON Schema cannot express for a list of objects. */}}
 {{- define "shardshop.validate" -}}
+{{- if .Values.migration.catalogV7Maintenance -}}
+  {{- if or (ne .Values.render "migration") (ne .Values.migrationStream "catalog") -}}
+    {{- fail "catalogV7Maintenance requires a standalone render=migration with migrationStream=catalog" -}}
+  {{- end -}}
+  {{- if not (.Files.Get "migrations/shard/catalog/flyway-v7-maintenance.conf") -}}
+    {{- fail "catalogV7Maintenance requires the complete database snapshot under chart/migrations" -}}
+  {{- end -}}
+{{- end -}}
 {{- $seen := dict -}}
 {{- range .Values.shards -}}
   {{- if hasKey $seen .name -}}
