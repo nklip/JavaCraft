@@ -136,18 +136,6 @@ final class JdbcOrderSession implements OrderStore.Session {
     }
 
     @Override
-    public boolean allocatedTo(long orderId, long buyerId) {
-        try (PreparedStatement statement = prepare("SELECT 1 FROM ordering.order_allocations "
-                + "WHERE order_id = ? AND buyer_id = ?")) {
-            statement.setLong(1, orderId);
-            statement.setLong(2, buyerId);
-            return exists(statement);
-        } catch (SQLException failure) {
-            throw new OrderFailure(unavailable);
-        }
-    }
-
-    @Override
     public void insertAllocation(Allocation allocation) {
         try (PreparedStatement statement = prepare("INSERT INTO ordering.order_allocations "
                 + "(order_id, buyer_id, run_name, request_ordinal) VALUES (?, ?, ?, ?)")) {
@@ -162,19 +150,34 @@ final class JdbcOrderSession implements OrderStore.Session {
     }
 
     @Override
-    public boolean quarantined(long orderId) {
-        try (PreparedStatement statement = prepare("SELECT 1 FROM ordering.orphan_results "
-                + "WHERE order_id = ? AND resolved_at IS NULL LIMIT 1")) {
+    public OrderStore.AcceptanceChecks acceptanceChecks(long buyerId, long orderId) {
+        // The advisory lock must finish in its own statement before this READ COMMITTED snapshot starts.
+        String sql = "SELECT checks.quarantined, checks.allocated_to_buyer, o.order_id, o.request_fingerprint, "
+                + "o.currency, o.total_amount, o.status, s.cancellation_reason "
+                + "FROM (SELECT EXISTS (SELECT 1 FROM ordering.orphan_results "
+                + "WHERE order_id = ? AND resolved_at IS NULL) AS quarantined, "
+                + "EXISTS (SELECT 1 FROM ordering.order_allocations WHERE order_id = ? AND buyer_id = ?) "
+                + "AS allocated_to_buyer) checks "
+                + "LEFT JOIN (ordering.orders o JOIN ordering.order_sagas s ON s.order_id = o.order_id) "
+                + "ON o.buyer_id = ? AND o.order_id = ?";
+        try (PreparedStatement statement = prepare(sql)) {
             statement.setLong(1, orderId);
-            return exists(statement);
+            statement.setLong(2, orderId);
+            statement.setLong(3, buyerId);
+            statement.setLong(4, buyerId);
+            statement.setLong(5, orderId);
+            try (ResultSet rows = statement.executeQuery()) {
+                if (!rows.next()) {
+                    throw new SQLException("Order acceptance checks returned no row");
+                }
+                rows.getLong("order_id");
+                Optional<Order> existing = rows.wasNull() ? Optional.empty()
+                        : Optional.of(order(rows, buyerId, orderId));
+                return new OrderStore.AcceptanceChecks(rows.getBoolean("quarantined"),
+                        rows.getBoolean("allocated_to_buyer"), existing);
+            }
         } catch (SQLException failure) {
             throw new OrderFailure(unavailable);
-        }
-    }
-
-    private boolean exists(PreparedStatement statement) throws SQLException {
-        try (ResultSet rows = statement.executeQuery()) {
-            return rows.next();
         }
     }
 
@@ -186,13 +189,16 @@ final class JdbcOrderSession implements OrderStore.Session {
             statement.setLong(1, buyerId);
             statement.setLong(2, orderId);
             try (ResultSet rows = statement.executeQuery()) {
-                return rows.next() ? Optional.of(new Order(buyerId, orderId, rows.getString("request_fingerprint"),
-                        rows.getString("currency"), rows.getBigDecimal("total_amount"), rows.getString("status"),
-                        rows.getString("cancellation_reason"))) : Optional.empty();
+                return rows.next() ? Optional.of(order(rows, buyerId, orderId)) : Optional.empty();
             }
         } catch (SQLException failure) {
             throw new OrderFailure(unavailable);
         }
+    }
+
+    private Order order(ResultSet rows, long buyerId, long orderId) throws SQLException {
+        return new Order(buyerId, orderId, rows.getString("request_fingerprint"), rows.getString("currency"),
+                rows.getBigDecimal("total_amount"), rows.getString("status"), rows.getString("cancellation_reason"));
     }
 
     List<ListedOrder> orders(String region, Long productId, String productName,

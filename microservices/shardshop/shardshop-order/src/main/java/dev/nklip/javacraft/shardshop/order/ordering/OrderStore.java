@@ -18,6 +18,9 @@ public interface OrderStore {
     /** Primary-only catalog lookup; all acquisition/query work must fit the remaining shared deadline. */
     Optional<Product> product(Shard sellerShard, long sellerId, long productId, Duration remaining);
 
+    record AcceptanceChecks(boolean quarantined, boolean allocatedToBuyer, Optional<Order> order) {
+    }
+
     interface Session {
         void lock(long key);
 
@@ -29,11 +32,10 @@ public interface OrderStore {
 
         Optional<Allocation> allocation(long buyerId, String runName, long requestOrdinal);
 
-        boolean allocatedTo(long orderId, long buyerId);
-
         void insertAllocation(Allocation allocation);
 
-        boolean quarantined(long orderId);
+        /** Reads all acceptance checks in one snapshot, after a separate lock statement has completed. */
+        AcceptanceChecks acceptanceChecks(long buyerId, long orderId);
 
         Optional<Order> order(long buyerId, long orderId);
 

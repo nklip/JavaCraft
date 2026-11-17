@@ -28,6 +28,12 @@ Feature: Order validation and atomic acceptance on PostgreSQL primaries
     Then buyer creation, allocation and order acceptance each wait for their advisory lock
     And an order lock held past the phase budget gives 503 and writes nothing
 
+  Scenario: Order validation sees quarantine committed while waiting for its advisory lock
+    Then quarantine committed before the order lock is released blocks an existing retry
+
+  Scenario: An order retry sees the saved status committed while waiting for its advisory lock
+    Then an order status committed before the order lock is released is returned by a retry
+
   Scenario Outline: A locked catalog lookup holds no order resources and the final recheck wins
     Then a concurrent "<change>" wins over a blocked catalog lookup
     Examples:

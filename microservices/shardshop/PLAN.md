@@ -2,7 +2,7 @@
 
 [ShardShop](README.md) › **Implementation plan** · [Changelog](CHANGELOG.md) · [Decisions](DECISIONS.md) · [Architecture](ARCHITECTURE.md)
 
-This plan lists the implementation steps of ShardShop and their status. The
+This plan lists the implementation steps and follow-up work of ShardShop and their status. The
 [CHANGELOG](CHANGELOG.md) has the result of each done step, and
 [DECISIONS.md](DECISIONS.md) has the reasons for the main choices. The acceptance
 condition of each done step is in Git history: milestones 0–6 in the tag
@@ -13,6 +13,7 @@ condition of each done step is in Git history: milestones 0–6 in the tag
 2. [Rules for a step](#2-rules-for-a-step)
 3. [Milestones 0–6](#3-milestones-06)
 4. [Milestone 7: AWS deployment](#4-milestone-7-aws-deployment)
+5. [Follow-up: performance and reliability](#5-follow-up-performance-and-reliability)
 
 ## 1. Status
 <sub>[Back to Contents](#contents)</sub>
@@ -23,6 +24,9 @@ condition of each done step is in Git history: milestones 0–6 in the tag
   keeps HTTP/1.1 ([decision](DECISIONS.md#keep-http11)).
 - **Milestone 7 (AWS deployment) is done.** Steps 7.1 to 7.10 are in
   [section 4](#4-milestone-7-aws-deployment).
+- **The performance and reliability follow-up is In Progress.** Implementation
+  steps and focused test evidence are recorded below; deployment and capacity
+  qualification remain pending ([section 5](#5-follow-up-performance-and-reliability)).
 - **Version deadlines:** the version review of 2026-11-04 is still due. The local
   risk acceptance ends and the CNPG upgrade is due on 2026-11-30
   ([open findings](VERSIONS.md#3-open-findings-and-risk-acceptance)).
@@ -204,3 +208,14 @@ section 11). Record the costs and the teardown commands.
 | [7.8 Stable AWS webpage URLs and access control](CHANGELOG.md#step-78--stable-aws-webpage-urls-and-access-control) | 4.10, 7.7 | Done |
 | [7.9 Sustained 30 new orders/s on EKS](CHANGELOG.md#step-79--sustained-30-new-orderss-on-eks) | 7.8 | Done |
 | [7.10 Test packages by deployment](CHANGELOG.md#step-710--test-packages-by-deployment) | 7.9 | Done |
+
+## 5. Follow-up: performance and reliability
+<sub>[Back to Contents](#contents)</sub>
+
+Each implementation step is recorded in its own commit. **Done** covers the
+implementation and its recorded focused checks. Deployment and capacity
+qualification remain separate, pending work.
+
+| Work | Status | Evidence or remaining acceptance |
+|---|---|---|
+| [8.1 Reduce order-acceptance SQL round trips](CHANGELOG.md#step-81--reduce-order-acceptance-sql-round-trips) | Done | Fewer SQL round trips; focused order-reactor checks passed. |

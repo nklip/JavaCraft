@@ -16,6 +16,7 @@ The Git tag `shardshop-docs-full-2026-10-31` keeps the full text of this file be
 6. [Milestone 5: Recovery, retention, and backpressure](#6-milestone-5-recovery-retention-and-backpressure)
 7. [Milestone 6: Read profiles, failover, restore, and operation](#7-milestone-6-read-profiles-failover-restore-and-operation)
 8. [Milestone 7: AWS deployment](#8-milestone-7-aws-deployment)
+9. [Follow-up: performance and reliability](#9-follow-up-performance-and-reliability)
 
 ## 1. Milestone 0: Supported baseline and project skeleton
 <sub>[Back to Contents](#contents)</sub>
@@ -748,3 +749,28 @@ The 172 test classes moved from `testing.kind` and `testing.cucumber` to package
 The cluster checks now use `ClusterIT`, `-Pcluster`, `shardshop.cluster.*`, `cluster-features` and `cluster-*` tags. The kind-only checks keep `kind-*`.
 These passed: 404 offline tests, the complete Testcontainers suite (163 scenarios), a dry run of all 55 cluster scenarios in the gates image, and a disposable lab with `up.sh`, `cluster-deployment` and `cluster-saga-drill`. A first lab stopped on a stalled image pull.
 Lesson: clean the build after a package move, because stale classes hide broken imports.
+
+## 9. Follow-up: performance and reliability
+<sub>[Back to Contents](#contents)</sub>
+
+**2026-11-17 — Implementation and focused checks recorded below; deployment and capacity qualification pending.**
+Each implementation step is recorded in its own commit. **Done** covers the
+implementation and its recorded focused checks; the follow-up remains
+[In Progress](PLAN.md#5-follow-up-performance-and-reliability).
+Focused checks were recorded during implementation; these rewritten
+intermediate commits have not been tested separately.
+
+### Step 8.1 — Reduce order-acceptance SQL round trips
+
+**Done 2026-11-17.**
+Order acceptance uses fewer SQL round trips while preserving its atomic write and
+validation contract. The [order architecture](shardshop-order/ARCHITECTURE.md#validation-and-http-errors)
+owns deadlines and error precedence. Focused order-reactor tests passed.
+
+Lesson: Batch database work without changing the acceptance transaction.
+
+#### Pending qualification
+
+Deployment and capacity qualification of the combined revision remain pending.
+The [plan](PLAN.md#5-follow-up-performance-and-reliability) records the separate
+acceptance work. Historical milestone results apply to their original revisions.

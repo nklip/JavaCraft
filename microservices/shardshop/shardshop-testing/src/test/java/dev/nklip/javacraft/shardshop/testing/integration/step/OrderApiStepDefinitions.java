@@ -322,6 +322,53 @@ public final class OrderApiStepDefinitions {
         }
     }
 
+    @Then("quarantine committed before the order lock is released blocks an existing retry")
+    public void quarantineAfterLockWait() throws Exception {
+        assertEquals("PENDING_STOCK", body(exchange("PUT", path, null, request), 202).get("status").asText());
+        var home = shards.ofSeller(buyer);
+        try (Connection lock = shards.superuser(home); var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            lock.setAutoCommit(false);
+            hold(lock, lockKey("order", "", orderId));
+            var pending = executor.submit(() -> exchange("PUT", path, null, request));
+            awaitAdvisoryWait(home);
+            assertFalse(pending.isDone(), "The request must wait before reading the order guards");
+            quarantine(lock);
+            lock.commit();
+            error(pending.get(5, TimeUnit.SECONDS), 409, "ORDER_RECONCILIATION_REQUIRED");
+        }
+        assertEquals(1, count(home, "ordering.orders", "true"));
+        assertEquals(1, count(home, "ordering.order_sagas", "true"));
+        assertEquals(1, count(home, "ordering.orphan_results", "order_id=" + orderId));
+    }
+
+    private void quarantine(Connection connection) throws SQLException {
+        try (var statement = connection.createStatement()) {
+            statement.executeUpdate("INSERT INTO ordering.orphan_results (message_id,payload_fingerprint,command_id,saga_id,order_id,buyer_id,request_fingerprint,outcome,envelope,reason) VALUES (1,'"
+                    + "a".repeat(64) + "',2,3," + orderId + "," + buyer + ",'lost','RECORDED','{}','test quarantine')");
+        }
+    }
+
+    @Then("an order status committed before the order lock is released is returned by a retry")
+    public void orderAfterLockWait() throws Exception {
+        assertEquals("PENDING_STOCK", body(exchange("PUT", path, null, request), 202).get("status").asText());
+        var home = shards.ofSeller(buyer);
+        try (Connection lock = shards.superuser(home); var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            lock.setAutoCommit(false);
+            hold(lock, lockKey("order", "", orderId));
+            var pending = executor.submit(() -> exchange("PUT", path, null, request));
+            awaitAdvisoryWait(home);
+            assertFalse(pending.isDone(), "The retry must wait before reading the saved order");
+            try (var statement = lock.createStatement()) {
+                assertEquals(1, statement.executeUpdate("UPDATE ordering.orders SET status='CONFIRMED' WHERE order_id=" + orderId));
+                assertEquals(1, statement.executeUpdate("UPDATE ordering.order_sagas SET status='CONFIRMED' WHERE order_id=" + orderId));
+            }
+            lock.commit();
+            assertEquals("CONFIRMED", body(pending.get(5, TimeUnit.SECONDS), 200).get("status").asText());
+        }
+        assertEquals(1, count(home, "ordering.orders", "true"));
+        assertEquals(1, count(home, "ordering.order_sagas", "true"));
+    }
+
     private void awaitAdvisoryWait(CatalogShards.Shard shard) throws Exception {
         long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
         while (System.nanoTime() < deadline) {

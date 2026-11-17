@@ -2,6 +2,7 @@ package dev.nklip.javacraft.shardshop.order.persistence;
 
 import dev.nklip.javacraft.shardshop.common.jdbc.DatabasePhases;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderFailure;
+import dev.nklip.javacraft.shardshop.order.ordering.OrderStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -17,6 +18,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 
 import static dev.nklip.javacraft.shardshop.order.ordering.OrderModel.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -205,9 +207,60 @@ class JdbcOrderSessionTest {
         when(rows.next()).thenReturn(true);
         when(rows.getLong("order_id")).thenReturn(41L);
         assertEquals(allocation, session.allocation(31, "run", 0).orElseThrow());
-        assertTrue(session.allocatedTo(41, 31));
-        assertTrue(session.quarantined(41));
-        verify(connection).prepareStatement(contains("resolved_at IS NULL"));
+    }
+
+    @Test
+    void acceptanceChecksUseOneStatementAfterTheSeparateLockAndPreserveAbsentOrder() throws SQLException {
+        when(rows.next()).thenReturn(true);
+        when(rows.wasNull()).thenReturn(true);
+        when(rows.getBoolean("quarantined")).thenReturn(true);
+        when(rows.getBoolean("allocated_to_buyer")).thenReturn(false);
+
+        session.lock(4321);
+        assertEquals(new OrderStore.AcceptanceChecks(true, false, Optional.empty()),
+                session.acceptanceChecks(31, 41));
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(connection, times(4)).prepareStatement(sql.capture());
+        List<String> business = sql.getAllValues().stream().filter(value -> !value.startsWith("SELECT set_config")).toList();
+        assertEquals(2, business.size(), "Acceptance uses a lock statement and one snapshot for all checks");
+        assertEquals("SELECT pg_advisory_xact_lock(?)", business.getFirst());
+        String checks = business.getLast();
+        assertFalse(checks.contains("pg_advisory_xact_lock"));
+        assertTrue(checks.contains("resolved_at IS NULL"));
+        assertTrue(checks.contains("ordering.order_allocations"));
+        assertTrue(checks.contains("ordering.orders"));
+        assertTrue(checks.contains("ordering.order_sagas"));
+        verify(statement).setLong(1, 41);
+        verify(statement).setLong(2, 41);
+        verify(statement).setLong(3, 31);
+        verify(statement).setLong(4, 31);
+        verify(statement).setLong(5, 41);
+        verify(statement, times(2)).executeQuery();
+    }
+
+    @Test
+    void acceptanceChecksReturnSavedOrderAndBothFlagsFromTheSameResult() throws SQLException {
+        when(rows.next()).thenReturn(true);
+        when(rows.getLong("order_id")).thenReturn(41L);
+        when(rows.getBoolean("quarantined")).thenReturn(true);
+        when(rows.getBoolean("allocated_to_buyer")).thenReturn(true);
+        when(rows.getString("request_fingerprint")).thenReturn("saved fingerprint");
+        when(rows.getString("currency")).thenReturn("USD");
+        when(rows.getBigDecimal("total_amount")).thenReturn(new BigDecimal("39.90"));
+        when(rows.getString("status")).thenReturn("CANCELLED");
+        when(rows.getString("cancellation_reason")).thenReturn("OUT_OF_STOCK");
+
+        assertEquals(new OrderStore.AcceptanceChecks(true, true, Optional.of(
+                        new Order(31, 41, "saved fingerprint", "USD", new BigDecimal("39.90"), "CANCELLED", "OUT_OF_STOCK"))),
+                session.acceptanceChecks(31, 41));
+        verify(statement).executeQuery();
+    }
+
+    @Test
+    void missingAcceptanceCheckRowFailsClosedInsteadOfLookingLikeAnUnissuedOrder() {
+        assertEquals(OrderFailure.Reason.ORDER_STORE_UNAVAILABLE,
+                assertThrows(OrderFailure.class, () -> session.acceptanceChecks(31, 41)).reason());
     }
 
     @Test
@@ -260,7 +313,7 @@ class JdbcOrderSessionTest {
         assertEquals(OrderFailure.Reason.ORDER_STORE_UNAVAILABLE, assertThrows(OrderFailure.class,
                 () -> session.insertAllocation(new Allocation(31, 41, "run", 0))).reason());
         when(statement.executeQuery()).thenThrow(new SQLException("password=secret"));
-        OrderFailure failure = assertThrows(OrderFailure.class, () -> session.quarantined(41));
+        OrderFailure failure = assertThrows(OrderFailure.class, () -> session.acceptanceChecks(31, 41));
         assertEquals("ORDER_STORE_UNAVAILABLE", failure.getMessage());
         assertNull(failure.getCause());
     }

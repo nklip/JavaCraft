@@ -152,13 +152,14 @@ public final class OrderService {
 
     private Optional<Order> checkedOrder(OrderStore.Session session, long buyerId, long orderId, String fingerprint) {
         session.lock(orderLock(orderId));
-        if (session.quarantined(orderId)) {
+        var checks = session.acceptanceChecks(buyerId, orderId);
+        if (checks.quarantined()) {
             throw new OrderFailure(ORDER_RECONCILIATION_REQUIRED);
         }
-        if (!session.allocatedTo(orderId, buyerId)) {
+        if (!checks.allocatedToBuyer()) {
             throw new OrderFailure(INVALID_REQUEST);
         }
-        Optional<Order> existing = session.order(buyerId, orderId);
+        Optional<Order> existing = checks.order();
         if (existing.isPresent() && !existing.orElseThrow().fingerprint().equals(fingerprint)) {
             throw new OrderFailure(ORDER_ID_CONFLICT);
         }

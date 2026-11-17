@@ -7,6 +7,8 @@ import dev.nklip.javacraft.shardshop.sharding.ShardRouter;
 import dev.nklip.javacraft.shardshop.sharding.ShardTopology;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -242,6 +244,30 @@ class OrderServiceTest {
         fails(INVALID_REQUEST, () -> service.putOrder(1, 3, payload));
         assertEquals(0, store.lookups.get());
         assertTrue(store.orders.isEmpty());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "true, false, ORDER_RECONCILIATION_REQUIRED",
+            "true, true, ORDER_RECONCILIATION_REQUIRED",
+            "false, false, INVALID_REQUEST",
+            "false, true, ORDER_ID_CONFLICT"
+    })
+    void acceptanceChecksPreserveErrorPrecedenceWhenSavedFingerprintAlsoConflicts(
+            boolean quarantined, boolean allocated, OrderFailure.Reason expected) {
+        store.quarantine = quarantined;
+        if (!allocated) {
+            store.allocations.remove(2L);
+        }
+        Order saved = new Order(1, 2, "different fingerprint", "USD", BigDecimal.ONE, "PENDING_STOCK", null);
+        store.orders.put(2L, saved);
+
+        fails(expected, () -> service.putOrder(1, 2, payload));
+
+        assertEquals(saved, store.orders.get(2L));
+        assertEquals(0, store.lookups.get());
+        assertEquals(0, store.insertions);
+        verifyNoInteractions(generator);
     }
 
     @Test
@@ -622,20 +648,16 @@ class OrderServiceTest {
         }
 
         @Override
-        public boolean allocatedTo(long orderId, long buyerId) {
+        public AcceptanceChecks acceptanceChecks(long buyerId, long orderId) {
             requireLock();
-            return allocations.containsKey(orderId) && allocations.get(orderId).buyerId() == buyerId;
+            return new AcceptanceChecks(quarantine,
+                    allocations.containsKey(orderId) && allocations.get(orderId).buyerId() == buyerId,
+                    order(buyerId, orderId));
         }
 
         @Override
         public void insertAllocation(Allocation allocation) {
             allocations.put(allocation.orderId(), allocation);
-        }
-
-        @Override
-        public boolean quarantined(long orderId) {
-            requireLock();
-            return quarantine;
         }
 
         @Override
