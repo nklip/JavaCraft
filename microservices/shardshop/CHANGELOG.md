@@ -769,6 +769,16 @@ owns deadlines and error precedence. Focused order-reactor tests passed.
 
 Lesson: Batch database work without changing the acceptance transaction.
 
+### Step 8.2 — Bounded worker concurrency
+
+**Done 2026-11-17.**
+Stock and ledger workers use bounded concurrency. Stock-lane recovery keeps work
+eligible after a failure; its continuation regression first failed for the defect
+and then passed. See the [worker decision](DECISIONS.md#shard-concurrent-stock-and-profit-workers)
+and the stock scheduling regression tests.
+
+Lesson: Bound concurrency and keep retries scheduled after unexpected failures.
+
 #### Pending qualification
 
 Deployment and capacity qualification of the combined revision remain pending.

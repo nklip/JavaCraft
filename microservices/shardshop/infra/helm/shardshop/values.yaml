@@ -107,6 +107,8 @@ productReader:
 # The saga budget includes three embedded Debezium readers.
 order:
   configuration:
+    # Two independent durable stock claims per buyer shard; the per-shard database pools remain bounded.
+    shardshop.order.stock.workers-per-shard: "2"
     # Keep confirmed-sale profit posting bounded while draining the measured concurrent order load.
     shardshop.order.profit.poll-interval: 100ms
     shardshop.order.profit.batch-size: "32"
@@ -120,6 +122,8 @@ order:
 
 ledgerApplication:
   configuration:
+    # Two deliveries in flight, leaving headroom in the default four-connection pool for background work.
+    shardshop.ledger.consumer-concurrency: "2"
     # Normal operation accepts every supported product currency; rejection drills scope their own policy.
     shardshop.ledger.allowed-currencies: USD,EUR,GBP,CNY,VND,KRW,JPY
   resources:

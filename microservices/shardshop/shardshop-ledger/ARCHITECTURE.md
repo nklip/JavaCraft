@@ -64,6 +64,12 @@ supports the polling result relay; ledger has no CDC publication.
 
 ### Command processing
 
+- `shardshop.ledger.consumer-concurrency` bounds in-flight command handlers to
+  1–16 (default one), with one prefetched delivery per RabbitMQ channel. Each handler
+  owns its database transaction connection; a channel serializes its deliveries and
+  settles them after the handler returns. Startup rejects concurrency above the
+  database pool size. Leave additional shared pool capacity for the relay, cleanup
+  and metrics; the [runbook](RUNBOOK.md#3-configuration) describes sizing and deadlines.
 - The consumer validates envelopes and commits business decisions, replay requests
   or conflict quarantine before it acknowledges a command. Commands with invalid
   IDs are rejected without requeue.

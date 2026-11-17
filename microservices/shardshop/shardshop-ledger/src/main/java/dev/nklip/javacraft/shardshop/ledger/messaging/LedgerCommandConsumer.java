@@ -17,7 +17,8 @@ public final class LedgerCommandConsumer implements AutoCloseable {
 
     public LedgerCommandConsumer(Settings settings, Function<byte[], CommandOutcome> handler) {
         Objects.requireNonNull(handler, "handler");
-        consumer = new QueueConsumer(settings.broker(), settings.enabled(), SOURCE, body -> settle(handler, body));
+        consumer = new QueueConsumer(settings.broker(), settings.enabled(), SOURCE, settings.concurrency(),
+                body -> settle(handler, body));
     }
 
     /** A failed transaction propagates, thus the shared consumer requests the broker's delayed retry. */
@@ -44,9 +45,21 @@ public final class LedgerCommandConsumer implements AutoCloseable {
         consumer.close();
     }
 
-    public record Settings(boolean enabled, BrokerSettings broker) {
+    public record Settings(boolean enabled, BrokerSettings broker, int concurrency) {
+        public Settings(boolean enabled, BrokerSettings broker) {
+            this(enabled, broker, 1);
+        }
+
         public Settings {
             Objects.requireNonNull(broker, "broker");
+            validateConcurrency(concurrency);
+        }
+
+        public static void validateConcurrency(int concurrency) {
+            if (concurrency < 1 || concurrency > QueueConsumer.MAX_CONCURRENCY) {
+                throw new IllegalArgumentException("shardshop.ledger.consumer-concurrency must be between 1 and "
+                        + QueueConsumer.MAX_CONCURRENCY);
+            }
         }
     }
 }

@@ -22,6 +22,7 @@ public final class LedgerRuntime implements Disposable {
     private String name;
     private RabbitMqBroker broker;
     private boolean cleanupEnabled;
+    private int consumerConcurrency = 1;
     private CrashBreakpoint crash;
 
     public LedgerRuntime() throws IOException {
@@ -100,6 +101,7 @@ public final class LedgerRuntime implements Disposable {
                 "shardshop.ledger.database.password=" + database.ledgerPassword(),
                 "shardshop.ledger.database.root-certificate=" + database.trustedCa(),
                 "shardshop.ledger.max-pool-size=4",
+                "shardshop.ledger.consumer-concurrency=" + consumerConcurrency,
                 "shardshop.ledger.allowed-currencies=" + allowedCurrencies,
                 "shardshop.ledger.publisher.enabled=" + publisherEnabled,
                 "shardshop.ledger.publisher.batch-size=10",
@@ -125,6 +127,11 @@ public final class LedgerRuntime implements Disposable {
     /** Enables the production transport cleanup worker on subsequent starts. */
     public void enableCleanup() {
         cleanupEnabled = true;
+    }
+
+    /** Configures the production consumer count for subsequent starts and restarts. */
+    public void consumerConcurrency(int concurrency) {
+        consumerConcurrency = concurrency;
     }
 
     public void restartWithPublisher(String allowedCurrencies) throws Exception {

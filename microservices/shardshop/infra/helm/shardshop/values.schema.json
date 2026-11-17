@@ -450,6 +450,11 @@
               "type": "string",
               "pattern": "^[+]?[0-9]+([.][0-9]+)?(ms|[smhd])?$|^P[0-9T.DHMS]+$"
             },
+            "shardshop.order.stock.workers-per-shard": {
+              "type": "string",
+              "description": "Independent stock workers within each buyer shard; one restores serial processing.",
+              "pattern": "^[1-8]$"
+            },
             "shardshop.order.profit.poll-interval": {
               "type": "string",
               "description": "Profit poll interval: 100..30000ms or 1..30s.",
@@ -477,6 +482,11 @@
             "shardshop.ledger.max-pool-size": {
               "type": "string",
               "pattern": "^[1-9][0-9]*$"
+            },
+            "shardshop.ledger.consumer-concurrency": {
+              "type": "string",
+              "description": "Consumer channels with one delivery each; must not exceed max-pool-size at startup.",
+              "pattern": "^([1-9]|1[0-6])$"
             },
             "shardshop.ledger.publisher.batch-size": {
               "type": "string",

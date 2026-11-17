@@ -77,6 +77,10 @@ public interface OrderConfiguration {
 
         @WithDefault("3")
         int shardConcurrency();
+
+        /** Independent durable stock saga owners within one buyer shard. */
+        @WithDefault("1")
+        int workersPerShard();
     }
 
     Map<String, Connection> connections();

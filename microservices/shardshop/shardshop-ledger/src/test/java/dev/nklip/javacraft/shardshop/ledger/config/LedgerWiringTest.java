@@ -16,6 +16,29 @@ import static org.mockito.Mockito.*;
 
 class LedgerWiringTest {
     @Test
+    void consumerConcurrencyIsBoundedByThePoolAndPreservesSerialPools() {
+        LedgerConfiguration config = mock(LedgerConfiguration.class);
+        when(config.maxPoolSize()).thenReturn(4);
+        for (int concurrency : new int[]{0, -1, 17, Integer.MAX_VALUE}) {
+            when(config.consumerConcurrency()).thenReturn(concurrency);
+            assertThrows(IllegalArgumentException.class, () -> LedgerWiring.validateConsumerCapacity(config));
+        }
+        for (int concurrency : new int[]{1, 2, 3, 4}) {
+            when(config.consumerConcurrency()).thenReturn(concurrency);
+            assertDoesNotThrow(() -> LedgerWiring.validateConsumerCapacity(config));
+        }
+        when(config.consumerConcurrency()).thenReturn(5);
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> LedgerWiring.validateConsumerCapacity(config)).getMessage().contains("must not exceed"));
+        when(config.consumerConcurrency()).thenReturn(16);
+        when(config.maxPoolSize()).thenReturn(16);
+        assertDoesNotThrow(() -> LedgerWiring.validateConsumerCapacity(config));
+        when(config.consumerConcurrency()).thenReturn(1);
+        when(config.maxPoolSize()).thenReturn(1);
+        assertDoesNotThrow(() -> LedgerWiring.validateConsumerCapacity(config));
+    }
+
+    @Test
     void enabledConsumerRequiresBothCredentialsBeforeStarting() {
         LedgerConfiguration config = mock(LedgerConfiguration.class);
         LedgerConfiguration.Database database = mock(LedgerConfiguration.Database.class);
@@ -42,6 +65,8 @@ class LedgerWiringTest {
         JdbcLedgerStore store = mock(JdbcLedgerStore.class);
         try (ServerSocket rabbit = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             when(config.enabled()).thenReturn(false);
+            when(config.consumerConcurrency()).thenReturn(1);
+            when(config.maxPoolSize()).thenReturn(4);
             when(config.broker()).thenReturn(broker);
             when(config.publisher()).thenReturn(publisher);
             when(config.cleanup()).thenReturn(cleanupConfig);

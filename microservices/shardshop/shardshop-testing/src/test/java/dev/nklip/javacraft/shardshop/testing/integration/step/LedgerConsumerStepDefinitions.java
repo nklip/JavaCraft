@@ -67,6 +67,7 @@ public final class LedgerConsumerStepDefinitions {
 
     @Then("startup validation exits without running the command consumer")
     public void startupCheck() throws Exception {
+        runtime.consumerConcurrency(2);
         ObjectNode command = command(13, "USD");
         publish(command);
         runtime.checkStartup(database, broker, "USD");
@@ -89,6 +90,7 @@ public final class LedgerConsumerStepDefinitions {
     public void brokerReconnect() throws Exception {
         ObjectNode first = command(14, "USD");
         ObjectNode second = command(15, "USD");
+        runtime.consumerConcurrency(2);
         runtime.start(database, broker, "USD");
         publish(first);
         await("first broker delivery", () -> count("ledger.ledger_operations") == 1);
@@ -140,6 +142,7 @@ public final class LedgerConsumerStepDefinitions {
 
     @Then("a killed ledger consumer before database commit redelivers its command")
     public void crashBeforeCommit() throws Exception {
+        runtime.consumerConcurrency(2);
         ObjectNode command = command(900, "USD");
         // This session method runs only inside the command's still-open write transaction.
         // A generic DatabasePhases breakpoint could stop a metrics or startup query instead.
@@ -171,6 +174,7 @@ public final class LedgerConsumerStepDefinitions {
 
     @Then("a killed ledger consumer after database commit but before acknowledgement reuses its decision")
     public void crashBeforeAck() throws Exception {
+        runtime.consumerConcurrency(2);
         ObjectNode command = command(901, "USD");
         var crash = CrashBreakpoint.atSourceAnchor("shardshop-core/common",
                 "dev.nklip.javacraft.shardshop.common.amqp.QueueConsumer", "settle",
@@ -195,6 +199,7 @@ public final class LedgerConsumerStepDefinitions {
 
     @Then("a killed ledger consumer after acknowledgement does not reprocess its command")
     public void crashAfterAck() throws Exception {
+        runtime.consumerConcurrency(2);
         ObjectNode command = command(902, "USD");
         // The method return follows the acknowledgement and its enclosing blocks.
         // A one-shot breakpoint avoids class-wide method-exit suspension during startup.
@@ -216,7 +221,7 @@ public final class LedgerConsumerStepDefinitions {
             runtime.killAt(crash, Duration.ofSeconds(30));
             runtime.restart("USD");
             await("restarted ledger consumer registers", () ->
-                    broker.queue(SOURCE).path("consumers").asInt(-1) == 1);
+                    broker.queue(SOURCE).path("consumers").asInt(-1) == 2);
             awaitQueueEmpty();
             assertEquals(1, count("ledger.ledger_operations"));
             assertEquals(1, count("ledger.ledger_entries"));
@@ -445,10 +450,22 @@ public final class LedgerConsumerStepDefinitions {
 
     @Then("concurrent consumers commit one entry and quarantine conflicting identities")
     public void competingConsumers() throws Exception {
+        serializedCommands(false);
+    }
+
+    @Then("two channels in one ledger process serialize duplicate and conflicting identities")
+    public void concurrentChannels() throws Exception {
+        serializedCommands(true);
+    }
+
+    private void serializedCommands(boolean oneProcess) throws Exception {
         ObjectNode command = command(8, "USD");
+        if (oneProcess) runtime.consumerConcurrency(2);
         runtime.start(database, broker, "USD");
-        competitor = new LedgerRuntime();
-        competitor.start(database, broker, "USD");
+        if (!oneProcess) {
+            competitor = new LedgerRuntime();
+            competitor.start(database, broker, "USD");
+        }
         try (var holder = postgres.superuser(database);
              PreparedStatement lock = holder.prepareStatement("SELECT pg_advisory_xact_lock(?)")) {
             holder.setAutoCommit(false);
@@ -456,16 +473,8 @@ public final class LedgerConsumerStepDefinitions {
             lock.execute();
             publish(command);
             publish(command);
-            long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
-            boolean bothWaiting = false;
-            while (System.nanoTime() < deadline) {
-                if (blockedLedgerConsumers() == 2) {
-                    bothWaiting = true;
-                    break;
-                }
-                Thread.sleep(25);
-            }
-            assertTrue(bothWaiting, "Both packaged ledger consumers must overlap on the held order lock");
+            awaitLocked("two duplicate command transactions overlap", () -> blockedLedgerConsumers() == 2);
+            assertEquals(0, count("ledger.ledger_operations"), "A held order lock prevents an early decision");
             holder.rollback();
         }
         for (int delivery = 2; delivery < 8; delivery++) publish(command);
@@ -473,19 +482,62 @@ public final class LedgerConsumerStepDefinitions {
         ObjectNode crossOrder = command(9, "USD");
         crossOrder.put("sagaId", command.get("sagaId").asText());
         crossOrder.put("commandId", command.get("commandId").asText());
-        publish(crossOrder);
+        try (var holder = postgres.superuser(database);
+             PreparedStatement lock = holder.prepareStatement("SELECT pg_advisory_xact_lock(?)")) {
+            holder.setAutoCommit(false);
+            lock.setLong(1, id(command, "sagaId"));
+            lock.execute();
+            publish(command);
+            publish(crossOrder);
+            awaitLocked("duplicate and conflicting transactions overlap on a shared identity",
+                    () -> blockedLedgerConsumers() == 2);
+            assertEquals(8, attempt(command));
+            assertEquals(0, count("ledger.conflicting_commands"));
+            holder.rollback();
+        }
         await("cross-order identity conflict", () -> count("ledger.conflicting_commands") == 1);
+        await("serialized replay beside the conflict", () -> attempt(command) == 9);
         assertEquals(1, count("ledger.ledger_operations"));
         assertEquals(1, count("ledger.ledger_entries"));
         assertEquals(1, count("ledger.ledger_result_ids"));
-        assertEquals("8", value("SELECT publication_attempt::text FROM ledger.ledger_outbox WHERE message_id=?",
+        assertEquals("9", value("SELECT publication_attempt::text FROM ledger.ledger_outbox WHERE message_id=?",
                 id(command, "resultMessageId")));
+        awaitQueueEmpty();
+    }
+
+    @Then("an independent ledger command commits while another channel waits for its identity lock")
+    public void independentCommandsOverlap() throws Exception {
+        ObjectNode blocked = command(30, "USD");
+        ObjectNode independent = command(31, "USD");
+        runtime.consumerConcurrency(2);
+        runtime.start(database, broker, "USD");
+        // A real PostgreSQL lock is the barrier; no production hooks or artificial transaction delays are needed.
+        try (var holder = postgres.superuser(database);
+             PreparedStatement lock = holder.prepareStatement("SELECT pg_advisory_xact_lock(?)")) {
+            holder.setAutoCommit(false);
+            lock.setLong(1, id(blocked, "orderId"));
+            lock.execute();
+            publish(blocked);
+            publish(independent);
+            awaitLocked("independent decision commits beside a blocked transaction", () ->
+                    blockedLedgerConsumers() == 1 && result(independent) != null);
+            assertEquals(0, attempt(blocked), "The blocked transaction cannot commit before its lock is released");
+            assertEquals(1, count("ledger.ledger_operations"));
+            assertEquals(1, count("ledger.ledger_entries"));
+            assertResult(independent, result(independent), "RECORDED");
+            holder.rollback();
+        }
+        await("blocked decision commits after release", () -> attempt(blocked) == 1);
+        assertEquals(2, count("ledger.ledger_operations"));
+        assertEquals(2, count("ledger.ledger_entries"));
+        assertResult(blocked, result(blocked), "RECORDED");
         awaitQueueEmpty();
     }
 
     /** ARCHITECTURE: the consumer locks the order, saga, command and both transport IDs before it reads decisions. */
     @Then("the consumer waits for a held lock of each command identity")
     public void identityLocks() throws Exception {
+        runtime.consumerConcurrency(2);
         runtime.start(database, broker, "USD");
         List<String> identities = List.of("orderId", "sagaId", "commandId", "messageId", "resultMessageId");
         for (int index = 0; index < identities.size(); index++) {
@@ -513,6 +565,7 @@ public final class LedgerConsumerStepDefinitions {
 
     @Then("a database write failure parks the command without a business rejection and recovery records it")
     public void transactionFailure() throws Exception {
+        runtime.consumerConcurrency(2);
         ObjectNode command = command(10, "USD");
         long order = id(command, "orderId");
         try (var connection = postgres.superuser(database); var statement = connection.createStatement()) {
@@ -682,6 +735,17 @@ public final class LedgerConsumerStepDefinitions {
             Thread.sleep(50);
         }
         fail("Ledger did not reach " + requirement + " within 35 seconds:\n" + runtime.tail());
+    }
+
+    /** Release barriers before the production three-second phase deadline can turn a lock test into a retry test. */
+    private void awaitLocked(String requirement, Check check) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (check.satisfied()) return;
+            assertTrue(runtime.isAlive(), runtime.tail());
+            Thread.sleep(20);
+        }
+        fail("Ledger did not reach " + requirement + " within two seconds:\n" + runtime.tail());
     }
 
     @FunctionalInterface private interface Check { boolean satisfied() throws Exception; }

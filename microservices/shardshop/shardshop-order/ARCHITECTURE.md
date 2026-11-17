@@ -232,14 +232,24 @@ The implementation uses a database-clock lease with a monotonically increasing
   five-attempt reconciliation budget.
 - Process restart resumes eligible durable work after lease expiry. The worker
   runs in the saga process, outside HTTP request threads. Each buyer shard has
-  one non-overlapping scheduled scan; a bounded pool permits three concurrent
-  shard scans by default, with sequential sagas within each batch. A lane starts
-  its next batch at once while its last batch was full, and waits the poll interval
-  only after a batch that ended early. The configured
-  limit is capped by shard count. `shard-concurrency=1` retains the original serial
-  all-shards scan and polling delay. Shared database pools still bound IO, and
-  different buyer shards can contend on the same seller. See the
-  [performance figures](../ARCHITECTURE.md#4-performance) for the measured effect.
+  at most one active batch; `shard-concurrency` permits three concurrent buyer
+  shards by default, capped by shard count. `workers-per-shard` permits independent
+  saga owners inside each batch, defaulting to one and bounded to eight. The
+  configured product of these limits cannot exceed 64. Each executing worker
+  obtains its own durable claim; executor queues never hold already claimed sagas.
+- A full batch is rescheduled immediately after yielding its scheduler thread.
+  This lets queued shards progress when shard count exceeds scheduler capacity.
+  A batch that finds idle or deferred work, or fails, waits the poll interval;
+  already executing siblings finish before that shard's next batch. The saga
+  executor and its queue are bounded by active shards times the smaller of batch
+  size and workers per shard. Shutdown interrupts both pools with one five-second
+  wait budget. Durable claim, renewal, version checks, compensation and persisted
+  retry backoff are unchanged.
+- `workers-per-shard=1` restores one owner per shard. With `shard-concurrency=1`
+  as well, the worker retains the original serial all-shards scan and polling
+  delay. Shared database pools still bound IO, and different sagas can contend on
+  the same seller or product. See the [worker settings](RUNBOOK.md#2-stock-reservation-and-compensation)
+  and [performance figures](../ARCHITECTURE.md#4-performance).
 
 ### Successful order
 

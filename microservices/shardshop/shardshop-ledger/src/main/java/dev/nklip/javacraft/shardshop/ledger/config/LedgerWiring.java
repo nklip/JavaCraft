@@ -36,6 +36,7 @@ public class LedgerWiring {
                 throw new IllegalArgumentException("Ledger is enabled but shardshop.ledger.broker.password is not set");
             }
         }
+        validateConsumerCapacity(config);
         return new JdbcLedgerStore(new Endpoint(JdbcUrls.secure(database.url(), database.rootCertificate()),
                 database.username(), database.password().orElse("")), config.maxPoolSize());
     }
@@ -50,8 +51,19 @@ public class LedgerWiring {
     @Singleton
     @Startup
     LedgerCommandConsumer consumer(LedgerService service, LedgerConfiguration config) {
-        return new LedgerCommandConsumer(new LedgerCommandConsumer.Settings(config.enabled(), broker(config)),
+        validateConsumerCapacity(config);
+        return new LedgerCommandConsumer(new LedgerCommandConsumer.Settings(config.enabled(), broker(config),
+                config.consumerConcurrency()),
                 service::handle);
+    }
+
+    /** Do not dispatch more command transactions than the shared pool can serve. */
+    static void validateConsumerCapacity(LedgerConfiguration config) {
+        LedgerCommandConsumer.Settings.validateConcurrency(config.consumerConcurrency());
+        if (config.consumerConcurrency() > config.maxPoolSize()) {
+            throw new IllegalArgumentException("shardshop.ledger.consumer-concurrency must not exceed "
+                    + "shardshop.ledger.max-pool-size");
+        }
     }
 
     void closeConsumer(@Disposes LedgerCommandConsumer consumer) {

@@ -145,6 +145,32 @@ class HelmReleaseTest {
     }
 
     @Test
+    void stockAndLedgerConcurrencyAreBoundedAndCanBeRestoredToSerial() throws Exception {
+        List<JsonNode> resources = render("application-release");
+        assertTrue(named(resources, "shardshop-order-config").path("data").path("application.properties")
+                .asText().contains("shardshop.order.stock.workers-per-shard=2\n"));
+        assertTrue(named(resources, "shardshop-ledger-config").path("data").path("application.properties")
+                .asText().contains("shardshop.ledger.consumer-concurrency=2\n"));
+        ObjectNode stock = values.putObject("order").putObject("configuration");
+        for (String invalid : List.of("0", "9", "2.5")) {
+            stock.put("shardshop.order.stock.workers-per-shard", invalid);
+            assertRejected("application-release");
+        }
+        stock.put("shardshop.order.stock.workers-per-shard", "1");
+        ObjectNode ledger = values.putObject("ledgerApplication").putObject("configuration");
+        for (String invalid : List.of("0", "17", "2.5")) {
+            ledger.put("shardshop.ledger.consumer-concurrency", invalid);
+            assertRejected("application-release");
+        }
+        ledger.put("shardshop.ledger.consumer-concurrency", "1");
+        resources = render("application-release");
+        assertTrue(named(resources, "shardshop-order-config").path("data").path("application.properties")
+                .asText().contains("shardshop.order.stock.workers-per-shard=1\n"));
+        assertTrue(named(resources, "shardshop-ledger-config").path("data").path("application.properties")
+                .asText().contains("shardshop.ledger.consumer-concurrency=1\n"));
+    }
+
+    @Test
     void producerConfigurationRejectsRatesAndConcurrencyAboveTheQualifiedBounds() throws Exception {
         ObjectNode configuration = object(values.path("orderProducer")).putObject("configuration");
         for (String invalid : List.of("30.001", "31", "100")) {

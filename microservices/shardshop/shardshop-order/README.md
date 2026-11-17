@@ -15,6 +15,9 @@ durable ledger reconciliation and transport cleanup. The
 HTTP Deployment has two replicas with `RollingUpdate`; `shardshop-order-saga` has
 one replica with `Recreate` to prevent overlapping CDC slot owners. Each JVM reserves
 its own generator slot. HTTP replicas run no background saga loops.
+Stock batches can advance independent sagas within the same buyer shard using
+`shardshop.order.stock.workers-per-shard` (default `1`). This is separate from
+the number of active buyer shards; see the [stock settings and rollback](RUNBOOK.md#2-stock-reservation-and-compensation).
 
 The normal `up.sh` workflow applies ordering migrations through V8, including the
 transport retention indexes, before deploying the image.

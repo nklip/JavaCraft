@@ -14,7 +14,10 @@
 <sub>[Back to Contents](#contents)</sub>
 
 Ledger consumes `ledger.record-order` with manual acknowledgement and one
-prefetched delivery per process. It validates the complete `RecordOrder` schema,
+prefetched delivery per channel. `shardshop.ledger.consumer-concurrency` sets the
+number of channels in one process; its default is one. Each channel serializes its
+deliveries and owns their acknowledgements. Independent commands can run together;
+the identity locks below serialize duplicates and conflicts. The consumer validates the complete `RecordOrder` schema,
 canonical string IDs, timestamp, immutable snapshot arithmetic and normalized
 request fingerprint before opening a bounded transaction on its own database.
 The parser enforces the broker's 1 MiB payload limit before JSON materialization.
@@ -84,6 +87,7 @@ shardshop.ledger.database.username=ledger_app
 shardshop.ledger.database.password=${LEDGER_DATABASE_PASSWORD}
 shardshop.ledger.database.root-certificate=/etc/shardshop/ledger/ca.crt
 shardshop.ledger.max-pool-size=4
+shardshop.ledger.consumer-concurrency=1
 shardshop.ledger.allowed-currencies=CNY,EUR,GBP,JPY,KRW,USD,VND
 shardshop.ledger.broker.host=shardshop-rabbitmq
 shardshop.ledger.broker.port=5672
@@ -99,6 +103,17 @@ connections use the configured timeout and reconnect with capped exponential
 backoff and 25% jitter. The ledger and order consumers share this
 loop (`QueueConsumer` in `shardshop-common`). The database URL names `ledger-db-rw`,
 the read-write Service of the `ledger-db` cluster.
+
+Consumer concurrency must be 1–16 and must not exceed `max-pool-size` (1–32).
+Startup, including `--check-startup`, rejects an invalid combination. A concurrency
+of one with a pool of one remains supported. Leave pool capacity for the result
+relay, cleanup and metrics when increasing concurrency: for example, two consumers
+with the default pool of four leave two connections available to those workers.
+This is shared capacity, not a dedicated reservation; all database phases keep the
+same acquisition and transaction deadlines. Saturation can cause bounded retries.
+Each handler acquires its own transaction connection. One failed RabbitMQ channel
+reconnects the whole consumer connection; unacknowledged deliveries remain eligible
+for idempotent replay. Shutdown uses the same bounded broker close as a serial consumer.
 
 The publisher uses the same ledger database and broker credentials as the consumer:
 
@@ -193,3 +208,8 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pinteg
 |---|---|
 | Command consumer | `@ledger-consumer or @ledger-migration` (build only `shardshop-ledger`) |
 | Result publisher, with the consumer and the order CDC relay | `@ledger-publisher or @ledger-consumer or @ledger-migration or @cdc-relay` |
+
+The command suite uses real PostgreSQL locks to prove that two channels in one
+process overlap independent commands and serialize duplicate or conflicting
+identities. Crash boundaries, reconnect and transaction-failure cases also run with
+two channels, including independent broker evidence that commit precedes acknowledgement.

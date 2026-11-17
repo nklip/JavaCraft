@@ -109,7 +109,7 @@ public class OrderWiring {
     StockWorker.Settings stockSettings(OrderConfiguration config) {
         var stock = config.stock();
         return new StockWorker.Settings(config.process() == OrderConfiguration.Process.SAGA && stock.enabled(),
-                stock.pollInterval(), stock.lease(), stock.batchSize(), stock.shardConcurrency());
+                stock.pollInterval(), stock.lease(), stock.batchSize(), stock.shardConcurrency(), stock.workersPerShard());
     }
 
     @Produces

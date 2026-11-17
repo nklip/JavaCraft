@@ -34,6 +34,7 @@ public final class OrderRuntime implements Disposable {
     private Path configuration;
     private boolean stockEnabled;
     private int stockShardConcurrency = 3;
+    private int stockWorkersPerShard = 1;
     private int maxPoolSize = 1;
     private boolean stockMeasurement;
     private boolean profitMeasurement;
@@ -58,6 +59,7 @@ public final class OrderRuntime implements Disposable {
                 .collect(Collectors.joining(",")));
         values.add("shardshop.routing.regions=" + String.join(",", shards.regions()));
         values.add("shardshop.order.max-pool-size=" + maxPoolSize);
+        values.add("shardshop.order.stock.workers-per-shard=" + stockWorkersPerShard);
         if (stockMeasurement) {
             values.add("shardshop.order.stock.shard-concurrency=" + stockShardConcurrency);
             values.add("shardshop.order.stock.batch-size=8");
@@ -139,6 +141,11 @@ public final class OrderRuntime implements Disposable {
         stockMeasurement = true;
         stockShardConcurrency = concurrency;
         maxPoolSize = poolSize;
+    }
+
+    /** Sets stock workers sharing each buyer shard before the next start, including restarts. */
+    public void configureStockWorkersPerShard(int workers) {
+        stockWorkersPerShard = workers;
     }
 
     /** Configures the isolated profit comparison with the lab's 100ms/32 scan profile. */

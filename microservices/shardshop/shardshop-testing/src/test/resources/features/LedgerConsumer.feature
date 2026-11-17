@@ -47,6 +47,12 @@ Feature: Packaged ledger command consumer
   Scenario: Competing packaged consumers serialize the same order and protect identities across orders
     Then concurrent consumers commit one entry and quarantine conflicting identities
 
+  Scenario: Two channels in one process overlap independent transactions
+    Then an independent ledger command commits while another channel waits for its identity lock
+
+  Scenario: Two channels in one process serialize the same order and protect identities across orders
+    Then two channels in one ledger process serialize duplicate and conflicting identities
+
   Scenario: Each order, saga, command and transport identity serializes deliveries
     Then the consumer waits for a held lock of each command identity
 

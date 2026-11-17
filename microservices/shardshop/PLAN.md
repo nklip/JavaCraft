@@ -219,3 +219,4 @@ qualification remain separate, pending work.
 | Work | Status | Evidence or remaining acceptance |
 |---|---|---|
 | [8.1 Reduce order-acceptance SQL round trips](CHANGELOG.md#step-81--reduce-order-acceptance-sql-round-trips) | Done | Fewer SQL round trips; focused order-reactor checks passed. |
+| [8.2 Bounded worker concurrency](CHANGELOG.md#step-82--bounded-worker-concurrency) | Done | Bounded stock and ledger concurrency, including stock-lane recovery; focused worker checks passed. |

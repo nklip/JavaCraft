@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -138,6 +139,17 @@ public final class StockReservationStepDefinitions {
 
     @Then("concurrent scarce-stock orders never oversell with competing coordinators")
     public void concurrentOrders() throws Exception {
+        concurrentOrders(false);
+    }
+
+    @Then("concurrent scarce-stock orders never oversell with two workers in one coordinator")
+    public void concurrentWorkers() throws Exception {
+        order.configureStockWorkersPerShard(2);
+        order.configurePoolSize(2);
+        concurrentOrders(true);
+    }
+
+    private void concurrentOrders(boolean sameJvm) throws Exception {
         int clients = 16;
         var ids = new ArrayList<String>();
         for (int client = 0; client < clients; client++) ids.add(allocate());
@@ -153,8 +165,8 @@ public final class StockReservationStepDefinitions {
             for (var task : tasks) body(task.get(20, TimeUnit.SECONDS), 202);
         }
         var firstCatalog = shards.ofSeller(abundant.seller().id());
-        // Hold the first product until both JVM workers have entered independent reservation transactions.
-        // Starting the second JVM without this barrier could let the first finish the entire small dataset.
+        // Hold the first product until both workers have entered independent reservation transactions.
+        // The SQL barrier proves overlap even when all accepted orders fit in one quick batch.
         try (var lock = shards.superuser(firstCatalog); var statement = lock.createStatement()) {
             lock.setAutoCommit(false);
             try (var rows = statement.executeQuery("SELECT product_id FROM catalog.products WHERE product_id="
@@ -163,12 +175,26 @@ public final class StockReservationStepDefinitions {
             }
             order.enableStock();
             order.restart(Set.of());
-            competitor = new OrderRuntime(shards);
-            competitor.enableStock();
-            competitor.start(Set.of());
-            eventually("Both coordinator JVMs compete for catalog stock", () -> scalar(firstCatalog,
+            if (!sameJvm) {
+                competitor = new OrderRuntime(shards);
+                competitor.enableStock();
+                competitor.start(Set.of());
+            }
+            eventually("Both workers compete for catalog stock", () -> scalar(firstCatalog,
                     "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() "
                             + "AND usename='order_app' AND wait_event_type='Lock'") >= 2);
+            if (sameJvm) {
+                assertEquals(2, scalar(firstCatalog,
+                        "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() "
+                                + "AND usename='order_app' AND wait_event_type='Lock'"),
+                        "One saga JVM has exactly two simultaneous catalog reservation transactions");
+                assertEquals(2, scalar(home(), "SELECT count(DISTINCT saga_id) FROM ordering.order_sagas "
+                        + "WHERE status='PENDING_STOCK' AND stock_lease_version=1 "
+                        + "AND stock_lease_until > clock_timestamp()"),
+                        "Both workers durably claim different sagas on the same buyer shard");
+                assertEquals(0, count(firstCatalog, "catalog.stock_reservations", "true"),
+                        "Blocked reservation inserts remain uncommitted");
+            }
             lock.commit();
         }
         eventually("Every order reserves or cancels and completes compensation", () -> {
@@ -176,6 +202,27 @@ public final class StockReservationStepDefinitions {
             return scalar(home(), "SELECT count(*) FROM ordering.order_sagas WHERE status='PENDING_LEDGER' "
                     + "OR (status='CANCELLED' AND stock_released_at IS NOT NULL)") == clients;
         });
+        assertConcurrentOutcome(ids, request);
+        if (sameJvm) {
+            var envelopes = new HashMap<String, JsonNode>();
+            for (String id : ids) {
+                if (status(id).get("status").asText().equals("PENDING_LEDGER")) envelopes.put(id, envelope(id));
+            }
+            var reservationCounts = new ArrayList<Long>();
+            for (var shard : shards.all()) reservationCounts.add(count(shard, "catalog.stock_reservations", "true"));
+            order.restartSaga();
+            assertConcurrentOutcome(ids, request);
+            for (var entry : envelopes.entrySet()) assertEquals(entry.getValue(), envelope(entry.getKey()),
+                    "Same-JVM retries and restart preserve the stored command and result identities");
+            for (int shard = 0; shard < shards.all().size(); shard++) {
+                assertEquals(reservationCounts.get(shard).longValue(),
+                        count(shards.all().get(shard), "catalog.stock_reservations", "true"),
+                        "Restart does not create additional reservations");
+            }
+        }
+    }
+
+    private void assertConcurrentOutcome(List<String> ids, ObjectNode request) throws Exception {
         assertEquals(4, count(home(), "ordering.orders", "status='PENDING_LEDGER'"));
         assertEquals(12, count(home(), "ordering.order_sagas", "status='CANCELLED' AND cancellation_reason='OUT_OF_STOCK'"));
         assertEquals(4, count(home(), "ordering.order_outbox", "true"));

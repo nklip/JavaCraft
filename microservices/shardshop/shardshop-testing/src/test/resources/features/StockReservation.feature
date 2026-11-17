@@ -16,6 +16,10 @@ Feature: Durable stock reservation and compensation on PostgreSQL primaries
   Scenario: Competing coordinators never oversell scarce stock and compensate rejected orders
     Then concurrent scarce-stock orders never oversell with competing coordinators
 
+  @stock-concurrency
+  Scenario: Two workers in one coordinator reserve distinct same-shard sagas safely
+    Then concurrent scarce-stock orders never oversell with two workers in one coordinator
+
   Scenario: A catalog outage after acceptance preserves partial work for restart recovery
     Then a pending stock saga resumes after a catalog outage without reserving twice
 

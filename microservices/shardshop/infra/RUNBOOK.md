@@ -260,6 +260,16 @@ Order and ledger load the generated configuration from
 `/app/config/application.properties`. The CA projections expose `ca.crt`, never
 `ca.key`.
 
+The chart enables two stock workers per buyer shard with
+`order.configuration.shardshop.order.stock.workers-per-shard` and two ledger
+consumer channels with `ledgerApplication.configuration.shardshop.ledger.consumer-concurrency`.
+Set either value to the string `"1"` to restore serial processing in that stage.
+These settings add concurrency inside the existing JVMs; they do not add pods or
+increase database pool sizes. The [stock configuration](../shardshop-order/RUNBOOK.md#2-stock-reservation-and-compensation)
+and [ledger configuration](../shardshop-ledger/RUNBOOK.md#3-configuration) define the
+bounds, ownership rules and shared pool budgets. Measure pool waits, lock contention
+and backlog growth before increasing either value further.
+
 ## 4. RabbitMQ broker
 <sub>[Back to Contents](#contents)</sub>
 

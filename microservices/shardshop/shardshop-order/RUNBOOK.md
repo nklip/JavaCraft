@@ -88,7 +88,8 @@ HTTP/2 is disabled. The service uses HTTP/1.1
 | `shardshop.order.stock.poll-interval` | `250ms` | Delay between scans, 100 ms–30 s |
 | `shardshop.order.stock.lease` | `30s` | Durable per-saga ownership, renewed before each catalog phase; 10 s–5 min |
 | `shardshop.order.stock.batch-size` | `8` | Maximum sagas processed per shard per batch, 1–100. In lane mode, a full batch starts the next batch at once; the poll interval applies after a batch that ended early |
-| `shardshop.order.stock.shard-concurrency` | `3` | Maximum concurrent buyer-shard scans, 1–32 and capped by shard count; `1` restores the original serial global scan |
+| `shardshop.order.stock.shard-concurrency` | `3` | Maximum concurrent buyer-shard batches, 1–32 and capped by shard count; `1` scans all shards in order before the polling delay |
+| `shardshop.order.stock.workers-per-shard` | `1` | Concurrent durable stock saga owners within each buyer shard, 1–8 and capped by batch size. The product with `shard-concurrency` must be at most 64; `1` restores serial work within each shard |
 | `shardshop.order.connections.<shard>.primary-url` | `jdbc:postgresql://<shard>-rw:5432/shardshop` | Primary endpoint for both ordering and catalog IO |
 | `shardshop.order.connections.<shard>.username` | `order_app` | Runtime role with ordering and catalog grants |
 | `shardshop.order.connections.<shard>.password` | Empty | Supply through protected runtime configuration |
@@ -139,16 +140,27 @@ items in ascending product-ID order. Reservation insertion and conditional stock
 decrement share one `READ COMMITTED` transaction. Retries of an existing active
 reservation keep its original quantity and do not decrement again.
 
-With `shard-concurrency` above one, each buyer shard has one non-overlapping
-scheduled scan. A bounded pool runs up to the configured number of scans at once;
-sagas within a shard's batch remain sequential. Each shard waits `poll-interval`
-after its own scan finishes. Setting concurrency to `1` preserves the original
-all-shards scan followed by one polling delay, for rollback and comparison.
-Stock and profit still share the bounded database pools with other saga work;
-buyer shards can target the same seller shard, so more lanes do not guarantee
-more throughput. Shutdown interrupts scans and waits at most five seconds;
-durable leases protect unfinished work. Profit posting has its own concurrency
-setting described below.
+Each buyer shard has at most one active batch. `shard-concurrency` limits how
+many buyer shards have active batches; `workers-per-shard` independently limits
+how many sagas each active shard can advance at once. Every worker claims its own
+saga through the existing durable lease before catalog IO. No claimed saga waits
+in an executor queue. An idle queue, deferred saga or failure stops new claims for
+that batch; already executing siblings can finish. Durable retry times still
+control retries after a catalog failure.
+
+A full batch reschedules immediately, yielding its scheduler thread so queued
+shards can progress even when other queues stay busy. A batch that ends early
+waits `poll-interval`. With `shard-concurrency=1`, the worker scans all shards in
+order before that delay. `workers-per-shard=1` rolls back intra-shard concurrency;
+set both properties to `1` for the original serial all-shards scan.
+
+The saga executor and its queue are bounded by active shards times the smaller of
+`workers-per-shard` and `batch-size`. Stock and profit share the bounded database
+pools with other saga work. Buyer shards can target the same seller shard, so
+more workers can increase pool waits and product-row contention. Shutdown
+interrupts scheduler and saga workers together and waits at most five seconds in
+total; durable leases protect unfinished work. Profit posting has its own
+concurrency setting described below.
 
 Once every reservation succeeds, a single buyer-shard transaction changes the
 order and saga to `PENDING_LEDGER`, reserves distinct transport/result IDs, and

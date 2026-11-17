@@ -30,6 +30,7 @@ class LedgerConfigurationTest {
         assertEquals(java.util.Set.copyOf(dev.nklip.javacraft.shardshop.common.CurrencyPolicy.SUPPORTED_CURRENCIES),
                 defaults.allowedCurrencies());
         assertEquals("jdbc:postgresql://" + migration.group(1) + ":5432/ledger", defaults.database().url());
+        assertEquals(1, defaults.consumerConcurrency());
         assertTrue(defaults.cleanup().enabled());
         assertEquals(Duration.ofHours(24), defaults.cleanup().retention());
         assertEquals(Duration.ofSeconds(30), defaults.cleanup().pollInterval());

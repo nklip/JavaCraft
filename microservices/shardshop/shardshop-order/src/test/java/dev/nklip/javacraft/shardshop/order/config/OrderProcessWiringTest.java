@@ -44,6 +44,7 @@ class OrderProcessWiringTest {
         when(stock.lease()).thenReturn(Duration.ofSeconds(30));
         when(stock.batchSize()).thenReturn(8);
         when(stock.shardConcurrency()).thenReturn(3);
+        when(stock.workersPerShard()).thenReturn(2);
         when(profit.pollInterval()).thenReturn(Duration.ofMillis(250));
         when(profit.batchSize()).thenReturn(8);
         when(profit.shardConcurrency()).thenReturn(3);
@@ -60,6 +61,7 @@ class OrderProcessWiringTest {
         boolean saga = process == OrderConfiguration.Process.SAGA;
         assertEquals(saga, new OrderWiring().stockSettings(order).enabled());
         assertEquals(3, new OrderWiring().stockSettings(order).shardConcurrency());
+        assertEquals(2, new OrderWiring().stockSettings(order).workersPerShard());
         assertEquals(saga, new ResultWiring().profitSettings(order).enabled());
         assertEquals(3, new ResultWiring().profitSettings(order).shardConcurrency());
         assertEquals(2, new ResultWiring().profitSettings(order).itemConcurrency());
