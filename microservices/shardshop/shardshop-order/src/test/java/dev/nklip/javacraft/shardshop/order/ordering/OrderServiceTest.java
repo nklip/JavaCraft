@@ -9,12 +9,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -285,7 +287,7 @@ class OrderServiceTest {
     @Test
     void catalogPrecedenceIsIndependentOfInputOrderAndWritesNoOrder() {
         for (boolean reverse : new boolean[]{false, true}) {
-            for (OrderFailure.Reason expected : List.of(CATALOG_UNAVAILABLE, PRODUCT_NOT_FOUND, MIXED_CURRENCIES, CURRENCY_MISMATCH)) {
+            for (OrderFailure.Reason expected : List.of(CATALOG_UNAVAILABLE, PRODUCT_NOT_FOUND, MIXED_CURRENCIES, CURRENCY_MISMATCH, PRODUCT_CURRENCY_POLICY)) {
                 List<OrderItem> items = List.of(new OrderItem(11, 21, 1), new OrderItem(12, 22, 1));
                 if (reverse) {
                     items = items.reversed();
@@ -298,7 +300,10 @@ class OrderServiceTest {
                         if (expected == PRODUCT_NOT_FOUND) {
                             return Optional.empty();
                         }
-                        return Optional.of(product(item, "EUR", "1.00", "0.50"));
+                        // Policy failure must lose to both currency errors.
+                        return Optional.of(new Product(item.sellerId(), item.productId(), "Invalid policy",
+                                BigDecimal.ONE, BigDecimal.ZERO,
+                                expected == PRODUCT_CURRENCY_POLICY ? "USD" : "EUR", "US", null));
                     }
                     if (expected == CATALOG_UNAVAILABLE) {
                         return Optional.empty();
@@ -477,7 +482,7 @@ class OrderServiceTest {
             }
         };
         var bounded = service(Duration.ofMillis(150), 2, 1024);
-        var many = new OrderCreation("USD", LongStream.range(1, 11)
+        var many = new OrderCreation("USD", LongStream.range(1, 194)
                 .mapToObj(id -> new OrderItem(11, id, 1)).toList());
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var result = executor.submit(() -> assertThrows(OrderFailure.class, () -> bounded.putOrder(1, 2, many)));
@@ -486,6 +491,7 @@ class OrderServiceTest {
                 assertEquals(0, store.activeWrites.get());
                 assertEquals(CATALOG_UNAVAILABLE, result.get(1, TimeUnit.SECONDS).reason());
                 assertTrue(maximum.get() <= 2);
+                assertEquals(2, store.batches.size(), "Only the active batch window may start before timeout");
                 assertEquals(2, store.writes, "Timeout must still perform final locked recheck");
                 assertTrue(store.orders.isEmpty());
                 assertTrue(store.remaining.stream().allMatch(value -> value.isPositive()
@@ -494,6 +500,100 @@ class OrderServiceTest {
                 release.countDown();
             }
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {2, 64, 65, 128, 1000})
+    void sameShardBasketsUseBoundedPhasesAndKeepEverySnapshotInRequestOrder(int size) {
+        var items = LongStream.rangeClosed(1, size)
+                .mapToObj(id -> new OrderItem(11, id, (int) id)).toList().reversed();
+        store.lookup = item -> Optional.of(product(item, "USD", Long.toString(item.productId()), "0.50"));
+
+        Order order = service.putOrder(1, 2, new OrderCreation("USD", items));
+
+        assertEquals((size + 63) / 64, store.batches.size(), "One phase per bounded seller-shard chunk");
+        assertTrue(store.batches.stream().allMatch(batch -> batch.keys().size() <= 64
+                && batch.shard().equals(router.route(11))));
+        assertEquals(size, store.snapshots.size());
+        BigDecimal total = BigDecimal.ZERO;
+        for (int index = 0; index < size; index++) {
+            OrderItem item = items.get(index);
+            ItemSnapshot snapshot = store.snapshots.get(index);
+            assertEquals(new ItemSnapshot(index, item.sellerId(), item.productId(), item.quantity(),
+                    "Product " + item.productId(), BigDecimal.valueOf(item.productId()),
+                    new BigDecimal("0.50"), "USD"), snapshot);
+            total = total.add(BigDecimal.valueOf(item.productId()).multiply(BigDecimal.valueOf(item.quantity())));
+        }
+        assertEquals(total.setScale(2), order.totalAmount());
+        int phases = store.lookups.get();
+        store.batchLookup = batch -> { throw new OrderFailure(CATALOG_UNAVAILABLE); };
+        assertEquals(order, service.putOrder(1, 2, new OrderCreation("USD", items)));
+        assertEquals(phases, store.lookups.get(), "Saved multi-item retries need no catalog");
+    }
+
+    @Test
+    void sellerRoutingAndPairIdentitySurviveReversedBatchCompletionAndRowOrder() {
+        long otherSeller = LongStream.range(1, 100).filter(id -> !router.route(id).equals(router.route(11)))
+                .findFirst().orElseThrow();
+        var items = List.of(new OrderItem(11, 501, 2), new OrderItem(otherSeller, 501, 3),
+                new OrderItem(11, 502, 4));
+        CountDownLatch secondFinished = new CountDownLatch(1);
+        store.batchLookup = batch -> {
+            assertTrue(batch.keys().stream().allMatch(key -> router.route(key.sellerId()).equals(batch.shard())));
+            if (batch.shard().equals(router.route(11))) {
+                await(secondFinished);
+            }
+            Map<ProductKey, Product> products = new LinkedHashMap<>();
+            for (ProductKey key : batch.keys().reversed()) {
+                products.put(key, new Product(key.sellerId(), key.productId(), key.toString(),
+                        BigDecimal.valueOf(key.sellerId()), BigDecimal.ZERO, "USD", "US", "US"));
+            }
+            if (!batch.shard().equals(router.route(11))) {
+                secondFinished.countDown();
+            }
+            return products;
+        };
+
+        service.putOrder(1, 2, new OrderCreation("USD", items));
+
+        assertEquals(2, store.batches.size());
+        for (int index = 0; index < items.size(); index++) {
+            OrderItem item = items.get(index);
+            assertEquals(new ItemSnapshot(index, item.sellerId(), item.productId(), item.quantity(),
+                    new ProductKey(item.sellerId(), item.productId()).toString(),
+                    BigDecimal.valueOf(item.sellerId()), BigDecimal.ZERO, "USD"), store.snapshots.get(index));
+        }
+    }
+
+    @Test
+    void laterChunksShareRemainingDeadlineAndAreCancelledWithoutAcceptingPartialResults() throws Exception {
+        CountDownLatch cancelled = new CountDownLatch(1);
+        store.batchLookup = batch -> {
+            if (batch.keys().getFirst().productId() > 128) {
+                try {
+                    assertFalse(new CountDownLatch(1).await(1, TimeUnit.SECONDS), "Deadline must interrupt this read");
+                    throw new AssertionError("Catalog read was not cancelled");
+                } catch (InterruptedException expected) {
+                    cancelled.countDown();
+                    Thread.currentThread().interrupt();
+                    throw new OrderFailure(CATALOG_UNAVAILABLE);
+                }
+            }
+            return MemoryStore.products(batch.keys(), store.lookup);
+        };
+        var items = LongStream.rangeClosed(1, 193).mapToObj(id -> new OrderItem(11, id, 1)).toList();
+        var bounded = service(Duration.ofMillis(150), 1, 1024);
+
+        fails(CATALOG_UNAVAILABLE, () -> bounded.putOrder(1, 2, new OrderCreation("USD", items)));
+
+        assertTrue(cancelled.await(1, TimeUnit.SECONDS));
+        assertEquals(3, store.batches.size(), "Fourth chunk must never acquire a connection after timeout");
+        for (int i = 1; i < store.batches.size(); i++) {
+            assertTrue(store.batches.get(i).remaining().compareTo(store.batches.get(i - 1).remaining()) < 0,
+                    "Chunks consume one deadline, not a fresh budget");
+        }
+        assertEquals(2, store.writes, "Final durable guards still run after catalog timeout");
+        assertTrue(store.orders.isEmpty());
     }
 
     @Test
@@ -551,6 +651,9 @@ class OrderServiceTest {
         }
     }
 
+    private record CatalogRead(Shard shard, List<ProductKey> keys, Duration remaining) {
+    }
+
     /** Serial transactions model the store's lock/atomicity boundary without mocking service behavior. */
     private static final class MemoryStore implements OrderStore, OrderStore.Session {
         private final Map<Long, Buyer> buyers = new HashMap<>();
@@ -561,6 +664,8 @@ class OrderServiceTest {
         private final AtomicInteger lookups = new AtomicInteger();
         private final List<Duration> remaining = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
         private volatile Function<OrderItem, Optional<Product>> lookup = item -> Optional.of(OrderServiceTest.product(item, "USD", "19.95", "12.50"));
+        private final List<CatalogRead> batches = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        private volatile Function<CatalogRead, Map<ProductKey, Product>> batchLookup;
         private volatile boolean quarantine;
         private volatile boolean failWrites;
         private boolean failAfterCommit;
@@ -612,6 +717,27 @@ class OrderServiceTest {
             lookups.incrementAndGet();
             remaining.add(timeout);
             return lookup.apply(new OrderItem(sellerId, productId, 1));
+        }
+
+        @Override
+        public Map<ProductKey, Product> products(Shard shard, List<ProductKey> keys, Duration timeout) {
+            lookups.incrementAndGet();
+            remaining.add(timeout);
+            CatalogRead batch = new CatalogRead(shard, List.copyOf(keys), timeout);
+            batches.add(batch);
+            assertEquals(0, activeWrites.get(), "Catalog must not retain an order transaction");
+            return batchLookup == null ? products(keys, lookup) : batchLookup.apply(batch);
+        }
+
+        private static Map<ProductKey, Product> products(List<ProductKey> keys,
+                                                        Function<OrderItem, Optional<Product>> lookup) {
+            Map<ProductKey, Product> found = new LinkedHashMap<>();
+            // SQL row order is unspecified; deliberately return the opposite order to the request.
+            for (ProductKey key : keys.reversed()) {
+                lookup.apply(new OrderItem(key.sellerId(), key.productId(), 1))
+                        .ifPresent(product -> found.put(key, product));
+            }
+            return found;
         }
 
         @Override

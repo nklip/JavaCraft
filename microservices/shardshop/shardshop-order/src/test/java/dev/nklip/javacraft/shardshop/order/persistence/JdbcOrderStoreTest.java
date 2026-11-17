@@ -21,6 +21,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -226,7 +228,9 @@ class JdbcOrderStoreTest {
         assertEquals(OrderFailure.Reason.CATALOG_UNAVAILABLE,
                 assertThrows(OrderFailure.class,
                         () -> store.product(SHARD, 1, 2, Duration.ofSeconds(2))).reason());
-        verify(primary, times(2)).getConnection();
+        assertEquals(OrderFailure.Reason.CATALOG_UNAVAILABLE, assertThrows(OrderFailure.class,
+                () -> store.products(SHARD, List.of(new ProductKey(1, 2)), Duration.ofSeconds(2))).reason());
+        verify(primary, times(3)).getConnection();
     }
 
     @Test
@@ -235,6 +239,9 @@ class JdbcOrderStoreTest {
                 () -> store.write(new Shard("missing", "EU"), session -> "write")).reason());
         assertEquals(OrderFailure.Reason.CATALOG_UNAVAILABLE, assertThrows(OrderFailure.class,
                 () -> store.product(new Shard("missing", "EU"), 1, 2, Duration.ofSeconds(2))).reason());
+        assertEquals(OrderFailure.Reason.CATALOG_UNAVAILABLE, assertThrows(OrderFailure.class,
+                () -> store.products(new Shard("missing", "EU"), List.of(new ProductKey(1, 2)),
+                        Duration.ofSeconds(2))).reason());
         verifyNoInteractions(workers, primary);
     }
 
@@ -273,6 +280,111 @@ class JdbcOrderStoreTest {
         assertEquals(OrderFailure.Reason.CATALOG_UNAVAILABLE, assertThrows(OrderFailure.class,
                 () -> store.product(SHARD, 1, 2, Duration.ofMillis(900))).reason());
         verifyNoInteractions(primary);
+    }
+
+    @Test
+    void catalogBatchCopiesKeysBeforeDispatchAndUsesOnePrimaryReadTransaction() throws SQLException {
+        PreparedStatement catalog = mock();
+        ResultSet products = mock();
+        when(connection.prepareStatement(startsWith("SELECT p.seller_id"))).thenReturn(catalog);
+        when(catalog.executeQuery()).thenReturn(products);
+        List<ProductKey> keys = new ArrayList<>(List.of(new ProductKey(51, 61), new ProductKey(52, 62)));
+        when(workers.submit(org.mockito.ArgumentMatchers.<Callable<Object>>any())).thenAnswer(invocation -> {
+            keys.clear();
+            Callable<?> work = invocation.getArgument(0);
+            return CompletableFuture.completedFuture(work.call());
+        });
+
+        assertEquals(Map.of(), store.products(SHARD, keys, Duration.ofSeconds(2)));
+
+        assertTrue(keys.isEmpty());
+        verify(catalog).setLong(1, 51);
+        verify(catalog).setLong(2, 61);
+        verify(catalog).setLong(3, 52);
+        verify(catalog).setLong(4, 62);
+        verify(catalog).executeQuery();
+        verify(primary).getConnection();
+        verify(connection).setReadOnly(true);
+        verify(connection).commit();
+        verify(connection).close();
+    }
+
+    @Test
+    void catalogBatchBoundsAndExpiredBudgetsFailBeforeBorrowing() {
+        assertThrows(IllegalArgumentException.class,
+                () -> store.products(SHARD, List.of(), Duration.ofSeconds(2)));
+        assertThrows(IllegalArgumentException.class, () -> store.products(SHARD,
+                Collections.nCopies(65, new ProductKey(51, 61)), Duration.ofSeconds(2)));
+        for (Duration remaining : List.of(Duration.ZERO, Duration.ofSeconds(-1), Duration.ofMillis(900))) {
+            assertEquals(OrderFailure.Reason.CATALOG_UNAVAILABLE, assertThrows(OrderFailure.class,
+                    () -> store.products(SHARD, List.of(new ProductKey(51, 61)), remaining)).reason());
+        }
+        verifyNoInteractions(primary);
+    }
+
+    @Test
+    void catalogBatchClampsRemainingBudgetAndCancelsDispatchedWorkOnTimeout() throws Exception {
+        Future<Object> future = mock();
+        when(future.get(anyLong(), eq(TimeUnit.NANOSECONDS))).thenThrow(new TimeoutException());
+        when(workers.submit(org.mockito.ArgumentMatchers.<Callable<Object>>any())).thenReturn(future);
+        List<ProductKey> keys = List.of(new ProductKey(51, 61), new ProductKey(52, 62));
+
+        assertEquals(OrderFailure.Reason.CATALOG_UNAVAILABLE, assertThrows(OrderFailure.class,
+                () -> store.products(SHARD, keys, Duration.ofMillis(1500))).reason());
+        assertEquals(OrderFailure.Reason.CATALOG_UNAVAILABLE, assertThrows(OrderFailure.class,
+                () -> store.products(SHARD, keys, Duration.ofSeconds(30))).reason());
+
+        verify(future).get(1_500_000_000L, TimeUnit.NANOSECONDS);
+        verify(future).get(3_000_000_000L, TimeUnit.NANOSECONDS);
+        verify(future, times(2)).cancel(true);
+        ArgumentCaptor<Callable<Object>> pending = ArgumentCaptor.captor();
+        verify(workers, times(2)).submit(pending.capture());
+        assertThrows(SQLException.class, () -> pending.getAllValues().getFirst().call());
+        verify(connection).abort(any());
+        verify(connection, never()).setAutoCommit(anyBoolean());
+    }
+
+    @Test
+    void catalogBatchQueryAndUnknownCommitFailuresNeverReturnPartialResults() throws SQLException {
+        PreparedStatement catalog = mock();
+        ResultSet products = mock();
+        when(connection.prepareStatement(startsWith("SELECT p.seller_id"))).thenReturn(catalog);
+        when(catalog.executeQuery()).thenThrow(new SQLException("password=secret")).thenReturn(products);
+        List<ProductKey> keys = List.of(new ProductKey(51, 61));
+        OrderFailure query = assertThrows(OrderFailure.class,
+                () -> store.products(SHARD, keys, Duration.ofSeconds(2)));
+        assertEquals(OrderFailure.Reason.CATALOG_UNAVAILABLE, query.reason());
+        assertNull(query.getCause());
+        verify(connection, never()).commit();
+
+        doThrow(new SQLException("unknown commit")).when(connection).commit();
+        OrderFailure commit = assertThrows(OrderFailure.class,
+                () -> store.products(SHARD, keys, Duration.ofSeconds(2)));
+        assertEquals(OrderFailure.Reason.CATALOG_UNAVAILABLE, commit.reason());
+        assertNull(commit.getCause());
+        verify(primary, times(2)).getConnection();
+        verify(connection, times(2)).rollback();
+    }
+
+    @Test
+    void catalogBatchQueryConsumesTheSameDeadlineAsCommit() throws SQLException {
+        AtomicLong time = new AtomicLong();
+        store = new JdbcOrderStore(Map.of("shard-a", primary), new DatabasePhases(workers, cleanup, time::get));
+        PreparedStatement catalog = mock();
+        ResultSet products = mock();
+        when(connection.prepareStatement(startsWith("SELECT p.seller_id"))).thenReturn(catalog);
+        when(catalog.executeQuery()).thenAnswer(invocation -> {
+            time.set(1_600_000_000L);
+            return products;
+        });
+
+        assertEquals(OrderFailure.Reason.CATALOG_UNAVAILABLE, assertThrows(OrderFailure.class,
+                () -> store.products(SHARD, List.of(new ProductKey(51, 61)), Duration.ofMillis(1500))).reason());
+
+        verify(primary).getConnection();
+        verify(catalog).executeQuery();
+        verify(connection, never()).commit();
+        verify(connection).abort(any());
     }
 
     @Test

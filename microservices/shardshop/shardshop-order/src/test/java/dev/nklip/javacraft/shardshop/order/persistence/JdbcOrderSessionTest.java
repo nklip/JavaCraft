@@ -17,7 +17,9 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static dev.nklip.javacraft.shardshop.order.ordering.OrderModel.*;
@@ -316,6 +318,69 @@ class JdbcOrderSessionTest {
         OrderFailure failure = assertThrows(OrderFailure.class, () -> session.acceptanceChecks(31, 41));
         assertEquals("ORDER_STORE_UNAVAILABLE", failure.getMessage());
         assertNull(failure.getCause());
+    }
+
+    @Test
+    void catalogBatchBindsExactPairsAndMapsUnorderedRowsWithoutInventingMissingProducts() throws SQLException {
+        ProductKey first = new ProductKey(51, 61);
+        ProductKey second = new ProductKey(52, 61);
+        ProductKey missing = new ProductKey(51, 62);
+        when(rows.next()).thenReturn(true, true, false);
+        when(rows.getLong("seller_id")).thenReturn(52L, 51L);
+        when(rows.getLong("product_id")).thenReturn(61L);
+        when(rows.getString("name")).thenReturn("Second seller", "First seller");
+        when(rows.getBigDecimal("price")).thenReturn(new BigDecimal("19.95"));
+        when(rows.getBigDecimal("unit_cost")).thenReturn(new BigDecimal("12.50"));
+        when(rows.getString("currency")).thenReturn("EUR");
+        when(rows.getString("region")).thenReturn("EU");
+        when(rows.getString("country_code")).thenReturn("DE");
+
+        Map<ProductKey, Product> result = session.products(List.of(first, second, missing));
+
+        assertEquals(Map.of(
+                first, new Product(51, 61, "First seller", new BigDecimal("19.95"), new BigDecimal("12.50"), "EUR", "EU", "DE"),
+                second, new Product(52, 61, "Second seller", new BigDecimal("19.95"), new BigDecimal("12.50"), "EUR", "EU", "DE")), result);
+        assertFalse(result.containsKey(missing));
+        assertThrows(UnsupportedOperationException.class, () -> result.put(missing, result.get(first)));
+        verify(connection).prepareStatement("SELECT p.seller_id, p.product_id, p.name, p.price, p.unit_cost, "
+                + "p.currency, s.region, s.country_code FROM (VALUES (?::bigint, ?::bigint), (?::bigint, ?::bigint), "
+                + "(?::bigint, ?::bigint)) requested(seller_id, product_id) "
+                + "JOIN catalog.products p ON p.seller_id = requested.seller_id AND p.product_id = requested.product_id "
+                + "JOIN catalog.sellers s ON s.seller_id = p.seller_id");
+        verify(statement).setLong(1, 51);
+        verify(statement).setLong(2, 61);
+        verify(statement).setLong(3, 52);
+        verify(statement).setLong(4, 61);
+        verify(statement).setLong(5, 51);
+        verify(statement).setLong(6, 62);
+        verify(statement).executeQuery();
+    }
+
+    @Test
+    void catalogBatchRejectsBoundsBeforePreparingSqlAndAcceptsTheMaximum() throws SQLException {
+        assertThrows(IllegalArgumentException.class, () -> session.products(List.of()));
+        assertThrows(IllegalArgumentException.class, () -> session.products(
+                Collections.nCopies(OrderStore.MAX_CATALOG_BATCH_SIZE + 1, new ProductKey(51, 61))));
+        verifyNoInteractions(connection);
+
+        assertEquals(Map.of(), session.products(Collections.nCopies(OrderStore.MAX_CATALOG_BATCH_SIZE,
+                new ProductKey(51, 61))));
+        verify(statement).setLong(127, 51);
+        verify(statement).setLong(128, 61);
+    }
+
+    @Test
+    void catalogBatchSqlFailureKeepsCatalogUnavailableWithoutSensitiveDetails() throws SQLException {
+        session = new JdbcOrderSession(connection, new DatabasePhases.Deadline(() -> 0, 2_000_000_000L),
+                OrderFailure.Reason.CATALOG_UNAVAILABLE);
+        when(statement.executeQuery()).thenThrow(new SQLException("password=secret"));
+
+        OrderFailure failure = assertThrows(OrderFailure.class,
+                () -> session.products(List.of(new ProductKey(51, 61))));
+
+        assertEquals(OrderFailure.Reason.CATALOG_UNAVAILABLE, failure.reason());
+        assertNull(failure.getCause());
+        assertEquals("CATALOG_UNAVAILABLE", failure.getMessage());
     }
 
     @Test

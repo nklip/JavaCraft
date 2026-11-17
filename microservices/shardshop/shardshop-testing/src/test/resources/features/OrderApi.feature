@@ -14,6 +14,14 @@ Feature: Order validation and atomic acceptance on PostgreSQL primaries
     Then concurrent order acceptance stores one complete pending order without changing stock
     And pending and terminal retries return the saved status without catalog access
 
+  @order-catalog-batch
+  Scenario: Same-shard catalog batches preserve exact snapshots in request order
+    Then batched catalog validation stores each requested item in its original position
+
+  @order-catalog-batch
+  Scenario: Same-shard catalog batches match seller and product IDs together
+    Then a mismatched same-shard seller and product leaves its allocation reusable
+
   Scenario: Validation errors obey their precedence and leave allocations reusable
     Then order validation errors leave no orders or sagas
     And catalog unavailability outranks missing products and existing retries bypass it

@@ -37,6 +37,9 @@ public final class OrderModel {
         }
     }
 
+    public record ProductKey(long sellerId, long productId) {
+    }
+
     public record Product(long sellerId, long productId, String name, BigDecimal price,
                           BigDecimal unitCost, String currency, String sellerRegion, String sellerCountryCode) {
     }

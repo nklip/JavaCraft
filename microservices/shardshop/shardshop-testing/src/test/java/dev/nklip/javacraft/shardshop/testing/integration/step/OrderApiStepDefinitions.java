@@ -178,6 +178,53 @@ public final class OrderApiStepDefinitions {
         assertEquals(202, raw("PUT", path, null, normalizedRetry).status());
     }
 
+    @Then("batched catalog validation stores each requested item in its original position")
+    public void batchedSnapshots() throws Exception {
+        var first = product("batch-first", "US", "shard-a", CatalogApi.itemRequest()
+                .put("name", "First batch item").put("price", "7.25").put("unitCost", "2.10"));
+        var second = product("batch-second", "US", "shard-a", CatalogApi.itemRequest()
+                .put("name", "Second batch item").put("price", "11.40").put("unitCost", "4.35"));
+        var expected = List.of(second, asian, first);
+        var quantities = List.of(1, 3, 2);
+        request = orderRequest("USD", second, asian, first);
+        for (int index = 0; index < quantities.size(); index++) {
+            ((ObjectNode) request.withArray("items").get(index)).put("quantity", quantities.get(index));
+        }
+        body(exchange("PUT", path, null, request), 202);
+        try (var connection = shards.superuser(shards.ofSeller(buyer));
+             var statement = connection.prepareStatement("SELECT item_position, seller_id, product_id, product_name, "
+                     + "unit_price, unit_cost, quantity FROM ordering.order_items WHERE order_id=? ORDER BY item_position")) {
+            statement.setLong(1, Long.parseLong(orderId));
+            try (var rows = statement.executeQuery()) {
+                for (int index = 0; index < expected.size(); index++) {
+                    assertTrue(rows.next());
+                    var item = expected.get(index);
+                    assertEquals(index, rows.getInt("item_position"));
+                    assertEquals(item.seller().id(), rows.getString("seller_id"));
+                    assertEquals(item.id(), rows.getString("product_id"));
+                    assertEquals(item.request().get("name").asText(), rows.getString("product_name"));
+                    assertEquals(new BigDecimal(item.request().get("price").asText()), rows.getBigDecimal("unit_price"));
+                    assertEquals(new BigDecimal(item.request().get("unitCost").asText()), rows.getBigDecimal("unit_cost"));
+                    assertEquals(quantities.get(index).intValue(), rows.getInt("quantity"));
+                }
+                assertFalse(rows.next());
+            }
+        }
+    }
+
+    @Then("a mismatched same-shard seller and product leaves its allocation reusable")
+    public void batchedExactPairs() throws Exception {
+        var second = product("batch-other-seller", "US", "shard-a", CatalogApi.itemRequest());
+        var mismatched = orderRequest("USD", usd, second);
+        ((ObjectNode) mismatched.withArray("items").get(1)).put("sellerId", usd.seller().id());
+        error(exchange("PUT", path, null, mismatched), 422, "PRODUCT_NOT_FOUND");
+        assertNoAcceptance();
+        assertEquals(orderId, allocation("initial", 0, 200));
+        body(exchange("PUT", path, null, orderRequest("USD", usd, second)), 202);
+        assertEquals(2, count(shards.ofSeller(buyer), "ordering.order_items", "order_id=" + orderId));
+        assertEquals(1, count(shards.ofSeller(buyer), "ordering.order_sagas", "order_id=" + orderId));
+    }
+
     @Then("pending and terminal retries return the saved status without catalog access")
     public void statusRetries() throws Exception {
         order.restart(Set.of(shards.ofSeller(usd.seller().id()).name(), shards.ofSeller(asian.seller().id()).name()));
@@ -499,14 +546,17 @@ public final class OrderApiStepDefinitions {
     }
 
     private CatalogApi.Product product(String alias, String region, String currency) throws Exception {
+        String target = alias.equals("asian") ? "shard-d" : alias.equals("usd") ? "shard-a" : "shard-b";
+        return product(alias, region, target, CatalogApi.itemRequest().put("currency", currency));
+    }
+
+    private CatalogApi.Product product(String alias, String region, String target, ObjectNode item) throws Exception {
         var sellerRequest = CatalogApi.sellerRequest(alias + " company", region);
         String key = alias;
-        String target = alias.equals("asian") ? "shard-d" : alias.equals("usd") ? "shard-a" : "shard-b";
         for (int attempt = 0; !shards.ofKey(region, key).name().equals(target); attempt++) key = alias + attempt;
         var sellerResponse = catalog.createSeller(key, sellerRequest);
         body(sellerResponse, 201);
         var seller = catalog.remember(alias, key, sellerRequest, sellerResponse);
-        var item = CatalogApi.itemRequest().put("currency", currency);
         var response = catalog.post(seller.path() + "/products", alias, Json.bytes(item));
         body(response, 201);
         return catalog.remember(alias, seller, alias, item, response);

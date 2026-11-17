@@ -4,6 +4,7 @@ import dev.nklip.javacraft.shardshop.sharding.Shard;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -11,12 +12,17 @@ import static dev.nklip.javacraft.shardshop.order.ordering.OrderModel.*;
 
 /** Bounded primary database phases. A failed write callback must roll back every mutation. */
 public interface OrderStore {
+    int MAX_CATALOG_BATCH_SIZE = 64;
+
     <T> T read(Shard shard, Function<Session, T> work);
 
     <T> T write(Shard shard, Function<Session, T> work);
 
     /** Primary-only catalog lookup; all acquisition/query work must fit the remaining shared deadline. */
     Optional<Product> product(Shard sellerShard, long sellerId, long productId, Duration remaining);
+
+    /** Reads 1–64 exact seller/product pairs in one primary phase; missing pairs are absent. */
+    Map<ProductKey, Product> products(Shard sellerShard, List<ProductKey> keys, Duration remaining);
 
     record AcceptanceChecks(boolean quarantined, boolean allocatedToBuyer, Optional<Order> order) {
     }

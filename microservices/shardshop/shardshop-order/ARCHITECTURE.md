@@ -137,14 +137,21 @@ order:
    `503 ORDER_STORE_UNAVAILABLE`. For a new order, release the transaction, lock,
    and connection before catalog IO.
 3. **Catalog lookups.** Resolve all distinct seller and product pairs through their
-   sellers' primaries, with bounded concurrency and a shared lookup deadline. No
+   sellers' primaries. Group exact `(sellerId, productId)` pairs by seller shard
+   into batches of at most 64 pairs. Each batch uses one parameterized query; a
+   single-item order keeps its direct lookup. At most `catalog-concurrency` batches
+   are in flight per request. Scheduling, pool acquisition, queries and commits
+   consume one shared catalog deadline; subsequent batches receive only its
+   remaining time. Restore request item order from the returned pair keys before
+   creating snapshots, regardless of row or batch completion order. No
    order-shard transaction, advisory lock, or borrowed order connection may be held
    during these queries. Collect outcomes rather than returning whichever lookup
    finishes first. Within catalog validation, any unavailable shard/timeout wins as
    `503 CATALOG_UNAVAILABLE`, then any missing product wins as
    `422 PRODUCT_NOT_FOUND`, then multiple product currencies win as
    `422 MIXED_CURRENCIES`, then a single product currency that differs from the
-   order currency gives `422 CURRENCY_MISMATCH`. Thus a USD order with USD and EUR
+   order currency gives `422 CURRENCY_MISMATCH`, followed by seller currency-policy
+   validation (`422 PRODUCT_CURRENCY_POLICY`). Thus a USD order with USD and EUR
    items is mixed, and a missing product plus an unavailable catalog shard is
    unavailable. Sort any reported product IDs canonically.
 4. **Final order-shard transaction.** After catalog IO completes, open a new short

@@ -800,6 +800,15 @@ the resulting scheduling behavior.
 
 Lesson: Test the scheduler used in production, including each shard's delay.
 
+### Step 8.5 — Batch catalog validation
+
+**Done 2026-11-17.**
+Catalog validation batches seller-shard lookups within fixed bounds for larger
+baskets. The [order validation contract](shardshop-order/ARCHITECTURE.md#validation-and-http-errors)
+continues to own deadlines and error precedence. Focused order-reactor tests passed.
+
+Lesson: Batch lookups within the existing request deadline.
+
 #### Pending qualification
 
 Deployment and capacity qualification of the combined revision remain pending.

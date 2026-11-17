@@ -14,13 +14,17 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import static dev.nklip.javacraft.shardshop.order.ordering.OrderFailure.Reason.*;
 import static dev.nklip.javacraft.shardshop.order.ordering.OrderModel.*;
@@ -186,58 +190,84 @@ public final class OrderService {
                     : validateCatalog(creation, List.of(product.orElseThrow()));
         }
         long deadline = System.nanoTime() + catalogDeadlineNanos;
+        List<CatalogBatch> batches = catalogBatches(creation);
+        int concurrency = Math.min(catalogConcurrency, batches.size());
         // shutdownNow is deliberate: executor.close() would wait past the request deadline for stuck IO.
-        var executor = Executors.newFixedThreadPool(catalogConcurrency, Thread.ofVirtual().factory());
-        List<Future<Optional<Product>>> futures = new ArrayList<>();
-        List<Product> products = new ArrayList<>();
-        boolean unavailable = false;
-        boolean missing = false;
+        ExecutorService executor = Executors.newFixedThreadPool(concurrency, Thread.ofVirtual().factory());
+        var completed = new ExecutorCompletionService<Map<ProductKey, Product>>(executor);
+        var active = new HashSet<Future<Map<ProductKey, Product>>>();
+        Map<ProductKey, Product> found = new HashMap<>();
+        var pending = batches.iterator();
         try {
-            for (OrderItem item : creation.items()) {
-                futures.add(executor.submit(() -> {
-                    long remaining = deadline - System.nanoTime();
-                    if (remaining <= 0) {
-                        throw new OrderFailure(CATALOG_UNAVAILABLE);
-                    }
-                    Optional<Product> result = store.product(router.route(item.sellerId()), item.sellerId(), item.productId(),
-                            Duration.ofNanos(remaining));
-                    if (deadline - System.nanoTime() <= 0) {
-                        throw new OrderFailure(CATALOG_UNAVAILABLE);
-                    }
-                    return result;
-                }));
-            }
-            for (Future<Optional<Product>> future : futures) {
-                try {
-                    long remaining = deadline - System.nanoTime();
-                    if (!future.isDone() && remaining <= 0) {
-                        unavailable = true;
-                        continue;
-                    }
-                    Optional<Product> product = future.get(Math.max(0, remaining), TimeUnit.NANOSECONDS);
-                    if (product.isEmpty()) {
-                        missing = true;
-                    } else {
-                        products.add(product.orElseThrow());
-                    }
-                } catch (ExecutionException | TimeoutException failure) {
-                    unavailable = true;
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    unavailable = true;
+            while (pending.hasNext() || !active.isEmpty()) {
+                // Submit only the current window; large baskets cannot queue an executor task per item.
+                while (pending.hasNext() && active.size() < concurrency) {
+                    CatalogBatch batch = pending.next();
+                    active.add(completed.submit(() -> {
+                        long remaining = deadline - System.nanoTime();
+                        if (remaining <= 0) {
+                            throw new OrderFailure(CATALOG_UNAVAILABLE);
+                        }
+                        Map<ProductKey, Product> products = store.products(batch.shard(), batch.keys(),
+                                Duration.ofNanos(remaining));
+                        if (deadline - System.nanoTime() <= 0) {
+                            throw new OrderFailure(CATALOG_UNAVAILABLE);
+                        }
+                        return products;
+                    }));
                 }
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0) {
+                    return new CatalogOutcome(List.of(), CATALOG_UNAVAILABLE);
+                }
+                Future<Map<ProductKey, Product>> future = completed.poll(remaining, TimeUnit.NANOSECONDS);
+                if (future == null) {
+                    return new CatalogOutcome(List.of(), CATALOG_UNAVAILABLE);
+                }
+                active.remove(future);
+                found.putAll(future.get());
             }
+            if (deadline - System.nanoTime() <= 0) {
+                return new CatalogOutcome(List.of(), CATALOG_UNAVAILABLE);
+            }
+        } catch (ExecutionException failure) {
+            // Unavailability wins over every other catalog outcome, including missing pairs.
+            return new CatalogOutcome(List.of(), CATALOG_UNAVAILABLE);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return new CatalogOutcome(List.of(), CATALOG_UNAVAILABLE);
         } finally {
-            futures.forEach(future -> future.cancel(true));
+            active.forEach(future -> future.cancel(true));
             executor.shutdownNow();
         }
-        if (unavailable) {
-            return new CatalogOutcome(List.of(), CATALOG_UNAVAILABLE);
-        }
-        if (missing) {
-            return new CatalogOutcome(List.of(), PRODUCT_NOT_FOUND);
+        List<Product> products = new ArrayList<>();
+        for (OrderItem item : creation.items()) {
+            Product product = found.get(new ProductKey(item.sellerId(), item.productId()));
+            if (product == null) {
+                return new CatalogOutcome(List.of(), PRODUCT_NOT_FOUND);
+            }
+            products.add(product);
         }
         return validateCatalog(creation, products);
+    }
+
+    private List<CatalogBatch> catalogBatches(OrderCreation creation) {
+        Map<Shard, List<ProductKey>> byShard = new LinkedHashMap<>();
+        for (OrderItem item : creation.items()) {
+            byShard.computeIfAbsent(router.route(item.sellerId()), ignored -> new ArrayList<>())
+                    .add(new ProductKey(item.sellerId(), item.productId()));
+        }
+        List<CatalogBatch> batches = new ArrayList<>();
+        byShard.forEach((shard, keys) -> {
+            for (int start = 0; start < keys.size(); start += OrderStore.MAX_CATALOG_BATCH_SIZE) {
+                batches.add(new CatalogBatch(shard, List.copyOf(keys.subList(start,
+                        Math.min(start + OrderStore.MAX_CATALOG_BATCH_SIZE, keys.size())))));
+            }
+        });
+        return batches;
+    }
+
+    private record CatalogBatch(Shard shard, List<ProductKey> keys) {
     }
 
     private CatalogOutcome validateCatalog(OrderCreation creation, List<Product> products) {

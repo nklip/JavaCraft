@@ -11,7 +11,10 @@ import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static dev.nklip.javacraft.shardshop.order.ordering.OrderModel.*;
@@ -331,6 +334,35 @@ final class JdbcOrderSession implements OrderStore.Session {
                         rows.getString("region"), rows.getString("country_code")))
                         : Optional.empty();
             }
+        } catch (SQLException failure) {
+            throw new OrderFailure(unavailable);
+        }
+    }
+
+    Map<ProductKey, Product> products(List<ProductKey> keys) {
+        if (keys.isEmpty() || keys.size() > OrderStore.MAX_CATALOG_BATCH_SIZE) {
+            throw new IllegalArgumentException("Catalog batch size must be between 1 and " + OrderStore.MAX_CATALOG_BATCH_SIZE);
+        }
+        String pairs = String.join(", ", Collections.nCopies(keys.size(), "(?::bigint, ?::bigint)"));
+        try (PreparedStatement statement = prepare("SELECT p.seller_id, p.product_id, p.name, p.price, p.unit_cost, "
+                + "p.currency, s.region, s.country_code FROM (VALUES " + pairs + ") requested(seller_id, product_id) "
+                + "JOIN catalog.products p ON p.seller_id = requested.seller_id AND p.product_id = requested.product_id "
+                + "JOIN catalog.sellers s ON s.seller_id = p.seller_id")) {
+            int parameter = 1;
+            for (ProductKey key : keys) {
+                statement.setLong(parameter++, key.sellerId());
+                statement.setLong(parameter++, key.productId());
+            }
+            Map<ProductKey, Product> result = new LinkedHashMap<>();
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    ProductKey key = new ProductKey(rows.getLong("seller_id"), rows.getLong("product_id"));
+                    result.put(key, new Product(key.sellerId(), key.productId(), rows.getString("name"),
+                            rows.getBigDecimal("price"), rows.getBigDecimal("unit_cost"), rows.getString("currency"),
+                            rows.getString("region"), rows.getString("country_code")));
+                }
+            }
+            return Map.copyOf(result);
         } catch (SQLException failure) {
             throw new OrderFailure(unavailable);
         }

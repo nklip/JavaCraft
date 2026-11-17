@@ -10,6 +10,7 @@ import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.ListedOrder;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.OrderCursor;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.SortDirection;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.Product;
+import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.ProductKey;
 import dev.nklip.javacraft.shardshop.order.ordering.OrderModel.ItemSnapshot;
 import dev.nklip.javacraft.shardshop.order.stock.StockFailure;
 import dev.nklip.javacraft.shardshop.order.stock.StockStore;
@@ -146,6 +147,20 @@ public final class JdbcOrderStore implements OrderStore, OrderListingStore, Stoc
         Duration budget = remaining.compareTo(DatabasePhases.PHASE_BUDGET) >= 0 ? DatabasePhases.PHASE_BUDGET : remaining;
         return execute(shard, true, budget, OrderFailure.Reason.CATALOG_UNAVAILABLE,
                 session -> session.product(sellerId, productId));
+    }
+
+    @Override
+    public Map<ProductKey, Product> products(Shard shard, List<ProductKey> keys, Duration remaining) {
+        List<ProductKey> batch = List.copyOf(keys);
+        if (batch.isEmpty() || batch.size() > MAX_CATALOG_BATCH_SIZE) {
+            throw new IllegalArgumentException("Catalog batch size must be between 1 and " + MAX_CATALOG_BATCH_SIZE);
+        }
+        if (remaining.isNegative() || remaining.isZero()) {
+            throw new OrderFailure(OrderFailure.Reason.CATALOG_UNAVAILABLE);
+        }
+        Duration budget = remaining.compareTo(DatabasePhases.PHASE_BUDGET) >= 0 ? DatabasePhases.PHASE_BUDGET : remaining;
+        return execute(shard, true, budget, OrderFailure.Reason.CATALOG_UNAVAILABLE,
+                session -> session.products(batch));
     }
 
     private <T> T execute(Shard shard, boolean readOnly, Duration budget, OrderFailure.Reason unavailable,

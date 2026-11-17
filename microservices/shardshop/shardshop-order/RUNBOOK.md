@@ -68,7 +68,10 @@ status GETs use saved state, even during a catalog outage. Pending retries retur
 `202`; terminal retries return `200`. Acceptance does not change stock or create
 an outbox record; the background stock coordinator performs those subsequent steps.
 
-Primary pools and lookup concurrency are bounded. Each database phase runs on its
+Primary pools and lookup concurrency are bounded. Multi-item orders use the
+[bounded seller-shard catalog batches](ARCHITECTURE.md#validation-and-http-errors);
+all batches share the configured catalog deadline and retain request item order.
+Each database phase runs on its
 own virtual thread and waits at most one second for a pooled connection, thus a
 burst queues instead of failing. A pool that stays full or an unknown commit
 result returns `503`; clients retain the same key, allocation or order payload
@@ -82,7 +85,7 @@ HTTP/2 is disabled. The service uses HTTP/1.1
 |---|---|---|
 | `shardshop.order.max-pool-size` | `4` | Primary connections per shard, 1–32. The saga process adds one connection for each result handler (`results.concurrency`); the total must stay at most 32 |
 | `shardshop.order.max-id-candidates` | `1024` | Buyer ID placement attempts, 1–65536 |
-| `shardshop.order.catalog-concurrency` | `4` | Concurrent catalog lookups per request, 1–64 |
+| `shardshop.order.catalog-concurrency` | `4` | Concurrent catalog batches per request, 1–64; each batch contains at most 64 exact seller/product pairs on one seller shard |
 | `shardshop.order.catalog-deadline` | `3s` | Shared catalog deadline, 2–3 s; leaves room for the one-second pool acquisition bound |
 | `shardshop.order.stock.enabled` | `true` | Run the stock coordinator in the saga process; `false` isolates other saga components in tests |
 | `shardshop.order.stock.poll-interval` | `250ms` | Delay between scans, 100 ms–30 s |
@@ -614,7 +617,7 @@ mvn -B -ntp -f microservices/shardshop/pom.xml -pl shardshop-testing -am -Pinteg
 
 | Topic | Tags |
 |---|---|
-| Buyer and order provider | `@order-api` |
+| Buyer and order provider | `@order-api` (includes `@order-catalog-batch` for exact pairs and snapshot order) |
 | Stock reservation | `@stock-reservation or @order-api or @catalog-migration` |
 | Order outbox CDC relay | `@cdc-relay` |
 | Result consumer and profit | `@order-results or @order-api or @stock-reservation or @catalog-migration` |
