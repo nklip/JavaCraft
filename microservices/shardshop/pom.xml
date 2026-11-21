@@ -479,16 +479,6 @@
                 <artifactId>maven-enforcer-plugin</artifactId>
                 <executions>
                     <execution>
-                        <id>enforce-build-environment</id>
-                        <configuration>
-                            <rules>
-                                <requireMavenVersion>
-                                    <version>[3.9.16,)</version>
-                                </requireMavenVersion>
-                            </rules>
-                        </configuration>
-                    </execution>
-                    <execution>
                         <id>enforce-direct-dataset-boundary</id>
                         <goals><goal>enforce</goal></goals>
                         <configuration>

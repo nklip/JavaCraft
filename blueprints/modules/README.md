@@ -1,11 +1,9 @@
 # Java Platform Module System (JPMS)
 <sub>[Back to blueprints](../README.md#blueprints)</sub>
 
-A hands-on demonstration of Java 9+ JPMS covering qualified exports, `transitive` requires,
+A hands-on demonstration of JPMS covering qualified exports, `requires transitive`,
 the Service Provider Interface (SPI) pattern via `ServiceLoader`, and strong encapsulation
 of internal packages.
-
-**Stack:** at least Java 9
 
 ## Contents
 1. [Quick Start](#1-quick-start)
@@ -18,20 +16,23 @@ of internal packages.
 ---
 
 ## 1. Quick Start
-<sub>[Back to top](#java-platform-module-system-jpms)</sub>
+<sub>[Back to Contents](#contents)</sub>
 
-### Build and test
+Run these Bash commands from the repository root on macOS or Linux.
+
+### Test and package the three modules
 
 ```bash
-mvn -pl modules/module-app -am test
+mvn -pl blueprints/modules/module-app -am package
 ```
 
 ### Run the modular application
 
 ```bash
-mvn -pl modules/module-app -am package
-java \
-  --module-path modules/module-util/target/module-util-1.0-SNAPSHOT.jar:modules/module-hello/target/module-hello-1.0-SNAPSHOT.jar:modules/module-app/target/module-app-1.0-SNAPSHOT.jar \
+jpms_jars=blueprints/modules/module-util/target/module-util-1.0-SNAPSHOT.jar
+jpms_jars+=:blueprints/modules/module-hello/target/module-hello-1.0-SNAPSHOT.jar
+jpms_jars+=:blueprints/modules/module-app/target/module-app-1.0-SNAPSHOT.jar
+java --module-path "$jpms_jars" \
   --module module.app/dev.nklip.javacraft.modules.app.App
 ```
 
@@ -44,7 +45,7 @@ Hello World from Modules!
 ---
 
 ## 2. Architecture
-<sub>[Back to top](#java-platform-module-system-jpms)</sub>
+<sub>[Back to Contents](#contents)</sub>
 
 ```mermaid
 flowchart TD
@@ -72,7 +73,7 @@ flowchart TD
 ---
 
 ## 3. Modules
-<sub>[Back to top](#java-platform-module-system-jpms)</sub>
+<sub>[Back to Contents](#contents)</sub>
 
 ### `module.util` — Utility module
 
@@ -101,7 +102,7 @@ The consumer (`module.app`) is fully decoupled — it depends on the interface, 
 module module.hello {
     exports dev.nklip.javacraft.modules.hello;
     provides dev.nklip.javacraft.modules.hello.HelloService
-            with impl.dev.nklip.javacraft.modules.hello.HelloServiceImpl;
+            with dev.nklip.javacraft.modules.hello.impl.HelloServiceImpl;
 }
 ```
 
@@ -139,7 +140,7 @@ Util.printMessage(message);
 ---
 
 ## 4. JPMS Features Demonstrated
-<sub>[Back to top](#java-platform-module-system-jpms)</sub>
+<sub>[Back to Contents](#contents)</sub>
 
 | Feature | Module | Directive | What it achieves |
 |---------|--------|-----------|------------------|
@@ -153,7 +154,7 @@ Util.printMessage(message);
 ---
 
 ## 5. ServiceLoader Flow
-<sub>[Back to top](#java-platform-module-system-jpms)</sub>
+<sub>[Back to Contents](#contents)</sub>
 
 ```mermaid
 sequenceDiagram
@@ -174,28 +175,28 @@ sequenceDiagram
 ---
 
 ## 6. Tests
-<sub>[Back to top](#java-platform-module-system-jpms)</sub>
+<sub>[Back to Contents](#contents)</sub>
 
-Run all tests:
+To run just the tests, use this command from the repository root.
 
 ```bash
-mvn -pl modules/module-app -am test
+mvn -pl blueprints/modules/module-app -am test
 ```
 
 ### Coverage summary
 
 | Module | Tests | Line coverage |
 |--------|------:|--------------:|
-| modules/module-app | 5 | 0% ⚠ |
+| blueprints/modules/module-app | 7 | 0% ⚠ |
 
 > [!TIP]
 > JaCoCo reports 0 % because neither test class exercises the production `App.java` directly: `JpmsDescriptorTest` inspects module descriptors via reflection, and `ServiceLoaderIntegrationTest` launches a subprocess JVM — code running in a forked process is not instrumented by the JaCoCo agent attached to the test JVM.
 
 | Test class | Tests | Type | Covers |
 |------------|------:|------|--------|
-| `JpmsDescriptorTest` | 4 | Unit | JPMS descriptor assertions: `uses`, `provides`, qualified export targets, hidden package absence |
+| `JpmsDescriptorTest` | 6 | Unit | Transitive requirements for `module.util` and `module.hello`, `uses`, `provides`, qualified export targets, and the hidden package |
 | `ServiceLoaderIntegrationTest` | 1 | Integration | Launches a real JVM on `--module-path`; asserts exit code `0` and output contains `"Hello World from Modules!"` |
 
-**Total — 5 tests**
+**Total — 7 tests**
 
 Tests live in `module-app` and cover both the JPMS descriptor structure and end-to-end runtime behaviour.

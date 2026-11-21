@@ -9,6 +9,8 @@ import java.nio.file.Path;
 import dev.nklip.javacraft.modules.hello.HelloService;
 import dev.nklip.javacraft.modules.util.Util;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class JpmsDescriptorTest {
 
@@ -16,6 +18,17 @@ class JpmsDescriptorTest {
     void testModuleAppShouldDeclareUsesForHelloService() throws Exception {
         ModuleDescriptor appDescriptor = descriptorFor(App.class, "module.app");
         assertTrue(appDescriptor.uses().contains(HelloService.class.getName()));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"module.util", "module.hello"})
+    void testModuleAppShouldRequireDependencyTransitively(String dependency) throws Exception {
+        ModuleDescriptor appDescriptor = descriptorFor(App.class, "module.app");
+
+        assertTrue(appDescriptor.requires().stream()
+                        .anyMatch(requirement -> requirement.name().equals(dependency)
+                                && requirement.modifiers().contains(ModuleDescriptor.Requires.Modifier.TRANSITIVE)),
+                () -> "module.app must declare 'requires transitive " + dependency + "'");
     }
 
     @Test

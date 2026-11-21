@@ -4,19 +4,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
-import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import dev.nklip.javacraft.modules.hello.HelloService;
 import dev.nklip.javacraft.modules.util.Util;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class ServiceLoaderIntegrationTest {
 
     @Test
-    void testRunOnModulePathShouldResolveHelloServiceProvider() throws Exception {
+    void testRunOnModulePathShouldResolveHelloServiceProvider(@TempDir Path tempDir) throws Exception {
         String modulePath = Stream.of(
                         pathFor(App.class),
                         pathFor(HelloService.class),
@@ -33,13 +35,23 @@ class ServiceLoaderIntegrationTest {
                 "--module",
                 "module.app/dev.nklip.javacraft.modules.app.App"
         );
-        processBuilder.redirectErrorStream(true);
+        Path outputFile = tempDir.resolve("module-app.log");
+        processBuilder.redirectErrorStream(true).redirectOutput(outputFile.toFile());
 
         Process process = processBuilder.start();
-        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        int exitCode = process.waitFor();
+        boolean finished;
+        try {
+            finished = process.waitFor(10, TimeUnit.SECONDS);
+        } finally {
+            if (process.isAlive()) {
+                assertTrue(process.destroyForcibly().waitFor(5, TimeUnit.SECONDS),
+                        () -> "Child JVM " + process.pid() + " did not terminate after forced shutdown");
+            }
+        }
 
-        assertEquals(0, exitCode, output);
+        String output = Files.readString(outputFile);
+        assertTrue(finished, () -> "Module app timed out after 10 seconds.\n" + output);
+        assertEquals(0, process.exitValue(), output);
         assertTrue(output.contains("Hello World from Modules!"), output);
     }
 

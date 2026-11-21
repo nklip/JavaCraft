@@ -317,7 +317,7 @@
                         <configuration>
                             <rules>
                                 <requireMavenVersion>
-                                    <version>[3.9.0,)</version>
+                                    <version>[3.9.16,)</version>
                                 </requireMavenVersion>
                                 <!-- Compiling with <release>25</release> needs a JDK that knows release 25. -->
                                 <requireJavaVersion>

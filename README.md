@@ -9,11 +9,92 @@
 * [xlspaceship](xlspaceship/README.md) - Battleship game
 
 ## Contents
-1. [Dependency management](#dependency-management)
-2. [Secrets and local environment](#secrets-and-local-environment)
-3. [Test coverage](#test-coverage)
+1. [Prerequisites](#1-prerequisites)
+2. [Dependency management](#2-dependency-management)
+3. [Secrets and local environment](#3-secrets-and-local-environment)
+4. [Test coverage](#4-test-coverage)
 
-## Dependency management
+## 1. Prerequisites
+
+<sub>[Back to Contents](#contents)</sub>
+
+<table>
+<thead>
+<tr><th>Install</th><th>Requirement</th><th>Check</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>JDK</td>
+<td>Version 25 or newer. Set <code>JAVA_HOME</code> to the JDK directory.</td>
+<td>
+
+```bash
+javac -version
+```
+
+</td>
+</tr>
+<tr>
+<td>Apache Maven</td>
+<td>Version 3.9.16 or newer.</td>
+<td>
+
+```bash
+mvn --version
+```
+
+</td>
+</tr>
+<tr>
+<td>Docker</td>
+<td>Install the Docker CLI and start the Docker daemon before running Maven.</td>
+<td>
+
+```bash
+docker info
+```
+
+</td>
+</tr>
+<tr>
+<td>Docker Compose</td>
+<td>Install the Compose plugin to start the local microservice stacks.</td>
+<td>
+
+```bash
+docker compose version
+```
+
+</td>
+</tr>
+<tr>
+<td>Node.js</td>
+<td>Put <code>node</code> on <code>PATH</code> to run ShardShop’s JavaScript tests.</td>
+<td>
+
+```bash
+node --version
+```
+
+</td>
+</tr>
+<tr>
+<td>Helm</td>
+<td>Put <code>helm</code> on <code>PATH</code> to render Kubernetes manifests for ShardShop’s chart tests.</td>
+<td>
+
+```bash
+helm version
+```
+
+</td>
+</tr>
+</tbody>
+</table>
+
+For the local Kubernetes lab, see the [ShardShop prerequisites](microservices/shardshop/README.md#prerequisites).
+
+## 2. Dependency management
 <sub>[Back to top](#micro-java-samples)</sub>
 
 ### Overview of dependencies
@@ -38,7 +119,7 @@ mvn versions:display-dependency-updates -DallowMajorUpdates=true -DprocessDepend
 ```
 
 
-## Secrets and local environment
+## 3. Secrets and local environment
 <sub>[Back to top](#micro-java-samples)</sub>
 
 Most modules need no credentials. The ones that do read them from **environment variables** —
@@ -67,7 +148,7 @@ gitignored.
 Never commit a key. If one is ever pushed, **rotate it first** — rewriting history does not
 un-leak it.
 
-## Test coverage
+## 4. Test coverage
 <sub>[Back to top](#micro-java-samples)</sub>
 
 JaCoCo is wired into the root pom, so any `mvn test` run also produces a coverage report
