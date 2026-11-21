@@ -1,84 +1,85 @@
 # BDD Module
-<sub>[Back to blueprints](../README.md#blueprints)</sub>
+
+[Blueprints](../README.md) › **BDD Module** · [Repository test coverage](../../README.md#4-test-coverage)
 
 This module demonstrates Behavior-Driven Development (BDD) with Cucumber and Spring Boot
 using a BMI calculator domain.
 
 ## Contents
 
-- [What this module covers](#what-this-module-covers)
-- [Test architecture](#test-architecture)
-- [How to run tests](#how-to-run-tests)
-- [Expected output](#expected-output)
-- [IDEA troubleshooting](#idea-troubleshooting)
+1. [What this module covers](#1-what-this-module-covers)
+2. [Test architecture](#2-test-architecture)
+3. [How to run tests](#3-how-to-run-tests)
+4. [Expected output](#4-expected-output)
+5. [IDEA troubleshooting](#5-idea-troubleshooting)
 
-## What this module covers
-<sub>[Back to top](#bdd-module)</sub>
+## 1. What this module covers
 
-`BMI.feature` currently verifies four business scenarios:
+<sub>[Back to Contents](#contents)</sub>
 
-1. A person gets BMI from metric input (`kg`/`m`).
-2. A person gets BMI from imperial input (`lbs`/`inches`).
-3. Several BMI calculations can be checked in one batch table.
-4. BMI category messages are validated on boundary values.
+The examples in [BMI.feature](src/test/resources/features/BMI.feature) cover three behaviors.
 
-In addition to Cucumber scenarios, unit tests cover:
+- A person weighing 75 kg at 1.75 m gets a BMI of 24.49 in the normal range.
+- A person weighing 150 lb at 65 inches gets a BMI of 24.96.
+- BMI values at category boundaries produce the expected category messages.
 
-- BMI formula and input validation (`BMIServiceTest`)
-- Category boundary behavior, including values with more than two decimals
-  normalized before category lookup
+[BMIServiceTest](src/test/java/dev/nklip/javacraft/bdd/service/BMIServiceTest.java) covers input validation,
+both BMI formulas, half-even rounding, and category boundaries for values with more than two decimal places.
 
-## Test architecture
-<sub>[Back to top](#bdd-module)</sub>
+## 2. Test architecture
+
+<sub>[Back to Contents](#contents)</sub>
 
 - `CucumberIT` runs feature tests on JUnit Platform with Cucumber.
 - `CucumberSpringConfiguration` boots a minimal Spring context for Cucumber steps.
-- `BMIStepDefinition` maps Gherkin steps to `BMIService` calls.
+- `BMIStepDefinitions` maps Gherkin steps to `BMIService` calls.
 
-## How to run tests
-<sub>[Back to top](#bdd-module)</sub>
+## 3. How to run tests
 
-Run all tests (Surefire unit tests + Failsafe Cucumber scenarios):
+<sub>[Back to Contents](#contents)</sub>
 
-```bash
-mvn -pl bdd verify
-```
-
-Run only unit tests:
+Run these commands from the repository root. `verify` runs unit tests with Surefire
+and Cucumber scenarios with Failsafe.
 
 ```bash
-mvn -pl bdd -Dtest='*Test' test
+mvn -pl blueprints/bdd verify
 ```
 
-Run only Cucumber scenarios:
+The `test` phase runs only the unit tests.
 
 ```bash
-mvn -pl bdd -Dit.test=CucumberIT verify
+mvn -pl blueprints/bdd test
 ```
 
-## Expected output
-<sub>[Back to top](#bdd-module)</sub>
+To run only Cucumber, compile the test classes and invoke Failsafe directly.
 
-When tests pass, Maven prints a summary similar to:
+```bash
+mvn -pl blueprints/bdd test-compile failsafe:integration-test failsafe:verify -Dit.test=CucumberIT
+```
+
+## 4. Expected output
+
+<sub>[Back to Contents](#contents)</sub>
+
+When tests pass, Maven prints a summary similar to this one.
 
 ```text
 Tests run: <n>, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
-For Cucumber runs, feature steps are printed in the console and reports are generated at:
+For Cucumber runs, Maven prints feature steps in the console and writes these reports.
 
-- `bdd/target/cucumber-reports/cucumber.html`
-- `bdd/target/cucumber-reports/cucumber.json`
+- `blueprints/bdd/target/cucumber-reports/cucumber.html`
+- `blueprints/bdd/target/cucumber-reports/cucumber.json`
 
-Maven test reports are generated at:
+The Maven test plugins write their reports to these directories.
 
-- `bdd/target/surefire-reports/`
-- `bdd/target/failsafe-reports/`
+- Surefire unit tests in `blueprints/bdd/target/surefire-reports/`
+- Failsafe Cucumber scenarios in `blueprints/bdd/target/failsafe-reports/`
 
-## IDEA troubleshooting
-<sub>[Back to top](#bdd-module)</sub>
+## 5. IDEA troubleshooting
 
-If a feature file is not linked to step definitions in IntelliJ:  https://youtrack.jetbrains.com/projects/IDEA/issues/IDEA-362929/Cucumber-feature-file-step-appears-as-undefined-in-IntelliJ-despite-the-test-running-successfully.
+<sub>[Back to Contents](#contents)</sub>
 
-To fix it: install 'Cucumber Search Indexer' and 'Cucumber for Java' plugins
+If IntelliJ cannot link feature steps to their definitions, install the **Cucumber Search Indexer** and **Cucumber for Java** plugins. [JetBrains issue IDEA-362929](https://youtrack.jetbrains.com/projects/IDEA/issues/IDEA-362929/Cucumber-feature-file-step-appears-as-undefined-in-IntelliJ-despite-the-test-running-successfully)

@@ -1,26 +1,22 @@
 Feature: BMI service
 
-  Scenario: A person gets BMI from metric inputs
-    Given the BMI calculator is available
-    When a person has weight = '75' kg and height = '1.75' metres
-    Then that person should have BMI = '24.49' kg m2
+  Scenario: A person gets a BMI and category from metric measurements
+    When a person calculates their BMI from '75' kg and '1.75' metres
+    And they check their BMI category
+    Then their BMI should be '24.49'
+    And their BMI category should be 'Normal range as your BMI is between 18.50 and 24.99'
 
-  Scenario: A person gets BMI from imperial inputs
-    Given the BMI calculator is available
-    When a person has weight = '150' lbs and height = '65' inches
-    Then that person should have BMI = '24.96'
+  Scenario: A person gets a BMI from imperial measurements
+    When a person calculates their BMI from '150' lbs and '65' inches
+    Then their BMI should be '24.96'
 
-  Scenario: Several BMI calculations can be checked in one batch
-    Given the BMI calculator is available
-    When we use batch to test BMI calculator
-   #  | weight | height | is imperial | BMI   |
-      | 75     | 1.75   | false       | 24.49 |
-      | 150    | 65     | true        | 24.96 |
+  Scenario Outline: A person with BMI <BMI> gets the corresponding category
+    Given a person has a BMI of '<BMI>'
+    When they check their BMI category
+    Then their BMI category should be '<category>'
 
-  Scenario: BMI categories are assigned at boundary values
-    Given the BMI calculator is available
-    When we classify BMI values into categories
-   #  | BMI   | message                                                  |
+    Examples:
+      | BMI   | category                                                 |
       | 0.01  | Severe thinness as your BMI is less than 16.00           |
       | 15.99 | Severe thinness as your BMI is less than 16.00           |
       | 16.00 | Moderate thinness as your BMI is between 16.00 and 16.99 |

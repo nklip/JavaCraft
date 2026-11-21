@@ -13,15 +13,14 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class BMIService {
-    private static final int BMI_CATEGORY_SCALE = 2;
+    private static final int BMI_SCALE = 2;
 
     /**
      * BMI = Weight (kg) / Height (m)²
      * <p>
      * BMI = [Weight (lbs) / Height (inches)²] x 703
      * <p>
-     * The imperial BMI formula is your weight in pounds (lbs) divided by your height in inches,
-     * squared and then you multiply this figure by a conversion factor of 703.
+     * Both formulas round the final BMI to two decimal places using half-even rounding.
      */
     public BigDecimal calculate(BigDecimal weight, BigDecimal height, boolean isImperial) {
         if (weight == null || height == null) {
@@ -33,12 +32,8 @@ public class BMIService {
         if (height.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Height must be positive");
         }
-        if (isImperial) {
-            BigDecimal result = weight.divide(height.multiply(height), 10, RoundingMode.HALF_EVEN);
-            return result.multiply(BigDecimal.valueOf(703)).setScale(2, RoundingMode.HALF_EVEN);
-        } else {
-            return weight.divide(height.multiply(height), 2, RoundingMode.HALF_EVEN);
-        }
+        BigDecimal numerator = isImperial ? weight.multiply(BigDecimal.valueOf(703)) : weight;
+        return numerator.divide(height.multiply(height), BMI_SCALE, RoundingMode.HALF_EVEN);
     }
 
     /**
@@ -68,6 +63,6 @@ public class BMIService {
      * uses the same normalization strategy as BMI calculation output.
      */
     private BigDecimal normalizeBmiForCategory(BigDecimal bmi) {
-        return bmi.setScale(BMI_CATEGORY_SCALE, RoundingMode.HALF_EVEN);
+        return bmi.setScale(BMI_SCALE, RoundingMode.HALF_EVEN);
     }
 }

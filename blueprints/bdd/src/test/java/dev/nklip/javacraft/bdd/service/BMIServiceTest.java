@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class BMIServiceTest {
 
@@ -84,6 +86,16 @@ class BMIServiceTest {
         BigDecimal result = bmiService.calculate(
                 BigDecimal.valueOf(150), BigDecimal.valueOf(65), true);
         Assertions.assertEquals(new BigDecimal("24.96"), result);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "166.5, 21.38", // Exact BMI is 21.375.
+            "188.7, 24.22"  // Exact BMI is 24.225.
+    })
+    void roundsImperialBmiTiesToEven(BigDecimal pounds, BigDecimal expectedBmi) {
+        BigDecimal result = bmiService.calculate(pounds, BigDecimal.valueOf(74), true);
+        Assertions.assertEquals(expectedBmi, result);
     }
 
     @Test
